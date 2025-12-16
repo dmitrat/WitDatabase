@@ -19,6 +19,8 @@ namespace OutWit.Database.Core.Storage
 
         private readonly Lock m_lock = new();
 
+        private long m_cachedPageCount;
+
         private bool m_disposed;
 
         #endregion
@@ -52,6 +54,9 @@ namespace OutWit.Database.Core.Storage
                 fileShare,
                 bufferSize: pageSize,
                 FileOptions.RandomAccess);
+
+            // Cache initial page count
+            m_cachedPageCount = m_stream.Length / m_pageSize;
 
             // If new file, ensure it has at least one page
             if (m_stream.Length == 0 && !readOnly)
@@ -125,7 +130,6 @@ namespace OutWit.Database.Core.Storage
 
             var offset = pageNumber * m_pageSize;
             
-            // Use RandomAccess for thread-safe async I/O
             var bytesRead = await RandomAccess.ReadAsync(m_stream.SafeFileHandle, buffer[..m_pageSize], offset, cancellationToken);
             if (bytesRead < m_pageSize)
             {
@@ -164,7 +168,6 @@ namespace OutWit.Database.Core.Storage
 
             var offset = pageNumber * m_pageSize;
             
-            // Use RandomAccess for thread-safe async I/O
             await RandomAccess.WriteAsync(m_stream.SafeFileHandle, buffer[..m_pageSize], offset, cancellationToken);
         }
 
@@ -188,11 +191,8 @@ namespace OutWit.Database.Core.Storage
         {
             ThrowIfDisposed();
             
-            // FlushAsync doesn't have flushToDisk parameter, so we need to use sync flush
-            // wrapped in Task.Run for true async behavior, or just call sync version
             await m_stream.FlushAsync(cancellationToken);
             
-            // Force flush to disk - this is sync but necessary for durability
             lock (m_lock)
             {
                 m_stream.Flush(flushToDisk: true);
@@ -219,17 +219,16 @@ namespace OutWit.Database.Core.Storage
             if (pageNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(pageNumber), "Page number cannot be negative");
 
-            if (pageNumber >= PageCount)
+            // Use cached value for fast validation (read without lock)
+            if (pageNumber >= Volatile.Read(ref m_cachedPageCount))
                 throw new ArgumentOutOfRangeException(nameof(pageNumber),
-                    $"Page number must be less than {PageCount}");
+                    $"Page number must be less than {m_cachedPageCount}");
         }
 
         private void ValidatePageNumberForWrite(long pageNumber)
         {
             if (pageNumber < 0)
                 throw new ArgumentOutOfRangeException(nameof(pageNumber), "Page number cannot be negative");
-
-            // Allow writing to pages beyond current size (file will be extended)
         }
 
         private void ValidateBuffer(ReadOnlySpan<byte> buffer)
@@ -256,6 +255,7 @@ namespace OutWit.Database.Core.Storage
             lock (m_lock)
             {
                 m_stream.SetLength(newSize);
+                Volatile.Write(ref m_cachedPageCount, pageCount);
             }
         }
 
@@ -287,16 +287,7 @@ namespace OutWit.Database.Core.Storage
         public int PageSize => m_pageSize;
 
         /// <inheritdoc/>
-        public long PageCount
-        {
-            get
-            {
-                lock (m_lock)
-                {
-                    return m_stream.Length / m_pageSize;
-                }
-            }
-        }
+        public long PageCount => Volatile.Read(ref m_cachedPageCount);
 
         /// <inheritdoc/>
         public bool IsReadOnly => m_isReadOnly;

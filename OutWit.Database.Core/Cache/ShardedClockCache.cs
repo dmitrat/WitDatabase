@@ -33,6 +33,7 @@ public sealed class ShardedClockCache : IPageCache
         private readonly Dictionary<long, int> m_pageIndex;
         private int m_clockHand;
         private int m_count;
+        private int m_firstFreeSlot; // Track first potentially free slot for O(1) empty slot finding
         private bool m_disposed;
 
         public CacheShard(IStorage storage, int capacity)
@@ -43,6 +44,7 @@ public sealed class ShardedClockCache : IPageCache
             m_pageIndex = new Dictionary<long, int>(capacity);
             m_clockHand = 0;
             m_count = 0;
+            m_firstFreeSlot = 0;
         }
 
         public CachedPage GetPage(long pageNumber)
@@ -54,7 +56,7 @@ public sealed class ShardedClockCache : IPageCache
                 if (m_pageIndex.TryGetValue(pageNumber, out int index))
                 {
                     var page = m_pages[index]!;
-                    page.Referenced = true; // Second chance
+                    page.Referenced = true;
                     page.ReferenceCount++;
                     return page;
                 }
@@ -139,38 +141,32 @@ public sealed class ShardedClockCache : IPageCache
             lock (m_lock)
             {
                 ThrowIfDisposed();
-
-                for (int i = 0; i < m_capacity; i++)
-                {
-                    var page = m_pages[i];
-                    if (page != null && page.IsDirty)
-                    {
-                        m_storage.WritePage(page.PageNumber, page.ReadOnlyData);
-                        page.ClearDirty();
-                    }
-                }
+                FlushAllInternal();
             }
         }
 
         public async ValueTask FlushAllAsync(CancellationToken cancellationToken)
         {
-            List<CachedPage> dirtyPages;
+            List<CachedPage>? dirtyPages = null;
 
             lock (m_lock)
             {
                 ThrowIfDisposed();
                 
-                dirtyPages = new List<CachedPage>();
                 for (int i = 0; i < m_capacity; i++)
                 {
                     var page = m_pages[i];
                     if (page != null && page.IsDirty)
                     {
+                        dirtyPages ??= new List<CachedPage>();
                         page.ReferenceCount++;
                         dirtyPages.Add(page);
                     }
                 }
             }
+
+            if (dirtyPages == null)
+                return;
 
             try
             {
@@ -212,19 +208,12 @@ public sealed class ShardedClockCache : IPageCache
                 m_pageIndex.Clear();
                 m_count = 0;
                 m_clockHand = 0;
+                m_firstFreeSlot = 0;
             }
         }
 
-        public int Count
-        {
-            get
-            {
-                lock (m_lock)
-                {
-                    return m_count;
-                }
-            }
-        }
+        // Lock-free read of count (approximate but fast)
+        public int Count => Volatile.Read(ref m_count);
 
         public int DirtyCount
         {
@@ -261,22 +250,33 @@ public sealed class ShardedClockCache : IPageCache
 
         private int FindSlotForNewPage()
         {
-            // If we have empty slots, use one
+            // Fast path: check if we have empty slots starting from hint
             if (m_count < m_capacity)
             {
-                for (int i = 0; i < m_capacity; i++)
+                // Start from cached hint and scan forward
+                for (int i = m_firstFreeSlot; i < m_capacity; i++)
                 {
                     if (m_pages[i] == null)
+                    {
+                        m_firstFreeSlot = i + 1;
                         return i;
+                    }
+                }
+                // Wrap around if hint was stale
+                for (int i = 0; i < m_firstFreeSlot; i++)
+                {
+                    if (m_pages[i] == null)
+                    {
+                        m_firstFreeSlot = i + 1;
+                        return i;
+                    }
                 }
             }
 
             // Clock algorithm: find a page to evict
-            int startHand = m_clockHand;
-            int iterations = 0;
-            int maxIterations = m_capacity * 2; // Prevent infinite loop
+            int maxIterations = m_capacity * 2;
 
-            while (iterations < maxIterations)
+            for (int iterations = 0; iterations < maxIterations; iterations++)
             {
                 var page = m_pages[m_clockHand];
 
@@ -284,12 +284,10 @@ public sealed class ShardedClockCache : IPageCache
                 {
                     if (page.Referenced)
                     {
-                        // Second chance: clear referenced bit
                         page.Referenced = false;
                     }
                     else
                     {
-                        // Evict this page
                         int slot = m_clockHand;
                         EvictSlot(slot);
                         m_clockHand = (m_clockHand + 1) % m_capacity;
@@ -298,7 +296,6 @@ public sealed class ShardedClockCache : IPageCache
                 }
 
                 m_clockHand = (m_clockHand + 1) % m_capacity;
-                iterations++;
             }
 
             throw new InvalidOperationException("Cache is full and all pages are pinned");
@@ -318,6 +315,10 @@ public sealed class ShardedClockCache : IPageCache
                 page.Dispose();
                 m_pages[slot] = null;
                 m_count--;
+                
+                // Update hint for next free slot search
+                if (slot < m_firstFreeSlot)
+                    m_firstFreeSlot = slot;
             }
         }
 
@@ -382,7 +383,6 @@ public sealed class ShardedClockCache : IPageCache
 
         int actualShardCount = shardCount ?? Math.Min(DEFAULT_SHARD_COUNT, Math.Max(1, maxPages / MIN_PAGES_PER_SHARD));
         
-        // Round up to power of 2 for fast modulo
         actualShardCount = RoundUpToPowerOf2(actualShardCount);
         
         m_shardMask = actualShardCount - 1;
@@ -403,57 +403,44 @@ public sealed class ShardedClockCache : IPageCache
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     private CacheShard GetShard(long pageNumber)
     {
-        // Use lower bits of page number for better distribution
         return m_shards[pageNumber & m_shardMask];
     }
 
-    /// <summary>
-    /// Gets a page from the cache, loading from storage if necessary.
-    /// </summary>
+    /// <inheritdoc/>
     public CachedPage GetPage(long pageNumber)
     {
         ThrowIfDisposed();
         return GetShard(pageNumber).GetPage(pageNumber);
     }
 
-    /// <summary>
-    /// Creates a new page in the cache (for newly allocated pages).
-    /// </summary>
+    /// <inheritdoc/>
     public CachedPage CreatePage(long pageNumber)
     {
         ThrowIfDisposed();
         return GetShard(pageNumber).CreatePage(pageNumber);
     }
 
-    /// <summary>
-    /// Marks a page as dirty (modified).
-    /// </summary>
+    /// <inheritdoc/>
     public void MarkDirty(long pageNumber)
     {
         ThrowIfDisposed();
         GetShard(pageNumber).MarkDirty(pageNumber);
     }
 
-    /// <summary>
-    /// Releases a reference to a page.
-    /// </summary>
+    /// <inheritdoc/>
     public void ReleasePage(long pageNumber)
     {
         GetShard(pageNumber).ReleasePage(pageNumber);
     }
 
-    /// <summary>
-    /// Evicts a specific page from the cache.
-    /// </summary>
+    /// <inheritdoc/>
     public void Evict(long pageNumber)
     {
         ThrowIfDisposed();
         GetShard(pageNumber).Evict(pageNumber);
     }
 
-    /// <summary>
-    /// Flushes all dirty pages to storage.
-    /// </summary>
+    /// <inheritdoc/>
     public void FlushAll()
     {
         ThrowIfDisposed();
@@ -464,9 +451,7 @@ public sealed class ShardedClockCache : IPageCache
         }
     }
 
-    /// <summary>
-    /// Flushes all dirty pages to storage asynchronously.
-    /// </summary>
+    /// <inheritdoc/>
     public async ValueTask FlushAllAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
@@ -484,9 +469,7 @@ public sealed class ShardedClockCache : IPageCache
         }
     }
 
-    /// <summary>
-    /// Clears all pages from the cache.
-    /// </summary>
+    /// <inheritdoc/>
     public void Clear()
     {
         ThrowIfDisposed();
@@ -534,15 +517,33 @@ public sealed class ShardedClockCache : IPageCache
 
     #region Properties
 
-    /// <summary>
-    /// Gets the current number of cached pages.
-    /// </summary>
-    public int Count => m_shards.Sum(s => s.Count);
+    /// <inheritdoc/>
+    public int Count
+    {
+        get
+        {
+            int total = 0;
+            foreach (var shard in m_shards)
+            {
+                total += shard.Count;
+            }
+            return total;
+        }
+    }
 
-    /// <summary>
-    /// Gets the number of dirty pages in the cache.
-    /// </summary>
-    public int DirtyCount => m_shards.Sum(s => s.DirtyCount);
+    /// <inheritdoc/>
+    public int DirtyCount
+    {
+        get
+        {
+            int total = 0;
+            foreach (var shard in m_shards)
+            {
+                total += shard.DirtyCount;
+            }
+            return total;
+        }
+    }
 
     /// <summary>
     /// Gets the number of shards.

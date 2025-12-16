@@ -8,11 +8,20 @@ namespace OutWit.Database.Core.Storage
     /// </summary>
     public sealed class MemoryStorage : IStorage
     {
+        #region Constants
+
+        private const int INITIAL_CAPACITY_PAGES = 16;
+        private const double GROWTH_FACTOR = 1.5;
+
+        #endregion
+
         #region Fields
 
         private readonly int m_pageSize;
 
         private byte[] m_data;
+
+        private long m_pageCount;
 
         private bool m_disposed;
 
@@ -31,7 +40,11 @@ namespace OutWit.Database.Core.Storage
                 throw new ArgumentOutOfRangeException(nameof(pageSize));
 
             m_pageSize = pageSize;
-            m_data = new byte[initialPageCount * pageSize];
+            
+            // Allocate with some headroom for growth
+            int initialCapacity = Math.Max(initialPageCount, INITIAL_CAPACITY_PAGES);
+            m_data = new byte[initialCapacity * pageSize];
+            m_pageCount = initialPageCount;
         }
 
         #endregion
@@ -111,11 +124,32 @@ namespace OutWit.Database.Core.Storage
             if (pageCount < 0)
                 throw new ArgumentOutOfRangeException(nameof(pageCount));
 
-            var newSize = pageCount * m_pageSize;
-            if (newSize != m_data.Length)
+            var requiredSize = pageCount * m_pageSize;
+            
+            // Only resize if we need more capacity
+            if (requiredSize > m_data.Length)
             {
-                Array.Resize(ref m_data, (int)newSize);
+                // Exponential growth to avoid frequent reallocations
+                var newCapacity = m_data.Length;
+                while (newCapacity < requiredSize)
+                {
+                    newCapacity = (int)(newCapacity * GROWTH_FACTOR);
+                }
+                
+                var newData = new byte[newCapacity];
+                m_data.AsSpan(0, (int)(m_pageCount * m_pageSize)).CopyTo(newData);
+                m_data = newData;
             }
+            
+            // Clear any newly exposed pages
+            if (pageCount > m_pageCount)
+            {
+                var startOffset = (int)(m_pageCount * m_pageSize);
+                var endOffset = (int)(pageCount * m_pageSize);
+                m_data.AsSpan(startOffset, endOffset - startOffset).Clear();
+            }
+            
+            m_pageCount = pageCount;
         }
 
         #endregion
@@ -129,9 +163,9 @@ namespace OutWit.Database.Core.Storage
 
         private void ValidatePageNumber(long pageNumber)
         {
-            if (pageNumber < 0 || pageNumber >= PageCount)
+            if (pageNumber < 0 || pageNumber >= m_pageCount)
                 throw new ArgumentOutOfRangeException(nameof(pageNumber), 
-                    $"Page number must be between 0 and {PageCount - 1}");
+                    $"Page number must be between 0 and {m_pageCount - 1}");
         }
 
         private void ValidateBuffer(ReadOnlySpan<byte> buffer)
@@ -162,7 +196,7 @@ namespace OutWit.Database.Core.Storage
         public int PageSize => m_pageSize;
 
         /// <inheritdoc/>
-        public long PageCount => m_data.Length / m_pageSize;
+        public long PageCount => m_pageCount;
 
         /// <inheritdoc/>
         public bool IsReadOnly => false;
@@ -170,7 +204,12 @@ namespace OutWit.Database.Core.Storage
         /// <summary>
         /// Gets a read-only view of the underlying data for testing purposes.
         /// </summary>
-        public ReadOnlyMemory<byte> Data => m_data;
+        public ReadOnlyMemory<byte> Data => m_data.AsMemory(0, (int)(m_pageCount * m_pageSize));
+
+        /// <summary>
+        /// Gets the current capacity in pages (may be larger than PageCount).
+        /// </summary>
+        public long Capacity => m_data.Length / m_pageSize;
 
         #endregion
     }
