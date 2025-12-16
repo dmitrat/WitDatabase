@@ -1,4 +1,6 @@
 using System.Buffers;
+using System.Numerics;
+using System.Runtime.InteropServices;
 using System.Security.Cryptography;
 using OutWit.Database.Core.Interfaces;
 
@@ -210,11 +212,64 @@ namespace OutWit.Database.Core.Storage
             ObjectDisposedException.ThrowIf(m_disposed, this);
         }
 
+        /// <summary>
+        /// Checks if all bytes in the span are zero using SIMD when available.
+        /// </summary>
         private static bool IsAllZeros(ReadOnlySpan<byte> data)
         {
+            if (data.IsEmpty)
+                return true;
+
+            // Use Vector<byte> for SIMD acceleration when data is large enough
+            if (Vector.IsHardwareAccelerated && data.Length >= Vector<byte>.Count)
+            {
+                var zero = Vector<byte>.Zero;
+                
+                // Process full vectors
+                int vectorCount = data.Length / Vector<byte>.Count;
+                var vectors = MemoryMarshal.Cast<byte, Vector<byte>>(data[..(vectorCount * Vector<byte>.Count)]);
+                
+                foreach (var v in vectors)
+                {
+                    if (v != zero)
+                        return false;
+                }
+                
+                // Process remaining bytes
+                for (int i = vectorCount * Vector<byte>.Count; i < data.Length; i++)
+                {
+                    if (data[i] != 0)
+                        return false;
+                }
+                
+                return true;
+            }
+            
+            // Fallback: check in 8-byte chunks for better performance than byte-by-byte
+            if (data.Length >= sizeof(long))
+            {
+                var longs = MemoryMarshal.Cast<byte, long>(data[..(data.Length / sizeof(long) * sizeof(long))]);
+                foreach (long l in longs)
+                {
+                    if (l != 0)
+                        return false;
+                }
+                
+                // Check remaining bytes
+                for (int i = longs.Length * sizeof(long); i < data.Length; i++)
+                {
+                    if (data[i] != 0)
+                        return false;
+                }
+                
+                return true;
+            }
+            
+            // Small data: byte-by-byte
             foreach (byte b in data)
             {
-                if (b != 0) return false;
+                if (b != 0)
+                    return false;
             }
             return true;
         }

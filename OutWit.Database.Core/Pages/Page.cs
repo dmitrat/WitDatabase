@@ -209,38 +209,60 @@ public ref struct Page
 
         int cellCount = header.CellCount;
 
-        // Collect cell info
-        ushort[] offsets = new ushort[cellCount];
-        int[] sizes = new int[cellCount];
+        // Collect cell info into stackalloc arrays for small counts, heap for large
+        Span<ushort> offsets = cellCount <= 128 
+            ? stackalloc ushort[cellCount] 
+            : new ushort[cellCount];
+        Span<ushort> sizes = cellCount <= 128 
+            ? stackalloc ushort[cellCount] 
+            : new ushort[cellCount];
 
         for (int i = 0; i < cellCount; i++)
         {
             offsets[i] = GetCellPointer(i);
-            sizes[i] = GetCellSize(offsets[i]);
+            sizes[i] = (ushort)GetCellSize(offsets[i]);
         }
 
-        // Create sorted indices by offset (descending - highest offset first)
-        int[] sortedIndices = new int[cellCount];
+        // Create index array for sorting
+        Span<int> sortedIndices = cellCount <= 128 
+            ? stackalloc int[cellCount] 
+            : new int[cellCount];
         for (int i = 0; i < cellCount; i++)
             sortedIndices[i] = i;
 
-        // Simple selection sort by offset descending
-        for (int i = 0; i < cellCount - 1; i++)
+        // Sort indices by offset descending using insertion sort (good for small arrays)
+        // or heap-based approach for larger arrays
+        if (cellCount <= 16)
         {
-            int maxIdx = i;
-            for (int j = i + 1; j < cellCount; j++)
+            // Insertion sort for very small arrays - O(n²) but low overhead
+            for (int i = 1; i < cellCount; i++)
             {
-                if (offsets[sortedIndices[j]] > offsets[sortedIndices[maxIdx]])
-                    maxIdx = j;
+                int key = sortedIndices[i];
+                int j = i - 1;
+                while (j >= 0 && offsets[sortedIndices[j]] < offsets[key])
+                {
+                    sortedIndices[j + 1] = sortedIndices[j];
+                    j--;
+                }
+                sortedIndices[j + 1] = key;
             }
-            if (maxIdx != i)
-                (sortedIndices[i], sortedIndices[maxIdx]) = (sortedIndices[maxIdx], sortedIndices[i]);
+        }
+        else
+        {
+            // For larger arrays, use Array.Sort with custom comparison
+            // Convert to array, sort, copy back
+            int[] indices = sortedIndices.ToArray();
+            ushort[] offsetsCopy = offsets.ToArray();
+            Array.Sort(indices, (a, b) => offsetsCopy[b].CompareTo(offsetsCopy[a])); // Descending
+            indices.CopyTo(sortedIndices);
         }
 
         // Compact cells from end of page, processing highest offset first
         // This ensures we never overwrite data we haven't copied yet
         int writePosition = m_pageSize;
-        ushort[] newPointers = new ushort[cellCount];
+        Span<ushort> newPointers = cellCount <= 128 
+            ? stackalloc ushort[cellCount] 
+            : new ushort[cellCount];
 
         for (int i = 0; i < cellCount; i++)
         {
@@ -250,14 +272,10 @@ public ref struct Page
 
             writePosition -= size;
 
-            // Use memmove-safe copy (handles overlapping regions)
+            // Copy cell data (handles overlapping regions correctly by processing high-to-low)
             if (writePosition != oldOffset)
             {
-                // Copy byte by byte from end to handle overlaps correctly
-                for (int b = size - 1; b >= 0; b--)
-                {
-                    m_data[writePosition + b] = m_data[oldOffset + b];
-                }
+                m_data.Slice(oldOffset, size).CopyTo(m_data[writePosition..]);
             }
 
             newPointers[cellIndex] = (ushort)writePosition;

@@ -64,7 +64,7 @@ public sealed class LruPageCache : IPageCache
                 // Move to front (most recently used)
                 m_lruList.Remove(node);
                 m_lruList.AddFirst(node);
-                node.Value.ReferenceCount++;
+                node.Value.IncrementReferenceCount();
                 return node.Value;
             }
 
@@ -118,7 +118,7 @@ public sealed class LruPageCache : IPageCache
         {
             if (m_cache.TryGetValue(pageNumber, out var node))
             {
-                node.Value.ReferenceCount = Math.Max(0, node.Value.ReferenceCount - 1);
+                node.Value.DecrementReferenceCount();
             }
         }
     }
@@ -145,7 +145,7 @@ public sealed class LruPageCache : IPageCache
             
             foreach (var page in dirtyPages)
             {
-                page.ReferenceCount++;
+                page.IncrementReferenceCount();
             }
         }
 
@@ -172,8 +172,66 @@ public sealed class LruPageCache : IPageCache
                 {
                     if (m_cache.ContainsKey(page.PageNumber))
                     {
-                        page.ReferenceCount = Math.Max(0, page.ReferenceCount - 1);
+                        page.DecrementReferenceCount();
                     }
+                }
+            }
+        }
+    }
+
+    /// <summary>
+    /// Flushes a specific dirty page to storage.
+    /// </summary>
+    public void FlushPage(long pageNumber)
+    {
+        lock (m_lock)
+        {
+            ThrowIfDisposed();
+
+            if (m_cache.TryGetValue(pageNumber, out var node) && node.Value.IsDirty)
+            {
+                m_storage.WritePage(node.Value.PageNumber, node.Value.ReadOnlyData);
+                node.Value.ClearDirty();
+            }
+        }
+    }
+
+    /// <summary>
+    /// Flushes a specific dirty page to storage asynchronously.
+    /// </summary>
+    public async ValueTask FlushPageAsync(long pageNumber, CancellationToken cancellationToken = default)
+    {
+        CachedPage? pageToFlush = null;
+        
+        lock (m_lock)
+        {
+            ThrowIfDisposed();
+
+            if (m_cache.TryGetValue(pageNumber, out var node) && node.Value.IsDirty)
+            {
+                pageToFlush = node.Value;
+                pageToFlush.IncrementReferenceCount();
+            }
+        }
+
+        if (pageToFlush == null)
+            return;
+
+        try
+        {
+            if (!pageToFlush.IsDisposed)
+            {
+                await m_storage.WritePageAsync(pageToFlush.PageNumber, pageToFlush.Memory, cancellationToken).ConfigureAwait(false);
+                pageToFlush.ClearDirty();
+            }
+        }
+        finally
+        {
+            lock (m_lock)
+            {
+                if (m_cache.ContainsKey(pageNumber))
+                {
+                    pageToFlush.DecrementReferenceCount();
                 }
             }
         }
@@ -325,62 +383,4 @@ public sealed class LruPageCache : IPageCache
     }
 
     #endregion
-
-    /// <summary>
-    /// Flushes a specific dirty page to storage.
-    /// </summary>
-    public void FlushPage(long pageNumber)
-    {
-        lock (m_lock)
-        {
-            ThrowIfDisposed();
-
-            if (m_cache.TryGetValue(pageNumber, out var node) && node.Value.IsDirty)
-            {
-                m_storage.WritePage(node.Value.PageNumber, node.Value.ReadOnlyData);
-                node.Value.ClearDirty();
-            }
-        }
-    }
-
-    /// <summary>
-    /// Flushes a specific dirty page to storage asynchronously.
-    /// </summary>
-    public async ValueTask FlushPageAsync(long pageNumber, CancellationToken cancellationToken = default)
-    {
-        CachedPage? pageToFlush = null;
-        
-        lock (m_lock)
-        {
-            ThrowIfDisposed();
-
-            if (m_cache.TryGetValue(pageNumber, out var node) && node.Value.IsDirty)
-            {
-                pageToFlush = node.Value;
-                pageToFlush.ReferenceCount++;
-            }
-        }
-
-        if (pageToFlush == null)
-            return;
-
-        try
-        {
-            if (!pageToFlush.IsDisposed)
-            {
-                await m_storage.WritePageAsync(pageToFlush.PageNumber, pageToFlush.Memory, cancellationToken).ConfigureAwait(false);
-                pageToFlush.ClearDirty();
-            }
-        }
-        finally
-        {
-            lock (m_lock)
-            {
-                if (m_cache.ContainsKey(pageNumber))
-                {
-                    pageToFlush.ReferenceCount = Math.Max(0, pageToFlush.ReferenceCount - 1);
-                }
-            }
-        }
-    }
 }

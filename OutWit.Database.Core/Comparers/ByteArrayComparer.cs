@@ -26,6 +26,24 @@ public sealed class ByteArrayComparer : IComparer<byte[]>, IEqualityComparer<byt
     }
 
     /// <summary>
+    /// Compares a byte array with a ReadOnlySpan lexicographically.
+    /// </summary>
+    public int Compare(byte[]? x, ReadOnlySpan<byte> y)
+    {
+        if (x is null) return -1;
+        return x.AsSpan().SequenceCompareTo(y);
+    }
+
+    /// <summary>
+    /// Compares a ReadOnlySpan with a byte array lexicographically.
+    /// </summary>
+    public int Compare(ReadOnlySpan<byte> x, byte[]? y)
+    {
+        if (y is null) return 1;
+        return x.SequenceCompareTo(y.AsSpan());
+    }
+
+    /// <summary>
     /// Determines whether two byte arrays are equal.
     /// </summary>
     public bool Equals(byte[]? x, byte[]? y)
@@ -43,14 +61,22 @@ public sealed class ByteArrayComparer : IComparer<byte[]>, IEqualityComparer<byt
     public int GetHashCode(byte[] obj)
     {
         ArgumentNullException.ThrowIfNull(obj);
+        return GetHashCode(obj.AsSpan());
+    }
 
+    /// <summary>
+    /// Returns a hash code for the byte span.
+    /// Uses FNV-1a algorithm for good distribution.
+    /// </summary>
+    public static int GetHashCode(ReadOnlySpan<byte> data)
+    {
         // FNV-1a hash algorithm
         unchecked
         {
             const int fnvPrime = 16777619;
             int hash = unchecked((int)2166136261);
             
-            foreach (byte b in obj)
+            foreach (byte b in data)
             {
                 hash ^= b;
                 hash *= fnvPrime;

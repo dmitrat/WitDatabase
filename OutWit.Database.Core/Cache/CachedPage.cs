@@ -1,4 +1,5 @@
 using System.Buffers;
+using System.Threading;
 
 namespace OutWit.Database.Core.Cache;
 
@@ -15,6 +16,12 @@ public sealed class CachedPage : IDisposable
 
     private volatile bool m_disposed;
 
+    private volatile bool m_isDirty;
+
+    private int m_referenceCount;
+
+    private volatile bool m_referenced;
+
     #endregion
 
     #region Constructors
@@ -29,9 +36,9 @@ public sealed class CachedPage : IDisposable
         PageNumber = pageNumber;
         m_pageSize = pageSize;
         m_rentedBuffer = ArrayPool<byte>.Shared.Rent(pageSize);
-        IsDirty = false;
-        ReferenceCount = 0; // Caller should increment when using
-        Referenced = false;
+        m_isDirty = false;
+        m_referenceCount = 0;
+        m_referenced = false;
     }
 
     #endregion
@@ -44,7 +51,7 @@ public sealed class CachedPage : IDisposable
     public void MarkDirty()
     {
         ThrowIfDisposed();
-        IsDirty = true;
+        m_isDirty = true;
     }
 
     /// <summary>
@@ -52,12 +59,33 @@ public sealed class CachedPage : IDisposable
     /// </summary>
     internal void ClearDirty()
     {
-        IsDirty = false;
+        m_isDirty = false;
     }
 
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(m_disposed, this);
+    }
+    
+    /// <summary>
+    /// Atomically increments the reference count.
+    /// </summary>
+    internal int IncrementReferenceCount() => Interlocked.Increment(ref m_referenceCount);
+
+    /// <summary>
+    /// Atomically decrements the reference count, ensuring it doesn't go below zero.
+    /// </summary>
+    internal int DecrementReferenceCount()
+    {
+        int newValue;
+        int currentValue;
+        do
+        {
+            currentValue = Volatile.Read(ref m_referenceCount);
+            newValue = Math.Max(0, currentValue - 1);
+        } while (Interlocked.CompareExchange(ref m_referenceCount, newValue, currentValue) != currentValue);
+
+        return newValue;
     }
 
     #endregion
@@ -86,7 +114,7 @@ public sealed class CachedPage : IDisposable
     /// <summary>
     /// Whether this page has been modified since being loaded
     /// </summary>
-    public bool IsDirty { get; private set; }
+    public bool IsDirty => m_isDirty;
 
     /// <summary>
     /// Whether this page has been disposed
@@ -130,14 +158,23 @@ public sealed class CachedPage : IDisposable
     }
 
     /// <summary>
-    /// Reference count for tracking active users
+    /// Reference count for tracking active users.
+    /// Thread-safe via Interlocked operations.
     /// </summary>
-    internal int ReferenceCount { get; set; }
+    internal int ReferenceCount
+    {
+        get => Volatile.Read(ref m_referenceCount);
+        set => Volatile.Write(ref m_referenceCount, value);
+    }
 
     /// <summary>
     /// Referenced bit for Clock algorithm (second chance)
     /// </summary>
-    internal bool Referenced { get; set; }
+    internal bool Referenced
+    {
+        get => m_referenced;
+        set => m_referenced = value;
+    }
 
     #endregion
 }
