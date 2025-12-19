@@ -355,16 +355,22 @@ public class TransactionalStoreTests : IDisposable
     #region Concurrent Transaction Tests
 
     [Test]
-    public void ConcurrentTransactionStart_Blocks()
+    public async Task ConcurrentTransactionStart_Blocks()
     {
         var shortTimeoutStore = CreateStoreWithTimeout(TimeSpan.FromMilliseconds(200));
         
         using var tx1 = shortTimeoutStore.BeginTransaction();
         
-        Assert.Throws<TimeoutException>(() =>
+        // Try to start second transaction from different thread - should timeout
+        var task = Task.Run(() =>
         {
-            using var tx2 = shortTimeoutStore.BeginTransaction();
+            Assert.Throws<TimeoutException>(() =>
+            {
+                using var tx2 = shortTimeoutStore.BeginTransaction();
+            });
         });
+        
+        await task;
         
         shortTimeoutStore.Dispose();
     }

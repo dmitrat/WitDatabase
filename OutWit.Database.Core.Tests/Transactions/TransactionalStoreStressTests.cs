@@ -540,16 +540,22 @@ public class TransactionalStoreStressTests : IDisposable
     }
 
     [Test]
-    public void TransactionTimeout_ThrowsOnConflict()
+    public async Task TransactionTimeout_ThrowsOnConflict()
     {
         using var store = CreateStore("timeout", TimeSpan.FromMilliseconds(100));
 
         using var tx1 = store.BeginTransaction();
 
-        Assert.Throws<TimeoutException>(() =>
+        // Try to start second transaction from different thread - should timeout
+        var task = Task.Run(() =>
         {
-            using var tx2 = store.BeginTransaction();
+            Assert.Throws<TimeoutException>(() =>
+            {
+                using var tx2 = store.BeginTransaction();
+            });
         });
+        
+        await task;
     }
 
     [Test]

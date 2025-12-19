@@ -9,6 +9,7 @@ namespace OutWit.Database.Core.Concurrency
     /// - Multiple readers can hold locks simultaneously
     /// - Writers have priority over new readers (prevents writer starvation)
     /// - Uses SemaphoreSlim for both sync and async support
+    /// - Detects reentrant write lock acquisition on same thread (sync only)
     /// </summary>
     public sealed class DatabaseLock : IDisposable
     {
@@ -40,6 +41,9 @@ namespace OutWit.Database.Core.Concurrency
         private int m_waitingWriters;
         private int m_waitingReaders;
         private bool m_disposed;
+        
+        // Track write lock owner thread for reentrancy detection (sync only)
+        private int m_writeOwnerThreadId = -1;
 
         #endregion
 
@@ -65,9 +69,17 @@ namespace OutWit.Database.Core.Concurrency
         /// </summary>
         /// <returns>A disposable handle that releases the lock when disposed.</returns>
         /// <exception cref="TimeoutException">Thrown if the lock cannot be acquired within the timeout.</exception>
+        /// <exception cref="LockRecursionException">Thrown if current thread already holds write lock.</exception>
         public IDisposable AcquireReadLock()
         {
             ThrowIfDisposed();
+            
+            // Check for write lock held by current thread
+            if (m_writeOwnerThreadId == Environment.CurrentManagedThreadId)
+            {
+                throw new LockRecursionException("Cannot acquire read lock - current thread already holds write lock.");
+            }
+            
             Interlocked.Increment(ref m_waitingReaders);
             
             try
@@ -224,9 +236,17 @@ namespace OutWit.Database.Core.Concurrency
         /// </summary>
         /// <returns>A disposable handle that releases the lock when disposed.</returns>
         /// <exception cref="TimeoutException">Thrown if the lock cannot be acquired within the timeout.</exception>
+        /// <exception cref="LockRecursionException">Thrown if current thread already holds write lock.</exception>
         public IDisposable AcquireWriteLock()
         {
             ThrowIfDisposed();
+            
+            // Check for write lock held by current thread
+            if (m_writeOwnerThreadId == Environment.CurrentManagedThreadId)
+            {
+                throw new LockRecursionException("Cannot acquire write lock - current thread already holds write lock.");
+            }
+            
             Interlocked.Increment(ref m_waitingWriters);
             
             bool readerGateAcquired = false;
@@ -244,9 +264,13 @@ namespace OutWit.Database.Core.Concurrency
                     throw new TimeoutException($"Could not acquire write lock within {m_lockTimeout.TotalSeconds:F1} seconds. Database is locked.");
                 writeSemaphoreAcquired = true;
                 
+                // Mark current thread as owner
+                m_writeOwnerThreadId = Environment.CurrentManagedThreadId;
+                
                 Interlocked.Decrement(ref m_waitingWriters);
                 return new LockHandleSync(() =>
                 {
+                    m_writeOwnerThreadId = -1;
                     m_writeSemaphore.Release();
                     m_readerGate.Release();
                 });
@@ -372,6 +396,11 @@ namespace OutWit.Database.Core.Concurrency
         /// Gets the current number of active readers.
         /// </summary>
         public int CurrentReaderCount => Volatile.Read(ref m_readerCount);
+        
+        /// <summary>
+        /// Gets whether the current thread holds a write lock (sync operations only).
+        /// </summary>
+        public bool IsWriteLockHeldByCurrentThread => m_writeOwnerThreadId == Environment.CurrentManagedThreadId;
 
         #endregion
 

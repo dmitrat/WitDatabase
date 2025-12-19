@@ -4,6 +4,10 @@ namespace OutWit.Database.Core.Concurrency
     /// Coordinates both in-process and file-level locking for database access.
     /// Provides a unified API for acquiring and releasing locks.
     /// Supports both synchronous and asynchronous operations.
+    /// 
+    /// Note: FileLock is only used for write operations to coordinate between processes.
+    /// Read operations only use in-process DatabaseLock since FileLock doesn't support
+    /// true shared locks.
     /// </summary>
     public sealed class LockManager : IDisposable
     {
@@ -47,29 +51,16 @@ namespace OutWit.Database.Core.Concurrency
 
         /// <summary>
         /// Acquires a read lock for the database.
-        /// Multiple readers can hold locks simultaneously.
+        /// Multiple readers can hold locks simultaneously within the same process.
+        /// Note: File locking is not used for read operations.
         /// </summary>
         /// <returns>A disposable handle that releases all locks when disposed.</returns>
         public IDisposable AcquireReadLock()
         {
             ThrowIfDisposed();
         
-            var processHandle = m_processLock.AcquireReadLock();
-        
-            try
-            {
-                if (m_useFileLocking)
-                {
-                    m_fileLock!.AcquireSharedLock();
-                }
-            
-                return new LockHandleSyncCombined(processHandle, m_fileLock);
-            }
-            catch
-            {
-                processHandle.Dispose();
-                throw;
-            }
+            // Only use in-process lock for reads - FileLock doesn't support shared locks
+            return m_processLock.AcquireReadLock();
         }
 
         /// <summary>
@@ -81,25 +72,9 @@ namespace OutWit.Database.Core.Concurrency
         {
             ThrowIfDisposed();
 
-            var processHandle = await m_processLock.AcquireReadLockAsync(cancellationToken).ConfigureAwait(false);
-
-            try
-            {
-                if (m_useFileLocking)
-                {
-                    await m_fileLock!.AcquireSharedLockAsync(cancellationToken: cancellationToken).ConfigureAwait(false);
-                }
-
-                return new LockHandleAsyncCombined(processHandle, m_fileLock);
-            }
-            catch
-            {
-                await processHandle.DisposeAsync().ConfigureAwait(false);
-                throw;
-            }
+            // Only use in-process lock for reads
+            return await m_processLock.AcquireReadLockAsync(cancellationToken).ConfigureAwait(false);
         }
-
-
 
         #endregion
 
@@ -108,6 +83,7 @@ namespace OutWit.Database.Core.Concurrency
         /// <summary>
         /// Acquires a write lock for the database.
         /// Only one writer can hold the lock, blocking all readers.
+        /// Uses both in-process and file locking for cross-process coordination.
         /// </summary>
         /// <returns>A disposable handle that releases all locks when disposed.</returns>
         public IDisposable AcquireWriteLock()

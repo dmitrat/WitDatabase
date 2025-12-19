@@ -480,4 +480,79 @@ public class DatabaseLockTests : IDisposable
     }
 
     #endregion
+
+    #region Reentrancy Detection Tests
+
+    [Test]
+    public void WriteLock_ThrowsLockRecursionException_OnReentrantAcquisition()
+    {
+        using var handle = m_lock.AcquireWriteLock();
+        
+        Assert.That(m_lock.IsWriteLockHeldByCurrentThread, Is.True);
+        Assert.Throws<LockRecursionException>(() => m_lock.AcquireWriteLock());
+    }
+
+    [Test]
+    public void ReadLock_ThrowsLockRecursionException_WhenWriteLockHeld()
+    {
+        using var handle = m_lock.AcquireWriteLock();
+        
+        Assert.Throws<LockRecursionException>(() => m_lock.AcquireReadLock());
+    }
+
+    [Test]
+    public void IsWriteLockHeldByCurrentThread_FalseByDefault()
+    {
+        Assert.That(m_lock.IsWriteLockHeldByCurrentThread, Is.False);
+    }
+
+    [Test]
+    public void IsWriteLockHeldByCurrentThread_TrueWhenHeld()
+    {
+        using var handle = m_lock.AcquireWriteLock();
+        
+        Assert.That(m_lock.IsWriteLockHeldByCurrentThread, Is.True);
+    }
+
+    [Test]
+    public void IsWriteLockHeldByCurrentThread_FalseAfterRelease()
+    {
+        {
+            using var handle = m_lock.AcquireWriteLock();
+            Assert.That(m_lock.IsWriteLockHeldByCurrentThread, Is.True);
+        }
+        
+        Assert.That(m_lock.IsWriteLockHeldByCurrentThread, Is.False);
+    }
+
+    [Test]
+    public async Task ReentrancyDetection_WorksAcrossThreads()
+    {
+        // Thread 1 holds write lock
+        using var handle = m_lock.AcquireWriteLock();
+        
+        // Thread 2 should NOT get LockRecursionException, should get TimeoutException instead
+        var task = Task.Run(() =>
+        {
+            // This thread doesn't hold any lock, so it should timeout, not throw recursion
+            Assert.Throws<TimeoutException>(() => m_lock.AcquireWriteLock());
+        });
+        
+        await task;
+    }
+
+    [Test]
+    public void WriteLock_CanBeAcquiredAgainAfterRelease()
+    {
+        {
+            using var handle1 = m_lock.AcquireWriteLock();
+            Assert.That(m_lock.IsWriteLockHeldByCurrentThread, Is.True);
+        }
+        
+        // Should be able to acquire again
+        using var handle2 = m_lock.AcquireWriteLock();
+        Assert.That(m_lock.IsWriteLockHeldByCurrentThread, Is.True);
+    }
+
+    #endregion
 }
