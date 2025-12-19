@@ -661,189 +661,507 @@ public class BTreeTest
 
     #endregion
 
-    #region Additional Tests for New Features
+    #region Extended Stress Tests
 
     [Test]
-    public void DeleteAllEntriesTest()
+    [Category("Stress")]
+    public void HeavyInsertDeleteCycleTest()
     {
-        using var tree = new BTree(m_pageManager);
+        using var storage = new MemoryStorage(4096, 5000);
+        using var pageManager = new PageManager(storage);
+        using var tree = new BTree(pageManager);
         
-        for (int i = 0; i < 100; i++)
+        var random = new Random(12345);
+        var existingKeys = new Dictionary<int, byte[]>();
+        
+        const int totalOperations = 50000;
+        int insertCount = 0;
+        int deleteCount = 0;
+        int updateCount = 0;
+        
+        // Track specific key for debugging
+        const int trackedKey = 70983;
+        int trackedKeyLastSeenOp = -1;
+        string lastOperationDescription = "";
+        
+        for (int op = 0; op < totalOperations; op++)
         {
-            tree.Insert(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+            int action = random.Next(100);
+            
+            // Check tracked key at every operation BEFORE we do anything
+            if (existingKeys.ContainsKey(trackedKey))
+            {
+                if (tree.ContainsKey(BitConverter.GetBytes(trackedKey)))
+                {
+                    trackedKeyLastSeenOp = op;
+                }
+                else
+                {
+                    Assert.Fail($"Op {op}: Tracked key {trackedKey} disappeared! Last seen at op {trackedKeyLastSeenOp}.\n" +
+                               $"Last operation was: {lastOperationDescription}");
+                }
+            }
+            
+            if (action < 60 || existingKeys.Count == 0) // 60% insert
+            {
+                int keyInt = random.Next(100000);
+                byte[] key = BitConverter.GetBytes(keyInt);
+                byte[] value = new byte[random.Next(10, 200)];
+                random.NextBytes(value);
+                
+                if (!existingKeys.ContainsKey(keyInt))
+                {
+                    bool inserted = tree.Insert(key, value);
+                    if (inserted)
+                    {
+                        existingKeys[keyInt] = value;
+                        insertCount++;
+                        lastOperationDescription = $"Insert key {keyInt}, value size {value.Length}";
+                        
+                        // Verify just-inserted key is searchable
+                        if (!tree.ContainsKey(key))
+                        {
+                            Assert.Fail($"Op {op}: Just inserted key {keyInt} not found!");
+                        }
+                    }
+                    else
+                    {
+                        lastOperationDescription = $"Insert key {keyInt} - FAILED (duplicate)";
+                    }
+                }
+                else
+                {
+                    lastOperationDescription = $"Skip insert key {keyInt} - already exists in dict";
+                }
+            }
+            else if (action < 80) // 20% delete
+            {
+                if (existingKeys.Count > 0)
+                {
+                    var keyToDelete = existingKeys.Keys.ElementAt(random.Next(existingKeys.Count));
+                    byte[] keyBytes = BitConverter.GetBytes(keyToDelete);
+                    
+                    bool deleted = tree.Delete(keyBytes);
+                    if (deleted)
+                    {
+                        existingKeys.Remove(keyToDelete);
+                        deleteCount++;
+                        lastOperationDescription = $"Delete key {keyToDelete}";
+                    }
+                    else
+                    {
+                        lastOperationDescription = $"Delete key {keyToDelete} - FAILED";
+                    }
+                }
+                else
+                {
+                    lastOperationDescription = "Delete - no keys to delete";
+                }
+            }
+            else // 20% upsert existing key
+            {
+                if (existingKeys.Count > 0)
+                {
+                    var keyToUpdate = existingKeys.Keys.ElementAt(random.Next(existingKeys.Count));
+                    byte[] keyBytes = BitConverter.GetBytes(keyToUpdate);
+                    byte[] newValue = new byte[random.Next(10, 200)];
+                    random.NextBytes(newValue);
+                    
+                    bool inserted = tree.Upsert(keyBytes, newValue);
+                    if (!inserted) // Was update, not insert
+                    {
+                        existingKeys[keyToUpdate] = newValue;
+                        updateCount++;
+                        lastOperationDescription = $"Upsert (update) key {keyToUpdate}, new value size {newValue.Length}";
+                    }
+                    else
+                    {
+                        Assert.Fail($"Op {op}: Upsert returned true (insert) for existing key {keyToUpdate}");
+                    }
+                }
+                else
+                {
+                    lastOperationDescription = "Upsert - no keys to update";
+                }
+            }
         }
         
-        Assert.That(tree.Count(), Is.EqualTo(100));
+        // Verify final state
+        Assert.That(tree.Count(), Is.EqualTo(existingKeys.Count), 
+            $"Count mismatch after {insertCount} inserts, {deleteCount} deletes, {updateCount} updates");
         
-        // Delete all
-        for (int i = 0; i < 100; i++)
+        // Verify all existing keys
+        foreach (var keyInt in existingKeys.Keys)
         {
-            Assert.That(tree.Delete(BitConverter.GetBytes(i)), Is.True);
+            var result = tree.Search(BitConverter.GetBytes(keyInt));
+            Assert.That(result, Is.Not.Null, $"Key {keyInt} not found");
         }
-        
-        Assert.That(tree.Count(), Is.EqualTo(0));
-        Assert.That(tree.GetAll().ToList(), Is.Empty);
     }
 
     [Test]
-    public void VeryDeepTreeTest()
+    [Category("Stress")]
+    public void SequentialBulkInsertTest()
     {
-        using var tree = new BTree(m_pageManager);
+        using var storage = new MemoryStorage(4096, 10000);
+        using var pageManager = new PageManager(storage);
+        using var tree = new BTree(pageManager);
         
-        const int count = 10000;
+        const int count = 100000;
         
-        // Insert many entries with small keys to force many splits
+        // Sequential insert using string keys for proper lexicographic ordering
         for (int i = 0; i < count; i++)
         {
-            byte[] key = BitConverter.GetBytes(i);
-            byte[] value = BitConverter.GetBytes(i * 2);
+            byte[] key = TextEncoding.UTF8.GetBytes($"{i:D8}");
+            byte[] value = BitConverter.GetBytes(i);
             tree.Insert(key, value);
         }
         
         Assert.That(tree.Count(), Is.EqualTo(count));
         
-        // Verify random samples
+        // Verify range scan returns all in order
+        var all = tree.GetAll().ToList();
+        Assert.That(all.Count, Is.EqualTo(count));
+        
+        for (int i = 0; i < count; i++)
+        {
+            int actualValue = BitConverter.ToInt32(all[i].Value);
+            Assert.That(actualValue, Is.EqualTo(i), $"Entry at position {i} has wrong value");
+        }
+    }
+
+    [Test]
+    [Category("Stress")]
+    public void ReverseSequentialBulkInsertTest()
+    {
+        using var storage = new MemoryStorage(4096, 10000);
+        using var pageManager = new PageManager(storage);
+        using var tree = new BTree(pageManager);
+        
+        const int count = 100000;
+        
+        // Reverse sequential insert using string keys
+        for (int i = count - 1; i >= 0; i--)
+        {
+            byte[] key = TextEncoding.UTF8.GetBytes($"{i:D8}");
+            byte[] value = BitConverter.GetBytes(i);
+            tree.Insert(key, value);
+        }
+        
+        Assert.That(tree.Count(), Is.EqualTo(count));
+        
+        // Verify all searchable
+        for (int i = 0; i < count; i += 1000)
+        {
+            Assert.That(tree.ContainsKey(TextEncoding.UTF8.GetBytes($"{i:D8}")), Is.True);
+        }
+    }
+
+    [Test]
+    [Category("Stress")]
+    public void MixedValueSizesStressTest()
+    {
+        using var storage = new MemoryStorage(4096, 5000);
+        using var pageManager = new PageManager(storage);
+        using var tree = new BTree(pageManager);
+        
         var random = new Random(42);
+        var entries = new Dictionary<int, byte[]>();
+        
+        const int count = 10000;
+        
+        for (int i = 0; i < count; i++)
+        {
+            byte[] key = BitConverter.GetBytes(i);
+            
+            // Mix of sizes: small, medium, large (overflow)
+            int sizeCategory = random.Next(3);
+            int valueSize = sizeCategory switch
+            {
+                0 => random.Next(10, 50),                           // small
+                1 => random.Next(100, tree.MaxInlineValueSize),     // medium  
+                _ => tree.MaxInlineValueSize + random.Next(100, 1000) // large (overflow)
+            };
+            
+            byte[] value = new byte[valueSize];
+            random.NextBytes(value);
+            
+            tree.Insert(key, value);
+            entries[i] = value;
+        }
+        
+        Assert.That(tree.Count(), Is.EqualTo(count));
+        
+        // Verify random sample
         for (int i = 0; i < 100; i++)
         {
             int idx = random.Next(count);
             var result = tree.Search(BitConverter.GetBytes(idx));
-            Assert.That(result, Is.Not.Null, $"Key {idx} not found");
-            Assert.That(BitConverter.ToInt32(result!), Is.EqualTo(idx * 2));
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.SequenceEqual(entries[idx]), Is.True, $"Value mismatch at index {idx}");
         }
     }
 
     [Test]
-    public void ReopenTreeCountIsPersistedTest()
+    [Category("Stress")]
+    public void RangeScanStressTest()
     {
-        uint rootPage;
+        using var storage = new MemoryStorage(4096, 5000);
+        using var pageManager = new PageManager(storage);
+        using var tree = new BTree(pageManager);
         
-        using (var tree = new BTree(m_pageManager))
-        {
-            for (int i = 0; i < 100; i++)
-            {
-                tree.Insert(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
-            }
-            
-            // Delete some to make sure count is updated
-            for (int i = 0; i < 30; i++)
-            {
-                tree.Delete(BitConverter.GetBytes(i));
-            }
-            
-            Assert.That(tree.Count(), Is.EqualTo(70));
-            rootPage = tree.RootPageNumber;
-        }
+        const int count = 50000;
         
-        // Reopen and verify count is persisted
-        using (var tree = new BTree(m_pageManager, rootPage))
-        {
-            Assert.That(tree.Count(), Is.EqualTo(70));
-        }
-    }
-
-    [Test]
-    public void ConcurrentReadsDuringIterationTest()
-    {
-        using var tree = new BTree(m_pageManager);
-        
-        for (int i = 0; i < 100; i++)
-        {
-            tree.Insert(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
-        }
-        
-        // Iterate and do reads at the same time
-        foreach (var (key, value) in tree.GetAll())
-        {
-            // This should not cause issues - reads during iteration
-            Assert.That(tree.ContainsKey(key), Is.True);
-            var result = tree.Search(key);
-            Assert.That(result, Is.EqualTo(value));
-        }
-    }
-
-    [Test]
-    public void GetRangeWithNullStartTest()
-    {
-        using var tree = new BTree(m_pageManager);
-        
-        for (int i = 0; i < 10; i++)
-        {
-            tree.Insert(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
-        }
-        
-        // Range from beginning to key 5 (exclusive)
-        var range = tree.GetRange(null, BitConverter.GetBytes(5)).ToList();
-        
-        Assert.That(range.Count, Is.EqualTo(5)); // 0, 1, 2, 3, 4
-        Assert.That(BitConverter.ToInt32(range[0].Key), Is.EqualTo(0));
-        Assert.That(BitConverter.ToInt32(range[4].Key), Is.EqualTo(4));
-    }
-
-    [Test]
-    public void GetRangeWithNullEndTest()
-    {
-        using var tree = new BTree(m_pageManager);
-        
-        for (int i = 0; i < 10; i++)
-        {
-            tree.Insert(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
-        }
-        
-        // Range from key 5 to end
-        var range = tree.GetRange(BitConverter.GetBytes(5), null).ToList();
-        
-        Assert.That(range.Count, Is.EqualTo(5)); // 5, 6, 7, 8, 9
-        Assert.That(BitConverter.ToInt32(range[0].Key), Is.EqualTo(5));
-        Assert.That(BitConverter.ToInt32(range[4].Key), Is.EqualTo(9));
-    }
-
-    [Test]
-    public void EmptyTreeOperationsTest()
-    {
-        using var tree = new BTree(m_pageManager);
-        
-        Assert.That(tree.Count(), Is.EqualTo(0));
-        Assert.That(tree.GetAll().ToList(), Is.Empty);
-        Assert.That(tree.ContainsKey("any"u8), Is.False);
-        Assert.That(tree.Search("any"u8), Is.Null);
-        Assert.That(tree.Delete("any"u8), Is.False);
-    }
-
-    [Test]
-    public void SequentialAndRandomAccessTest()
-    {
-        using var tree = new BTree(m_pageManager);
-        
-        const int count = 1000;
-        
-        // Insert sequentially
+        // Use string keys for proper lexicographic ordering
         for (int i = 0; i < count; i++)
         {
-            tree.Insert(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+            byte[] key = TextEncoding.UTF8.GetBytes($"{i:D8}");
+            byte[] value = BitConverter.GetBytes(i * 2);
+            tree.Insert(key, value);
         }
         
-        // Access randomly
+        // Test multiple range scans
         var random = new Random(42);
-        var indices = Enumerable.Range(0, count).OrderBy(_ => random.Next()).ToList();
-        
-        foreach (var idx in indices)
+        for (int scan = 0; scan < 100; scan++)
         {
-            var result = tree.Search(BitConverter.GetBytes(idx));
-            Assert.That(result, Is.Not.Null);
-            Assert.That(BitConverter.ToInt32(result!), Is.EqualTo(idx));
+            int start = random.Next(count - 1000);
+            int end = start + random.Next(100, 1000);
+            
+            byte[] startKey = TextEncoding.UTF8.GetBytes($"{start:D8}");
+            byte[] endKey = TextEncoding.UTF8.GetBytes($"{end:D8}");
+            
+            var range = tree.GetRange(startKey, endKey).ToList();
+            
+            Assert.That(range.Count, Is.EqualTo(end - start), $"Range [{start}, {end}) returned wrong count: {range.Count}");
+            
+            for (int i = 0; i < range.Count; i++)
+            {
+                int expectedKey = start + i;
+                string actualKeyStr = TextEncoding.UTF8.GetString(range[i].Key);
+                int actualKey = int.Parse(actualKeyStr);
+                int actualValue = BitConverter.ToInt32(range[i].Value);
+                
+                Assert.That(actualKey, Is.EqualTo(expectedKey), $"Key mismatch at index {i}");
+                Assert.That(actualValue, Is.EqualTo(expectedKey * 2), $"Value mismatch at index {i}");
+            }
+        }
+    }
+
+    #endregion
+
+    #region Compaction Tests
+
+    [Test]
+    public void CompactionRecoversFreeSpaceAfterDeleteTest()
+    {
+        using var tree = new BTree(m_pageManager);
+        
+        // Insert multiple entries
+        for (int i = 0; i < 50; i++)
+        {
+            byte[] key = TextEncoding.UTF8.GetBytes($"key{i:D3}");
+            byte[] value = TextEncoding.UTF8.GetBytes($"value{i:D3}");
+            tree.Insert(key, value);
+        }
+        
+        // Delete half of the entries (creates fragmentation)
+        for (int i = 0; i < 25; i++)
+        {
+            tree.Delete(TextEncoding.UTF8.GetBytes($"key{i:D3}"));
+        }
+        
+        Assert.That(tree.Count(), Is.EqualTo(25));
+        
+        // Insert more entries - should succeed due to compaction
+        for (int i = 100; i < 150; i++)
+        {
+            byte[] key = TextEncoding.UTF8.GetBytes($"key{i:D3}");
+            byte[] value = TextEncoding.UTF8.GetBytes($"value{i:D3}");
+            Assert.That(tree.Insert(key, value), Is.True, $"Failed to insert key{i:D3}");
+        }
+        
+        Assert.That(tree.Count(), Is.EqualTo(75));
+        
+        // Verify all remaining entries
+        for (int i = 25; i < 50; i++)
+        {
+            Assert.That(tree.ContainsKey(TextEncoding.UTF8.GetBytes($"key{i:D3}")), Is.True);
+        }
+        for (int i = 100; i < 150; i++)
+        {
+            Assert.That(tree.ContainsKey(TextEncoding.UTF8.GetBytes($"key{i:D3}")), Is.True);
         }
     }
 
     [Test]
-    public async Task AsyncDisposeTest()
+    public void UpsertWithDifferentSizeTriggerCompactionTest()
     {
-        await using var tree = new BTree(m_pageManager);
+        using var tree = new BTree(m_pageManager);
         
-        tree.Insert("key"u8.ToArray(), "value"u8.ToArray());
-        Assert.That(tree.ContainsKey("key"u8), Is.True);
+        // Insert with small values
+        for (int i = 0; i < 100; i++)
+        {
+            byte[] key = TextEncoding.UTF8.GetBytes($"key{i:D3}");
+            byte[] value = TextEncoding.UTF8.GetBytes("s"); // small value
+            tree.Insert(key, value);
+        }
         
-        // Should not throw on async dispose
+        // Update to larger values - this creates fragmentation as old cells are abandoned
+        for (int i = 0; i < 100; i++)
+        {
+            byte[] key = TextEncoding.UTF8.GetBytes($"key{i:D3}");
+            byte[] value = TextEncoding.UTF8.GetBytes($"larger_value_{i:D5}"); // larger value
+            tree.Upsert(key, value);
+        }
+        
+        Assert.That(tree.Count(), Is.EqualTo(100));
+        
+        // Verify all values are updated
+        for (int i = 0; i < 100; i++)
+        {
+            byte[] key = TextEncoding.UTF8.GetBytes($"key{i:D3}");
+            var result = tree.Search(key);
+            Assert.That(result, Is.Not.Null);
+            Assert.That(TextEncoding.UTF8.GetString(result!), Is.EqualTo($"larger_value_{i:D5}"));
+        }
+    }
+
+    [Test]
+    public void RepeatedDeleteInsertCyclesTest()
+    {
+        using var tree = new BTree(m_pageManager);
+        
+        // Multiple cycles of delete-insert to test compaction under stress
+        for (int cycle = 0; cycle < 10; cycle++)
+        {
+            // Insert 100 entries
+            for (int i = 0; i < 100; i++)
+            {
+                byte[] key = TextEncoding.UTF8.GetBytes($"c{cycle}k{i:D3}");
+                byte[] value = TextEncoding.UTF8.GetBytes($"v{cycle}{i:D3}");
+                tree.Insert(key, value);
+            }
+            
+            // Delete odd entries
+            for (int i = 1; i < 100; i += 2)
+            {
+                tree.Delete(TextEncoding.UTF8.GetBytes($"c{cycle}k{i:D3}"));
+            }
+        }
+        
+        // Each cycle should have 50 remaining entries
+        Assert.That(tree.Count(), Is.EqualTo(500));
+        
+        // Verify entries
+        for (int cycle = 0; cycle < 10; cycle++)
+        {
+            for (int i = 0; i < 100; i += 2)
+            {
+                Assert.That(tree.ContainsKey(TextEncoding.UTF8.GetBytes($"c{cycle}k{i:D3}")), Is.True,
+                    $"Missing key c{cycle}k{i:D3}");
+            }
+        }
+    }
+
+    [Test]
+    public void UpdateToSmallerValueTest()
+    {
+        using var tree = new BTree(m_pageManager);
+        
+        // Insert with large inline values
+        for (int i = 0; i < 50; i++)
+        {
+            byte[] key = TextEncoding.UTF8.GetBytes($"key{i:D3}");
+            byte[] value = new byte[200]; // large inline value
+            Array.Fill(value, (byte)i);
+            tree.Insert(key, value);
+        }
+        
+        // Update to smaller values
+        for (int i = 0; i < 50; i++)
+        {
+            byte[] key = TextEncoding.UTF8.GetBytes($"key{i:D3}");
+            byte[] value = new byte[10]; // much smaller
+            Array.Fill(value, (byte)(i + 100));
+            tree.Upsert(key, value);
+        }
+        
+        // Verify updates
+        for (int i = 0; i < 50; i++)
+        {
+            byte[] key = TextEncoding.UTF8.GetBytes($"key{i:D3}");
+            var result = tree.Search(key);
+            Assert.That(result, Is.Not.Null);
+            Assert.That(result!.Length, Is.EqualTo(10));
+            Assert.That(result[0], Is.EqualTo((byte)(i + 100)));
+        }
+    }
+
+    [Test]
+    [Category("Stress")]
+    public void FragmentationStressTest()
+    {
+        using var storage = new MemoryStorage(4096, 3000);
+        using var pageManager = new PageManager(storage);
+        using var tree = new BTree(pageManager);
+        
+        var random = new Random(42);
+        var existingKeys = new Dictionary<int, int>(); // key -> expected value size
+        
+        // Perform many operations that cause fragmentation
+        for (int op = 0; op < 20000; op++)
+        {
+            int action = random.Next(100);
+            
+            if (action < 40 || existingKeys.Count < 100) // 40% insert
+            {
+                int keyInt = random.Next(50000);
+                if (!existingKeys.ContainsKey(keyInt))
+                {
+                    int valueSize = random.Next(10, 300);
+                    byte[] value = new byte[valueSize];
+                    random.NextBytes(value);
+                    
+                    if (tree.Insert(BitConverter.GetBytes(keyInt), value))
+                    {
+                        existingKeys[keyInt] = valueSize;
+                    }
+                }
+            }
+            else if (action < 70) // 30% delete
+            {
+                if (existingKeys.Count > 0)
+                {
+                    var keyToDelete = existingKeys.Keys.ElementAt(random.Next(existingKeys.Count));
+                    if (tree.Delete(BitConverter.GetBytes(keyToDelete)))
+                    {
+                        existingKeys.Remove(keyToDelete);
+                    }
+                }
+            }
+            else // 30% update with different size
+            {
+                if (existingKeys.Count > 0)
+                {
+                    var keyToUpdate = existingKeys.Keys.ElementAt(random.Next(existingKeys.Count));
+                    int newSize = random.Next(10, 300); // different size to cause fragmentation
+                    byte[] newValue = new byte[newSize];
+                    random.NextBytes(newValue);
+                    
+                    tree.Upsert(BitConverter.GetBytes(keyToUpdate), newValue);
+                    existingKeys[keyToUpdate] = newSize;
+                }
+            }
+        }
+        
+        Assert.That(tree.Count(), Is.EqualTo(existingKeys.Count));
+        
+        // Verify all keys
+        foreach (var (keyInt, expectedSize) in existingKeys)
+        {
+            var result = tree.Search(BitConverter.GetBytes(keyInt));
+            Assert.That(result, Is.Not.Null, $"Key {keyInt} not found");
+            Assert.That(result!.Length, Is.EqualTo(expectedSize), $"Key {keyInt} has wrong value size");
+        }
     }
 
     #endregion

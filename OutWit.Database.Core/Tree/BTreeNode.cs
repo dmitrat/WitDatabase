@@ -332,29 +332,22 @@ public ref struct BTreeNode
     }
 
     /// <summary>
-    /// Finds the child index for navigation in internal nodes using binary search.
-    /// Returns the index of the first key greater than the search key,
-    /// or KeyCount if the search key is >= all keys.
+    /// Finds the child index for navigation in internal nodes.
+    /// Returns the index of the child pointer to follow.
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int FindChildIndex(ReadOnlySpan<byte> key)
     {
-        int low = 0;
-        int high = KeyCount;
-        
-        while (low < high)
+        // Linear search - simple and correct
+        // For small number of keys per node this is often faster than binary search
+        // due to better cache locality
+        int keyCount = KeyCount;
+        for (int i = 0; i < keyCount; i++)
         {
-            int mid = (low + high) >> 1;
-            var midKey = GetKey(mid);
-            
-            // If key >= midKey, search in right half
-            if (key.SequenceCompareTo(midKey) >= 0)
-                low = mid + 1;
-            else
-                high = mid;
+            if (key.SequenceCompareTo(GetKey(i)) < 0)
+                return i;
         }
-        
-        return low;
+        return keyCount;
     }
 
     #endregion
@@ -493,6 +486,7 @@ public ref struct BTreeNode
 
     /// <summary>
     /// Updates the value at the specified index.
+    /// Returns true if update was successful, false if not enough space (caller should remove and reinsert).
     /// </summary>
     public bool UpdateValue(int index, ReadOnlySpan<byte> newValue)
     {
@@ -516,18 +510,9 @@ public ref struct BTreeNode
             return true;
         }
         
-        // Different size - need to delete and re-insert
-        var key = GetKey(index).ToArray();
-        int oldCellSize = CalculateLeafEntrySize(key.Length, oldValue.Length);
-        int newCellSize = CalculateLeafEntrySize(key.Length, newValue.Length);
-        int sizeDiff = newCellSize - oldCellSize;
-        
-        // Check if we have space (considering we free the old cell)
-        if (GetFreeSpace() + oldCellSize < newCellSize + CELL_DIR_ENTRY_SIZE)
-            return false;
-        
-        RemoveAt(index);
-        return InsertLeaf(index, key, newValue);
+        // Different size - caller needs to handle remove and reinsert
+        // We can't do it here because after RemoveAt the insert index might be wrong
+        return false;
     }
 
     #endregion
@@ -571,6 +556,188 @@ public ref struct BTreeNode
     /// Gets the minimum number of keys this node should have.
     /// </summary>
     public readonly int MinKeys => 1; // Simplified - in production would be based on fill factor
+
+    #endregion
+
+    #region Compaction
+
+    /// <summary>
+    /// Gets the amount of fragmented (dead) space in the cell area.
+    /// This is space that was used by deleted entries but not yet reclaimed.
+    /// </summary>
+    public readonly int GetFragmentedSpace()
+    {
+        if (KeyCount == 0)
+            return m_pageSize - CellAreaStart;
+        
+        // Calculate actual used cell data size
+        int actualCellDataSize = 0;
+        int keyCount = KeyCount;
+        for (int i = 0; i < keyCount; i++)
+        {
+            int offset = GetCellOffset(i);
+            actualCellDataSize += GetCellSize(offset);
+        }
+        
+        // Fragmented space = allocated cell area - actual used
+        int allocatedCellArea = m_pageSize - CellAreaStart;
+        return allocatedCellArea - actualCellDataSize;
+    }
+
+    /// <summary>
+    /// Checks if compaction would free significant space.
+    /// Returns true if fragmented space is more than 25% of page or more than 256 bytes.
+    /// </summary>
+    public readonly bool NeedsCompaction()
+    {
+        int fragmented = GetFragmentedSpace();
+        return fragmented > m_pageSize / 4 || fragmented > 256;
+    }
+
+    /// <summary>
+    /// Gets the total usable space after compaction.
+    /// This is the space that would be available for new entries after compacting.
+    /// </summary>
+    public readonly int GetUsableSpaceAfterCompaction()
+    {
+        return GetFreeSpace() + GetFragmentedSpace();
+    }
+
+    /// <summary>
+    /// Compacts the node by eliminating fragmented space in the cell area.
+    /// This reorganizes cells to be contiguous, reclaiming space from deleted entries.
+    /// </summary>
+    /// <remarks>
+    /// The compaction works by:
+    /// 1. Collecting all live cells (those referenced by directory)
+    /// 2. Rewriting them contiguously from the end of the page
+    /// 3. Updating directory offsets
+    /// 
+    /// This is O(n) where n is the number of entries.
+    /// </remarks>
+    public void Compact()
+    {
+        int keyCount = KeyCount;
+        if (keyCount == 0)
+        {
+            // No entries - just reset cell area
+            CellAreaStart = (ushort)m_pageSize;
+            return;
+        }
+        
+        // Collect all cell data with their sizes
+        // We use stackalloc for small counts, heap for larger
+        Span<(int offset, int size)> cells = keyCount <= 64 
+            ? stackalloc (int, int)[keyCount] 
+            : new (int, int)[keyCount];
+        
+        int totalCellDataSize = 0;
+        for (int i = 0; i < keyCount; i++)
+        {
+            int offset = GetCellOffset(i);
+            int size = GetCellSize(offset);
+            cells[i] = (offset, size);
+            totalCellDataSize += size;
+        }
+        
+        // Check if compaction is needed
+        int currentCellAreaSize = m_pageSize - CellAreaStart;
+        if (totalCellDataSize == currentCellAreaSize)
+        {
+            // No fragmentation - nothing to do
+            return;
+        }
+        
+        // Allocate temporary buffer for cell data
+        // We need this because cells might overlap during reorganization
+        byte[] tempBuffer = new byte[totalCellDataSize];
+        int tempOffset = 0;
+        
+        // Copy all cell data to temp buffer
+        for (int i = 0; i < keyCount; i++)
+        {
+            var (cellOffset, cellSize) = cells[i];
+            m_data.Slice(cellOffset, cellSize).CopyTo(tempBuffer.AsSpan(tempOffset));
+            tempOffset += cellSize;
+        }
+        
+        // Clear the old cell area (optional, but helps with debugging)
+        m_data[CellAreaStart..].Clear();
+        
+        // Write cells back contiguously from end of page
+        int newCellAreaStart = m_pageSize;
+        tempOffset = 0;
+        
+        for (int i = 0; i < keyCount; i++)
+        {
+            var (_, cellSize) = cells[i];
+            newCellAreaStart -= cellSize;
+            tempBuffer.AsSpan(tempOffset, cellSize).CopyTo(m_data[newCellAreaStart..]);
+            SetCellOffset(i, newCellAreaStart);
+            tempOffset += cellSize;
+        }
+        
+        CellAreaStart = (ushort)newCellAreaStart;
+    }
+
+    /// <summary>
+    /// Attempts to insert a leaf entry, compacting first if necessary.
+    /// Returns true if insert succeeded, false if still not enough space after compaction.
+    /// </summary>
+    public bool InsertLeafWithCompaction(int index, ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    {
+        if (!IsLeaf)
+            ThrowNotLeaf();
+        
+        // Try direct insert first
+        if (CanInsertLeaf(key.Length, value.Length))
+        {
+            return InsertLeaf(index, key, value);
+        }
+        
+        // Check if compaction would help
+        int needed = CalculateLeafEntrySize(key.Length, value.Length) + CELL_DIR_ENTRY_SIZE;
+        int availableAfterCompaction = GetUsableSpaceAfterCompaction();
+        
+        if (availableAfterCompaction < needed)
+        {
+            // Even after compaction, not enough space
+            return false;
+        }
+        
+        // Compact and retry
+        Compact();
+        return InsertLeaf(index, key, value);
+    }
+
+    /// <summary>
+    /// Attempts to insert an internal entry, compacting first if necessary.
+    /// Returns true if insert succeeded, false if still not enough space after compaction.
+    /// </summary>
+    public bool InsertInternalWithCompaction(int index, ReadOnlySpan<byte> key, uint childPageNumber)
+    {
+        if (IsLeaf)
+            ThrowNotInternal();
+        
+        // Try direct insert first
+        if (CanInsertInternal(key.Length))
+        {
+            return InsertInternal(index, key, childPageNumber);
+        }
+        
+        // Check if compaction would help
+        int needed = CalculateInternalEntrySize(key.Length) + CELL_DIR_ENTRY_SIZE;
+        int availableAfterCompaction = GetUsableSpaceAfterCompaction();
+        
+        if (availableAfterCompaction < needed)
+        {
+            return false;
+        }
+        
+        // Compact and retry
+        Compact();
+        return InsertInternal(index, key, childPageNumber);
+    }
 
     #endregion
 
@@ -639,7 +806,7 @@ public ref struct BTreeNode
                 
                 int offset = newCellStart;
                 offset += Encoding.VarInt.EncodeUnsigned(target.m_data[offset..], (ulong)key.Length);
-                key.CopyTo(target.m_data[offset..]);
+                key.CopyTo(m_data[offset..]);
                 offset += key.Length;
                 BinaryPrimitives.WriteUInt32LittleEndian(target.m_data[offset..], child);
                 

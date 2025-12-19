@@ -240,17 +240,20 @@ public sealed class BTree : IDisposable, IAsyncDisposable
             
             int effectiveValueLength = needsOverflow ? BTreeNode.OVERFLOW_REF_SIZE : value.Length;
             
-            // Try to insert
-            if (leafNode.CanInsertLeaf(key.Length, effectiveValueLength))
+            // Try to insert (with compaction if needed)
+            bool canInsert;
+            if (needsOverflow)
             {
-                if (needsOverflow)
-                {
-                    leafNode.InsertLeafOverflow(insertIndex, key, overflowPage, value.Length);
-                }
-                else
-                {
-                    leafNode.InsertLeaf(insertIndex, key, value);
-                }
+                canInsert = leafNode.InsertLeafWithCompaction(insertIndex, key, 
+                    CreateOverflowRef(overflowPage, value.Length));
+            }
+            else
+            {
+                canInsert = leafNode.InsertLeafWithCompaction(insertIndex, key, value);
+            }
+            
+            if (canInsert)
+            {
                 leafPage.MarkDirty();
                 m_pageManager.ReleasePage(currentPage);
                 
@@ -278,10 +281,191 @@ public sealed class BTree : IDisposable, IAsyncDisposable
                 
                 if (parentNode.CanInsertInternal(separatorKey.Length))
                 {
-                    // Can fit - insert and update child pointers
+                    // InsertInternal inserts the separator key at childIndex,
+                    // and stores leftChild as the child pointer in that cell.
+                    // After insertion, the old child pointers shift right.
+                    // 
+                    // Before: children[0..childIndex-1], children[childIndex] (was pointing to node that split), children[childIndex+1..n], RightmostChild
+                    // After insert at childIndex: children[0..childIndex-1], leftChild, children[childIndex+1..n+1] (shifted), RightmostChild
+                    //
+                    // The child that we followed (which split) was at position childIndex.
+                    // After InsertInternal, that position now has leftChild.
+                    // The old child pointer moved to childIndex+1 (or became RightmostChild).
+                    // We need to update that shifted pointer to be rightChild.
+                    
                     parentNode.InsertInternal(childIndex, separatorKey, leftChild);
                     
-                    if (childIndex + 1 <= parentNode.KeyCount - 1)
+                    // After InsertInternal, KeyCount increased by 1.
+                    // The old child pointer that was at childIndex is now at childIndex+1.
+                    // We need to update it to rightChild.
+                    // Note: if childIndex was pointing to RightmostChild before, 
+                    // after insert it's still RightmostChild (InsertInternal doesn't change that)
+                    
+                    // childIndex+1 after insert corresponds to the old child that split
+                    if (childIndex + 1 < parentNode.KeyCount)
+                    {
+                        // The old child moved to childIndex+1
+                        parentNode.SetChild(childIndex + 1, rightChild);
+                    }
+                    else
+                    {
+                        // The old child was RightmostChild
+                        parentNode.RightmostChild = rightChild;
+                    }
+                    
+                    parent.MarkDirty();
+                    m_pageManager.ReleasePage(parentPage);
+                    
+                    m_entryCount++;
+                    m_entryCountDirty = true;
+                    return true;
+                }
+                
+                // Need to split internal node
+                var internalSplit = SplitInternal(parent, ref parentNode, childIndex, separatorKey, leftChild, rightChild);
+                m_pageManager.ReleasePage(parentPage);
+                
+                separatorKey = internalSplit.SplitKey!;
+                leftChild = internalSplit.LeftPage;
+                rightChild = internalSplit.RightPage;
+            }
+            
+            // Reached root - create new root
+            m_rootPageNumber = CreateInternalNode(separatorKey, leftChild, rightChild);
+            UpdateSchemaRootPage();
+            
+            m_entryCount++;
+            m_entryCountDirty = true;
+            return true;
+        }
+        finally
+        {
+            ArrayPool<uint>.Shared.Return(pathPages);
+            ArrayPool<int>.Shared.Return(pathChildIndices);
+        }
+    }
+
+    /// <summary>
+    /// Inserts or updates a key-value pair.
+    /// Returns true if a new key was inserted, false if an existing key was updated.
+    /// </summary>
+    public bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    {
+        ThrowIfDisposed();
+        ValidateKey(key);
+        ValidateValue(value);
+        
+        // Rent arrays from pool to avoid allocations
+        var pathPages = ArrayPool<uint>.Shared.Rent(MAX_TREE_DEPTH);
+        var pathChildIndices = ArrayPool<int>.Shared.Rent(MAX_TREE_DEPTH);
+        
+        try
+        {
+            int pathLength = 0;
+            uint currentPage = m_rootPageNumber;
+            
+            // Navigate to leaf, recording path
+            while (true)
+            {
+                var page = m_pageManager.GetPage(currentPage);
+                var node = new BTreeNode(page.Data, PageSize, currentPage);
+                
+                if (node.IsLeaf)
+                {
+                    m_pageManager.ReleasePage(currentPage);
+                    break;
+                }
+                
+                int childIndex = node.FindChildIndex(key);
+                uint childPage = childIndex < node.KeyCount 
+                    ? node.GetChild(childIndex) 
+                    : node.RightmostChild;
+                
+                pathPages[pathLength] = currentPage;
+                pathChildIndices[pathLength] = childIndex;
+                pathLength++;
+                
+                m_pageManager.ReleasePage(currentPage);
+                currentPage = childPage;
+            }
+            
+            // Check if key exists in leaf
+            var leafPage = m_pageManager.GetPage(currentPage);
+            var leafNode = new BTreeNode(leafPage.Data, PageSize, currentPage);
+            
+            int searchIndex = leafNode.SearchKey(key);
+            
+            if (searchIndex >= 0)
+            {
+                // Key exists - update value
+                m_pageManager.ReleasePage(currentPage);
+                UpdateValue(currentPage, searchIndex, value);
+                return false; // Updated, not inserted
+            }
+            
+            // Key doesn't exist - insert
+            int insertIndex = ~searchIndex;
+            
+            // Determine if value needs overflow
+            bool needsOverflow = value.Length > m_maxInlineValueSize;
+            uint overflowPage = 0;
+            
+            if (needsOverflow)
+            {
+                m_pageManager.ReleasePage(currentPage);
+                overflowPage = m_overflowManager.StoreOverflow(value);
+                leafPage = m_pageManager.GetPage(currentPage);
+                leafNode = new BTreeNode(leafPage.Data, PageSize, currentPage);
+            }
+            
+            int effectiveValueLength = needsOverflow ? BTreeNode.OVERFLOW_REF_SIZE : value.Length;
+            
+            // Try to insert (with compaction if needed)
+            bool canInsert;
+            if (needsOverflow)
+            {
+                canInsert = leafNode.InsertLeafWithCompaction(insertIndex, key, 
+                    CreateOverflowRef(overflowPage, value.Length));
+            }
+            else
+            {
+                canInsert = leafNode.InsertLeafWithCompaction(insertIndex, key, value);
+            }
+            
+            if (canInsert)
+            {
+                leafPage.MarkDirty();
+                m_pageManager.ReleasePage(currentPage);
+                
+                m_entryCount++;
+                m_entryCountDirty = true;
+                return true;
+            }
+            
+            // Need to split - propagate up
+            var splitResult = SplitLeaf(leafPage, ref leafNode, insertIndex, key, value, needsOverflow, overflowPage);
+            m_pageManager.ReleasePage(currentPage);
+            
+            // Propagate split up the tree
+            byte[] separatorKey = splitResult.SplitKey!;
+            uint leftChild = splitResult.LeftPage;
+            uint rightChild = splitResult.RightPage;
+            
+            for (int i = pathLength - 1; i >= 0; i--)
+            {
+                uint parentPage = pathPages[i];
+                int childIndex = pathChildIndices[i];
+                
+                var parent = m_pageManager.GetPage(parentPage);
+                var parentNode = new BTreeNode(parent.Data, PageSize, parentPage);
+                
+                if (parentNode.CanInsertInternal(separatorKey.Length))
+                {
+                    // Insert separator key and leftChild
+                    parentNode.InsertInternal(childIndex, separatorKey, leftChild);
+                    
+                    // Update the old child pointer (now shifted) to rightChild
+                    if (childIndex + 1 < parentNode.KeyCount)
                     {
                         parentNode.SetChild(childIndex + 1, rightChild);
                     }
@@ -320,26 +504,6 @@ public sealed class BTree : IDisposable, IAsyncDisposable
             ArrayPool<uint>.Shared.Return(pathPages);
             ArrayPool<int>.Shared.Return(pathChildIndices);
         }
-    }
-
-    /// <summary>
-    /// Inserts or updates a key-value pair.
-    /// </summary>
-    public bool Upsert(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
-    {
-        ThrowIfDisposed();
-        ValidateKey(key);
-        ValidateValue(value);
-        
-        var (leafPage, index, found) = FindLeafInfo(key);
-        
-        if (found)
-        {
-            UpdateValue(leafPage, index, value);
-            return false;
-        }
-        
-        return Insert(key, value);
     }
 
     private SplitResult SplitLeaf(CachedPage page, ref BTreeNode node, 
@@ -493,24 +657,41 @@ public sealed class BTree : IDisposable, IAsyncDisposable
 
     private void UpdateValue(uint pageNumber, int index, ReadOnlySpan<byte> newValue)
     {
-        // Free old overflow if exists
+        // First, get the key and check for overflow - we need the key before any modifications
+        byte[] key;
+        bool wasOverflow;
+        uint oldOverflowPage = 0;
+        
         {
             var page = m_pageManager.GetPage(pageNumber);
             var node = new BTreeNode(page.Data, PageSize, pageNumber);
             
-            if (node.IsOverflowValue(index))
-            {
-                uint oldOverflow = node.GetOverflowPage(index);
-                m_pageManager.ReleasePage(pageNumber);
-                m_overflowManager.FreeOverflow(oldOverflow);
-            }
-            else
+            // Verify index is still valid
+            if (index < 0 || index >= node.KeyCount)
             {
                 m_pageManager.ReleasePage(pageNumber);
+                throw new InvalidOperationException($"Index {index} is out of range for node with {node.KeyCount} keys");
             }
+            
+            // Save key before any modifications
+            key = node.GetKey(index).ToArray();
+            wasOverflow = node.IsOverflowValue(index);
+            
+            if (wasOverflow)
+            {
+                oldOverflowPage = node.GetOverflowPage(index);
+            }
+            
+            m_pageManager.ReleasePage(pageNumber);
         }
         
-        // Store new value
+        // Free old overflow if needed
+        if (wasOverflow)
+        {
+            m_overflowManager.FreeOverflow(oldOverflowPage);
+        }
+        
+        // Determine if new value needs overflow
         bool needsOverflow = newValue.Length > m_maxInlineValueSize;
         uint newOverflowPage = 0;
         byte[]? overflowRef = null;
@@ -529,28 +710,222 @@ public sealed class BTree : IDisposable, IAsyncDisposable
         
         try
         {
+            // Re-find the key position since page might have changed
+            int currentIndex = updateNode.SearchKey(key);
+            if (currentIndex < 0)
+            {
+                throw new InvalidOperationException($"Key disappeared during update operation");
+            }
+            
             ReadOnlySpan<byte> valueToStore = needsOverflow ? overflowRef : newValue;
             
-            if (!updateNode.UpdateValue(index, valueToStore))
+            // Try update in place first (works if same size)
+            if (updateNode.UpdateValue(currentIndex, valueToStore))
             {
-                var key = updateNode.GetKey(index).ToArray();
-                updateNode.RemoveAt(index);
+                updatePage.MarkDirty();
+                return;
+            }
+            
+            // Can't update in place - need to remove and reinsert
+            // First check if we have enough space with compaction
+            int newCellSize = BTreeNode.CalculateLeafEntrySize(key.Length, valueToStore.Length);
+            int dirEntrySize = 2; // CELL_DIR_ENTRY_SIZE
+            int neededSpace = newCellSize + dirEntrySize;
+            
+            // Calculate space available after removing old entry and compacting
+            // GetUsableSpaceAfterCompaction gives current free + fragmented
+            // After RemoveAt, we also free the directory entry (2 bytes)
+            int availableSpace = updateNode.GetUsableSpaceAfterCompaction() + dirEntrySize;
+            
+            if (availableSpace >= neededSpace)
+            {
+                // Remove old entry
+                updateNode.RemoveAt(currentIndex);
                 
+                // Find new insert position
+                int newIndex = updateNode.SearchKey(key);
+                if (newIndex >= 0)
+                {
+                    throw new InvalidOperationException($"Key reappeared after removal");
+                }
+                newIndex = ~newIndex;
+                
+                // Try insert with compaction
+                bool inserted;
                 if (needsOverflow)
                 {
-                    updateNode.InsertLeafOverflow(index, key, newOverflowPage, newValue.Length);
+                    inserted = updateNode.InsertLeafWithCompaction(newIndex, key, overflowRef!);
                 }
                 else
                 {
-                    updateNode.InsertLeaf(index, key, newValue);
+                    inserted = updateNode.InsertLeafWithCompaction(newIndex, key, valueToStore);
                 }
+                
+                if (inserted)
+                {
+                    updatePage.MarkDirty();
+                    return;
+                }
+                
+                // Insert failed even with compaction - this shouldn't happen based on our calculation
+                // Fall through to split path
+            }
+            else
+            {
+                // Not enough space even with compaction - remove entry for split path
+                updateNode.RemoveAt(currentIndex);
             }
             
+            // Not enough space in same page - use regular Insert which can split
             updatePage.MarkDirty();
+            m_pageManager.ReleasePage(pageNumber);
+            updatePage = null!;
+            
+            // Decrement count since we removed
+            m_entryCount--;
+            
+            // Insert using normal path (which can trigger splits)
+            bool insertResult;
+            if (needsOverflow)
+            {
+                // Value already in overflow, need to insert just the reference
+                insertResult = InsertWithOverflowRef(key, overflowRef!, newOverflowPage, newValue.Length);
+            }
+            else
+            {
+                insertResult = Insert(key, newValue);
+            }
+            
+            if (!insertResult)
+            {
+                // This should never happen - we just deleted the key
+                throw new InvalidOperationException("Failed to reinsert key after update - key already exists?");
+            }
+            
+            // Insert already incremented count, so net change is 0 (correct for update)
+            return;
         }
         finally
         {
-            m_pageManager.ReleasePage(pageNumber);
+            if (updatePage != null!)
+            {
+                m_pageManager.ReleasePage(pageNumber);
+            }
+        }
+    }
+
+    /// <summary>
+    /// Internal method to insert with pre-created overflow reference.
+    /// </summary>
+    private bool InsertWithOverflowRef(byte[] key, byte[] overflowRef, uint overflowPage, int totalLength)
+    {
+        // This is a simplified insert that uses an already-created overflow reference
+        var pathPages = ArrayPool<uint>.Shared.Rent(MAX_TREE_DEPTH);
+        var pathChildIndices = ArrayPool<int>.Shared.Rent(MAX_TREE_DEPTH);
+        
+        try
+        {
+            int pathLength = 0;
+            uint currentPage = m_rootPageNumber;
+            
+            // Navigate to leaf
+            while (true)
+            {
+                var page = m_pageManager.GetPage(currentPage);
+                var node = new BTreeNode(page.Data, PageSize, currentPage);
+                
+                if (node.IsLeaf)
+                {
+                    m_pageManager.ReleasePage(currentPage);
+                    break;
+                }
+                
+                int childIndex = node.FindChildIndex(key);
+                uint childPage = childIndex < node.KeyCount 
+                    ? node.GetChild(childIndex) 
+                    : node.RightmostChild;
+                
+                pathPages[pathLength] = currentPage;
+                pathChildIndices[pathLength] = childIndex;
+                pathLength++;
+                
+                m_pageManager.ReleasePage(currentPage);
+                currentPage = childPage;
+            }
+            
+            var leafPage = m_pageManager.GetPage(currentPage);
+            var leafNode = new BTreeNode(leafPage.Data, PageSize, currentPage);
+            
+            int insertIndex = leafNode.SearchKey(key);
+            if (insertIndex >= 0)
+            {
+                m_pageManager.ReleasePage(currentPage);
+                return false; // Key exists
+            }
+            insertIndex = ~insertIndex;
+            
+            // Try insert with compaction
+            if (leafNode.InsertLeafWithCompaction(insertIndex, key, overflowRef))
+            {
+                leafPage.MarkDirty();
+                m_pageManager.ReleasePage(currentPage);
+                m_entryCount++;
+                m_entryCountDirty = true;
+                return true;
+            }
+            
+            // Need split - use existing split logic
+            var splitResult = SplitLeaf(leafPage, ref leafNode, insertIndex, key, overflowRef, 
+                needsOverflow: false, overflowPage: 0); // overflowRef already contains the reference
+            m_pageManager.ReleasePage(currentPage);
+            
+            // Propagate split up (same as Insert)
+            byte[] separatorKey = splitResult.SplitKey!;
+            uint leftChild = splitResult.LeftPage;
+            uint rightChild = splitResult.RightPage;
+            
+            for (int i = pathLength - 1; i >= 0; i--)
+            {
+                uint parentPage = pathPages[i];
+                int childIndex = pathChildIndices[i];
+                
+                var parent = m_pageManager.GetPage(parentPage);
+                var parentNode = new BTreeNode(parent.Data, PageSize, parentPage);
+                
+                if (parentNode.CanInsertInternal(separatorKey.Length))
+                {
+                    parentNode.InsertInternal(childIndex, separatorKey, leftChild);
+                    
+                    if (childIndex + 1 < parentNode.KeyCount)
+                        parentNode.SetChild(childIndex + 1, rightChild);
+                    else
+                        parentNode.RightmostChild = rightChild;
+                    
+                    parent.MarkDirty();
+                    m_pageManager.ReleasePage(parentPage);
+                    m_entryCount++;
+                    m_entryCountDirty = true;
+                    return true;
+                }
+                
+                var internalSplit = SplitInternal(parent, ref parentNode, childIndex, separatorKey, leftChild, rightChild);
+                m_pageManager.ReleasePage(parentPage);
+                
+                separatorKey = internalSplit.SplitKey!;
+                leftChild = internalSplit.LeftPage;
+                rightChild = internalSplit.RightPage;
+            }
+            
+            m_rootPageNumber = CreateInternalNode(separatorKey, leftChild, rightChild);
+            UpdateSchemaRootPage();
+            m_entryCount++;
+            m_entryCountDirty = true;
+            return true;
+        }
+        finally
+        {
+            ArrayPool<uint>.Shared.Return(pathPages);
+            ArrayPool<int>.Shared.Return(pathChildIndices);
         }
     }
 
@@ -835,6 +1210,23 @@ public sealed class BTree : IDisposable, IAsyncDisposable
     private void UpdateSchemaRootPage()
     {
         m_pageManager.SetSchemaRootPage(m_rootPageNumber);
+    }
+
+    #endregion
+
+    #region Helpers
+
+    /// <summary>
+    /// Creates an overflow reference byte array.
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    private static byte[] CreateOverflowRef(uint overflowPage, int totalLength)
+    {
+        var overflowRef = new byte[BTreeNode.OVERFLOW_REF_SIZE];
+        overflowRef[0] = BTreeNode.OVERFLOW_MARKER;
+        BinaryPrimitives.WriteUInt32LittleEndian(overflowRef.AsSpan(1), overflowPage);
+        BinaryPrimitives.WriteInt32LittleEndian(overflowRef.AsSpan(5), totalLength);
+        return overflowRef;
     }
 
     #endregion
