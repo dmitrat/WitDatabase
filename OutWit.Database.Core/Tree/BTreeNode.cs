@@ -332,17 +332,29 @@ public ref struct BTreeNode
     }
 
     /// <summary>
-    /// Finds the child index for navigation in internal nodes.
+    /// Finds the child index for navigation in internal nodes using binary search.
+    /// Returns the index of the first key greater than the search key,
+    /// or KeyCount if the search key is >= all keys.
     /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public readonly int FindChildIndex(ReadOnlySpan<byte> key)
     {
-        int keyCount = KeyCount;
-        for (int i = 0; i < keyCount; i++)
+        int low = 0;
+        int high = KeyCount;
+        
+        while (low < high)
         {
-            if (key.SequenceCompareTo(GetKey(i)) < 0)
-                return i;
+            int mid = (low + high) >> 1;
+            var midKey = GetKey(mid);
+            
+            // If key >= midKey, search in right half
+            if (key.SequenceCompareTo(midKey) >= 0)
+                low = mid + 1;
+            else
+                high = mid;
         }
-        return keyCount;
+        
+        return low;
     }
 
     #endregion

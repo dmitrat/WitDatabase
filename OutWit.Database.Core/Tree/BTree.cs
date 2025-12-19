@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Runtime.CompilerServices;
 using OutWit.Database.Core.Cache;
@@ -15,9 +16,9 @@ namespace OutWit.Database.Core.Tree;
 /// Features:
 /// - Zero-copy node access via ref structs
 /// - Overflow page support for large values
-/// - Persisted entry count
+/// - Persisted entry count (lazy save)
 /// - Iterative insert/delete (no recursion)
-/// - Node merging on delete
+/// - ArrayPool for path arrays to avoid allocations
 /// </remarks>
 public sealed class BTree : IDisposable, IAsyncDisposable
 {
@@ -29,21 +30,11 @@ public sealed class BTree : IDisposable, IAsyncDisposable
     /// <summary>Maximum value size (for validation, larger uses overflow).</summary>
     public const int MAX_VALUE_SIZE = int.MaxValue / 2;
     
-    /// <summary>Offset in root page where entry count is stored (in node header reserved area).</summary>
-    /// <remarks>
-    /// Node header layout starts at offset 16:
-    /// [16-17] KeyCount: 2 bytes
-    /// [18]    Flags: 1 byte (bit 0 = IsLeaf)
-    /// [19-22] NextLeaf: 4 bytes
-    /// [23-26] PrevLeaf: 4 bytes  
-    /// [27-28] CellAreaStart: 2 bytes
-    /// [29-31] Reserved: 3 bytes - we use these for entry count low bytes
-    /// 
-    /// We store entry count as 8 bytes starting at offset 29 (3 bytes) + continue into cell dir area.
-    /// Actually, let's use a simpler approach: store in PageHeader.Reserved (offset 12, 4 bytes).
-    /// This gives us up to 4 billion entries which is enough.
-    /// </remarks>
-    private const int ENTRY_COUNT_OFFSET = 12; // PageHeader.Reserved (4 bytes only)
+    /// <summary>Offset in root page where entry count is stored.</summary>
+    private const int ENTRY_COUNT_OFFSET = 12;
+    
+    /// <summary>Maximum tree depth (enough for billions of entries).</summary>
+    private const int MAX_TREE_DEPTH = 32;
 
     #endregion
 
@@ -55,6 +46,7 @@ public sealed class BTree : IDisposable, IAsyncDisposable
     
     private uint m_rootPageNumber;
     private long m_entryCount;
+    private bool m_entryCountDirty;
     private bool m_disposed;
 
     #endregion
@@ -79,13 +71,15 @@ public sealed class BTree : IDisposable, IAsyncDisposable
         {
             m_rootPageNumber = CreateLeafNode();
             m_entryCount = 0;
-            SaveEntryCount();
+            m_entryCountDirty = true;
+            SaveEntryCountIfDirty();
             UpdateSchemaRootPage();
         }
         else
         {
             m_rootPageNumber = rootPageNumber;
             m_entryCount = LoadEntryCount();
+            m_entryCountDirty = false;
         }
     }
 
@@ -184,140 +178,148 @@ public sealed class BTree : IDisposable, IAsyncDisposable
         ValidateKey(key);
         ValidateValue(value);
         
-        // Build path from root to leaf using arrays (stackalloc can have issues)
-        var pathPages = new uint[32];
-        var pathChildIndices = new int[32];
-        int pathLength = 0;
+        // Rent arrays from pool to avoid allocations
+        var pathPages = ArrayPool<uint>.Shared.Rent(MAX_TREE_DEPTH);
+        var pathChildIndices = ArrayPool<int>.Shared.Rent(MAX_TREE_DEPTH);
         
-        uint currentPage = m_rootPageNumber;
-        
-        // Navigate to leaf, recording path
-        while (true)
+        try
         {
-            var page = m_pageManager.GetPage(currentPage);
-            var node = new BTreeNode(page.Data, PageSize, currentPage);
+            int pathLength = 0;
+            uint currentPage = m_rootPageNumber;
             
-            if (node.IsLeaf)
+            // Navigate to leaf, recording path
+            while (true)
             {
+                var page = m_pageManager.GetPage(currentPage);
+                var node = new BTreeNode(page.Data, PageSize, currentPage);
+                
+                if (node.IsLeaf)
+                {
+                    m_pageManager.ReleasePage(currentPage);
+                    break;
+                }
+                
+                int childIndex = node.FindChildIndex(key);
+                uint childPage = childIndex < node.KeyCount 
+                    ? node.GetChild(childIndex) 
+                    : node.RightmostChild;
+                
+                pathPages[pathLength] = currentPage;
+                pathChildIndices[pathLength] = childIndex;
+                pathLength++;
+                
                 m_pageManager.ReleasePage(currentPage);
-                break;
+                currentPage = childPage;
             }
             
-            int childIndex = node.FindChildIndex(key);
-            uint childPage = childIndex < node.KeyCount 
-                ? node.GetChild(childIndex) 
-                : node.RightmostChild;
+            // Insert into leaf
+            var leafPage = m_pageManager.GetPage(currentPage);
+            var leafNode = new BTreeNode(leafPage.Data, PageSize, currentPage);
             
-            pathPages[pathLength] = currentPage;
-            pathChildIndices[pathLength] = childIndex;
-            pathLength++;
+            int insertIndex = leafNode.SearchKey(key);
+            if (insertIndex >= 0)
+            {
+                // Key exists
+                m_pageManager.ReleasePage(currentPage);
+                return false;
+            }
             
-            m_pageManager.ReleasePage(currentPage);
-            currentPage = childPage;
-        }
-        
-        // Insert into leaf
-        var leafPage = m_pageManager.GetPage(currentPage);
-        var leafNode = new BTreeNode(leafPage.Data, PageSize, currentPage);
-        
-        int insertIndex = leafNode.SearchKey(key);
-        if (insertIndex >= 0)
-        {
-            // Key exists
-            m_pageManager.ReleasePage(currentPage);
-            return false;
-        }
-        
-        insertIndex = ~insertIndex;
-        
-        // Determine if value needs overflow
-        bool needsOverflow = value.Length > m_maxInlineValueSize;
-        uint overflowPage = 0;
-        
-        if (needsOverflow)
-        {
-            m_pageManager.ReleasePage(currentPage);
-            overflowPage = m_overflowManager.StoreOverflow(value);
-            leafPage = m_pageManager.GetPage(currentPage);
-            leafNode = new BTreeNode(leafPage.Data, PageSize, currentPage);
-        }
-        
-        int effectiveValueLength = needsOverflow ? BTreeNode.OVERFLOW_REF_SIZE : value.Length;
-        
-        // Try to insert
-        if (leafNode.CanInsertLeaf(key.Length, effectiveValueLength))
-        {
+            insertIndex = ~insertIndex;
+            
+            // Determine if value needs overflow
+            bool needsOverflow = value.Length > m_maxInlineValueSize;
+            uint overflowPage = 0;
+            
             if (needsOverflow)
             {
-                leafNode.InsertLeafOverflow(insertIndex, key, overflowPage, value.Length);
+                m_pageManager.ReleasePage(currentPage);
+                overflowPage = m_overflowManager.StoreOverflow(value);
+                leafPage = m_pageManager.GetPage(currentPage);
+                leafNode = new BTreeNode(leafPage.Data, PageSize, currentPage);
             }
-            else
+            
+            int effectiveValueLength = needsOverflow ? BTreeNode.OVERFLOW_REF_SIZE : value.Length;
+            
+            // Try to insert
+            if (leafNode.CanInsertLeaf(key.Length, effectiveValueLength))
             {
-                leafNode.InsertLeaf(insertIndex, key, value);
-            }
-            leafPage.MarkDirty();
-            m_pageManager.ReleasePage(currentPage);
-            
-            m_entryCount++;
-            SaveEntryCount();
-            return true;
-        }
-        
-        // Need to split - propagate up
-        var splitResult = SplitLeaf(leafPage, ref leafNode, insertIndex, key, value, needsOverflow, overflowPage);
-        m_pageManager.ReleasePage(currentPage);
-        
-        // Propagate split up the tree
-        byte[] separatorKey = splitResult.SplitKey!;
-        uint leftChild = splitResult.LeftPage;
-        uint rightChild = splitResult.RightPage;
-        
-        for (int i = pathLength - 1; i >= 0; i--)
-        {
-            uint parentPage = pathPages[i];
-            int childIndex = pathChildIndices[i];
-            
-            var parent = m_pageManager.GetPage(parentPage);
-            var parentNode = new BTreeNode(parent.Data, PageSize, parentPage);
-            
-            if (parentNode.CanInsertInternal(separatorKey.Length))
-            {
-                // Can fit - insert and update child pointers
-                parentNode.InsertInternal(childIndex, separatorKey, leftChild);
-                
-                if (childIndex + 1 <= parentNode.KeyCount - 1)
+                if (needsOverflow)
                 {
-                    parentNode.SetChild(childIndex + 1, rightChild);
+                    leafNode.InsertLeafOverflow(insertIndex, key, overflowPage, value.Length);
                 }
                 else
                 {
-                    parentNode.RightmostChild = rightChild;
+                    leafNode.InsertLeaf(insertIndex, key, value);
                 }
-                
-                parent.MarkDirty();
-                m_pageManager.ReleasePage(parentPage);
+                leafPage.MarkDirty();
+                m_pageManager.ReleasePage(currentPage);
                 
                 m_entryCount++;
-                SaveEntryCount();
+                m_entryCountDirty = true;
                 return true;
             }
             
-            // Need to split internal node
-            var internalSplit = SplitInternal(parent, ref parentNode, childIndex, separatorKey, leftChild, rightChild);
-            m_pageManager.ReleasePage(parentPage);
+            // Need to split - propagate up
+            var splitResult = SplitLeaf(leafPage, ref leafNode, insertIndex, key, value, needsOverflow, overflowPage);
+            m_pageManager.ReleasePage(currentPage);
             
-            separatorKey = internalSplit.SplitKey!;
-            leftChild = internalSplit.LeftPage;
-            rightChild = internalSplit.RightPage;
+            // Propagate split up the tree
+            byte[] separatorKey = splitResult.SplitKey!;
+            uint leftChild = splitResult.LeftPage;
+            uint rightChild = splitResult.RightPage;
+            
+            for (int i = pathLength - 1; i >= 0; i--)
+            {
+                uint parentPage = pathPages[i];
+                int childIndex = pathChildIndices[i];
+                
+                var parent = m_pageManager.GetPage(parentPage);
+                var parentNode = new BTreeNode(parent.Data, PageSize, parentPage);
+                
+                if (parentNode.CanInsertInternal(separatorKey.Length))
+                {
+                    // Can fit - insert and update child pointers
+                    parentNode.InsertInternal(childIndex, separatorKey, leftChild);
+                    
+                    if (childIndex + 1 <= parentNode.KeyCount - 1)
+                    {
+                        parentNode.SetChild(childIndex + 1, rightChild);
+                    }
+                    else
+                    {
+                        parentNode.RightmostChild = rightChild;
+                    }
+                    
+                    parent.MarkDirty();
+                    m_pageManager.ReleasePage(parentPage);
+                    
+                    m_entryCount++;
+                    m_entryCountDirty = true;
+                    return true;
+                }
+                
+                // Need to split internal node
+                var internalSplit = SplitInternal(parent, ref parentNode, childIndex, separatorKey, leftChild, rightChild);
+                m_pageManager.ReleasePage(parentPage);
+                
+                separatorKey = internalSplit.SplitKey!;
+                leftChild = internalSplit.LeftPage;
+                rightChild = internalSplit.RightPage;
+            }
+            
+            // Reached root - create new root
+            m_rootPageNumber = CreateInternalNode(separatorKey, leftChild, rightChild);
+            UpdateSchemaRootPage();
+            
+            m_entryCount++;
+            m_entryCountDirty = true;
+            return true;
         }
-        
-        // Reached root - create new root
-        m_rootPageNumber = CreateInternalNode(separatorKey, leftChild, rightChild);
-        UpdateSchemaRootPage();
-        
-        m_entryCount++;
-        SaveEntryCount();
-        return true;
+        finally
+        {
+            ArrayPool<uint>.Shared.Return(pathPages);
+            ArrayPool<int>.Shared.Return(pathChildIndices);
+        }
     }
 
     /// <summary>
@@ -589,11 +591,7 @@ public sealed class BTree : IDisposable, IAsyncDisposable
             page.MarkDirty();
             
             m_entryCount--;
-            SaveEntryCount();
-            
-            // Note: Full rebalancing would check IsUnderfull() and merge/redistribute
-            // For now we skip this for simplicity - nodes can become underfull
-            // Space is reclaimed when node becomes empty and can be freed
+            m_entryCountDirty = true;
             
             return true;
         }
@@ -641,52 +639,14 @@ public sealed class BTree : IDisposable, IAsyncDisposable
         
         while (currentPage != 0)
         {
-            var results = new List<(byte[] Key, byte[] Value)>();
-            uint nextLeaf;
+            // Collect results from current page
+            var pageResults = CollectPageEntries(currentPage, startIndex, maxKey, exclusive: true, out uint nextLeaf, out bool done);
             
-            {
-                var page = m_pageManager.GetPage(currentPage);
-                var node = new BTreeNode(page.Data, PageSize, currentPage);
-                nextLeaf = node.NextLeaf;
-                int keyCount = node.KeyCount;
-                
-                for (int i = startIndex; i < keyCount; i++)
-                {
-                    var keyBytes = node.GetKey(i).ToArray();
-                    
-                    // Check end boundary (exclusive)
-                    if (maxKey != null && keyBytes.AsSpan().SequenceCompareTo(maxKey) >= 0)
-                    {
-                        m_pageManager.ReleasePage(currentPage);
-                        
-                        foreach (var item in results)
-                            yield return item;
-                        
-                        yield break;
-                    }
-                    
-                    byte[] valueBytes;
-                    if (node.IsOverflowValue(i))
-                    {
-                        uint overflowPage = node.GetOverflowPage(i);
-                        m_pageManager.ReleasePage(currentPage);
-                        valueBytes = m_overflowManager.ReadOverflow(overflowPage);
-                        page = m_pageManager.GetPage(currentPage);
-                        node = new BTreeNode(page.Data, PageSize, currentPage);
-                    }
-                    else
-                    {
-                        valueBytes = node.GetValue(i).ToArray();
-                    }
-                    
-                    results.Add((keyBytes, valueBytes));
-                }
-                
-                m_pageManager.ReleasePage(currentPage);
-            }
-            
-            foreach (var item in results)
+            foreach (var item in pageResults)
                 yield return item;
+            
+            if (done)
+                yield break;
             
             currentPage = nextLeaf;
             startIndex = 0;
@@ -717,56 +677,69 @@ public sealed class BTree : IDisposable, IAsyncDisposable
         
         while (currentPage != 0)
         {
-            var results = new List<(byte[] Key, byte[] Value)>();
-            uint nextLeaf;
+            // Collect results from current page
+            var pageResults = CollectPageEntries(currentPage, startIndex, maxKey, exclusive: false, out uint nextLeaf, out bool done);
             
-            {
-                var page = m_pageManager.GetPage(currentPage);
-                var node = new BTreeNode(page.Data, PageSize, currentPage);
-                nextLeaf = node.NextLeaf;
-                int keyCount = node.KeyCount;
-                
-                for (int i = startIndex; i < keyCount; i++)
-                {
-                    var keyBytes = node.GetKey(i).ToArray();
-                    
-                    // Check end boundary (inclusive)
-                    if (maxKey != null && keyBytes.AsSpan().SequenceCompareTo(maxKey) > 0)
-                    {
-                        m_pageManager.ReleasePage(currentPage);
-                        
-                        foreach (var item in results)
-                            yield return item;
-                        
-                        yield break;
-                    }
-                    
-                    byte[] valueBytes;
-                    if (node.IsOverflowValue(i))
-                    {
-                        uint overflowPage = node.GetOverflowPage(i);
-                        m_pageManager.ReleasePage(currentPage);
-                        valueBytes = m_overflowManager.ReadOverflow(overflowPage);
-                        page = m_pageManager.GetPage(currentPage);
-                        node = new BTreeNode(page.Data, PageSize, currentPage);
-                    }
-                    else
-                    {
-                        valueBytes = node.GetValue(i).ToArray();
-                    }
-                    
-                    results.Add((keyBytes, valueBytes));
-                }
-                
-                m_pageManager.ReleasePage(currentPage);
-            }
-            
-            foreach (var item in results)
+            foreach (var item in pageResults)
                 yield return item;
+            
+            if (done)
+                yield break;
             
             currentPage = nextLeaf;
             startIndex = 0;
         }
+    }
+
+    /// <summary>
+    /// Collects entries from a single leaf page without crossing yield boundary.
+    /// </summary>
+    private List<(byte[] Key, byte[] Value)> CollectPageEntries(
+        uint pageNumber, int startIndex, byte[]? maxKey, bool exclusive,
+        out uint nextLeaf, out bool reachedEnd)
+    {
+        var results = new List<(byte[] Key, byte[] Value)>();
+        reachedEnd = false;
+        
+        var page = m_pageManager.GetPage(pageNumber);
+        var node = new BTreeNode(page.Data, PageSize, pageNumber);
+        nextLeaf = node.NextLeaf;
+        int keyCount = node.KeyCount;
+        
+        for (int i = startIndex; i < keyCount; i++)
+        {
+            var keyBytes = node.GetKey(i).ToArray();
+            
+            // Check end boundary
+            if (maxKey != null)
+            {
+                int cmp = keyBytes.AsSpan().SequenceCompareTo(maxKey);
+                if (exclusive ? cmp >= 0 : cmp > 0)
+                {
+                    reachedEnd = true;
+                    break;
+                }
+            }
+            
+            byte[] valueBytes;
+            if (node.IsOverflowValue(i))
+            {
+                uint overflowPage = node.GetOverflowPage(i);
+                m_pageManager.ReleasePage(pageNumber);
+                valueBytes = m_overflowManager.ReadOverflow(overflowPage);
+                page = m_pageManager.GetPage(pageNumber);
+                node = new BTreeNode(page.Data, PageSize, pageNumber);
+            }
+            else
+            {
+                valueBytes = node.GetValue(i).ToArray();
+            }
+            
+            results.Add((keyBytes, valueBytes));
+        }
+        
+        m_pageManager.ReleasePage(pageNumber);
+        return results;
     }
 
     /// <summary>
@@ -803,13 +776,16 @@ public sealed class BTree : IDisposable, IAsyncDisposable
 
     #region Count Persistence
 
-    private void SaveEntryCount()
+    private void SaveEntryCountIfDirty()
     {
-        // Store count as uint32 in PageHeader.Reserved field (offset 12-15)
+        if (!m_entryCountDirty)
+            return;
+        
         var page = m_pageManager.GetPage(m_rootPageNumber);
         BinaryPrimitives.WriteUInt32LittleEndian(page.Data[ENTRY_COUNT_OFFSET..], (uint)m_entryCount);
         page.MarkDirty();
         m_pageManager.ReleasePage(m_rootPageNumber);
+        m_entryCountDirty = false;
     }
 
     private long LoadEntryCount()
@@ -889,6 +865,7 @@ public sealed class BTree : IDisposable, IAsyncDisposable
     {
         if (!m_disposed)
         {
+            SaveEntryCountIfDirty();
             m_pageManager.Flush();
             m_overflowManager.Dispose();
             m_disposed = true;
@@ -899,6 +876,7 @@ public sealed class BTree : IDisposable, IAsyncDisposable
     {
         if (!m_disposed)
         {
+            SaveEntryCountIfDirty();
             await m_pageManager.FlushAsync().ConfigureAwait(false);
             m_overflowManager.Dispose();
             m_disposed = true;
