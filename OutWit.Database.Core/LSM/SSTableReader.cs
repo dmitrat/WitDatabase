@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using OutWit.Database.Core.Comparers;
 using OutWit.Database.Core.Interfaces;
@@ -9,6 +10,7 @@ namespace OutWit.Database.Core.LSM
     /// Supports point lookups and range scans via block index.
     /// Uses Bloom filter to skip reads for non-existent keys.
     /// Optionally uses BlockCache to reduce disk I/O.
+    /// Uses ArrayPool to reduce allocations during reads.
     /// Handles both encrypted and unencrypted SSTables.
     /// Thread-safe for concurrent reads.
     /// </summary>
@@ -203,17 +205,25 @@ namespace OutWit.Database.Core.LSM
                 if (m_encrypted)
                 {
                     // Read encrypted block: [len:4][encrypted data]
-                    var lenBuf = new byte[4];
+                    Span<byte> lenBuf = stackalloc byte[4];
                     m_stream.ReadExactly(lenBuf);
                     var encLen = BinaryPrimitives.ReadInt32LittleEndian(lenBuf);
             
-                    var encrypted = new byte[encLen];
-                    m_stream.ReadExactly(encrypted);
+                    // Use ArrayPool for encrypted data
+                    var rentedEncrypted = ArrayPool<byte>.Shared.Rent(encLen);
+                    try
+                    {
+                        m_stream.ReadExactly(rentedEncrypted.AsSpan(0, encLen));
             
-                    if (m_encryptor == null)
-                        throw new InvalidOperationException("SSTable is encrypted but no encryptor provided");
+                        if (m_encryptor == null)
+                            throw new InvalidOperationException("SSTable is encrypted but no encryptor provided");
             
-                    return m_encryptor.Decrypt(encrypted, blockIndex);
+                        return m_encryptor.Decrypt(rentedEncrypted.AsSpan(0, encLen).ToArray(), blockIndex);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(rentedEncrypted);
+                    }
                 }
                 else
                 {
@@ -232,17 +242,24 @@ namespace OutWit.Database.Core.LSM
 
                 if (m_encrypted)
                 {
-                    var lenBuf = new byte[4];
+                    Span<byte> lenBuf = stackalloc byte[4];
                     m_stream.ReadExactly(lenBuf);
                     var encLen = BinaryPrimitives.ReadInt32LittleEndian(lenBuf);
             
-                    var encrypted = new byte[encLen];
-                    m_stream.ReadExactly(encrypted);
+                    var rentedEncrypted = ArrayPool<byte>.Shared.Rent(encLen);
+                    try
+                    {
+                        m_stream.ReadExactly(rentedEncrypted.AsSpan(0, encLen));
             
-                    if (m_encryptor == null)
-                        throw new InvalidOperationException("SSTable is encrypted but no encryptor provided");
+                        if (m_encryptor == null)
+                            throw new InvalidOperationException("SSTable is encrypted but no encryptor provided");
             
-                    return m_encryptor.Decrypt(encrypted, SSTableBuilder.INDEX_BLOCK_ID);
+                        return m_encryptor.Decrypt(rentedEncrypted.AsSpan(0, encLen).ToArray(), SSTableBuilder.INDEX_BLOCK_ID);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(rentedEncrypted);
+                    }
                 }
                 else
                 {
@@ -261,17 +278,24 @@ namespace OutWit.Database.Core.LSM
 
                 if (m_encrypted)
                 {
-                    var lenBuf = new byte[4];
+                    Span<byte> lenBuf = stackalloc byte[4];
                     m_stream.ReadExactly(lenBuf);
                     var encLen = BinaryPrimitives.ReadInt32LittleEndian(lenBuf);
             
-                    var encrypted = new byte[encLen];
-                    m_stream.ReadExactly(encrypted);
+                    var rentedEncrypted = ArrayPool<byte>.Shared.Rent(encLen);
+                    try
+                    {
+                        m_stream.ReadExactly(rentedEncrypted.AsSpan(0, encLen));
             
-                    if (m_encryptor == null)
-                        throw new InvalidOperationException("SSTable is encrypted but no encryptor provided");
+                        if (m_encryptor == null)
+                            throw new InvalidOperationException("SSTable is encrypted but no encryptor provided");
             
-                    return m_encryptor.Decrypt(encrypted, SSTableBuilder.BLOOM_BLOCK_ID);
+                        return m_encryptor.Decrypt(rentedEncrypted.AsSpan(0, encLen).ToArray(), SSTableBuilder.BLOOM_BLOCK_ID);
+                    }
+                    finally
+                    {
+                        ArrayPool<byte>.Shared.Return(rentedEncrypted);
+                    }
                 }
                 else
                 {
@@ -282,7 +306,7 @@ namespace OutWit.Database.Core.LSM
             }
         }
 
-        private bool SearchInBlock(byte[] block, ReadOnlySpan<byte> targetKey, out byte[]? value)
+        private static bool SearchInBlock(byte[] block, ReadOnlySpan<byte> targetKey, out byte[]? value)
         {
             value = null;
             int offset = 0;
@@ -298,29 +322,33 @@ namespace OutWit.Database.Core.LSM
                 var valueLen = BinaryPrimitives.ReadInt32LittleEndian(block.AsSpan(offset));
                 offset += 4;
 
-                byte[]? entryValue = null;
-                if (valueLen >= 0)
-                {
-                    entryValue = block.AsSpan(offset, valueLen).ToArray();
-                    offset += valueLen;
-                }
-
                 var cmp = targetKey.SequenceCompareTo(key);
                 if (cmp == 0)
                 {
-                    value = entryValue;
+                    // Found! Extract value
+                    if (valueLen >= 0)
+                    {
+                        value = block.AsSpan(offset, valueLen).ToArray();
+                    }
                     return true;
                 }
+                
+                // Skip value bytes
+                if (valueLen >= 0)
+                {
+                    offset += valueLen;
+                }
+
                 if (cmp < 0)
                 {
-                    return false;
+                    return false; // Key not found, and we've passed where it would be
                 }
             }
 
             return false;
         }
 
-        private IEnumerable<(byte[] Key, byte[]? Value)> ParseBlock(byte[] block)
+        private static IEnumerable<(byte[] Key, byte[]? Value)> ParseBlock(byte[] block)
         {
             int offset = 0;
 

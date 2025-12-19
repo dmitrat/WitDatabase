@@ -16,6 +16,7 @@ namespace OutWit.Database.Core.Stores
 
         private readonly string m_directory;
         private readonly LsmOptions m_options;
+        private readonly LsmStatistics m_statistics = new();
         private readonly ReaderWriterLockSlim m_sstableLock = new(LockRecursionPolicy.NoRecursion);
         private readonly Lock m_writeLock = new();
         private readonly Lock m_compactionLock = new();
@@ -75,6 +76,7 @@ namespace OutWit.Database.Core.Stores
         public byte[]? Get(ReadOnlySpan<byte> key)
         {
             ThrowIfDisposed();
+            m_statistics.RecordGet();
 
             // 1. Check active MemTable (thread-safe via MemTable's internal lock)
             if (m_activeMemTable.TryGet(key, out var value))
@@ -97,8 +99,14 @@ namespace OutWit.Database.Core.Stores
                 {
                     if (m_sstables[i].TryGet(key, out value))
                     {
+                        m_statistics.RecordBloomFilterMiss(); // Had to read from disk
                         return value;
                     }
+                }
+                // If we checked SSTables but found nothing, bloom filters helped
+                if (m_sstables.Count > 0)
+                {
+                    m_statistics.RecordBloomFilterHit();
                 }
             }
             finally
@@ -126,6 +134,8 @@ namespace OutWit.Database.Core.Stores
         public void Put(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
         {
             ThrowIfDisposed();
+            m_statistics.RecordPut();
+            m_statistics.RecordBytesWritten(key.Length + value.Length);
 
             lock (m_writeLock)
             {
@@ -165,6 +175,7 @@ namespace OutWit.Database.Core.Stores
         public bool Delete(ReadOnlySpan<byte> key)
         {
             ThrowIfDisposed();
+            m_statistics.RecordDelete();
 
             lock (m_writeLock)
             {
@@ -206,6 +217,7 @@ namespace OutWit.Database.Core.Stores
         public IEnumerable<(byte[] Key, byte[] Value)> Scan(byte[]? startKey, byte[]? endKey)
         {
             ThrowIfDisposed();
+            m_statistics.RecordScan();
 
             var comparer = LsmByteArrayComparer.Instance;
             
@@ -451,6 +463,8 @@ namespace OutWit.Database.Core.Stores
             var compactor = new Compactor(m_directory, m_options.BlockSize);
             var result = compactor.Compact(filesToCompact, outputPath);
             
+            m_statistics.RecordCompaction();
+            
             if (result.OutputEntries == 0 && filesToCompact.Count > 0)
             {
                 // All entries were tombstones, delete output
@@ -518,6 +532,8 @@ namespace OutWit.Database.Core.Stores
         /// </summary>
         private void FlushMemTableInternal()
         {
+            m_statistics.RecordFlush();
+            
             // Move active to immutable
             var oldActive = m_activeMemTable;
             Volatile.Write(ref m_immutableMemTable, oldActive);
@@ -695,6 +711,11 @@ namespace OutWit.Database.Core.Stores
         /// Gets whether a background compaction is currently running.
         /// </summary>
         public bool IsCompacting => Volatile.Read(ref m_compactionPending);
+
+        /// <summary>
+        /// Gets the statistics for this LSM-Tree.
+        /// </summary>
+        public LsmStatistics Statistics => m_statistics;
 
         #endregion
     }

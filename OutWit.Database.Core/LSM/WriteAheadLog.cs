@@ -1,3 +1,4 @@
+using System.Buffers;
 using System.Buffers.Binary;
 using System.Security.Cryptography;
 using OutWit.Database.Core.Interfaces;
@@ -9,6 +10,7 @@ namespace OutWit.Database.Core.LSM
     /// All mutations are first written here before being applied to MemTable.
     /// Provides crash recovery by replaying the log on startup.
     /// Supports optional encryption via IBlockEncryptor.
+    /// Uses ArrayPool to reduce allocations.
     /// </summary>
     public sealed class WriteAheadLog : IDisposable
     {
@@ -193,31 +195,42 @@ namespace OutWit.Database.Core.LSM
                 m_stream.Position = m_stream.Length;
 
                 // Build entry data: [Type][KeyLen][Key][ValueLen][Value]
-                var entryData = new byte[1 + 4 + key.Length + 4 + value.Length];
-                var span = entryData.AsSpan();
-                span[0] = (byte)type;
-                BinaryPrimitives.WriteInt32LittleEndian(span.Slice(1), key.Length);
-                key.CopyTo(span.Slice(5));
-                BinaryPrimitives.WriteInt32LittleEndian(span.Slice(5 + key.Length), value.Length);
-                value.CopyTo(span.Slice(9 + key.Length));
-
-                // Add CRC32 to entry data for integrity check
-                var crc = CalculateCrc32(entryData);
-                var dataWithCrc = new byte[4 + entryData.Length];
-                BinaryPrimitives.WriteUInt32LittleEndian(dataWithCrc, crc);
-                entryData.CopyTo(dataWithCrc.AsSpan(4));
-
-                if (m_isEncrypted)
+                var entryDataLength = 1 + 4 + key.Length + 4 + value.Length;
+                var dataWithCrcLength = 4 + entryDataLength;
+                
+                // Use ArrayPool for larger buffers
+                var rentedBuffer = ArrayPool<byte>.Shared.Rent(dataWithCrcLength);
+                try
                 {
-                    // Encrypt the entry
-                    var encrypted = m_encryptor!.Encrypt(dataWithCrc, m_entryCounter);
-                    m_writer.Write(encrypted.Length);
-                    m_writer.Write(encrypted);
+                    var span = rentedBuffer.AsSpan(4, entryDataLength);
+                    span[0] = (byte)type;
+                    BinaryPrimitives.WriteInt32LittleEndian(span.Slice(1), key.Length);
+                    key.CopyTo(span.Slice(5));
+                    BinaryPrimitives.WriteInt32LittleEndian(span.Slice(5 + key.Length), value.Length);
+                    value.CopyTo(span.Slice(9 + key.Length));
+
+                    // Calculate CRC32 for entry data
+                    var crc = CalculateCrc32(span);
+                    BinaryPrimitives.WriteUInt32LittleEndian(rentedBuffer.AsSpan(0, 4), crc);
+
+                    var dataWithCrc = rentedBuffer.AsSpan(0, dataWithCrcLength);
+
+                    if (m_isEncrypted)
+                    {
+                        // Encrypt the entry
+                        var encrypted = m_encryptor!.Encrypt(dataWithCrc.ToArray(), m_entryCounter);
+                        m_writer.Write(encrypted.Length);
+                        m_writer.Write(encrypted);
+                    }
+                    else
+                    {
+                        // Write unencrypted
+                        m_stream.Write(dataWithCrc);
+                    }
                 }
-                else
+                finally
                 {
-                    // Write unencrypted
-                    m_writer.Write(dataWithCrc);
+                    ArrayPool<byte>.Shared.Return(rentedBuffer);
                 }
 
                 m_entryCounter++;
@@ -234,11 +247,20 @@ namespace OutWit.Database.Core.LSM
                 // Read encrypted entry
                 var encLen = reader.ReadInt32();
                 if (encLen < 0 || encLen > 100 * 1024 * 1024) return null; // Sanity check
-                var encrypted = reader.ReadBytes(encLen);
-            
-                var decrypted = m_encryptor!.Decrypt(encrypted, entryId);
-                if (decrypted == null) return null; // Decryption failed
-                dataWithCrc = decrypted;
+                
+                // Use ArrayPool for reading encrypted data
+                var rentedBuffer = ArrayPool<byte>.Shared.Rent(encLen);
+                try
+                {
+                    m_stream.ReadExactly(rentedBuffer.AsSpan(0, encLen));
+                    var decrypted = m_encryptor!.Decrypt(rentedBuffer.AsSpan(0, encLen).ToArray(), entryId);
+                    if (decrypted == null) return null; // Decryption failed
+                    dataWithCrc = decrypted;
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(rentedBuffer);
+                }
             }
             else
             {
@@ -258,17 +280,25 @@ namespace OutWit.Database.Core.LSM
                 if (valueLen < 0 || valueLen > 100 * 1024 * 1024) return null;
                 var value = valueLen > 0 ? reader.ReadBytes(valueLen) : null;
 
-                // Verify CRC
-                var entryData = new byte[1 + 4 + keyLen + 4 + valueLen];
-                var span = entryData.AsSpan();
-                span[0] = (byte)type;
-                BinaryPrimitives.WriteInt32LittleEndian(span.Slice(1), keyLen);
-                key.CopyTo(span.Slice(5));
-                BinaryPrimitives.WriteInt32LittleEndian(span.Slice(5 + keyLen), valueLen);
-                if (value != null) value.CopyTo(span.Slice(9 + keyLen));
+                // Verify CRC using pooled buffer
+                var entryDataLength = 1 + 4 + keyLen + 4 + valueLen;
+                var rentedBuffer = ArrayPool<byte>.Shared.Rent(entryDataLength);
+                try
+                {
+                    var span = rentedBuffer.AsSpan(0, entryDataLength);
+                    span[0] = (byte)type;
+                    BinaryPrimitives.WriteInt32LittleEndian(span.Slice(1), keyLen);
+                    key.CopyTo(span.Slice(5));
+                    BinaryPrimitives.WriteInt32LittleEndian(span.Slice(5 + keyLen), valueLen);
+                    if (value != null) value.CopyTo(span.Slice(9 + keyLen));
 
-                var actualCrc = CalculateCrc32(entryData);
-                if (actualCrc != expectedCrc) return null;
+                    var actualCrc = CalculateCrc32(span);
+                    if (actualCrc != expectedCrc) return null;
+                }
+                finally
+                {
+                    ArrayPool<byte>.Shared.Return(rentedBuffer);
+                }
 
                 return (type, key, value);
             }

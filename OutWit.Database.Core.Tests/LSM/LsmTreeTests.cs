@@ -569,7 +569,7 @@ namespace OutWit.Database.Core.Tests.LSM
             var errors = 0;
 
             var tasks = Enumerable.Range(0, threadCount)
-                .Select(_ => Task.Run(() =>
+                .Select(t => Task.Run(() =>
                 {
                     var random = new Random();
                     for (int i = 0; i < readsPerThread; i++)
@@ -1180,6 +1180,68 @@ namespace OutWit.Database.Core.Tests.LSM
                 var result = tree.Get(BitConverter.GetBytes(i));
                 Assert.That(result, Is.Not.Null);
             }
+        }
+
+        #endregion
+
+        #region Statistics Tests
+
+        [Test]
+        public void LsmTreeStatisticsTest()
+        {
+            var dir = Path.Combine(m_testDir, "stats");
+            var options = new LsmOptions 
+            { 
+                EnableWal = false,
+                MemTableSizeLimit = 100,
+                Level0CompactionTrigger = 100 // Disable auto-compaction
+            };
+        
+            using var tree = new LsmTreeStore(dir, options);
+            var stats = tree.Statistics;
+            
+            // Initial state
+            Assert.That(stats.Gets, Is.EqualTo(0));
+            Assert.That(stats.Puts, Is.EqualTo(0));
+            Assert.That(stats.Deletes, Is.EqualTo(0));
+            
+            // Puts
+            for (int i = 0; i < 10; i++)
+            {
+                tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i * 10));
+            }
+            Assert.That(stats.Puts, Is.EqualTo(10));
+            Assert.That(stats.BytesWritten, Is.GreaterThan(0));
+            
+            // Gets
+            for (int i = 0; i < 5; i++)
+            {
+                tree.Get(BitConverter.GetBytes(i));
+            }
+            Assert.That(stats.Gets, Is.EqualTo(5));
+            
+            // Deletes
+            tree.Delete(BitConverter.GetBytes(0));
+            tree.Delete(BitConverter.GetBytes(1));
+            Assert.That(stats.Deletes, Is.EqualTo(2));
+            
+            // Scan
+            tree.Scan(null, null).ToList();
+            Assert.That(stats.Scans, Is.EqualTo(1));
+            
+            // Flush
+            tree.Flush();
+            Assert.That(stats.Flushes, Is.GreaterThanOrEqualTo(1));
+            
+            // Snapshot
+            var snapshot = stats.GetSnapshot();
+            Assert.That(snapshot.Gets, Is.EqualTo(5));
+            Assert.That(snapshot.Puts, Is.EqualTo(10));
+            
+            // Reset
+            stats.Reset();
+            Assert.That(stats.Gets, Is.EqualTo(0));
+            Assert.That(stats.Puts, Is.EqualTo(0));
         }
 
         #endregion
