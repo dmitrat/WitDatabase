@@ -5,7 +5,8 @@ namespace OutWit.Database.Core.Tests.Stores;
 
 /// <summary>
 /// Parameterized tests for IKeyValueStore that run against all storage implementations.
-/// Uses TestCaseSource to run each test with Memory, File, EncryptedMemory, and EncryptedFile storage.
+/// Uses TestCaseSource to run each test with Memory, File, EncryptedMemory, EncryptedFile, 
+/// LSM, and EncryptedLSM storage.
 /// </summary>
 [TestFixture]
 public class KeyValueStoreParameterizedTests
@@ -80,8 +81,12 @@ public class KeyValueStoreParameterizedTests
         }
     }
 
+    /// <summary>
+    /// Tests delete behavior for non-existent keys.
+    /// Note: LSM-Tree always returns true (writes tombstone), BTree returns false.
+    /// </summary>
     [Test]
-    [TestCaseSource(typeof(StorageFactorySource), nameof(StorageFactorySource.AllStorages))]
+    [TestCaseSource(typeof(StorageFactorySource), nameof(StorageFactorySource.AllBTreeStorages))]
     public void DeleteNonExistentReturnsFalseTest(IStorageFactory factory)
     {
         using (factory)
@@ -91,6 +96,24 @@ public class KeyValueStoreParameterizedTests
             var deleted = store.Delete("missing"u8);
             
             Assert.That(deleted, Is.False);
+        }
+    }
+
+    /// <summary>
+    /// LSM-Tree specific: Delete always returns true because it writes a tombstone.
+    /// </summary>
+    [Test]
+    [TestCaseSource(typeof(StorageFactorySource), nameof(StorageFactorySource.AllLsmStorages))]
+    public void DeleteNonExistentReturnsTrueForLsmTest(IStorageFactory factory)
+    {
+        using (factory)
+        {
+            using var store = factory.CreateStore();
+            
+            var deleted = store.Delete("missing"u8);
+            
+            // LSM writes tombstone regardless of key existence
+            Assert.That(deleted, Is.True);
         }
     }
 
