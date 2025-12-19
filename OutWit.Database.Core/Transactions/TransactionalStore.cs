@@ -15,7 +15,7 @@ public sealed class TransactionalStore : ITransactionalStore
     private readonly IKeyValueStore m_store;
     private readonly ITransactionJournal? m_journal;
     private readonly LockManager? m_lockManager;
-    public readonly bool _ownsStore;
+    private readonly bool m_ownsStore;
     private readonly object m_txLock = new();
     private readonly HashSet<Transaction> m_activeTransactions = new();
     private long m_nextTransactionId = 1;
@@ -53,7 +53,7 @@ public sealed class TransactionalStore : ITransactionalStore
         m_store = store ?? throw new ArgumentNullException(nameof(store));
         m_journal = journal;
         m_lockManager = lockManager;
-        _ownsStore = ownsStore;
+        m_ownsStore = ownsStore;
 
         // Recover any uncommitted transactions
         if (m_journal != null)
@@ -375,7 +375,7 @@ public sealed class TransactionalStore : ITransactionalStore
         m_journal?.Dispose();
         m_lockManager?.Dispose();
 
-        if (_ownsStore)
+        if (m_ownsStore)
         {
             m_store.Dispose();
         }

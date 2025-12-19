@@ -4,6 +4,9 @@ namespace OutWit.Database.Core.Concurrency
     /// Provides thread-safe database locking with configurable timeout.
     /// Supports shared (read) and exclusive (write) locks.
     /// Includes both synchronous and asynchronous APIs.
+    /// 
+    /// Uses a unified SemaphoreSlim-based implementation for both sync and async paths
+    /// to ensure consistent behavior and avoid potential race conditions.
     /// </summary>
     public sealed class DatabaseLock : IDisposable
     {
@@ -18,11 +21,13 @@ namespace OutWit.Database.Core.Concurrency
 
         #region Fields
 
+        // Unified locking using SemaphoreSlim (supports both sync and async)
         private readonly SemaphoreSlim m_writeSemaphore = new(1, 1);
-        private readonly SemaphoreSlim m_readCountLock = new(1, 1);
-        private readonly ReaderWriterLockSlim m_syncLock;
+        private readonly SemaphoreSlim m_readerCountLock = new(1, 1);
         private readonly TimeSpan m_lockTimeout;
         private int m_readerCount;
+        private int m_waitingWriters;
+        private int m_waitingReaders;
         private bool m_disposed;
 
         #endregion
@@ -36,7 +41,6 @@ namespace OutWit.Database.Core.Concurrency
         public DatabaseLock(TimeSpan? lockTimeout = null)
         {
             m_lockTimeout = lockTimeout ?? DEFAULT_TIMEOUT;
-            m_syncLock = new ReaderWriterLockSlim(LockRecursionPolicy.SupportsRecursion);
         }
 
         #endregion
@@ -52,11 +56,39 @@ namespace OutWit.Database.Core.Concurrency
         public IDisposable AcquireReadLock()
         {
             ThrowIfDisposed();
-        
-            if (!m_syncLock.TryEnterReadLock(m_lockTimeout))
-                throw new TimeoutException($"Could not acquire read lock within {m_lockTimeout.TotalSeconds:F1} seconds. Database is locked.");
-        
-            return new LockHandleSync(() => m_syncLock.ExitReadLock());
+            Interlocked.Increment(ref m_waitingReaders);
+            
+            try
+            {
+                if (!m_readerCountLock.Wait(m_lockTimeout))
+                    throw new TimeoutException($"Could not acquire read lock within {m_lockTimeout.TotalSeconds:F1} seconds. Database is locked.");
+                
+                try
+                {
+                    m_readerCount++;
+                    if (m_readerCount == 1)
+                    {
+                        // First reader blocks writers
+                        if (!m_writeSemaphore.Wait(m_lockTimeout))
+                        {
+                            m_readerCount--;
+                            throw new TimeoutException($"Could not acquire read lock within {m_lockTimeout.TotalSeconds:F1} seconds. Database is locked.");
+                        }
+                    }
+                }
+                finally
+                {
+                    m_readerCountLock.Release();
+                }
+                
+                Interlocked.Decrement(ref m_waitingReaders);
+                return new LockHandleSync(ReleaseReadLock);
+            }
+            catch
+            {
+                Interlocked.Decrement(ref m_waitingReaders);
+                throw;
+            }
         }
 
         /// <summary>
@@ -67,13 +99,14 @@ namespace OutWit.Database.Core.Concurrency
         public async Task<IAsyncDisposable> AcquireReadLockAsync(CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
+            Interlocked.Increment(ref m_waitingReaders);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(m_lockTimeout);
 
             try
             {
-                await m_readCountLock.WaitAsync(cts.Token).ConfigureAwait(false);
+                await m_readerCountLock.WaitAsync(cts.Token).ConfigureAwait(false);
                 try
                 {
                     m_readerCount++;
@@ -85,29 +118,55 @@ namespace OutWit.Database.Core.Concurrency
                 }
                 finally
                 {
-                    m_readCountLock.Release();
+                    m_readerCountLock.Release();
                 }
 
-                return new LockHandleAsync(async () =>
-                {
-                    await m_readCountLock.WaitAsync().ConfigureAwait(false);
-                    try
-                    {
-                        m_readerCount--;
-                        if (m_readerCount == 0)
-                        {
-                            m_writeSemaphore.Release();
-                        }
-                    }
-                    finally
-                    {
-                        m_readCountLock.Release();
-                    }
-                });
+                Interlocked.Decrement(ref m_waitingReaders);
+                return new LockHandleAsync(ReleaseReadLockAsync);
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                Interlocked.Decrement(ref m_waitingReaders);
                 throw new TimeoutException($"Could not acquire read lock within {m_lockTimeout.TotalSeconds:F1} seconds. Database is locked.");
+            }
+            catch
+            {
+                Interlocked.Decrement(ref m_waitingReaders);
+                throw;
+            }
+        }
+
+        private void ReleaseReadLock()
+        {
+            m_readerCountLock.Wait();
+            try
+            {
+                m_readerCount--;
+                if (m_readerCount == 0)
+                {
+                    m_writeSemaphore.Release();
+                }
+            }
+            finally
+            {
+                m_readerCountLock.Release();
+            }
+        }
+
+        private async ValueTask ReleaseReadLockAsync()
+        {
+            await m_readerCountLock.WaitAsync().ConfigureAwait(false);
+            try
+            {
+                m_readerCount--;
+                if (m_readerCount == 0)
+                {
+                    m_writeSemaphore.Release();
+                }
+            }
+            finally
+            {
+                m_readerCountLock.Release();
             }
         }
 
@@ -124,13 +183,22 @@ namespace OutWit.Database.Core.Concurrency
         public IDisposable AcquireWriteLock()
         {
             ThrowIfDisposed();
-        
-            if (!m_syncLock.TryEnterWriteLock(m_lockTimeout))
-                throw new TimeoutException($"Could not acquire write lock within {m_lockTimeout.TotalSeconds:F1} seconds. Database is locked.");
-        
-            return new LockHandleSync(() => m_syncLock.ExitWriteLock());
+            Interlocked.Increment(ref m_waitingWriters);
+            
+            try
+            {
+                if (!m_writeSemaphore.Wait(m_lockTimeout))
+                    throw new TimeoutException($"Could not acquire write lock within {m_lockTimeout.TotalSeconds:F1} seconds. Database is locked.");
+                
+                Interlocked.Decrement(ref m_waitingWriters);
+                return new LockHandleSync(() => m_writeSemaphore.Release());
+            }
+            catch
+            {
+                Interlocked.Decrement(ref m_waitingWriters);
+                throw;
+            }
         }
-
 
         /// <summary>
         /// Acquires an exclusive (write) lock asynchronously.
@@ -140,6 +208,7 @@ namespace OutWit.Database.Core.Concurrency
         public async Task<IAsyncDisposable> AcquireWriteLockAsync(CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
+            Interlocked.Increment(ref m_waitingWriters);
 
             using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
             cts.CancelAfter(m_lockTimeout);
@@ -147,6 +216,7 @@ namespace OutWit.Database.Core.Concurrency
             try
             {
                 await m_writeSemaphore.WaitAsync(cts.Token).ConfigureAwait(false);
+                Interlocked.Decrement(ref m_waitingWriters);
                 return new LockHandleAsync(() =>
                 {
                     m_writeSemaphore.Release();
@@ -155,26 +225,14 @@ namespace OutWit.Database.Core.Concurrency
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested)
             {
+                Interlocked.Decrement(ref m_waitingWriters);
                 throw new TimeoutException($"Could not acquire write lock within {m_lockTimeout.TotalSeconds:F1} seconds. Database is locked.");
             }
-        }
-
-        #endregion
-
-        #region Functions
-
-        /// <summary>
-        /// Acquires an upgradeable read lock.
-        /// Can be upgraded to write lock without releasing.
-        /// </summary>
-        public IDisposable AcquireUpgradeableReadLock()
-        {
-            ThrowIfDisposed();
-        
-            if (!m_syncLock.TryEnterUpgradeableReadLock(m_lockTimeout))
-                throw new TimeoutException($"Could not acquire upgradeable lock within {m_lockTimeout.TotalSeconds:F1} seconds. Database is locked.");
-        
-            return new LockHandleSync(() => m_syncLock.ExitUpgradeableReadLock());
+            catch
+            {
+                Interlocked.Decrement(ref m_waitingWriters);
+                throw;
+            }
         }
 
         #endregion
@@ -194,9 +252,8 @@ namespace OutWit.Database.Core.Concurrency
         {
             if (m_disposed) return;
             m_disposed = true;
-            m_syncLock.Dispose();
             m_writeSemaphore.Dispose();
-            m_readCountLock.Dispose();
+            m_readerCountLock.Dispose();
         }
 
         #endregion
@@ -206,22 +263,22 @@ namespace OutWit.Database.Core.Concurrency
         /// <summary>
         /// Gets the current number of threads waiting to acquire a read lock.
         /// </summary>
-        public int WaitingReadCount => m_syncLock.WaitingReadCount;
+        public int WaitingReadCount => Volatile.Read(ref m_waitingReaders);
 
         /// <summary>
         /// Gets the current number of threads waiting to acquire a write lock.
         /// </summary>
-        public int WaitingWriteCount => m_syncLock.WaitingWriteCount;
+        public int WaitingWriteCount => Volatile.Read(ref m_waitingWriters);
 
         /// <summary>
         /// Gets whether any thread holds a read lock.
         /// </summary>
-        public bool IsReadLockHeld => m_syncLock.IsReadLockHeld;
+        public bool IsReadLockHeld => Volatile.Read(ref m_readerCount) > 0;
 
         /// <summary>
         /// Gets whether any thread holds a write lock.
         /// </summary>
-        public bool IsWriteLockHeld => m_syncLock.IsWriteLockHeld;
+        public bool IsWriteLockHeld => m_writeSemaphore.CurrentCount == 0 && Volatile.Read(ref m_readerCount) == 0;
 
         #endregion
 

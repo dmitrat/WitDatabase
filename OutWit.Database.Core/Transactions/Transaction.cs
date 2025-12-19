@@ -10,6 +10,12 @@ namespace OutWit.Database.Core.Transactions
     /// </summary>
     public sealed class Transaction : ITransaction
     {
+        #region Constants
+
+        private static readonly TimeSpan ASYNC_DISPOSE_TIMEOUT = TimeSpan.FromSeconds(5);
+
+        #endregion
+
         #region Fields
 
         private readonly TransactionalStore m_store;
@@ -190,9 +196,7 @@ namespace OutWit.Database.Core.Transactions
             }
             finally
             {
-                m_store.NotifyTransactionComplete(this);
-                m_syncLockHandle?.Dispose();
-                m_asyncLockHandle?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                ReleaseLocks();
             }
         }
 
@@ -223,12 +227,7 @@ namespace OutWit.Database.Core.Transactions
             }
             finally
             {
-                m_store.NotifyTransactionComplete(this);
-                m_syncLockHandle?.Dispose();
-                if (m_asyncLockHandle != null)
-                {
-                    await m_asyncLockHandle.DisposeAsync().ConfigureAwait(false);
-                }
+                await ReleaseLocksAsync().ConfigureAwait(false);
             }
         }
 
@@ -250,9 +249,7 @@ namespace OutWit.Database.Core.Transactions
             }
             finally
             {
-                m_store.NotifyTransactionComplete(this);
-                m_syncLockHandle?.Dispose();
-                m_asyncLockHandle?.DisposeAsync().AsTask().GetAwaiter().GetResult();
+                ReleaseLocks();
             }
         }
 
@@ -270,12 +267,7 @@ namespace OutWit.Database.Core.Transactions
             }
             finally
             {
-                m_store.NotifyTransactionComplete(this);
-                m_syncLockHandle?.Dispose();
-                if (m_asyncLockHandle != null)
-                {
-                    await m_asyncLockHandle.DisposeAsync().ConfigureAwait(false);
-                }
+                await ReleaseLocksAsync().ConfigureAwait(false);
             }
         }
 
@@ -287,6 +279,52 @@ namespace OutWit.Database.Core.Transactions
         {
             if (State != TransactionState.Active)
                 throw new InvalidOperationException($"Transaction is {State}, not Active");
+        }
+
+        /// <summary>
+        /// Releases locks synchronously. Safe to call from sync context.
+        /// Uses Task.Run with timeout to avoid deadlocks when disposing async handles.
+        /// </summary>
+        private void ReleaseLocks()
+        {
+            m_store.NotifyTransactionComplete(this);
+            m_syncLockHandle?.Dispose();
+            
+            // Safely dispose async handle from sync context
+            if (m_asyncLockHandle != null)
+            {
+                try
+                {
+                    // Use Task.Run to avoid capturing sync context and potential deadlock
+                    var disposeTask = Task.Run(async () => 
+                        await m_asyncLockHandle.DisposeAsync().ConfigureAwait(false));
+                    
+                    // Wait with timeout to prevent hanging
+                    if (!disposeTask.Wait(ASYNC_DISPOSE_TIMEOUT))
+                    {
+                        // Log warning but don't throw - lock will be released eventually
+                        // or process will terminate
+                    }
+                }
+                catch (AggregateException)
+                {
+                    // Ignore dispose exceptions - best effort cleanup
+                }
+            }
+        }
+
+        /// <summary>
+        /// Releases locks asynchronously.
+        /// </summary>
+        private async ValueTask ReleaseLocksAsync()
+        {
+            m_store.NotifyTransactionComplete(this);
+            m_syncLockHandle?.Dispose();
+            
+            if (m_asyncLockHandle != null)
+            {
+                await m_asyncLockHandle.DisposeAsync().ConfigureAwait(false);
+            }
         }
 
         #endregion
