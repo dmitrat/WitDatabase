@@ -13,6 +13,11 @@ namespace OutWit.Database.Core.Storage
         private const int INITIAL_CAPACITY_PAGES = 16;
         private const double GROWTH_FACTOR = 1.5;
 
+        /// <summary>
+        /// Provider key for memory storage.
+        /// </summary>
+        public const string PROVIDER_KEY = "memory";
+
         #endregion
 
         #region Fields
@@ -200,6 +205,9 @@ namespace OutWit.Database.Core.Storage
 
         /// <inheritdoc/>
         public bool IsReadOnly => false;
+
+        /// <inheritdoc/>
+        public string ProviderKey => PROVIDER_KEY;
 
         /// <summary>
         /// Gets a read-only view of the underlying data for testing purposes.

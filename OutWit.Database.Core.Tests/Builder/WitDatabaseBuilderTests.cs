@@ -700,6 +700,8 @@ public class WitDatabaseBuilderTests
         public ValueTask FlushAsync(CancellationToken cancellationToken = default)
             => ValueTask.CompletedTask;
 
+        public string ProviderKey => "test-inmemory";
+
         public void Dispose() { }
     }
 

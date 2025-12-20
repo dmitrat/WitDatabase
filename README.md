@@ -29,6 +29,12 @@ A high-performance embedded key-value database for .NET with support for multipl
 - ?? **Fluent API**
   - Easy configuration with builder pattern
   - Extensible via extension methods
+  - Simple static factory methods
+
+- ?? **Provider System**
+  - Pluggable storage, encryption, cache, and journal providers
+  - Auto-detection of settings when reopening databases
+  - Easy registration of custom providers
 
 ## Installation
 
@@ -42,16 +48,32 @@ dotnet add package OutWit.Database.Core.BouncyCastle
 
 ## Quick Start
 
-### Basic Usage
+### Simplest Usage (Static Factory Methods)
 
 ```csharp
 using OutWit.Database.Core.Builder;
 
-// Create a simple encrypted database
-using var db = new WitDatabaseBuilder()
-    .WithFilePath("mydata.db")
-    .WithEncryption("my-password")
-    .Build();
+// Create a new database
+using var db = WitDatabase.Create("mydata.db");
+
+// Or open existing (auto-detects settings!)
+using var db = WitDatabase.Open("mydata.db");
+
+// Create or open (most common)
+using var db = WitDatabase.CreateOrOpen("mydata.db");
+
+// With encryption
+using var db = WitDatabase.Create("secure.db", "my-password");
+using var db = WitDatabase.Open("secure.db", "my-password");
+
+// In-memory (for testing)
+using var db = WitDatabase.CreateInMemory();
+```
+
+### Basic Operations
+
+```csharp
+using var db = WitDatabase.CreateOrOpen("mydata.db");
 
 // Store data
 db.Put("user:1"u8, """{"name": "John", "age": 30}"""u8);
@@ -72,10 +94,7 @@ foreach (var (key, val) in db.Scan("user:"u8.ToArray(), "user:\xff"u8.ToArray())
 ### With Transactions
 
 ```csharp
-using var db = new WitDatabaseBuilder()
-    .WithFilePath("mydata.db")
-    .WithTransactions()
-    .Build();
+using var db = WitDatabase.CreateOrOpen("mydata.db");
 
 // Explicit transaction
 using (var tx = db.BeginTransaction())
@@ -93,11 +112,22 @@ await using (var tx = await db.BeginTransactionAsync())
 }
 ```
 
-### LSM-Tree Engine
+### Full Configuration (Builder Pattern)
 
 ```csharp
-// LSM-Tree is better for write-heavy workloads
+using OutWit.Database.Core.Builder;
+
+// Create a database with custom settings
 using var db = new WitDatabaseBuilder()
+    .WithFilePath("mydata.db")
+    .WithBTree()
+    .WithEncryption("my-password")
+    .WithTransactions()
+    .WithFileLocking()
+    .Build();
+
+// Advanced settings for LSM-Tree
+using var lsmDb = new WitDatabaseBuilder()
     .WithLsmTree("/data/lsm", opts =>
     {
         opts.EnableWal = true;
@@ -120,16 +150,6 @@ using OutWit.Database.Core.BouncyCastle;
 using var db = new WitDatabaseBuilder()
     .WithFilePath("secure.db")
     .WithBouncyCastleEncryption("my-password")
-    .Build();
-```
-
-### User/Password Authentication
-
-```csharp
-// Useful for connection strings
-using var db = new WitDatabaseBuilder()
-    .WithFilePath("database.db")
-    .WithEncryption("admin", "secret-password")
     .Build();
 ```
 
@@ -178,6 +198,83 @@ using var db = new WitDatabaseBuilder()
 | `WithPageSize(int)` | Set page size (default: 4096) |
 | `WithCacheSize(int)` | Set cache size in pages |
 
+## Provider System
+
+WitDatabase uses a pluggable provider system for extensibility. All providers implement `IProvider` interface.
+
+### Built-in Providers
+
+| Type | Provider Keys | Description |
+|------|---------------|-------------|
+| `IStorage` | `file`, `memory`, `encrypted` | Storage backends |
+| `IKeyValueStore` | `btree`, `lsm`, `inmemory` | Storage engines |
+| `ICryptoProvider` | `aes-gcm` | Encryption algorithms |
+| `IPageCache` | `clock`, `lru` | Page caching strategies |
+| `ITransactionJournal` | `rollback`, `wal` | Transaction journals |
+
+### BouncyCastle Extension
+
+| Type | Provider Keys | Description |
+|------|---------------|-------------|
+| `ICryptoProvider` | `chacha20-poly1305` | ChaCha20-Poly1305 encryption |
+
+### Registering Custom Providers
+
+```csharp
+using OutWit.Database.Core.Providers;
+
+// Register a custom crypto provider
+ProviderRegistry.Instance.Register<ICryptoProvider>("my-crypto", 
+    parameters => new MyCryptoProvider(parameters.GetRequired<byte[]>("key")));
+
+// Use it via the registry
+var crypto = ProviderRegistry.Instance.Create<ICryptoProvider>("my-crypto",
+    new ProviderParameters().Set("key", myKey));
+
+// Or list all registered providers
+var keys = ProviderRegistry.Instance.GetRegisteredKeys<ICryptoProvider>();
+// Returns: ["aes-gcm", "chacha20-poly1305", "my-crypto"]
+```
+
+### Auto-Detection on Open
+
+When opening an existing database, WitDatabase automatically reads stored settings:
+
+```csharp
+// Database created with specific settings
+using (var db = new WitDatabaseBuilder()
+    .WithFilePath("data.db")
+    .WithBTree()
+    .WithTransactions()
+    .WithFileLocking()
+    .Build())
+{
+    db.Put("key"u8, "value"u8);
+}
+
+// Later: Open() auto-detects settings from header
+using var db = WitDatabase.Open("data.db");
+// Transactions, FileLocking settings are restored automatically!
+
+// Inspect database without opening
+var info = WitDatabase.GetDatabaseInfo("data.db");
+Console.WriteLine($"Store: {info.StoreProvider}");           // "btree"
+Console.WriteLine($"Encrypted: {info.RequiresEncryption}");  // false
+Console.WriteLine($"Transactions: {info.HasTransactions}");  // true
+```
+
+### Settings Persisted in Header
+
+| Setting | Persisted | Notes |
+|---------|-----------|-------|
+| Store type (btree/lsm) | ? | Auto-detected on reopen |
+| Encryption enabled | ? | Throws if password not provided |
+| Encryption provider | ? | e.g., "aes-gcm" |
+| Transactions enabled | ? | Auto-detected on reopen |
+| File locking enabled | ? | Auto-detected on reopen |
+| Page size | ? | Mismatch throws exception |
+| Cache type/size | ? | Can be changed on reopen |
+
 ## Architecture
 
 ```
@@ -197,6 +294,9 @@ using var db = new WitDatabaseBuilder()
 ?      ?    IStorage      ?    ?MemTable+SSTables ?              ?
 ?      ? File/Memory/Enc  ?    ?  +WAL+BloomFilter?              ?
 ?      ????????????????????    ????????????????????              ?
+???????????????????????????????????????????????????????????????????
+?                     ProviderRegistry                            ?
+?          (Pluggable providers for all components)               ?
 ???????????????????????????????????????????????????????????????????
 ```
 
@@ -219,8 +319,8 @@ using var db = new WitDatabaseBuilder()
 
 | Provider | Algorithm | Use Case |
 |----------|-----------|----------|
-| `AesGcmCryptoProvider` | AES-256-GCM | Standard (hardware accelerated) |
-| `BouncyCastleCryptoProvider` | ChaCha20-Poly1305 | Blazor WASM, ARM without AES-NI |
+| `aes-gcm` | AES-256-GCM | Standard (hardware accelerated) |
+| `chacha20-poly1305` | ChaCha20-Poly1305 | Blazor WASM, ARM without AES-NI |
 
 ## Thread Safety
 
@@ -252,6 +352,7 @@ Typical performance on modern hardware:
 WitDatabase/
 ??? OutWit.Database.Core/           # Main library
 ?   ??? Builder/                    # Fluent API
+?   ??? Providers/                  # Provider system
 ?   ??? Tree/                       # B-Tree implementation
 ?   ??? LSM/                        # LSM-Tree components
 ?   ??? Storage/                    # Storage implementations
@@ -273,6 +374,7 @@ dotnet test
 dotnet test --filter "FullyQualifiedName~Builder"
 dotnet test --filter "FullyQualifiedName~Encryption"
 dotnet test --filter "FullyQualifiedName~Transaction"
+dotnet test --filter "FullyQualifiedName~Provider"
 ```
 
 ## Running Benchmarks
@@ -297,6 +399,17 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 5. Open a Pull Request
 
 ## Changelog
+
+### v1.1.0 (Current)
+
+- **Provider System**: Pluggable architecture for all components
+  - `ProviderRegistry` for centralized provider management
+  - Auto-registration via `[ModuleInitializer]`
+  - `IProvider` base interface for all providers
+- **Auto-Detection**: `WitDatabase.Open()` auto-detects settings from header
+- **Database Info**: `WitDatabase.GetDatabaseInfo()` to inspect without opening
+- **Configuration Validation**: Detects mismatched settings on reopen
+- **ProviderMetadata**: Stored in database header for persistence
 
 ### v1.0.0
 

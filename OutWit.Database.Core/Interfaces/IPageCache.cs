@@ -4,8 +4,10 @@ namespace OutWit.Database.Core.Interfaces;
 /// Interface for page cache implementations.
 /// Implement this interface to provide custom caching strategies.
 /// </summary>
-public interface IPageCache : IDisposable
+public interface IPageCache : IProvider, IDisposable
 {
+    #region Functions
+
     /// <summary>
     /// Gets a page from the cache, loading from storage if necessary.
     /// </summary>
@@ -46,6 +48,10 @@ public interface IPageCache : IDisposable
     /// </summary>
     void Clear();
 
+    #endregion
+
+    #region Properties
+
     /// <summary>
     /// Gets the current number of cached pages.
     /// </summary>
@@ -55,4 +61,15 @@ public interface IPageCache : IDisposable
     /// Gets the number of dirty pages in the cache.
     /// </summary>
     int DirtyCount { get; }
+
+    /// <summary>
+    /// Gets the unique provider key identifying this cache implementation.
+    /// Used for validation when opening existing databases.
+    /// </summary>
+    /// <example>
+    /// "lru" for LRU cache, "clock" for sharded clock cache.
+    /// </example>
+    string ProviderKey { get; }
+
+    #endregion
 }

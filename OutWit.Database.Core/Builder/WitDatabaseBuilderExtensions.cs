@@ -1,3 +1,4 @@
+using OutWit.Database.Core.Encryption;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.LSM;
 using OutWit.Database.Core.Providers;
@@ -91,6 +92,19 @@ public static class WitDatabaseBuilderExtensions
     }
 
     /// <summary>
+    /// Use LSM-Tree storage engine with the specified directory and custom options.
+    /// </summary>
+    public static WitDatabaseBuilder WithLsmTree(this WitDatabaseBuilder builder, string directory, Action<LsmOptions> configure)
+    {
+        builder.Options.UseLsmTree = true;
+        builder.Options.UseBTree = false;
+        builder.Options.LsmDirectory = directory;
+        builder.Options.LsmOptions = new LsmOptions();
+        configure(builder.Options.LsmOptions);
+        return builder;
+    }
+
+    /// <summary>
     /// Use a custom key-value store implementation.
     /// </summary>
     public static WitDatabaseBuilder WithStore(this WitDatabaseBuilder builder, IKeyValueStore store)
@@ -117,7 +131,7 @@ public static class WitDatabaseBuilderExtensions
         var salt = CryptoUtils.DerivePasswordSalt(password);
         var key = CryptoUtils.DeriveKey(password, salt);
         
-        builder.Options.CryptoProvider = new CryptoProviderAesGcm(key);
+        builder.Options.CryptoProvider = new EncryptorProviderAesGcm(key);
         builder.Options.EncryptionSalt = salt;
         return builder;
     }
@@ -139,7 +153,7 @@ public static class WitDatabaseBuilderExtensions
         var salt = CryptoUtils.DeriveUserSalt(user);
         var key = CryptoUtils.DeriveKey(password, salt);
         
-        builder.Options.CryptoProvider = new CryptoProviderAesGcm(key);
+        builder.Options.CryptoProvider = new EncryptorProviderAesGcm(key);
         builder.Options.EncryptionSalt = salt;
         return builder;
     }
@@ -152,7 +166,7 @@ public static class WitDatabaseBuilderExtensions
         if (key.Length != 32)
             throw new ArgumentException("AES-256 requires a 32-byte key", nameof(key));
         
-        builder.Options.CryptoProvider = new CryptoProviderAesGcm(key);
+        builder.Options.CryptoProvider = new EncryptorProviderAesGcm(key);
         return builder;
     }
 
@@ -166,7 +180,7 @@ public static class WitDatabaseBuilderExtensions
         if (salt.Length < 8)
             throw new ArgumentException("Salt must be at least 8 bytes", nameof(salt));
         
-        builder.Options.CryptoProvider = new CryptoProviderAesGcm(key);
+        builder.Options.CryptoProvider = new EncryptorProviderAesGcm(key);
         builder.Options.EncryptionSalt = salt;
         return builder;
     }

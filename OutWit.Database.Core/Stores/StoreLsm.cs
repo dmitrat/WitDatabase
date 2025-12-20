@@ -12,6 +12,15 @@ namespace OutWit.Database.Core.Stores
     /// </summary>
     public sealed class StoreLsm : IKeyValueStore
     {
+        #region Constants
+
+        /// <summary>
+        /// Provider key for LSM-Tree store.
+        /// </summary>
+        public const string PROVIDER_KEY = "lsm";
+
+        #endregion
+
         #region Fields
 
         private readonly string m_directory;
@@ -718,6 +727,9 @@ namespace OutWit.Database.Core.Stores
         /// Gets the statistics for this LSM-Tree.
         /// </summary>
         public LsmStatistics Statistics => m_statistics;
+
+        /// <inheritdoc/>
+        public string ProviderKey => PROVIDER_KEY;
 
         #endregion
     }

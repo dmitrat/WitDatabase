@@ -18,6 +18,11 @@ public sealed class PageCacheShardedClock : IPageCache
     private const int DEFAULT_SHARD_COUNT = 16;
     private const int MIN_PAGES_PER_SHARD = 4;
 
+    /// <summary>
+    /// Provider key for sharded clock cache.
+    /// </summary>
+    public const string PROVIDER_KEY = "clock";
+
     #endregion
 
     #region Nested Types
@@ -538,6 +543,9 @@ public sealed class PageCacheShardedClock : IPageCache
     /// Gets the number of shards.
     /// </summary>
     public int ShardCount => m_shards.Length;
+
+    /// <inheritdoc/>
+    public string ProviderKey => PROVIDER_KEY;
 
     #endregion
 }

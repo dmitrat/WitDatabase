@@ -8,7 +8,7 @@ namespace OutWit.Database.Core.Tests.Encryption;
 /// Tests for PageEncryptor - basic round-trip, nonce uniqueness, and edge cases.
 /// </summary>
 [TestFixture]
-public class PageEncryptorTests
+public class EncryptorPageTests
 {
     private byte[] m_key = null!;
     private byte[] m_salt = null!;
@@ -25,8 +25,8 @@ public class PageEncryptorTests
     [Test]
     public void EncryptDecryptRoundTripTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
         
         byte[] plaintext = new byte[4096];
         Random.Shared.NextBytes(plaintext);
@@ -50,8 +50,8 @@ public class PageEncryptorTests
     [TestCase(65536)]
     public void EncryptDecryptVariousSizesTest(int size)
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
         
         byte[] plaintext = new byte[size];
         Random.Shared.NextBytes(plaintext);
@@ -69,8 +69,8 @@ public class PageEncryptorTests
     [Test]
     public void EncryptDecryptEmptyPlaintextTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
         
         byte[] plaintext = [];
         byte[] ciphertext = new byte[encryptor.Overhead];
@@ -89,8 +89,8 @@ public class PageEncryptorTests
     [Test]
     public void EncryptDifferentPageNumbersProducesDifferentCiphertextTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[4096];
         Random.Shared.NextBytes(plaintext);
@@ -109,8 +109,8 @@ public class PageEncryptorTests
     {
         // With monotonic counter, encrypting same page twice produces different ciphertext
         // This is critical for AES-GCM security - nonce must never repeat!
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -140,8 +140,8 @@ public class PageEncryptorTests
     [Test]
     public void EncryptDecryptEdgePageNumbersTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -168,8 +168,8 @@ public class PageEncryptorTests
     [Test]
     public void OverheadIsCorrectTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         Assert.That(encryptor.Overhead, Is.EqualTo(28)); // 12 nonce + 16 tag
     }
@@ -177,8 +177,8 @@ public class PageEncryptorTests
     [Test]
     public void EncryptedSizeIsPlaintextPlusOverheadTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         int[] sizes = [0, 1, 100, 4096, 65536];
 
@@ -200,8 +200,8 @@ public class PageEncryptorTests
     [Test]
     public void EncryptCiphertextBufferTooSmallThrowsTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         byte[] ciphertext = new byte[50]; // Too small
@@ -212,8 +212,8 @@ public class PageEncryptorTests
     [Test]
     public void DecryptPlaintextBufferTooSmallThrowsTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         byte[] ciphertext = new byte[plaintext.Length + encryptor.Overhead];
@@ -228,15 +228,15 @@ public class PageEncryptorTests
     [Test]
     public void ConstructorSaltTooShortThrowsTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        Assert.Throws<ArgumentException>(() => new PageEncryptor(provider, new byte[4]));
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        Assert.Throws<ArgumentException>(() => new EncryptorPage(provider, new byte[4]));
     }
 
     [Test]
     public void AfterDisposeThrowsObjectDisposedExceptionTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        var encryptor = new EncryptorPage(provider, m_salt);
         encryptor.Dispose();
 
         byte[] data = new byte[100];

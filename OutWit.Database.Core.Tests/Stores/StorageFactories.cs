@@ -154,8 +154,8 @@ public class EncryptedMemoryStorageFactory : IStorageFactory
     {
         int physicalPageSize = m_pageSize + 28; // +overhead
         var innerStorage = new StorageMemory(physicalPageSize, m_maxPages);
-        var provider = new CryptoProviderAesGcm(m_key);
-        var encryptor = new PageEncryptor(provider, m_salt);
+        var provider = new EncryptorProviderAesGcm(m_key);
+        var encryptor = new EncryptorPage(provider, m_salt);
         var storage = new StorageEncrypted(innerStorage, encryptor);
         m_disposables.Add(storage);
         return storage;
@@ -210,8 +210,8 @@ public class EncryptedFileStorageFactory : IStorageFactory
         var filePath = Path.Combine(m_testDir, $"test_{Guid.NewGuid():N}.db");
         m_filesToDelete.Add(filePath);
         var innerStorage = new StorageFile(filePath, physicalPageSize);
-        var provider = new CryptoProviderAesGcm(m_key);
-        var encryptor = new PageEncryptor(provider, m_salt);
+        var provider = new EncryptorProviderAesGcm(m_key);
+        var encryptor = new EncryptorPage(provider, m_salt);
         var storage = new StorageEncrypted(innerStorage, encryptor);
         m_disposables.Add(storage);
         return storage;
@@ -319,8 +319,8 @@ public class EncryptedLsmStorageFactory : IStorageFactory
         
         var key = RandomNumberGenerator.GetBytes(32);
         var salt = RandomNumberGenerator.GetBytes(16);
-        var provider = new CryptoProviderAesGcm(key);
-        var encryptor = new BlockEncryptor(provider, salt);
+        var provider = new EncryptorProviderAesGcm(key);
+        var encryptor = new EncryptorBlock(provider, salt);
         
         m_options = new LsmOptions
         {

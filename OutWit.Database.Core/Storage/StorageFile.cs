@@ -9,6 +9,15 @@ namespace OutWit.Database.Core.Storage
     /// </summary>
     public sealed class StorageFile : IStorage
     {
+        #region Constants
+
+        /// <summary>
+        /// Provider key for file storage.
+        /// </summary>
+        public const string PROVIDER_KEY = "file";
+
+        #endregion
+
         #region Fields
 
         private readonly FileStream m_stream;
@@ -291,6 +300,9 @@ namespace OutWit.Database.Core.Storage
 
         /// <inheritdoc/>
         public bool IsReadOnly => m_isReadOnly;
+
+        /// <inheritdoc/>
+        public string ProviderKey => PROVIDER_KEY;
 
         #endregion
     }

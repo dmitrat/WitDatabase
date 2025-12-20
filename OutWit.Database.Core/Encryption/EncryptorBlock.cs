@@ -10,7 +10,7 @@ namespace OutWit.Database.Core.Encryption
     /// 
     /// THREAD-SAFETY: Uses atomic counter for nonce generation.
     /// </summary>
-    public sealed class BlockEncryptor : IBlockEncryptor
+    public sealed class EncryptorBlock : IBlockEncryptor
     {
         #region Fields
 
@@ -23,7 +23,7 @@ namespace OutWit.Database.Core.Encryption
 
         #region Constructors
 
-        public BlockEncryptor(ICryptoProvider crypto, byte[] salt)
+        public EncryptorBlock(ICryptoProvider crypto, byte[] salt)
         {
             if (salt.Length < 8)
                 throw new ArgumentException("Salt must be at least 8 bytes", nameof(salt));

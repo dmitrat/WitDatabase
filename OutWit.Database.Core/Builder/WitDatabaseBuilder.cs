@@ -136,11 +136,37 @@ public sealed class WitDatabaseBuilder
 
     #region Internal Build Methods
 
+    private ProviderMetadata BuildProviderMetadata()
+    {
+        var features = ProviderFeatures.None;
+        
+        if (Options.CryptoProvider != null)
+            features |= ProviderFeatures.Encryption;
+        
+        if (Options.EnableTransactions)
+            features |= ProviderFeatures.Transactions;
+        
+        if (Options.EnableFileLocking)
+            features |= ProviderFeatures.FileLocking;
+
+        return new ProviderMetadata
+        {
+            Features = features,
+            StoreProviderKey = Options.UseLsmTree ? StoreLsm.PROVIDER_KEY : StoreBTree.PROVIDER_KEY,
+            EncryptionProviderKey = Options.CryptoProvider?.ProviderKey ?? "",
+            CacheProviderKey = "clock", // Default cache
+            JournalProviderKey = Options.TransactionJournal?.ProviderKey ?? ""
+        };
+    }
+
     private IKeyValueStore BuildStoreInternal()
     {
         // Use custom store if provided
         if (Options.KeyValueStore != null)
             return Options.KeyValueStore;
+
+        // Build provider metadata for new databases
+        var metadata = BuildProviderMetadata();
 
         // Build LSM-Tree store
         if (Options.UseLsmTree)
@@ -152,15 +178,15 @@ public sealed class WitDatabaseBuilder
             // Add encryption to LSM options if configured
             if (Options.CryptoProvider != null)
             {
-                lsmOptions.Encryptor = new BlockEncryptor(Options.CryptoProvider, Options.EncryptionSalt);
+                lsmOptions.Encryptor = new EncryptorBlock(Options.CryptoProvider, Options.EncryptionSalt);
             }
             
             return new StoreLsm(directory, lsmOptions);
         }
 
-        // Build BTree store - use constructor that owns storage
+        // Build BTree store with provider metadata
         var storage = BuildStorage();
-        return new StoreBTree(storage, Options.CacheSize, ownsStorage: true);
+        return new StoreBTree(storage, Options.CacheSize, ownsStorage: true, metadata);
     }
 
     private IStorage BuildStorage()
@@ -196,7 +222,7 @@ public sealed class WitDatabaseBuilder
         // Wrap with encryption if configured
         if (Options.CryptoProvider != null)
         {
-            var encryptor = new PageEncryptor(Options.CryptoProvider, Options.EncryptionSalt);
+            var encryptor = new EncryptorPage(Options.CryptoProvider, Options.EncryptionSalt);
             return new StorageEncrypted(baseStorage, encryptor);
         }
 

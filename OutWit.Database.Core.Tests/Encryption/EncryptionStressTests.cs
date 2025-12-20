@@ -24,8 +24,8 @@ public class EncryptionStressTests
     [Test]
     public void PageEncryptorEncryptManyPagesAllSucceedTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[4096];
         byte[] ciphertext = new byte[plaintext.Length + encryptor.Overhead];
@@ -46,8 +46,8 @@ public class EncryptionStressTests
     [Test]
     public void PageEncryptorRandomPageAccessAllSucceedTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         var random = new Random(42);
         var pages = new Dictionary<long, (byte[] Plaintext, byte[] Ciphertext)>();
@@ -79,8 +79,8 @@ public class EncryptionStressTests
     [Test]
     public void BlockEncryptorEncryptManyBlocksAllSucceedTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         var random = new Random(42);
 
@@ -101,8 +101,8 @@ public class EncryptionStressTests
     [Test]
     public void BlockEncryptorRandomBlockAccessAllSucceedTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         var random = new Random(42);
         var blocks = new Dictionary<long, (byte[] Plaintext, byte[] Encrypted)>();
@@ -132,8 +132,8 @@ public class EncryptionStressTests
     [Test]
     public void PageEncryptorLargePagesAllSucceedTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         int[] pageSizes = [8192, 16384, 32768, 65536];
 

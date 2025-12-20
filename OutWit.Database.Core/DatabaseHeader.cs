@@ -17,8 +17,7 @@ namespace OutWit.Database.Core;
 /// [36-39]  Transaction counter (for WAL)
 /// [40-43]  Database flags
 /// [44-47]  Checkpoint counter
-/// [48-63]  Reserved for encryption
-/// [64-99]  Reserved for future use
+/// [48-99]  Provider metadata (store, encryption, features)
 /// </remarks>
 public struct DatabaseHeader
 {
@@ -69,6 +68,11 @@ public struct DatabaseHeader
     /// </summary>
     public uint CheckpointCounter;
 
+    /// <summary>
+    /// Provider metadata (store type, encryption, features).
+    /// </summary>
+    public ProviderMetadata Providers;
+
     #endregion
 
     #region Functions
@@ -102,7 +106,8 @@ public struct DatabaseHeader
         BinaryPrimitives.WriteUInt32LittleEndian(buffer[40..], (uint)Flags);
         BinaryPrimitives.WriteUInt32LittleEndian(buffer[44..], CheckpointCounter);
 
-        // Bytes 48-99 are reserved
+        // Provider metadata (bytes 48-99)
+        Providers.WriteTo(buffer);
     }
 
     /// <summary>
@@ -127,7 +132,8 @@ public struct DatabaseHeader
             SchemaRootPage = BinaryPrimitives.ReadUInt32LittleEndian(buffer[32..]),
             TransactionCounter = BinaryPrimitives.ReadUInt32LittleEndian(buffer[36..]),
             Flags = (DatabaseFlags)BinaryPrimitives.ReadUInt32LittleEndian(buffer[40..]),
-            CheckpointCounter = BinaryPrimitives.ReadUInt32LittleEndian(buffer[44..])
+            CheckpointCounter = BinaryPrimitives.ReadUInt32LittleEndian(buffer[44..]),
+            Providers = ProviderMetadata.ReadFrom(buffer)
         };
     }
 
@@ -150,8 +156,19 @@ public struct DatabaseHeader
             SchemaRootPage = 0,
             TransactionCounter = 0,
             Flags = DatabaseFlags.None,
-            CheckpointCounter = 0
+            CheckpointCounter = 0,
+            Providers = ProviderMetadata.CreateDefault()
         };
+    }
+
+    /// <summary>
+    /// Creates a new database header with specified provider metadata.
+    /// </summary>
+    public static DatabaseHeader CreateNew(ushort pageSize, ProviderMetadata providers)
+    {
+        var header = CreateNew(pageSize);
+        header.Providers = providers;
+        return header;
     }
 
     #endregion

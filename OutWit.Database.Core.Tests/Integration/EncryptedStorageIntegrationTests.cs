@@ -41,8 +41,8 @@ public class EncryptedStorageIntegrationTests
     {
         int physicalPageSize = logicalPageSize + 28;
         var innerStorage = new StorageMemory(physicalPageSize, pageCount);
-        var provider = new CryptoProviderAesGcm(m_key);
-        var encryptor = new PageEncryptor(provider, m_salt);
+        var provider = new EncryptorProviderAesGcm(m_key);
+        var encryptor = new EncryptorPage(provider, m_salt);
         return new StorageEncrypted(innerStorage, encryptor);
     }
 
@@ -50,8 +50,8 @@ public class EncryptedStorageIntegrationTests
     {
         int physicalPageSize = logicalPageSize + 28;
         var innerStorage = new StorageFile(filename, physicalPageSize);
-        var provider = new CryptoProviderAesGcm(m_key);
-        var encryptor = new PageEncryptor(provider, m_salt);
+        var provider = new EncryptorProviderAesGcm(m_key);
+        var encryptor = new EncryptorPage(provider, m_salt);
         return new StorageEncrypted(innerStorage, encryptor);
     }
 
@@ -199,8 +199,8 @@ public class EncryptedStorageIntegrationTests
 
         byte[] wrongKey = RandomNumberGenerator.GetBytes(32);
         var innerStorage = new StorageFile(dbPath, 4096 + 28);
-        var provider = new CryptoProviderAesGcm(wrongKey);
-        var encryptor = new PageEncryptor(provider, m_salt);
+        var provider = new EncryptorProviderAesGcm(wrongKey);
+        var encryptor = new EncryptorPage(provider, m_salt);
         using var storage2 = new StorageEncrypted(innerStorage, encryptor);
 
         Assert.Throws<CryptographicException>(() =>

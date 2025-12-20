@@ -4,7 +4,7 @@
     /// Common interface for key-value storage engines.
     /// Implemented by both B+Tree and LSM-Tree.
     /// </summary>
-    public interface IKeyValueStore : IDisposable
+    public interface IKeyValueStore : IProvider, IDisposable
     {
         #region Get
 
@@ -96,6 +96,19 @@
         /// </summary>
         /// <param name="cancellationToken">Cancellation token.</param>
         ValueTask FlushAsync(CancellationToken cancellationToken = default);
+
+        #endregion
+
+        #region Properties
+
+        /// <summary>
+        /// Gets the unique provider key identifying this store implementation.
+        /// Used for validation when opening existing databases.
+        /// </summary>
+        /// <example>
+        /// "btree" for B-Tree store, "lsm" for LSM-Tree store.
+        /// </example>
+        string ProviderKey { get; }
 
         #endregion
     }

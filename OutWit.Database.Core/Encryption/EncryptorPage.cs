@@ -12,7 +12,7 @@ namespace OutWit.Database.Core.Encryption
     /// THREAD-SAFETY: This class uses atomic counter for nonce generation,
     /// making it safe for concurrent use from multiple threads.
     /// </summary>
-    public sealed class PageEncryptor : IPageEncryptor
+    public sealed class EncryptorPage : IPageEncryptor
     {
         #region Fields
 
@@ -25,7 +25,7 @@ namespace OutWit.Database.Core.Encryption
 
         #region Constructors
 
-        public PageEncryptor(ICryptoProvider crypto, byte[] salt)
+        public EncryptorPage(ICryptoProvider crypto, byte[] salt)
         {
             if (salt.Length < 8)
                 throw new ArgumentException("Salt must be at least 8 bytes", nameof(salt));

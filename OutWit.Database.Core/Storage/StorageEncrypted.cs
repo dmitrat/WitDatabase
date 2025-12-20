@@ -18,6 +18,11 @@ namespace OutWit.Database.Core.Storage
         /// </summary>
         private const int MAX_STACK_ALLOC_SIZE = 8192;
 
+        /// <summary>
+        /// Provider key for encrypted storage.
+        /// </summary>
+        public const string PROVIDER_KEY = "encrypted";
+
         #endregion
 
         #region Fields
@@ -301,6 +306,9 @@ namespace OutWit.Database.Core.Storage
 
         /// <inheritdoc/>
         public bool IsReadOnly => m_innerStorage.IsReadOnly;
+
+        /// <inheritdoc/>
+        public string ProviderKey => PROVIDER_KEY;
 
         #endregion
     }

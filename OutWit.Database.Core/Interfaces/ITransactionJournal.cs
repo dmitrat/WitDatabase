@@ -4,8 +4,10 @@ namespace OutWit.Database.Core.Interfaces
     /// Interface for transaction journaling mechanisms.
     /// Provides durability guarantees for transactions.
     /// </summary>
-    public interface ITransactionJournal : IDisposable
+    public interface ITransactionJournal : IProvider, IDisposable
     {
+        #region Functions
+
         /// <summary>
         /// Logs the beginning of a transaction.
         /// </summary>
@@ -46,5 +48,20 @@ namespace OutWit.Database.Core.Interfaces
         /// Creates a checkpoint, truncating the journal.
         /// </summary>
         void Checkpoint();
+
+        #endregion
+
+        #region Properties
+
+        /// <summary>
+        /// Gets the unique provider key identifying this journal implementation.
+        /// Used for validation when opening existing databases.
+        /// </summary>
+        /// <example>
+        /// "rollback" for rollback journal, "wal" for write-ahead log.
+        /// </example>
+        string ProviderKey { get; }
+
+        #endregion
     }
 }

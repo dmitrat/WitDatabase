@@ -37,8 +37,8 @@ public class StorageEncryptedTests
     private StorageEncrypted CreateEncryptedMemoryStorage(int pageSize = 4096, int pageCount = 1000)
     {
         var innerStorage = new StorageMemory(pageSize + 28, pageCount);
-        var provider = new CryptoProviderAesGcm(m_key);
-        var encryptor = new PageEncryptor(provider, m_salt);
+        var provider = new EncryptorProviderAesGcm(m_key);
+        var encryptor = new EncryptorPage(provider, m_salt);
         return new StorageEncrypted(innerStorage, encryptor);
     }
 
@@ -159,8 +159,8 @@ public class StorageEncryptedTests
     {
         int innerPageSize = 4096 + 28;
         using var innerStorage = new StorageMemory(innerPageSize, 100);
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
         using var storage = new StorageEncrypted(innerStorage, encryptor);
 
         Assert.That(storage.PageSize, Is.EqualTo(4096));
@@ -220,8 +220,8 @@ public class StorageEncryptedTests
     {
         int pageSize = DatabaseConstants.MAX_PAGE_SIZE - 28;
         using var innerStorage = new StorageMemory(DatabaseConstants.MAX_PAGE_SIZE, 10);
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
         using var storage = new StorageEncrypted(innerStorage, encryptor);
 
         Assert.That(storage.PageSize, Is.EqualTo(pageSize));

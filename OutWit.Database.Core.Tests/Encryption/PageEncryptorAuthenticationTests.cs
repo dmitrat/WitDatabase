@@ -23,8 +23,8 @@ public class PageEncryptorAuthenticationTests
     [Test]
     public void DecryptWrongPageNumberReturnsMinusOneTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[4096];
         Random.Shared.NextBytes(plaintext);
@@ -41,8 +41,8 @@ public class PageEncryptorAuthenticationTests
     [Test]
     public void DecryptTamperedCiphertextBodyReturnsMinusOneTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[4096];
         Random.Shared.NextBytes(plaintext);
@@ -63,8 +63,8 @@ public class PageEncryptorAuthenticationTests
     [Test]
     public void DecryptTamperedTagReturnsMinusOneTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -85,8 +85,8 @@ public class PageEncryptorAuthenticationTests
     [Test]
     public void DecryptTamperedNonceReturnsMinusOneTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -107,8 +107,8 @@ public class PageEncryptorAuthenticationTests
     [Test]
     public void DecryptTruncatedCiphertextReturnsMinusOneTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -127,8 +127,8 @@ public class PageEncryptorAuthenticationTests
     [Test]
     public void DecryptCiphertextShorterThanOverheadReturnsMinusOneTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] shortCiphertext = new byte[10]; // Less than overhead (28 bytes)
         byte[] decrypted = new byte[100];
@@ -141,8 +141,8 @@ public class PageEncryptorAuthenticationTests
     [Test]
     public void DecryptAllZeroCiphertextReturnsMinusOneTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] zeroCiphertext = new byte[128]; // All zeros
         byte[] decrypted = new byte[100];
@@ -155,8 +155,8 @@ public class PageEncryptorAuthenticationTests
     [Test]
     public void DecryptRandomGarbageReturnsMinusOneTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new PageEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorPage(provider, m_salt);
 
         byte[] garbage = new byte[128];
         Random.Shared.NextBytes(garbage);

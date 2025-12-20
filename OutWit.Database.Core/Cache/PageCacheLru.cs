@@ -12,6 +12,15 @@ namespace OutWit.Database.Core.Cache;
 /// </remarks>
 public sealed class PageCacheLru : IPageCache
 {
+    #region Constants
+
+    /// <summary>
+    /// Provider key for LRU cache.
+    /// </summary>
+    public const string PROVIDER_KEY = "lru";
+
+    #endregion
+
     #region Fields
 
     private readonly IStorage m_storage;
@@ -381,6 +390,9 @@ public sealed class PageCacheLru : IPageCache
             }
         }
     }
+
+    /// <inheritdoc/>
+    public string ProviderKey => PROVIDER_KEY;
 
     #endregion
 }

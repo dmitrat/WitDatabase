@@ -18,6 +18,11 @@ namespace OutWit.Database.Core.Transactions
         internal const uint MAGIC_ENCRYPTED = 0x524A4345; // "RJCE" - encrypted rollback journal
         private const int HEADER_SIZE = 4; // Magic only (each file has its own header)
 
+        /// <summary>
+        /// Provider key for rollback journal.
+        /// </summary>
+        public const string PROVIDER_KEY = "rollback";
+
         #endregion
 
         #region Fields
@@ -313,6 +318,9 @@ namespace OutWit.Database.Core.Transactions
         /// Gets whether this journal is encrypted.
         /// </summary>
         public bool IsEncrypted => m_isEncrypted;
+
+        /// <inheritdoc/>
+        public string ProviderKey => PROVIDER_KEY;
 
         #endregion
 

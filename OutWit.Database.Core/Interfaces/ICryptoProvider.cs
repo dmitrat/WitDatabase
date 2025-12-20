@@ -4,8 +4,10 @@ namespace OutWit.Database.Core.Interfaces
     /// Low-level interface for raw AEAD (Authenticated Encryption with Associated Data) operations.
     /// Implementations provide the actual cryptographic algorithm (AES-GCM, ChaCha20-Poly1305, etc).
     /// </summary>
-    public interface ICryptoProvider : IDisposable
+    public interface ICryptoProvider : IProvider, IDisposable
     {
+        #region Encryption
+
         /// <summary>
         /// Encrypts plaintext using AEAD.
         /// </summary>
@@ -25,6 +27,9 @@ namespace OutWit.Database.Core.Interfaces
         /// <returns>True if authentication succeeded, false otherwise.</returns>
         bool Decrypt(ReadOnlySpan<byte> nonce, ReadOnlySpan<byte> ciphertext, ReadOnlySpan<byte> tag, Span<byte> plaintext);
 
+        #endregion
+
+        #region Properties
 
         /// <summary>
         /// Nonce size in bytes required by this provider.
@@ -40,5 +45,16 @@ namespace OutWit.Database.Core.Interfaces
         /// Total overhead (nonce + tag) in bytes.
         /// </summary>
         int Overhead => NonceSize + TagSize;
+
+        /// <summary>
+        /// Gets the unique provider key identifying this crypto implementation.
+        /// Used for validation when opening existing databases.
+        /// </summary>
+        /// <example>
+        /// "aes-gcm" for AES-GCM, "chacha20-poly1305" for ChaCha20-Poly1305.
+        /// </example>
+        string ProviderKey { get; }
+
+        #endregion
     }
 }

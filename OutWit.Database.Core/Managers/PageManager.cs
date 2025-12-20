@@ -17,6 +17,8 @@ public sealed class PageManager : IDisposable
 
     private readonly IPageCache m_cache;
 
+    private readonly ProviderMetadata? m_initialMetadata;
+
     private readonly Lock m_lock = new();
 
     private readonly byte[] m_headerBuffer;
@@ -36,13 +38,15 @@ public sealed class PageManager : IDisposable
     /// </summary>
     /// <param name="storage">Underlying storage</param>
     /// <param name="cache">Page cache implementation</param>
-    public PageManager(IStorage storage, IPageCache cache)
+    /// <param name="providerMetadata">Optional metadata for new databases</param>
+    public PageManager(IStorage storage, IPageCache cache, ProviderMetadata? providerMetadata = null)
     {
         ArgumentNullException.ThrowIfNull(storage);
         ArgumentNullException.ThrowIfNull(cache);
 
         m_storage = storage;
         m_cache = cache;
+        m_initialMetadata = providerMetadata;
         m_headerBuffer = new byte[storage.PageSize];
 
         if (m_storage.PageCount == 0 || IsNewDatabase())
@@ -61,7 +65,7 @@ public sealed class PageManager : IDisposable
     /// <param name="storage">Underlying storage</param>
     /// <param name="cacheSize">Number of pages to cache</param>
     public PageManager(IStorage storage, int cacheSize = DatabaseConstants.DEFAULT_CACHE_SIZE)
-        : this(storage, new PageCacheShardedClock(storage, cacheSize))
+        : this(storage, new PageCacheShardedClock(storage, cacheSize), providerMetadata: null)
     {
     }
 
@@ -72,6 +76,12 @@ public sealed class PageManager : IDisposable
     private void InitializeNewDatabase()
     {
         m_header = DatabaseHeader.CreateNew((ushort)m_storage.PageSize);
+        
+        // Apply provider metadata if provided
+        if (m_initialMetadata.HasValue)
+        {
+            m_header.Providers = m_initialMetadata.Value;
+        }
 
         // Ensure file is large enough for at least the header page
         if (m_storage.PageCount < 1)
@@ -378,6 +388,30 @@ public sealed class PageManager : IDisposable
     }
 
     /// <summary>
+    /// Gets the provider metadata from the header.
+    /// </summary>
+    public ProviderMetadata GetProviderMetadata()
+    {
+        lock (m_lock)
+        {
+            return m_header.Providers;
+        }
+    }
+
+    /// <summary>
+    /// Updates the provider metadata in the header.
+    /// </summary>
+    public void SetProviderMetadata(ProviderMetadata metadata)
+    {
+        lock (m_lock)
+        {
+            ThrowIfDisposed();
+            m_header.Providers = metadata;
+            m_headerDirty = true;
+        }
+    }
+
+    /// <summary>
     /// Updates the schema root page number.
     /// </summary>
     public void SetSchemaRootPage(uint pageNumber)
@@ -410,7 +444,37 @@ public sealed class PageManager : IDisposable
             return true;
 
         m_storage.ReadPage(0, m_headerBuffer.AsSpan(0, m_storage.PageSize));
-        return !m_headerBuffer.AsSpan()[..16].SequenceEqual(DatabaseConstants.MAGIC_BYTES);
+        
+        // Check for valid magic bytes
+        if (!m_headerBuffer.AsSpan()[..16].SequenceEqual(DatabaseConstants.MAGIC_BYTES))
+        {
+            // File exists but has invalid header - this could be:
+            // 1. Corrupted database
+            // 2. Encrypted database opened without encryption
+            // 3. Not a WitDatabase file
+            // 
+            // Only treat as "new" if file is completely empty (all zeros in first 16 bytes)
+            bool allZeros = true;
+            for (int i = 0; i < 16; i++)
+            {
+                if (m_headerBuffer[i] != 0)
+                {
+                    allZeros = false;
+                    break;
+                }
+            }
+            
+            if (allZeros)
+            {
+                return true; // Empty file, can be initialized
+            }
+            
+            throw new InvalidDataException(
+                "Invalid database header. The file may be corrupted, encrypted (try opening with password), " +
+                "or not a valid WitDatabase file.");
+        }
+        
+        return false;
     }
 
     private void LoadHeader()

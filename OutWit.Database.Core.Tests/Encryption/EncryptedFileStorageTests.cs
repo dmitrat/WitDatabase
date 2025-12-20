@@ -1,6 +1,5 @@
 using System.Security.Cryptography;
 using OutWit.Database.Core.Encryption;
-using OutWit.Database.Core.Providers;
 using OutWit.Database.Core.Storage;
 
 namespace OutWit.Database.Core.Tests.Encryption;
@@ -37,8 +36,8 @@ public class EncryptedFileStorageTests
     private StorageEncrypted CreateEncryptedFileStorage(string filename, byte[] key, byte[] salt, int pageSize = 4096)
     {
         var innerStorage = new StorageFile(filename, pageSize + 28);
-        var provider = new CryptoProviderAesGcm(key);
-        var encryptor = new PageEncryptor(provider, salt);
+        var provider = new EncryptorProviderAesGcm(key);
+        var encryptor = new EncryptorPage(provider, salt);
         return new StorageEncrypted(innerStorage, encryptor);
     }
 
@@ -183,8 +182,8 @@ public class EncryptedFileStorageTests
         Random.Shared.NextBytes(data);
 
         using (var innerStorage = new StorageFile(filename, 4096 + 28))
-        using (var provider = CryptoProviderAesGcm.FromPassword(password, m_salt, iterations: 10000))
-        using (var encryptor = new PageEncryptor(provider, m_salt))
+        using (var provider = EncryptorProviderAesGcm.FromPassword(password, m_salt, iterations: 10000))
+        using (var encryptor = new EncryptorPage(provider, m_salt))
         using (var storage = new StorageEncrypted(innerStorage, encryptor))
         {
             storage.WritePage(0, data);
@@ -192,8 +191,8 @@ public class EncryptedFileStorageTests
         }
 
         using (var innerStorage = new StorageFile(filename, 4096 + 28))
-        using (var provider = CryptoProviderAesGcm.FromPassword(password, m_salt, iterations: 10000))
-        using (var encryptor = new PageEncryptor(provider, m_salt))
+        using (var provider = EncryptorProviderAesGcm.FromPassword(password, m_salt, iterations: 10000))
+        using (var encryptor = new EncryptorPage(provider, m_salt))
         using (var storage = new StorageEncrypted(innerStorage, encryptor))
         {
             byte[] readBuffer = new byte[storage.PageSize];

@@ -10,6 +10,15 @@ namespace OutWit.Database.Core.Transactions;
 /// </summary>
 public sealed class TransactionalStore : ITransactionalStore
 {
+    #region Constants
+
+    /// <summary>
+    /// Provider key for transactional store wrapper.
+    /// </summary>
+    public const string PROVIDER_KEY = "transactional";
+
+    #endregion
+
     #region Fields
 
     private readonly IKeyValueStore m_store;
@@ -396,6 +405,19 @@ public sealed class TransactionalStore : ITransactionalStore
             }
         }
     }
+
+    /// <summary>
+    /// Gets the provider key of the underlying store.
+    /// </summary>
+    public string InnerProviderKey => m_store.ProviderKey;
+
+    /// <summary>
+    /// Gets the provider key of the journal, if any.
+    /// </summary>
+    public string? JournalProviderKey => m_journal?.ProviderKey;
+
+    /// <inheritdoc/>
+    public string ProviderKey => PROVIDER_KEY;
 
     #endregion
 }

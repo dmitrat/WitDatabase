@@ -12,6 +12,15 @@ namespace OutWit.Database.Core.Stores;
 /// </summary>
 public sealed class StoreInMemory : IKeyValueStore
 {
+    #region Constants
+
+    /// <summary>
+    /// Provider key for in-memory store.
+    /// </summary>
+    public const string PROVIDER_KEY = "inmemory";
+
+    #endregion
+
     #region Fields
 
     private readonly SortedDictionary<byte[], byte[]> m_data;
@@ -276,6 +285,9 @@ public sealed class StoreInMemory : IKeyValueStore
             }
         }
     }
+
+    /// <inheritdoc/>
+    public string ProviderKey => PROVIDER_KEY;
 
     #endregion
 }

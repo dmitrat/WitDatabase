@@ -8,7 +8,7 @@ namespace OutWit.Database.Core.Tests.Encryption;
 /// Tests for BlockEncryptor - variable-length data encryption for LSM-Tree.
 /// </summary>
 [TestFixture]
-public class BlockEncryptorTests
+public class EncryptorBlockTests
 {
     private byte[] m_key = null!;
     private byte[] m_salt = null!;
@@ -25,8 +25,8 @@ public class BlockEncryptorTests
     [Test]
     public void EncryptDecryptRoundTripTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         byte[] plaintext = new byte[1234];
         Random.Shared.NextBytes(plaintext);
@@ -47,8 +47,8 @@ public class BlockEncryptorTests
     [TestCase(100000)]
     public void EncryptDecryptVariousSizesTest(int size)
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         byte[] plaintext = new byte[size];
         Random.Shared.NextBytes(plaintext);
@@ -63,8 +63,8 @@ public class BlockEncryptorTests
     [Test]
     public void EncryptDecryptEmptyDataTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         byte[] plaintext = [];
         
@@ -82,8 +82,8 @@ public class BlockEncryptorTests
     [Test]
     public void DecryptWrongBlockIdReturnsNullTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -97,8 +97,8 @@ public class BlockEncryptorTests
     [Test]
     public void DecryptTamperedDataReturnsNullTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -113,8 +113,8 @@ public class BlockEncryptorTests
     [Test]
     public void DecryptTruncatedDataReturnsNullTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -129,8 +129,8 @@ public class BlockEncryptorTests
     [Test]
     public void DecryptDataTooShortReturnsNullTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         byte[] shortData = new byte[10];
         byte[]? decrypted = encryptor.Decrypt(shortData, blockId: 1);
@@ -145,8 +145,8 @@ public class BlockEncryptorTests
     [Test]
     public void EncryptDifferentBlockIdsProduceDifferentCiphertextTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -162,8 +162,8 @@ public class BlockEncryptorTests
     {
         // With monotonic counter, encrypting same block twice produces different ciphertext
         // This is critical for AES-GCM security - nonce must never repeat!
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         byte[] plaintext = new byte[100];
         Random.Shared.NextBytes(plaintext);
@@ -191,8 +191,8 @@ public class BlockEncryptorTests
     [Test]
     public void OverheadIsCorrectTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         Assert.That(encryptor.Overhead, Is.EqualTo(28));
     }
@@ -200,8 +200,8 @@ public class BlockEncryptorTests
     [Test]
     public void EncryptedSizeIsPlaintextPlusOverheadTest()
     {
-        using var provider = new CryptoProviderAesGcm(m_key);
-        using var encryptor = new BlockEncryptor(provider, m_salt);
+        using var provider = new EncryptorProviderAesGcm(m_key);
+        using var encryptor = new EncryptorBlock(provider, m_salt);
 
         int[] sizes = [0, 1, 100, 1000, 10000];
 

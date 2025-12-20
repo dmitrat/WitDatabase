@@ -4,7 +4,7 @@
     /// Abstraction for database file storage. Allows different implementations
     /// for file system, in-memory, and platform-specific storage (e.g., IndexedDB for WASM).
     /// </summary>
-    public interface IStorage : IDisposable
+    public interface IStorage : IProvider, IDisposable
     {
         #region Read
 
@@ -84,6 +84,15 @@
         /// Gets whether the storage is read-only
         /// </summary>
         bool IsReadOnly { get; }
+
+        /// <summary>
+        /// Gets the unique provider key identifying this storage implementation.
+        /// Used for validation when opening existing databases.
+        /// </summary>
+        /// <example>
+        /// "file" for file storage, "memory" for in-memory storage, "encrypted" for encrypted storage.
+        /// </example>
+        string ProviderKey { get; }
 
         #endregion
     }

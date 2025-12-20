@@ -8,6 +8,15 @@ namespace OutWit.Database.Core.Wal;
 /// </summary>
 public sealed class WalTransactionJournal : ITransactionJournal
 {
+    #region Constants
+
+    /// <summary>
+    /// Provider key for WAL-based transaction journal.
+    /// </summary>
+    public const string PROVIDER_KEY = "wal";
+
+    #endregion
+
     #region Fields
 
     private readonly IWriteAheadLog m_wal;
@@ -47,6 +56,17 @@ public sealed class WalTransactionJournal : ITransactionJournal
         bool createNew = false,
         long checkpointThreshold = 1024 * 1024)
         : this(new WriteAheadLog(filePath, encryptor, createNew), ownsWal: true, checkpointThreshold)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new WAL-based transaction journal at the specified path.
+    /// Simplified constructor for factory registration.
+    /// </summary>
+    /// <param name="walPath">Path to the WAL file.</param>
+    /// <param name="pageSize">Page size (not used by WAL, kept for consistency).</param>
+    public WalTransactionJournal(string walPath, int pageSize)
+        : this(walPath, encryptor: null, createNew: false)
     {
     }
 
@@ -147,6 +167,9 @@ public sealed class WalTransactionJournal : ITransactionJournal
     /// Gets whether auto-checkpoint is due (size exceeds threshold).
     /// </summary>
     public bool NeedsCheckpoint => m_checkpointThreshold > 0 && Size > m_sizeAtLastCheckpoint + m_checkpointThreshold;
+
+    /// <inheritdoc/>
+    public string ProviderKey => PROVIDER_KEY;
 
     #endregion
 

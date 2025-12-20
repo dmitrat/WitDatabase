@@ -1,4 +1,5 @@
 using System.Runtime.CompilerServices;
+using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Managers;
 using OutWit.Database.Core.Storage;
@@ -12,6 +13,15 @@ namespace OutWit.Database.Core.Stores;
 /// </summary>
 public sealed class StoreBTree : IKeyValueStore, IAsyncDisposable
 {
+    #region Constants
+
+    /// <summary>
+    /// Provider key for B-Tree store.
+    /// </summary>
+    public const string PROVIDER_KEY = "btree";
+
+    #endregion
+
     #region Fields
 
     private readonly IStorage? m_storage;
@@ -43,11 +53,25 @@ public sealed class StoreBTree : IKeyValueStore, IAsyncDisposable
     /// <param name="cacheSize">Number of pages to cache.</param>
     /// <param name="ownsStorage">If true, disposes the storage when this store is disposed.</param>
     public StoreBTree(IStorage storage, int cacheSize = 1000, bool ownsStorage = true)
+        : this(storage, cacheSize, ownsStorage, providerMetadata: null)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new BTreeStore with custom storage and provider metadata.
+    /// </summary>
+    /// <param name="storage">Storage implementation.</param>
+    /// <param name="cacheSize">Number of pages to cache.</param>
+    /// <param name="ownsStorage">If true, disposes the storage when this store is disposed.</param>
+    /// <param name="providerMetadata">Provider metadata for new databases.</param>
+    public StoreBTree(IStorage storage, int cacheSize, bool ownsStorage, ProviderMetadata? providerMetadata)
     {
         m_storage = storage ?? throw new ArgumentNullException(nameof(storage));
         m_ownsStorage = ownsStorage;
         m_ownsPageManager = true;
-        m_pageManager = new PageManager(m_storage, cacheSize);
+        
+        var cache = new PageCacheShardedClock(storage, cacheSize);
+        m_pageManager = new PageManager(m_storage, cache, providerMetadata);
         
         // Use schema root page as B+Tree root, or create new tree
         var header = m_pageManager.GetHeader();
@@ -265,6 +289,9 @@ public sealed class StoreBTree : IKeyValueStore, IAsyncDisposable
     /// Gets the maximum inline value size.
     /// </summary>
     public int MaxInlineValueSize => m_tree.MaxInlineValueSize;
+
+    /// <inheritdoc/>
+    public string ProviderKey => PROVIDER_KEY;
 
     #endregion
 }

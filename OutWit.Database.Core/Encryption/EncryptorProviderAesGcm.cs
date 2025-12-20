@@ -1,14 +1,14 @@
 using OutWit.Database.Core.Interfaces;
 using System.Security.Cryptography;
 
-namespace OutWit.Database.Core.Providers;
+namespace OutWit.Database.Core.Encryption;
 
 /// <summary>
 /// AES-GCM crypto provider using built-in .NET cryptography.
 /// Fast, hardware-accelerated with AES-NI.
 /// Thread-safe - creates new AesGcm instance per operation.
 /// </summary>
-public sealed class CryptoProviderAesGcm : ICryptoProvider
+public sealed class EncryptorProviderAesGcm : ICryptoProvider
 {
     #region Constants
 
@@ -21,6 +21,11 @@ public sealed class CryptoProviderAesGcm : ICryptoProvider
     /// Minimum recommended PBKDF2 iterations.
     /// </summary>
     public const int MIN_ITERATIONS = 10_000;
+
+    /// <summary>
+    /// Provider key for AES-GCM crypto.
+    /// </summary>
+    public const string PROVIDER_KEY = "aes-gcm";
 
     #endregion
 
@@ -38,7 +43,7 @@ public sealed class CryptoProviderAesGcm : ICryptoProvider
     /// Creates AES-GCM provider with specified key.
     /// </summary>
     /// <param name="key">256-bit (32 bytes) encryption key.</param>
-    public CryptoProviderAesGcm(byte[] key)
+    public EncryptorProviderAesGcm(byte[] key)
     {
         if (key.Length != 32)
             throw new ArgumentException("Key must be 256 bits (32 bytes)", nameof(key));
@@ -57,7 +62,7 @@ public sealed class CryptoProviderAesGcm : ICryptoProvider
     /// <param name="password">User password.</param>
     /// <param name="salt">Salt for key derivation (at least 8 bytes, 16 recommended).</param>
     /// <param name="iterations">PBKDF2 iteration count (minimum 10000).</param>
-    public static CryptoProviderAesGcm FromPassword(string password, byte[] salt, int iterations = DEFAULT_ITERATIONS)
+    public static EncryptorProviderAesGcm FromPassword(string password, byte[] salt, int iterations = DEFAULT_ITERATIONS)
     {
         if (string.IsNullOrEmpty(password))
             throw new ArgumentException("Password cannot be empty", nameof(password));
@@ -67,7 +72,7 @@ public sealed class CryptoProviderAesGcm : ICryptoProvider
             throw new ArgumentException($"Iterations must be at least {MIN_ITERATIONS}", nameof(iterations));
 
         var key = Rfc2898DeriveBytes.Pbkdf2(password, salt, iterations, HashAlgorithmName.SHA256, 32);
-        return new CryptoProviderAesGcm(key);
+        return new EncryptorProviderAesGcm(key);
     }
 
     #endregion
@@ -146,6 +151,9 @@ public sealed class CryptoProviderAesGcm : ICryptoProvider
 
     /// <inheritdoc/>
     public int TagSize => 16;
+
+    /// <inheritdoc/>
+    public string ProviderKey => PROVIDER_KEY;
 
     #endregion
 }
