@@ -8,6 +8,14 @@ namespace OutWit.Database.Core.Builder;
 /// </summary>
 public sealed class WitDatabaseBuilderOptions
 {
+    #region Constants
+
+    private static readonly byte[] DEFAULT_SALT = "WitDBSalt123"u8.ToArray();
+
+    #endregion
+
+    #region Properties
+
     /// <summary>
     /// Storage implementation to use.
     /// </summary>
@@ -27,6 +35,11 @@ public sealed class WitDatabaseBuilderOptions
     /// Crypto provider for encryption.
     /// </summary>
     public ICryptoProvider? CryptoProvider { get; set; }
+    
+    /// <summary>
+    /// Salt for encryption key derivation.
+    /// </summary>
+    public byte[] EncryptionSalt { get; set; } = DEFAULT_SALT;
     
     /// <summary>
     /// Custom key-value store implementation.
@@ -82,4 +95,6 @@ public sealed class WitDatabaseBuilderOptions
     /// Directory for LSM-Tree storage.
     /// </summary>
     public string? LsmDirectory { get; set; }
+
+    #endregion
 }

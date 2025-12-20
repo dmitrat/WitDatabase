@@ -132,7 +132,7 @@ public sealed class WriteAheadLog : WriteAheadLogBase, IWriteAheadLog
     /// <returns>Number of entries replayed.</returns>
     public int Replay(Action<byte[], byte[]> onPut, Action<byte[]> onDelete)
     {
-        return Replay(new SimpleWalReplayVisitor(onPut, onDelete));
+        return Replay(new WalReplayVisitorSimple(onPut, onDelete));
     }
 
     #endregion

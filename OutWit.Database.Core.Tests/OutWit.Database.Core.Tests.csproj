@@ -21,6 +21,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OutWit.Database.Core\OutWit.Database.Core.csproj" />
+    <ProjectReference Include="..\OutWit.Database.Core.BouncyCastle\OutWit.Database.Core.BouncyCastle.csproj" />
   </ItemGroup>
 
   <ItemGroup>

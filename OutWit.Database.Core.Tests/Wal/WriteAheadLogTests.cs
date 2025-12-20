@@ -121,7 +121,7 @@ public class WriteAheadLogTests : IDisposable
         
         using (var wal = new WriteAheadLog(walPath))
         {
-            var visitor = new SimpleWalReplayVisitor(
+            var visitor = new WalReplayVisitorSimple(
                 (k, v) => puts.Add((k, v)),
                 k => deletes.Add(k));
             
@@ -152,7 +152,7 @@ public class WriteAheadLogTests : IDisposable
         
         using (var wal = new WriteAheadLog(walPath))
         {
-            wal.Replay(new SimpleWalReplayVisitor(
+            wal.Replay(new WalReplayVisitorSimple(
                 (k, _) => keys.Add(TextEncoding.UTF8.GetString(k)),
                 _ => { }));
         }
@@ -231,7 +231,7 @@ public class WriteAheadLogTests : IDisposable
         
         using (var wal = new WriteAheadLog(walPath))
         {
-            var visitor = new TransactionalWalReplayVisitor(
+            var visitor = new WalReplayVisitorTransactional(
                 (k, _) => appliedKeys.Add(TextEncoding.UTF8.GetString(k)),
                 _ => { });
             
@@ -262,7 +262,7 @@ public class WriteAheadLogTests : IDisposable
         
         using (var wal = new WriteAheadLog(walPath))
         {
-            var visitor = new TransactionalWalReplayVisitor(
+            var visitor = new WalReplayVisitorTransactional(
                 (k, _) => keys.Add(TextEncoding.UTF8.GetString(k)),
                 _ => { });
             
@@ -304,7 +304,7 @@ public class WriteAheadLogTests : IDisposable
         
         using (var wal = new WriteAheadLog(walPath))
         {
-            replayedCount = wal.Replay(new SimpleWalReplayVisitor((_, _) => { }, _ => { }));
+            replayedCount = wal.Replay(new WalReplayVisitorSimple((_, _) => { }, _ => { }));
         }
 
         // Should stop at corrupted entry
@@ -339,7 +339,7 @@ public class WriteAheadLogTests : IDisposable
         
         using (var wal = new WriteAheadLog(walPath))
         {
-            wal.Replay(new SimpleWalReplayVisitor(
+            wal.Replay(new WalReplayVisitorSimple(
                 (k, _) => keys.Add(TextEncoding.UTF8.GetString(k)),
                 _ => { }));
         }
@@ -411,7 +411,7 @@ public class WriteAheadLogTests : IDisposable
         
         using (var wal = new WriteAheadLog(walPath))
         {
-            wal.Replay(new SimpleWalReplayVisitor(
+            wal.Replay(new WalReplayVisitorSimple(
                 (_, v) => recoveredValue = v,
                 _ => { }));
         }
@@ -439,7 +439,7 @@ public class WriteAheadLogTests : IDisposable
         
         using (var wal = new WriteAheadLog(walPath))
         {
-            count = wal.Replay(new SimpleWalReplayVisitor((_, _) => { }, _ => { }));
+            count = wal.Replay(new WalReplayVisitorSimple((_, _) => { }, _ => { }));
         }
 
         Assert.That(count, Is.EqualTo(entryCount));

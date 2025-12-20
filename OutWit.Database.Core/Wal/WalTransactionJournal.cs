@@ -103,7 +103,7 @@ public sealed class WalTransactionJournal : ITransactionJournal
     {
         ThrowIfDisposed();
         
-        var visitor = new TransactionalWalReplayVisitor(
+        var visitor = new WalReplayVisitorTransactional(
             (key, value) => store.Put(key, value),
             key => store.Delete(key));
         

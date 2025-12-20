@@ -289,8 +289,38 @@ await Task.WhenAll(
 
 | Phase | Description | Status |
 |-------|-------------|--------|
-| Phase 4 | API improvements (builders, options) | 0% |
+| Phase 4 | API improvements (builders, options) | 70% |
 | Phase 5 | Documentation | 60% |
+
+### ?? High Priority (Next)
+
+| Task | Description | Priority |
+|------|-------------|----------|
+| Builder Extensibility | Refactor WitDatabaseBuilder to use extension methods | ? High |
+| BouncyCastle Integration | Add tests for BouncyCastle crypto provider | ? High |
+| Code Style Audit | Apply CODE_STYLE_GUIDE.md to all files | Medium |
+
+#### Builder Extensibility Details
+
+**Problem:** Current `WitDatabaseBuilder` has all `With...` methods defined inside the class, using private `m_options`. This prevents extension from other assemblies.
+
+**Solution:**
+1. Make `WitDatabaseBuilderOptions` public property
+2. Convert `With...` methods to extension methods
+3. Create `WitDatabaseBuilderBouncyCastleExtensions` in BouncyCastle project
+
+**Files to modify:**
+- `OutWit.Database.Core/Builder/WitDatabaseBuilder.cs`
+- `OutWit.Database.Core/Builder/WitDatabaseBuilderExtensions.cs` (new)
+- `OutWit.Database.Core.BouncyCastle/WitDatabaseBuilderBouncyCastleExtensions.cs` (new)
+
+#### BouncyCastle Integration Details
+
+**Tasks:**
+1. Add `WithBouncyCastleEncryption()` extension method
+2. Add unit tests in `OutWit.Database.Core.Tests` for BouncyCastle provider
+3. Add BouncyCastle scenarios to integration tests
+4. Add BouncyCastle benchmarks to `OutWit.Database.Core.Tests.Benchmarks`
 
 ### ?? Future
 

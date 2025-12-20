@@ -2,6 +2,7 @@
   <Folder Name="/Directory/">
     <File Path="Directory.Build.props" />
   </Folder>
+  <Project Path="OutWit.Database.Core.BouncyCastle/OutWit.Database.Core.BouncyCastle.csproj" Id="e244e45c-4d29-4c06-9bbb-68f33d803880" />
   <Project Path="OutWit.Database.Core.Tests.Benchmarks/OutWit.Database.Core.Tests.Benchmarks.csproj" Id="218fe20c-91ee-4980-98ce-332906c1db1a" />
   <Project Path="OutWit.Database.Core.Tests/OutWit.Database.Core.Tests.csproj" Id="91a232f7-c5e4-4083-8127-20070e0d8b03" />
   <Project Path="OutWit.Database.Core/OutWit.Database.Core.csproj" Id="91042611-a01d-4293-9594-25ee9d3a0a67" />
