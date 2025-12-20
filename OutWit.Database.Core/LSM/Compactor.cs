@@ -14,7 +14,7 @@ namespace OutWit.Database.Core.LSM
 
         private readonly int m_blockSize;
 
-        private readonly LsmByteArrayComparer m_comparer = LsmByteArrayComparer.Instance;
+        private readonly ByteArrayComparer m_comparer = ByteArrayComparer.Default;
 
         #endregion
 

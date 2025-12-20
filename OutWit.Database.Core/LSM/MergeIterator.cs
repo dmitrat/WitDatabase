@@ -34,7 +34,7 @@ namespace OutWit.Database.Core.LSM
 
         #region Constructors
 
-        public MergeIterator(List<SSTableReader> readers, LsmByteArrayComparer comparer)
+        public MergeIterator(List<SSTableReader> readers, ByteArrayComparer comparer)
         {
             m_iterators = readers.Select(r => r.Scan().GetEnumerator()).ToArray();
             m_exhausted = new bool[readers.Count];

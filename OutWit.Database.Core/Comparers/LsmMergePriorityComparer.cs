@@ -12,7 +12,7 @@ internal sealed class LsmMergePriorityComparer : IComparer<(byte[] Key, int Inve
 
     public int Compare((byte[] Key, int InversePriority) x, (byte[] Key, int InversePriority) y)
     {
-        var keyCompare = LsmByteArrayComparer.Instance.Compare(x.Key, y.Key);
+        var keyCompare = ByteArrayComparer.Default.Compare(x.Key, y.Key);
         if (keyCompare != 0) return keyCompare;
         return x.InversePriority.CompareTo(y.InversePriority);
     }

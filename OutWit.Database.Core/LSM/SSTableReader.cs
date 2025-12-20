@@ -34,7 +34,7 @@ namespace OutWit.Database.Core.LSM
         private readonly IBlockEncryptor? m_encryptor;
         private readonly BlockCache? m_cache;
         private readonly List<IndexEntry> m_index = [];
-        private readonly LsmByteArrayComparer m_comparer = LsmByteArrayComparer.Instance;
+        private readonly ByteArrayComparer m_comparer = ByteArrayComparer.Default;
         private BloomFilter? m_bloomFilter;
         private bool m_encrypted;
         private bool m_hasBloomFilter;

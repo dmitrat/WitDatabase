@@ -219,7 +219,7 @@ namespace OutWit.Database.Core.Stores
             ThrowIfDisposed();
             m_statistics.RecordScan();
 
-            var comparer = LsmByteArrayComparer.Instance;
+            var comparer = ByteArrayComparer.Default;
             
             // Collect all sources with their priorities (higher = newer)
             var sources = new List<(IEnumerable<(byte[] Key, byte[]? Value)> Source, int Priority)>();
@@ -258,7 +258,7 @@ namespace OutWit.Database.Core.Stores
         /// </summary>
         private static IEnumerable<(byte[] Key, byte[] Value)> MergeScan(
             List<(IEnumerable<(byte[] Key, byte[]? Value)> Source, int Priority)> sources,
-            LsmByteArrayComparer comparer)
+            ByteArrayComparer comparer)
         {
             // Initialize iterators and heap
             var iterators = sources.Select(s => s.Source.GetEnumerator()).ToArray();

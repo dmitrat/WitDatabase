@@ -15,7 +15,7 @@ namespace OutWit.Database.Core.LSM
 
         private readonly Lock m_lock = new();
 
-        private readonly LsmByteArrayComparer m_comparer;
+        private readonly ByteArrayComparer m_comparer;
 
         private long m_approximateSize;
 
@@ -30,7 +30,7 @@ namespace OutWit.Database.Core.LSM
         /// </summary>
         public MemTable()
         {
-            m_comparer = LsmByteArrayComparer.Instance;
+            m_comparer = ByteArrayComparer.Default;
             m_entries = new SortedDictionary<byte[], byte[]?>(m_comparer);
         }
 
