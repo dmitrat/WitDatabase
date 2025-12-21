@@ -79,6 +79,8 @@ internal sealed partial class WitSqlVisitor : WitSqlBaseVisitor<object?>
             return VisitDropSequenceStatement(dropSequence);
         if (context.alterSequenceStatement() is { } alterSequence)
             return VisitAlterSequenceStatement(alterSequence);
+        if (context.truncateTableStatement() is { } truncate)
+            return VisitTruncateTableStatement(truncate);
         return null;
     }
 

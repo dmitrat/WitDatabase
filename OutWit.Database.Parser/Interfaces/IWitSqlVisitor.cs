@@ -28,6 +28,7 @@ namespace OutWit.Database.Parser.Interfaces
         T VisitStatementCreateSequence(WitSqlStatementCreateSequence node);
         T VisitStatementDropSequence(WitSqlStatementDropSequence node);
         T VisitStatementAlterSequence(WitSqlStatementAlterSequence node);
+        T VisitStatementTruncate(WitSqlStatementTruncate node);
 
         #endregion
 

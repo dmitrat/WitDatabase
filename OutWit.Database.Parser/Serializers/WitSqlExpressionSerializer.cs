@@ -88,6 +88,9 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
     public string VisitStatementAlterSequence(WitSqlStatementAlterSequence node) =>
         throw new NotSupportedException("ALTER SEQUENCE statement serialization not supported");
 
+    public string VisitStatementTruncate(WitSqlStatementTruncate node) =>
+        throw new NotSupportedException("TRUNCATE statement serialization not supported");
+
     public string VisitStatementBeginTransaction(WitSqlStatementBeginTransaction node) =>
         throw new NotSupportedException("BEGIN TRANSACTION statement serialization not supported");
 

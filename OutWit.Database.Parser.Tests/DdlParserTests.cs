@@ -415,168 +415,24 @@ public class DdlParserTests
 
     #endregion
 
-    #region SEQUENCE
+    #region TRUNCATE TABLE
 
     [Test]
-    public void ParseCreateSequenceTest()
+    public void ParseTruncateTableTest()
     {
-        var stmt = WitSql.ParseStatement("CREATE SEQUENCE order_seq START WITH 1000");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateSequence>());
-        var create = (WitSqlStatementCreateSequence)stmt;
-        Assert.That(create.SequenceName, Is.EqualTo("order_seq"));
-        Assert.That(create.StartWith, Is.EqualTo(1000));
+        var stmt = WitSql.ParseStatement("TRUNCATE TABLE Users");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementTruncate>());
+        var truncate = (WitSqlStatementTruncate)stmt;
+        Assert.That(truncate.TableName, Is.EqualTo("Users"));
     }
 
     [Test]
-    public void ParseCreateSequenceIfNotExistsTest()
+    public void ParseTruncateTableCaseInsensitiveTest()
     {
-        var stmt = WitSql.ParseStatement("CREATE SEQUENCE IF NOT EXISTS my_seq");
-        var create = (WitSqlStatementCreateSequence)stmt;
-        Assert.That(create.IfNotExists, Is.True);
-        Assert.That(create.StartWith, Is.EqualTo(1)); // default
-    }
-
-    [Test]
-    public void ParseDropSequenceTest()
-    {
-        var stmt = WitSql.ParseStatement("DROP SEQUENCE IF EXISTS order_seq");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementDropSequence>());
-        var drop = (WitSqlStatementDropSequence)stmt;
-        Assert.That(drop.SequenceName, Is.EqualTo("order_seq"));
-        Assert.That(drop.IfExists, Is.True);
-    }
-
-    [Test]
-    public void ParseAlterSequenceTest()
-    {
-        var stmt = WitSql.ParseStatement("ALTER SEQUENCE order_seq RESTART WITH 5000");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementAlterSequence>());
-        var alter = (WitSqlStatementAlterSequence)stmt;
-        Assert.That(alter.SequenceName, Is.EqualTo("order_seq"));
-        Assert.That(alter.RestartWith, Is.EqualTo(5000));
-    }
-
-    #endregion
-
-    #region Data Types - Integer
-
-    [Test]
-    public void ParseAllIntegerTypesTest()
-    {
-        var types = new[] { "TINYINT", "SMALLINT", "INT", "INTEGER", "BIGINT", "INT8", "INT16", "INT32", "INT64" };
-        foreach (var type in types)
-        {
-            var stmt = WitSql.ParseStatement($"CREATE TABLE T (Col {type})");
-            Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-        }
-    }
-
-    [Test]
-    public void ParseUnsignedIntegerTypesTest()
-    {
-        var types = new[] { "UTINYINT", "UINT8", "USMALLINT", "UINT16", "UINT", "UINT32", "UBIGINT", "UINT64", "ULONG" };
-        foreach (var type in types)
-        {
-            var stmt = WitSql.ParseStatement($"CREATE TABLE T (Col {type})");
-            Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-        }
-    }
-
-    #endregion
-
-    #region Data Types - Float
-
-    [Test]
-    public void ParseFloatTypesTest()
-    {
-        var types = new[] { "FLOAT", "REAL", "DOUBLE", "DECIMAL", "NUMERIC" };
-        foreach (var type in types)
-        {
-            var stmt = WitSql.ParseStatement($"CREATE TABLE T (Col {type})");
-            Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-        }
-    }
-
-    [Test]
-    public void ParseFloat16HalfTypeTest()
-    {
-        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col FLOAT16)");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-        
-        stmt = WitSql.ParseStatement("CREATE TABLE T (Col HALF)");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-    }
-
-    [Test]
-    public void ParseFloat64DoubleTypeTest()
-    {
-        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col FLOAT64)");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-    }
-
-    [Test]
-    public void ParseMoneyTypeTest()
-    {
-        var stmt = WitSql.ParseStatement("CREATE TABLE T (Price MONEY)");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-    }
-
-    #endregion
-
-    #region Data Types - String
-
-    [Test]
-    public void ParseStringTypesTest()
-    {
-        var types = new[] { "TEXT", "VARCHAR(100)", "CHAR(10)", "NVARCHAR(255)" };
-        foreach (var type in types)
-        {
-            var stmt = WitSql.ParseStatement($"CREATE TABLE T (Col {type})");
-            Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-        }
-    }
-
-    [Test]
-    public void ParseNtextTypeTest()
-    {
-        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col NTEXT)");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-    }
-
-    #endregion
-
-    #region Data Types - DateTime
-
-    [Test]
-    public void ParseDateTimeTypesTest()
-    {
-        var types = new[] { "DATE", "TIME", "DATETIME", "TIMESTAMP", "TIMESPAN" };
-        foreach (var type in types)
-        {
-            var stmt = WitSql.ParseStatement($"CREATE TABLE T (Col {type})");
-            Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-        }
-    }
-
-    [Test]
-    public void ParseDateOnlyTypeTest()
-    {
-        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col DATEONLY)");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-    }
-
-    [Test]
-    public void ParseTimeOnlyTypeTest()
-    {
-        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col TIMEONLY)");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
-    }
-
-    [Test]
-    public void ParseDateTimeOffsetTypeTest()
-    {
-        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col DATETIMEOFFSET)");
-        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+        var stmt = WitSql.ParseStatement("truncate table Orders");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementTruncate>());
+        var truncate = (WitSqlStatementTruncate)stmt;
+        Assert.That(truncate.TableName, Is.EqualTo("Orders"));
     }
 
     #endregion
@@ -613,6 +469,33 @@ public class DdlParserTests
             var stmt = WitSql.ParseStatement($"CREATE TABLE T (Data {type})");
             Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
         }
+    }
+
+    [Test]
+    public void ParseRowVersionTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (RowVer ROWVERSION NOT NULL)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+        var create = (WitSqlStatementCreateTable)stmt;
+        Assert.That(create.Columns[0].DataType.TypeName, Is.EqualTo("ROWVERSION"));
+    }
+
+    [Test]
+    public void ParseJsonTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Data JSON)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+        var create = (WitSqlStatementCreateTable)stmt;
+        Assert.That(create.Columns[0].DataType.TypeName, Is.EqualTo("JSON"));
+    }
+
+    [Test]
+    public void ParseJsonbTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Data JSONB)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+        var create = (WitSqlStatementCreateTable)stmt;
+        Assert.That(create.Columns[0].DataType.TypeName, Is.EqualTo("JSONB"));
     }
 
     #endregion

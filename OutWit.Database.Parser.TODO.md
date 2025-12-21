@@ -28,6 +28,7 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 | CREATE SEQUENCE | ? Done | `WitSqlStatementCreateSequence` |
 | DROP SEQUENCE | ? Done | `WitSqlStatementDropSequence` |
 | ALTER SEQUENCE | ? Done | `WitSqlStatementAlterSequence` |
+| TRUNCATE TABLE | ? Done | `WitSqlStatementTruncate` |
 | **Transactions** | | |
 | BEGIN | ? Done | `WitSqlStatementBeginTransaction` |
 | COMMIT | ? Done | `WitSqlStatementCommit` |
@@ -54,8 +55,8 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 | Window Functions | ? Done | `SpecWindow` |
 | **Types** | | |
 | All basic types | ? Done | Grammar `typeName` |
-| ROWVERSION | ? Missing | Need to add |
-| JSON/JSONB | ? Missing | Need to add |
+| ROWVERSION | ? Done | Grammar `typeName` |
+| JSON/JSONB | ? Done | Grammar `typeName` |
 
 ---
 
@@ -63,8 +64,8 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 ### Category 1: Data Types
 
-- [ ] **1.1** `ROWVERSION` / `TIMESTAMP` (alias) - type for concurrency control
-- [ ] **1.2** `JSON` / `JSONB` - types for JSON documents
+- [x] **1.1** `ROWVERSION` / `TIMESTAMP` (alias) - type for concurrency control
+- [x] **1.2** `JSON` / `JSONB` - types for JSON documents
 
 ### Category 2: SET TRANSACTION ISOLATION LEVEL
 
@@ -90,8 +91,8 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 ### Category 5: TRUNCATE TABLE
 
-- [ ] **5.1** `TRUNCATE TABLE table_name` statement
-- [ ] **5.2** AST node: `WitSqlStatementTruncate`
+- [x] **5.1** `TRUNCATE TABLE table_name` statement
+- [x] **5.2** AST node: `WitSqlStatementTruncate`
 
 ### Category 6: Advanced Index Features
 
@@ -193,9 +194,9 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 | # | Component | Priority |
 |---|-----------|----------|
 | 4.1-4.4 | UPSERT / ON CONFLICT | ?? Critical |
-| 5.1-5.2 | TRUNCATE TABLE | ?? Critical |
+| ~~5.1-5.2~~ | ~~TRUNCATE TABLE~~ | ~~? Done~~ |
 | 16.1-16.4 | ANY/SOME/ALL | ?? Critical |
-| 1.1-1.2 | ROWVERSION, JSON types | ?? Important |
+| ~~1.1-1.2~~ | ~~ROWVERSION, JSON types~~ | ~~? Done~~ |
 
 ### Production Ready (EF Core)
 
@@ -231,7 +232,7 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 4. **Named Constraints** - EF Core migrations generate named constraints.
 
-5. **Current parser** covers ~70% of specification v1.0, but for v1.2 significant grammar extension is required.
+5. **Current parser** covers ~75% of specification v1.0, but for v1.2 significant grammar extension is required.
 
 ---
 
@@ -240,11 +241,11 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 ### Grammar (WitSql.g4)
 
 ```
-- Add: ROWVERSION, JSON, JSONB to typeName
+- ? Add: ROWVERSION, JSON, JSONB to typeName
 - Add: FOR UPDATE/SHARE, NOWAIT, SKIP, LOCKED to selectStatement
 - Add: ON CONFLICT, DO UPDATE, DO NOTHING to insertStatement
 - Add: MERGE statement
-- Add: TRUNCATE statement
+- ? Add: TRUNCATE statement
 - Add: SET TRANSACTION statement
 - Add: COLLATE to expressions and column definitions
 - Add: CREATE/DROP FUNCTION, PROCEDURE
@@ -270,7 +271,7 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 ```
 - WitSqlStatementMerge
-- WitSqlStatementTruncate
+- ? WitSqlStatementTruncate
 - WitSqlStatementSetTransaction
 - WitSqlStatementExplain
 - WitSqlStatementCreateFunction

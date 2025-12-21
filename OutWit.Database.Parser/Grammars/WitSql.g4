@@ -34,6 +34,7 @@ ddlStatement
     | createSequenceStatement
     | dropSequenceStatement
     | alterSequenceStatement
+    | truncateTableStatement
     ;
 
 transactionStatement
@@ -221,6 +222,8 @@ typeName
     | BINARY
     | VARBINARY
     | BLOB
+    | ROWVERSION
+    | JSON | JSONB
     ;
 
 typeParam
@@ -355,6 +358,10 @@ alterSequenceStatement
     : ALTER SEQUENCE sequenceName RESTART (WITH INTEGER_LITERAL)?
     ;
 
+truncateTableStatement
+    : TRUNCATE TABLE tableName
+    ;
+
 sequenceName
     : IDENTIFIER
     ;
@@ -370,7 +377,7 @@ expression
     | (PLUS | MINUS | NOT | TILDE) expression       # unaryExpr
     | expression (STAR | SLASH | PERCENT) expression    # mulDivExpr
     | expression (PLUS | MINUS) expression          # addSubExpr
-    | expression (AMP | PIPE | LSHIFT | RSHIFT) expression # bitwiseExpr
+    | expression (AMP | PIPE | RSHIFT | LSHIFT) expression # bitwiseExpr
     | expression (CONCAT) expression                # concatExpr
     | expression (LT | LE | GT | GE) expression     # compareExpr
     | expression (EQ | NE | NE2) expression         # equalityExpr
@@ -584,6 +591,8 @@ AFTER: A F T E R;
 BEFORE: B E F O R E;
 FOR: F O R;
 EACH: E A C H;
+// ROWVERSION must be before ROW, ROWS, ROWID (longer match wins in ANTLR4)
+ROWVERSION: R O W V E R S I O N;
 ROW: R O W;
 ROWS: R O W S;
 RANGE: R A N G E;
@@ -596,6 +605,7 @@ START: S T A R T;
 RESTART: R E S T A R T;
 TYPE: T Y P E;
 RETURNING: R E T U R N I N G;
+TRUNCATE: T R U N C A T E;
 
 TINYINT: T I N Y I N T;
 INT8: I N T '8';
@@ -649,6 +659,8 @@ NTEXT: N T E X T;
 BINARY: B I N A R Y;
 VARBINARY: V A R B I N A R Y;
 BLOB: B L O B;
+JSON: J S O N;
+JSONB: J S O N B;
 
 CURRENT_TIMESTAMP: C U R R E N T '_' T I M E S T A M P;
 CURRENT_DATE: C U R R E N T '_' D A T E;

@@ -455,4 +455,18 @@ internal sealed partial class WitSqlVisitor
     }
 
     #endregion
+
+    #region TRUNCATE TABLE Statement
+
+    public override WitSqlStatementTruncate VisitTruncateTableStatement(WitSqlParser.TruncateTableStatementContext context)
+    {
+        return new WitSqlStatementTruncate
+        {
+            Line = context.Start.Line,
+            Column = context.Start.Column,
+            TableName = context.tableName().GetText()
+        };
+    }
+
+    #endregion
 }
