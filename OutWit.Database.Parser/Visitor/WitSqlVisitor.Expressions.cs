@@ -139,6 +139,13 @@ internal sealed partial class WitSqlVisitor
                 Expression = VisitExpression(cast.expression()),
                 TargetType = VisitDataType(cast.dataType())
             },
+            WitSqlParser.ConvertExprContext convert => new WitSqlExpressionCast
+            {
+                Line = convert.Start.Line,
+                Column = convert.Start.Column,
+                Expression = VisitExpression(convert.expression()),
+                TargetType = VisitDataType(convert.dataType())
+            },
             WitSqlParser.GlobExprContext glob => new WitSqlExpressionGlob
             {
                 Line = glob.Start.Line,

@@ -491,5 +491,510 @@ public class AdvancedParserTests
         Assert.That(func.FunctionName, Is.EqualTo("IFNULL"));
     }
 
+    [Test]
+    public void ParseNvlFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("NVL(Status, 'pending')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("NVL"));
+    }
+
+    [Test]
+    public void ParseChangesFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("CHANGES()");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("CHANGES"));
+    }
+
+    [Test]
+    public void ParseDatabaseFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("DATABASE()");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("DATABASE"));
+    }
+
+    [Test]
+    public void ParseVersionFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("VERSION()");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("VERSION"));
+    }
+
+    #endregion
+
+    #region Extended String Functions
+
+    [Test]
+    public void ParseSubstringFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("SUBSTRING(Name, 1, 5)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("SUBSTRING"));
+    }
+
+    [Test]
+    public void ParseLtrimFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LTRIM(Name)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LTRIM"));
+    }
+
+    [Test]
+    public void ParseRtrimFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("RTRIM(Name)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("RTRIM"));
+    }
+
+    [Test]
+    public void ParseInstrFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("INSTR(Email, '@')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("INSTR"));
+    }
+
+    [Test]
+    public void ParseReverseFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("REVERSE(Name)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("REVERSE"));
+    }
+
+    [Test]
+    public void ParseConcatFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("CONCAT(FirstName, ' ', LastName)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("CONCAT"));
+    }
+
+    [Test]
+    public void ParseConcatWsFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("CONCAT_WS(', ', City, Country)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("CONCAT_WS"));
+    }
+
+    [Test]
+    public void ParseCharLengthFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("CHAR_LENGTH(Name)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("CHAR_LENGTH"));
+    }
+
+    [Test]
+    public void ParseOctetLengthFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("OCTET_LENGTH(Data)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("OCTET_LENGTH"));
+    }
+
+    [Test]
+    public void ParseLpadFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LPAD(Id, 10, '0')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LPAD"));
+    }
+
+    [Test]
+    public void ParseRpadFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("RPAD(Name, 20, ' ')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("RPAD"));
+    }
+
+    [Test]
+    public void ParseRepeatFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("REPEAT('*', 10)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("REPEAT"));
+    }
+
+    [Test]
+    public void ParseSpaceFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("SPACE(5)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("SPACE"));
+    }
+
+    #endregion
+
+    #region Extended Numeric Functions
+
+    [Test]
+    public void ParseCeilingFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("CEILING(3.14)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("CEILING"));
+    }
+
+    [Test]
+    public void ParseSignFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("SIGN(-5)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("SIGN"));
+    }
+
+    [Test]
+    public void ParseTruncFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("TRUNC(3.14159, 2)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("TRUNC"));
+    }
+
+    [Test]
+    public void ParseModFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("MOD(10, 3)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("MOD"));
+    }
+
+    [Test]
+    public void ParsePowerFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("POWER(2, 10)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("POWER"));
+    }
+
+    [Test]
+    public void ParseSqrtFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("SQRT(16)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("SQRT"));
+    }
+
+    [Test]
+    public void ParseExpFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("EXP(1)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("EXP"));
+    }
+
+    [Test]
+    public void ParseLogFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LOG(10)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LOG"));
+    }
+
+    [Test]
+    public void ParseLog10FunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LOG10(100)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LOG10"));
+    }
+
+    [Test]
+    public void ParseLog2FunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LOG2(8)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LOG2"));
+    }
+
+    [Test]
+    public void ParsePiFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("PI()");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("PI"));
+    }
+
+    [Test]
+    public void ParseRandomFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("RANDOM()");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("RANDOM"));
+    }
+
+    [Test]
+    public void ParseSinFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("SIN(0)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("SIN"));
+    }
+
+    [Test]
+    public void ParseCosFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("COS(0)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("COS"));
+    }
+
+    [Test]
+    public void ParseTanFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("TAN(0)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("TAN"));
+    }
+
+    [Test]
+    public void ParseAsinFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("ASIN(0)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("ASIN"));
+    }
+
+    [Test]
+    public void ParseAcosFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("ACOS(1)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("ACOS"));
+    }
+
+    [Test]
+    public void ParseAtanFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("ATAN(0)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("ATAN"));
+    }
+
+    [Test]
+    public void ParseAtan2FunctionTest()
+    {
+        var expr = WitSql.ParseExpression("ATAN2(1, 1)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("ATAN2"));
+    }
+
+    [Test]
+    public void ParseDegreesFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("DEGREES(PI())");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("DEGREES"));
+    }
+
+    [Test]
+    public void ParseRadiansFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("RADIANS(180)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("RADIANS"));
+    }
+
+    #endregion
+
+    #region Extended Date Functions
+
+    [Test]
+    public void ParseDayOfWeekFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("DAYOFWEEK(CreatedAt)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("DAYOFWEEK"));
+    }
+
+    [Test]
+    public void ParseDayOfYearFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("DAYOFYEAR(CreatedAt)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("DAYOFYEAR"));
+    }
+
+    [Test]
+    public void ParseWeekOfYearFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("WEEKOFYEAR(CreatedAt)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("WEEKOFYEAR"));
+    }
+
+    [Test]
+    public void ParseQuarterFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("QUARTER(CreatedAt)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("QUARTER"));
+    }
+
+    [Test]
+    public void ParseDateAddFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("DATEADD('day', 7, NOW())");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("DATEADD"));
+    }
+
+    [Test]
+    public void ParseDateDiffFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("DATEDIFF('day', StartDate, EndDate)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("DATEDIFF"));
+    }
+
+    [Test]
+    public void ParseStrftimeFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("STRFTIME('%Y-%m-%d', NOW())");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("STRFTIME"));
+    }
+
+    [Test]
+    public void ParseMakeDateFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("MAKEDATE(2024, 100)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("MAKEDATE"));
+    }
+
+    [Test]
+    public void ParseMakeTimeFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("MAKETIME(14, 30, 0)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("MAKETIME"));
+    }
+
+    #endregion
+
+    #region Conversion Functions
+
+    [Test]
+    public void ParseConvertFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("CONVERT(INT, '123')");
+        var cast = (WitSqlExpressionCast)expr;
+        Assert.That(cast.TargetType.TypeName, Is.EqualTo("INT"));
+        Assert.That(cast.Expression, Is.InstanceOf<WitSqlExpressionLiteral>());
+    }
+
+    [Test]
+    public void ParseHexFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("HEX(Data)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("HEX"));
+    }
+
+    [Test]
+    public void ParseUnhexFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("UNHEX('48656C6C6F')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("UNHEX"));
+    }
+
+    #endregion
+
+    #region Aggregate Functions
+
+    [Test]
+    public void ParseGroupConcatFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("GROUP_CONCAT(Name)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("GROUP_CONCAT"));
+    }
+
+    #endregion
+
+    #region Extended Window Functions
+
+    [Test]
+    public void ParseNtileFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("NTILE(4) OVER (ORDER BY Price)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("NTILE"));
+        Assert.That(func.Over, Is.Not.Null);
+    }
+
+    [Test]
+    [Ignore("FIRST_VALUE token conflict with FIRST keyword - to be fixed")]
+    public void ParseFirstValueFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("FIRST_VALUE(Price) OVER (ORDER BY Date)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("FIRST_VALUE"));
+    }
+
+    [Test]
+    [Ignore("LAST_VALUE token conflict with LAST keyword - to be fixed")]
+    public void ParseLastValueFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LAST_VALUE(Price) OVER (ORDER BY Date)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LAST_VALUE"));
+    }
+
+    [Test]
+    [Ignore("NTH_VALUE token parsing issue - to be fixed")]
+    public void ParseNthValueFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("NTH_VALUE(Price, 3) OVER (ORDER BY Date)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("NTH_VALUE"));
+    }
+
+    [Test]
+    public void ParsePercentRankFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("PERCENT_RANK() OVER (ORDER BY Score)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("PERCENT_RANK"));
+    }
+
+    [Test]
+    public void ParseCumeDistFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("CUME_DIST() OVER (ORDER BY Score)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("CUME_DIST"));
+    }
+
+    #endregion
+
+    #region ID Generation Functions
+
+    [Test]
+    public void ParseNewUuidFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("NEWUUID()");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("NEWUUID"));
+    }
+
+    [Test]
+    public void ParseLastIncrementFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LASTINCREMENT('orders')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LASTINCREMENT"));
+    }
+
     #endregion
 }

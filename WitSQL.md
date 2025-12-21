@@ -372,10 +372,12 @@ WHERE Id IN (SELECT UserId FROM Orders WHERE TotalAmount > 1000);
 
 ```sql
 INSERT INTO table_name [(column_list)]
-    VALUES (value_list) [, (value_list) ...];
+    VALUES (value_list) [, (value_list) ...]
+    [RETURNING select_list];
 
 INSERT INTO table_name [(column_list)]
-    select_statement;
+    select_statement
+    [RETURNING select_list];
 ```
 
 **Examples:**
@@ -396,6 +398,15 @@ INSERT INTO ArchivedOrders (Id, UserId, TotalAmount)
 SELECT Id, UserId, TotalAmount 
 FROM Orders 
 WHERE OrderDate < '2023-01-01';
+
+-- Insert with RETURNING (get generated values)
+INSERT INTO Users (Username, Email) 
+VALUES ('john', 'john@example.com')
+RETURNING Id, CreatedAt;
+
+-- Insert returning all columns
+INSERT INTO Orders (UserId, Amount) VALUES (@UserId, @Amount)
+RETURNING *;
 ```
 
 ### 3.3 UPDATE
@@ -403,7 +414,8 @@ WHERE OrderDate < '2023-01-01';
 ```sql
 UPDATE table_name
 SET column_name = expression [, column_name = expression ...]
-[WHERE condition];
+[WHERE condition]
+[RETURNING select_list];
 ```
 
 **Examples:**
@@ -418,13 +430,20 @@ WHERE Id = 12345;
 UPDATE Products 
 SET Price = Price * 1.1, UpdatedAt = NOW()
 WHERE CategoryId = 5;
+
+-- Update with RETURNING
+UPDATE Users 
+SET Name = 'Jane', UpdatedAt = NOW() 
+WHERE Id = @Id
+RETURNING Id, Name, UpdatedAt;
 ```
 
 ### 3.4 DELETE
 
 ```sql
 DELETE FROM table_name
-[WHERE condition];
+[WHERE condition]
+[RETURNING select_list];
 ```
 
 **Examples:**
@@ -432,6 +451,10 @@ DELETE FROM table_name
 ```sql
 DELETE FROM Logs WHERE Timestamp < '2023-01-01';
 DELETE FROM Users WHERE IsActive = FALSE;
+
+-- Delete with RETURNING (get deleted records)
+DELETE FROM Users WHERE Id = @Id
+RETURNING Id, Username, Email;
 ```
 
 ---
@@ -911,27 +934,28 @@ The following are reserved keywords in WitSQL:
 ADD, ALL, ALTER, AND, AS, ASC, AUTOINCREMENT,
 BEGIN, BETWEEN, BINARY, BLOB, BOOLEAN, BY,
 CASCADE, CASE, CAST, CHAR, CHECK, COLUMN, COMMIT, CONSTRAINT, CREATE, CROSS, CURRENT,
-DATE, DATETIME, DECIMAL, DEFAULT, DELETE, DESC, DISTINCT, DOUBLE, DROP,
+DATE, DATETIME, DAY, DECIMAL, DEFAULT, DELETE, DESC, DISTINCT, DOUBLE, DROP,
 EACH, ELSE, END, ESCAPE, EXCEPT, EXISTS,
 FALSE, FLOAT, FOR, FOREIGN, FROM, FULL,
-GROUP, GUID, HAVING,
+GROUP, GUID, HAVING, HOUR,
 IF, IN, INDEX, INNER, INSERT, INT, INTEGER, INTERSECT, INTERVAL, INTO, IS,
 JOIN,
 KEY,
 LEFT, LIKE, LIMIT,
-MAX, MIN,
+MAX, MIN, MINUTE, MONTH,
 NOT, NULL, NULLS,
 OFFSET, ON, OR, ORDER, OUTER, OVER,
 PARTITION, PRIMARY,
-REAL, RECURSIVE, REFERENCES, RENAME, RESTRICT, RIGHT, ROLLBACK, ROW, ROWS,
-SAVEPOINT, SELECT, SEQUENCE, SET, SMALLINT,
+REAL, RECURSIVE, REFERENCES, RENAME, RESTRICT, RETURNING, RIGHT, ROLLBACK, ROW, ROWS,
+SAVEPOINT, SECOND, SELECT, SEQUENCE, SET, SMALLINT,
 TABLE, TEXT, THEN, TIME, TIMESTAMP, TO, TRANSACTION, TRIGGER, TRUE,
 UNIQUE, UNION, UPDATE, USING,
 VALUES, VARCHAR, VIEW,
-WHEN, WHERE, WITH
+WHEN, WHERE, WITH, YEAR
 ```
 
 ---
 
 **Document Version History:**
 - v1.0 (2024-12-12): Initial specification
+- v1.1 (2024-12-19): Added RETURNING clause, date extraction functions (YEAR, MONTH, DAY, HOUR, MINUTE, SECOND)

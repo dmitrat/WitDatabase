@@ -1,152 +1,141 @@
-# Parser Audit TODO ? COMPLETED
+# Parser Audit TODO
 
-## ? ??????????? ????? (Phase 1)
+## Completed Phases
 
-<details>
-<summary>???????? ??????????? ?????? (86 items)</summary>
+### Phase 1: Core Tests (86 items) - COMPLETED
 
-### SELECT Statement Tests
-- [x] 1. SELECT ALL (?? DISTINCT)
-- [x] 2. Multiple tables in FROM
-- [x] 3-5. RIGHT/FULL/CROSS JOIN
-- [x] 6-8. Subqueries in FROM/WHERE/SELECT
-- [x] 9. NULLS FIRST/LAST
-- [x] 10. MySQL-style LIMIT
-- [x] 11-12. Qualified columns, table alias with star
+All basic SQL features tested: SELECT, INSERT, UPDATE, DELETE, DDL, expressions, etc.
 
-### Expression Tests
-- [x] 13-20. Window functions, CASE, LIKE ESCAPE, operators
+### Phase 2: Grammar Extensions (27 items) - COMPLETED
 
-### Function Tests  
-- [x] 21-40. Aggregate, string, math, date, window functions
+- [x] EXISTS / NOT EXISTS expressions
+- [x] Parameter placeholders (@, :, ?, $n)
+- [x] CTE (WITH, WITH RECURSIVE)
+- [x] Set operations (UNION, INTERSECT, EXCEPT)
+- [x] Transaction statements
 
-### DDL Tests
-- [x] 41-53. CREATE TABLE constraints, ALTER COLUMN, INDEX, VIEW, TRIGGER
+### Phase 3: EF Core Critical Features (14 items) - COMPLETED
 
-### Literal Tests
-- [x] 54-58. Scientific notation, CURRENT_*, escaped quotes
-
-### Error Handling Tests
-- [x] 59-63. Error scenarios
-
-### Data Types Coverage
-- [x] 72-81. All data types
-
-</details>
+- [x] RETURNING clause for INSERT/UPDATE/DELETE
+- [x] Date functions (YEAR, MONTH, DAY, HOUR, MINUTE, SECOND)
+- [x] LAST_INSERT_ROWID, IFNULL, TYPEOF
 
 ---
 
-## ? Phase 2: ?????????? ?????????? ? ????????? ??????
+## Phase 4: Full WitSQL Specification Support
 
-### EXISTS Expression ? COMPLETED
-- [x] 87. ???????? EXISTS keyword ? ?????????? (WitSql.g4)
-- [x] 88. ??????? WitSqlExpressionExists ?????
-- [x] 89. ???????? visitor ??? existsExpr
-- [x] 90. ???????? ???? EXISTS subquery
-- [x] 91. ???????? ???? NOT EXISTS subquery
+### String Functions (Priority: High)
+- [x] 1. Add LEFT function to grammar and tests
+- [x] 2. Add RIGHT function to grammar and tests
+- [x] 3. Add LTRIM function to grammar and tests
+- [x] 4. Add RTRIM function to grammar and tests
+- [x] 5. Add CONCAT function to grammar and tests
+- [x] 6. Add CONCAT_WS function to grammar and tests
+- [x] 7. Add INSTR function to grammar and tests
+- [ ] 8. Add POSITION function to grammar and tests
+- [x] 9. Add REVERSE function to grammar and tests
+- [x] 10. Add REPEAT function to grammar and tests
+- [x] 11. Add SPACE function to grammar and tests
+- [x] 12. Add LPAD function to grammar and tests
+- [x] 13. Add RPAD function to grammar and tests
+- [x] 14. Add SUBSTRING function (alias for SUBSTR)
+- [x] 15. Add CHAR_LENGTH function
+- [x] 16. Add OCTET_LENGTH function
+- [ ] 17. Add FORMAT function
 
-### Parameters Support ? COMPLETED
-- [x] 111. ??????? WitSqlExpressionParameter ?????
-- [x] 112. ???????? visitor ??? ?????????? (@param, :param, ?, $1)
-- [x] 113. ???????? ????? ??? ???? ????? ??????????
+### Numeric Functions (Priority: Medium)
+- [x] 18. Add SIGN function
+- [x] 19. Add TRUNC function
+- [x] 20. Add MOD function
+- [x] 21. Add POWER function
+- [x] 22. Add SQRT function
+- [x] 23. Add EXP function
+- [x] 24. Add LOG function
+- [x] 25. Add LOG10 function
+- [x] 26. Add LOG2 function
+- [x] 27. Add SIN, COS, TAN functions
+- [x] 28. Add ASIN, ACOS, ATAN functions
+- [x] 29. Add ATAN2 function
+- [x] 30. Add PI function
+- [x] 31. Add DEGREES function
+- [x] 32. Add RADIANS function
+- [x] 33. Add RANDOM function
+- [x] 34. Add CEILING function (alias for CEIL)
 
-### CTE - Common Table Expressions ? COMPLETED
-- [x] 92. ??????????? visitor ??? withClause
-- [x] 93. ??????? ClauseCteDefinition ?????
-- [x] 94. ???????? WitSqlStatementSelect ??? ????????? CTEs
-- [x] 95. ???????? ???? ???????? CTE
-- [x] 96. ???????? ???? recursive CTE
-- [x] 97. ???????? ???? multiple CTEs
+### Date/Time Functions (Priority: High)
+- [x] 35. Add DAYOFWEEK function
+- [x] 36. Add DAYOFYEAR function
+- [x] 37. Add WEEKOFYEAR function
+- [x] 38. Add QUARTER function
+- [x] 39. Add DATEADD function
+- [x] 40. Add DATEDIFF function
+- [x] 41. Add STRFTIME function
+- [x] 42. Add MAKEDATE function
+- [x] 43. Add MAKETIME function
 
-### Set Operations ? COMPLETED
-- [x] 98. ??????????? visitor ??? setOperation
-- [x] 99. ??????? ClauseSetOperation ?????
-- [x] 100. ???????? ???? UNION
-- [x] 101. ???????? ???? UNION ALL
-- [x] 102. ???????? ???? INTERSECT
-- [x] 103. ???????? ???? EXCEPT
+### Conversion Functions (Priority: Medium)
+- [x] 44. Add CONVERT function (special syntax like CAST)
+- [ ] 45. Add TOSTRING function
+- [ ] 46. Add TOINT function
+- [ ] 47. Add TODOUBLE function
+- [ ] 48. Add TODECIMAL function
+- [ ] 49. Add TOBOOLEAN function
+- [ ] 50. Add TODATE function
+- [ ] 51. Add TODATETIME function
+- [ ] 52. Add TOGUID function
+- [x] 53. Add HEX function
+- [x] 54. Add UNHEX function
+- [ ] 55. Add BASE64 function
+- [ ] 56. Add UNBASE64 function
 
-### Transactions ? COMPLETED
-- [x] 104. ??????? WitSqlStatementBeginTransaction ?????
-- [x] 105. ??????? WitSqlStatementCommit ?????
-- [x] 106. ??????? WitSqlStatementRollback ?????
-- [x] 107. ??????? WitSqlStatementSavepoint ?????
-- [x] 108. ??????? WitSqlStatementReleaseSavepoint ?????
-- [x] 109. ??????????? visitor ??? transaction statements
-- [x] 110. ???????? ????? ??? ???? transaction statements
+### Aggregate Functions (Priority: Medium)
+- [x] 57. Add GROUP_CONCAT function
 
----
+### Null Handling Functions (Priority: High)
+- [x] 58. Add NVL function (alias for IFNULL)
 
-## ? Phase 3: EF Core Critical Features (14 items) - COMPLETED
+### System Functions (Priority: Medium)
+- [x] 59. Add DATABASE function
+- [x] 60. Add VERSION function
+- [x] 61. Add CHANGES function
+- [ ] 62. Add ROWID pseudo-column support
 
-### RETURNING Clause
-- [x] Add RETURNING keyword to grammar
-- [x] Add returningClause parser rule
-- [x] Update INSERT statement with RETURNING
-- [x] Update UPDATE statement with RETURNING
-- [x] Update DELETE statement with RETURNING
-- [x] Add ReturningClause to statement classes
-- [x] Update visitor for RETURNING
-- [x] Add tests for RETURNING
+### Window Functions (Priority: Medium)
+- [x] 63. Add NTILE function
+- [x] 64. Add PERCENT_RANK function
+- [x] 65. Add CUME_DIST function
+- [ ] 66. Add FIRST_VALUE function (token conflict - needs fix)
+- [ ] 67. Add LAST_VALUE function (token conflict - needs fix)
+- [ ] 68. Add NTH_VALUE function (token conflict - needs fix)
+- [ ] 69. Add window frame clause support (ROWS/RANGE BETWEEN)
 
-### Date Functions
-- [x] Add YEAR, MONTH, DAY keywords
-- [x] Add HOUR, MINUTE, SECOND keywords
-- [x] Add date functions to functionName rule
-- [x] Add tests for date extraction functions
-
-### System Functions
-- [x] Add LAST_INSERT_ROWID keyword/function
-- [x] Add IFNULL, TYPEOF functions
-
----
-
-## ?? Files Created/Modified
-
-### New Classes:
-- `WitSqlExpressionExists`
-- `WitSqlExpressionParameter`
-- `ClauseCteDefinition`
-- `ClauseSetOperation`
-- `WitSqlStatementBeginTransaction`
-- `WitSqlStatementCommit`
-- `WitSqlStatementRollback`
-- `WitSqlStatementSavepoint`
-- `WitSqlStatementReleaseSavepoint`
-
-### New Enums:
-- `ParameterType`
-- `SetOperationType`
-
-### Modified Files:
-- `WitSql.g4` - Added RETURNING, date functions, system functions
-- `WitSqlStatementInsert.cs` - Added ReturningClause
-- `WitSqlStatementUpdate.cs` - Added ReturningClause
-- `WitSqlStatementDelete.cs` - Added ReturningClause
-- `WitSqlStatementSelect.cs` - Added CTE and set operations
-- `WitSqlVisitor.DML.cs` - Updated for new features
-- `IWitSqlVisitor.cs` - Added new visitor methods
-
----
-
-## ?? Future Enhancements (Optional)
-
-### Lower Priority Functions
-- [ ] String: LEFT, RIGHT, CONCAT, LTRIM, RTRIM, INSTR
-- [ ] Math: POWER, SQRT, LOG, RANDOM
-- [ ] Date: DATEADD, DATEDIFF, STRFTIME
-- [ ] Aggregate: GROUP_CONCAT
-
-### Window Function Enhancements
-- [ ] NTILE, FIRST_VALUE, LAST_VALUE
-- [ ] Frame clause (ROWS BETWEEN...)
-
-### Advanced Features
-- [ ] INSERT ... ON CONFLICT (UPSERT)
-- [ ] JSON functions
-- [ ] REGEXP support
+### ID Generation Functions (Priority: Low)
+- [x] 70. Add NEWUUID function (alias for NEWGUID)
+- [x] 71. Add LASTINCREMENT function
 
 ---
 
-**Status:** ? ALL CRITICAL ITEMS COMPLETED  
+## Progress Tracking
+
+| Phase  | Items | Completed | Status      |
+|--------|-------|-----------|-------------|
+| Phase 1| 86    | 86        | ? Done     |
+| Phase 2| 27    | 27        | ? Done     |
+| Phase 3| 14    | 14        | ? Done     |
+| Phase 4| 71    | 55        | ? In Progress|
+| **Total**  | **198** | **182**   | **92%**       |
+
+**Total Tests:** 276
+
+### Remaining Items (16):
+1. POSITION function
+2. FORMAT function  
+3. TOSTRING, TOINT, TODOUBLE, TODECIMAL, TOBOOLEAN, TODATE, TODATETIME, TOGUID functions (8)
+4. BASE64, UNBASE64 functions (2)
+5. ROWID pseudo-column
+6. FIRST_VALUE, LAST_VALUE, NTH_VALUE window functions (3) - token conflicts
+7. Window frame clause (ROWS/RANGE BETWEEN)
+
+---
+
 **Last Updated:** 2024-12-19

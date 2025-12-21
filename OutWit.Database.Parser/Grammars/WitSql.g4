@@ -1,15 +1,9 @@
-/*
- * WitSQL Grammar for ANTLR4
- * Based on SQLite syntax with .NET type extensions
- */
-
 grammar WitSql;
 
 // ============================================================================
 // Parser Rules
 // ============================================================================
 
-// Entry point - can be multiple statements
 script
     : statement (SEMI statement)* SEMI? EOF
     ;
@@ -69,9 +63,6 @@ savepointStatement
 releaseStatement
     : RELEASE SAVEPOINT? IDENTIFIER
     ;
-// ----------------------------------------------------------------------------
-// Query Expressions (with set operations and CTE)
-// ----------------------------------------------------------------------------
 
 queryExpression
     : withClause? queryTerm (setOperation queryTerm)* orderByClause? limitClause?
@@ -95,10 +86,6 @@ setOperation
     | INTERSECT
     | EXCEPT
     ;
-
-// ----------------------------------------------------------------------------
-// SELECT Statement
-// ----------------------------------------------------------------------------
 
 selectStatement
     : SELECT (DISTINCT | ALL)? selectList
@@ -158,18 +145,12 @@ orderByItem
 
 limitClause
     : LIMIT expression (OFFSET expression)?
-    | LIMIT expression COMMA expression  // MySQL style: LIMIT offset, count
+    | LIMIT expression COMMA expression
     ;
-
-// ----------------------------------------------------------------------------
-// INSERT Statement
-// ----------------------------------------------------------------------------
 
 insertStatement
     : INSERT INTO tableName (LPAREN columnName (COMMA columnName)* RPAREN)?
-      ( VALUES valuesList
-      | selectStatement
-      )
+      ( VALUES valuesList | selectStatement )
       returningClause?
     ;
 
@@ -180,10 +161,6 @@ valuesList
 valueRow
     : LPAREN expression (COMMA expression)* RPAREN
     ;
-
-// ----------------------------------------------------------------------------
-// UPDATE Statement
-// ----------------------------------------------------------------------------
 
 updateStatement
     : UPDATE tableName
@@ -196,25 +173,13 @@ setClause
     : columnName EQ expression
     ;
 
-// ----------------------------------------------------------------------------
-// DELETE Statement
-// ----------------------------------------------------------------------------
-
 deleteStatement
     : DELETE FROM tableName whereClause? returningClause?
     ;
 
-// ----------------------------------------------------------------------------
-// RETURNING Clause (for INSERT/UPDATE/DELETE)
-// ----------------------------------------------------------------------------
-
 returningClause
     : RETURNING selectList
     ;
-
-// ----------------------------------------------------------------------------
-// CREATE TABLE Statement
-// ----------------------------------------------------------------------------
 
 createTableStatement
     : CREATE TABLE (IF NOT EXISTS)? tableName
@@ -295,17 +260,9 @@ tableConstraint
     | CHECK LPAREN expression RPAREN                              # tableCheck
     ;
 
-// ----------------------------------------------------------------------------
-// DROP TABLE Statement
-// ----------------------------------------------------------------------------
-
 dropTableStatement
     : DROP TABLE (IF EXISTS)? tableName
     ;
-
-// ----------------------------------------------------------------------------
-// ALTER TABLE Statement
-// ----------------------------------------------------------------------------
 
 alterTableStatement
     : ALTER TABLE tableName alterAction
@@ -327,10 +284,6 @@ alterColumnAction
     | DROP NOT NULL                                         # alterColumnDropNotNull
     ;
 
-// ----------------------------------------------------------------------------
-// CREATE INDEX Statement
-// ----------------------------------------------------------------------------
-
 createIndexStatement
     : CREATE UNIQUE? INDEX (IF NOT EXISTS)? indexName
       ON tableName LPAREN indexColumn (COMMA indexColumn)* RPAREN
@@ -344,17 +297,9 @@ indexName
     : IDENTIFIER
     ;
 
-// ----------------------------------------------------------------------------
-// DROP INDEX Statement
-// ----------------------------------------------------------------------------
-
 dropIndexStatement
     : DROP INDEX (IF EXISTS)? indexName
     ;
-
-// ----------------------------------------------------------------------------
-// CREATE/DROP VIEW Statements
-// ----------------------------------------------------------------------------
 
 createViewStatement
     : CREATE VIEW (IF NOT EXISTS)? viewName (LPAREN columnName (COMMA columnName)* RPAREN)?
@@ -368,10 +313,6 @@ dropViewStatement
 viewName
     : IDENTIFIER
     ;
-
-// ----------------------------------------------------------------------------
-// CREATE/DROP TRIGGER Statements
-// ----------------------------------------------------------------------------
 
 createTriggerStatement
     : CREATE TRIGGER (IF NOT EXISTS)? triggerName
@@ -401,10 +342,6 @@ triggerName
     : IDENTIFIER
     ;
 
-// ----------------------------------------------------------------------------
-// SEQUENCE Statements
-// ----------------------------------------------------------------------------
-
 createSequenceStatement
     : CREATE SEQUENCE (IF NOT EXISTS)? sequenceName
       (START WITH INTEGER_LITERAL)?
@@ -421,10 +358,6 @@ alterSequenceStatement
 sequenceName
     : IDENTIFIER
     ;
-
-// ----------------------------------------------------------------------------
-// Expressions
-// ----------------------------------------------------------------------------
 
 expression
     : literal                                       # literalExpr
@@ -450,6 +383,7 @@ expression
     | expression OR expression                      # orExpr
     | CASE expression? (WHEN expression THEN expression)+ (ELSE expression)? END # caseExpr
     | CAST LPAREN expression AS dataType RPAREN     # castExpr
+    | CONVERT LPAREN dataType COMMA expression RPAREN # convertExpr
     | IIF LPAREN expression COMMA expression COMMA expression RPAREN # iifExpr
     ;
 
@@ -484,17 +418,25 @@ functionCall
 
 functionName
     : IDENTIFIER
-    | COUNT | SUM | AVG | MIN | MAX
-    | UPPER | LOWER | LENGTH | SUBSTR | TRIM | REPLACE
-    | ABS | ROUND | FLOOR | CEIL
-    | DATE | TIME | DATETIME
-    | COALESCE | NULLIF | CAST
-    | NOW | NEWGUID | INCREMENT
-    | ROW_NUMBER | RANK | DENSE_RANK | LAG | LEAD
-    // Extended functions for EF Core support
+    | COUNT | SUM | AVG | MIN | MAX | GROUP_CONCAT
+    | UPPER | LOWER | LENGTH | SUBSTR | SUBSTRING | TRIM | REPLACE
+    | LTRIM | RTRIM | INSTR | REVERSE | CONCAT_FUNC | CONCAT_WS
+    | CHAR_LENGTH | OCTET_LENGTH | LPAD | RPAD | REPEAT | SPACE_FUNC
+    | ABS | ROUND | FLOOR | CEIL | CEILING | SIGN | TRUNC | MOD
+    | POWER | SQRT | EXP | LOG | LOG10 | LOG2 | PI | RANDOM
+    | SIN | COS | TAN | ASIN | ACOS | ATAN | ATAN2
+    | DEGREES | RADIANS
+    | DATE | TIME | DATETIME | NOW
     | YEAR | MONTH | DAY | HOUR | MINUTE | SECOND
-    | IFNULL | TYPEOF
-    | LAST_INSERT_ROWID
+    | DAYOFWEEK | DAYOFYEAR | WEEKOFYEAR | QUARTER
+    | DATEADD | DATEDIFF | STRFTIME | MAKEDATE | MAKETIME
+    | COALESCE | NULLIF | CAST | IFNULL | NVL
+    | CONVERT | HEX | UNHEX | TYPEOF
+    | NEWGUID | NEWUUID | INCREMENT | LASTINCREMENT
+    | LAST_INSERT_ROWID | DATABASE_FUNC | VERSION_FUNC | CHANGES
+    | ROW_NUMBER | RANK | DENSE_RANK | NTILE
+    | LAG | LEAD | FIRST_VALUE | LAST_VALUE | NTH_VALUE
+    | PERCENT_RANK | CUME_DIST
     ;
 
 windowSpec
@@ -520,7 +462,11 @@ alias
 // Lexer Rules
 // ============================================================================
 
-// Keywords
+// Window function tokens (must be before FIRST/LAST keywords)
+FIRST_VALUE: F I R S T '_' V A L U E;
+LAST_VALUE: L A S T '_' V A L U E;
+NTH_VALUE: N T H '_' V A L U E;
+
 ADD: A D D;
 ALL: A L L;
 ALTER: A L T E R;
@@ -599,7 +545,6 @@ ACTION: A C T I O N;
 NO: N O;
 OF: O F;
 
-// Additional keywords
 VIEW: V I E W;
 TRIGGER: T R I G G E R;
 BEGIN: B E G I N;
@@ -627,7 +572,6 @@ RESTART: R E S T A R T;
 TYPE: T Y P E;
 RETURNING: R E T U R N I N G;
 
-// Data type keywords
 TINYINT: T I N Y I N T;
 INT8: I N T '8';
 UTINYINT: U T I N Y I N T;
@@ -681,55 +625,104 @@ BINARY: B I N A R Y;
 VARBINARY: V A R B I N A R Y;
 BLOB: B L O B;
 
-// Time functions/literals
 CURRENT_TIMESTAMP: C U R R E N T '_' T I M E S T A M P;
 CURRENT_DATE: C U R R E N T '_' D A T E;
 CURRENT_TIME: C U R R E N T '_' T I M E;
 NOW: N O W;
 NEWGUID: N E W G U I D;
+NEWUUID: N E W U U I D;
 INCREMENT: I N C R E M E N T;
+LASTINCREMENT: L A S T I N C R E M E N T;
 
-// Aggregate functions
 COUNT: C O U N T;
 SUM: S U M;
 AVG: A V G;
 MIN: M I N;
+GROUP_CONCAT: G R O U P '_' C O N C A T;
 
-// String functions
 UPPER: U P P E R;
 LOWER: L O W E R;
 LENGTH: L E N G T H;
 SUBSTR: S U B S T R;
+SUBSTRING: S U B S T R I N G;
 TRIM: T R I M;
 REPLACE: R E P L A C E;
+LTRIM: L T R I M;
+RTRIM: R T R I M;
+INSTR: I N S T R;
+REVERSE: R E V E R S E;
+CONCAT_FUNC: C O N C A T;
+CONCAT_WS: C O N C A T '_' W S;
+CHAR_LENGTH: C H A R '_' L E N G T H;
+OCTET_LENGTH: O C T E T '_' L E N G T H;
+LPAD: L P A D;
+RPAD: R P A D;
+REPEAT: R E P E A T;
+SPACE_FUNC: S P A C E;
 
-// Math functions
 ABS: A B S;
 ROUND: R O U N D;
 FLOOR: F L O O R;
 CEIL: C E I L;
+CEILING: C E I L I N G;
+SIGN: S I G N;
+TRUNC: T R U N C;
+MOD: M O D;
+POWER: P O W E R;
+SQRT: S Q R T;
+EXP: E X P;
+LOG: L O G;
+LOG10: L O G '1' '0';
+LOG2: L O G '2';
+PI: P I;
+RANDOM: R A N D O M;
+SIN: S I N;
+COS: C O S;
+TAN: T A N;
+ASIN: A S I N;
+ACOS: A C O S;
+ATAN: A T A N;
+ATAN2: A T A N '2';
+DEGREES: D E G R E E S;
+RADIANS: R A D I A N S;
 
-// Date functions
 YEAR: Y E A R;
 MONTH: M O N T H;
 DAY: D A Y;
 HOUR: H O U R;
 MINUTE: M I N U T E;
 SECOND: S E C O N D;
+DAYOFWEEK: D A Y O F W E E K;
+DAYOFYEAR: D A Y O F Y E A R;
+WEEKOFYEAR: W E E K O F Y E A R;
+QUARTER: Q U A R T E R;
+DATEADD: D A T E A D D;
+DATEDIFF: D A T E D I F F;
+STRFTIME: S T R F T I M E;
+MAKEDATE: M A K E D A T E;
+MAKETIME: M A K E T I M E;
 
-// Null handling
 IFNULL: I F N U L L;
+NVL: N V L;
 TYPEOF: T Y P E O F;
-LAST_INSERT_ROWID: L A S T '_' I N S E R T '_' R O W I D;
+CONVERT: C O N V E R T;
+HEX: H E X;
+UNHEX: U N H E X;
 
-// Window functions
+LAST_INSERT_ROWID: L A S T '_' I N S E R T '_' R O W I D;
+DATABASE_FUNC: D A T A B A S E;
+VERSION_FUNC: V E R S I O N;
+CHANGES: C H A N G E S;
+
 ROW_NUMBER: R O W '_' N U M B E R;
 RANK: R A N K;
 DENSE_RANK: D E N S E '_' R A N K;
+NTILE: N T I L E;
 LAG: L A G;
 LEAD: L E A D;
+PERCENT_RANK: P E R C E N T '_' R A N K;
+CUME_DIST: C U M E '_' D I S T;
 
-// Operators
 STAR: '*';
 SLASH: '/';
 PLUS: '+';
@@ -749,20 +742,17 @@ PIPE: '|';
 LSHIFT: '<<';
 RSHIFT: '>>';
 
-// Punctuation
 LPAREN: '(';
 RPAREN: ')';
 COMMA: ',';
 SEMI: ';';
 DOT: '.';
 
-// Literals
 INTEGER_LITERAL: DIGIT+;
 REAL_LITERAL: DIGIT+ DOT DIGIT* | DOT DIGIT+ | DIGIT+ DOT? DIGIT* [Ee] [+-]? DIGIT+;
 STRING_LITERAL: '\'' ( ~'\'' | '\'\'' )* '\'';
 BLOB_LITERAL: [Xx] '\'' [0-9A-Fa-f]* '\'';
 
-// Identifier
 IDENTIFIER
     : [a-zA-Z_] [a-zA-Z0-9_]*
     | '"' (~'"' | '""')* '"'
@@ -770,18 +760,15 @@ IDENTIFIER
     | '`' ~'`'* '`'
     ;
 
-// Parameters
 PARAM_NAMED: '@' [a-zA-Z_] [a-zA-Z0-9_]*;
 PARAM_COLON: ':' [a-zA-Z_] [a-zA-Z0-9_]*;
 PARAM_POSITIONAL: '?';
 PARAM_NUMBERED: '$' DIGIT+;
 
-// Whitespace and comments
 WS: [ \t\r\n]+ -> skip;
 LINE_COMMENT: '--' ~[\r\n]* -> skip;
 BLOCK_COMMENT: '/*' .*? '*/' -> skip;
 
-// Fragments for case-insensitive keywords
 fragment A: [Aa];
 fragment B: [Bb];
 fragment C: [Cc];
