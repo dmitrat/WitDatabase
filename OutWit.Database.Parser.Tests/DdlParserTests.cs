@@ -15,7 +15,7 @@ public class DdlParserTests
     #region CREATE TABLE
 
     [Test]
-    public void ParseCreateTableBasic()
+    public void ParseCreateTableBasicTest()
     {
         var stmt = WitSql.ParseStatement("CREATE TABLE Users (Id INT, Name TEXT)");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
@@ -25,7 +25,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseCreateTableIfNotExists()
+    public void ParseCreateTableIfNotExistsTest()
     {
         var stmt = WitSql.ParseStatement("CREATE TABLE IF NOT EXISTS Logs (Id INT)");
         var create = (WitSqlStatementCreateTable)stmt;
@@ -33,7 +33,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseCreateTableWithAllConstraints()
+    public void ParseCreateTableWithAllConstraintsTest()
     {
         var stmt = WitSql.ParseStatement(@"
             CREATE TABLE Products (
@@ -62,7 +62,30 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseCreateTableWithTableConstraints()
+    public void ParseCreateTableWithMultipleCheckConstraintsTest()
+    {
+        var stmt = WitSql.ParseStatement(@"
+            CREATE TABLE Products (
+                Id INT PRIMARY KEY,
+                Price DECIMAL CHECK (Price >= 0),
+                Quantity INT CHECK (Quantity >= 0),
+                CHECK (Price * Quantity <= 1000000)
+            )");
+        var create = (WitSqlStatementCreateTable)stmt;
+        
+        // Column-level CHECK constraints
+        var priceConstraints = create.Columns[1].Constraints;
+        Assert.That(priceConstraints?.Any(c => c is ColumnConstraintCheck), Is.True);
+        
+        var qtyConstraints = create.Columns[2].Constraints;
+        Assert.That(qtyConstraints?.Any(c => c is ColumnConstraintCheck), Is.True);
+        
+        // Table-level CHECK constraint
+        Assert.That(create.Constraints?.Any(c => c is TableConstraintCheck), Is.True);
+    }
+
+    [Test]
+    public void ParseCreateTableWithTableConstraintsTest()
     {
         var stmt = WitSql.ParseStatement(@"
             CREATE TABLE OrderItems (
@@ -80,12 +103,28 @@ public class DdlParserTests
         Assert.That(create.Constraints!.Any(c => c is TableConstraintUnique), Is.True);
     }
 
+    [Test]
+    public void ParseCreateTableWithMultiColumnForeignKeyTest()
+    {
+        var stmt = WitSql.ParseStatement(@"
+            CREATE TABLE OrderDetails (
+                OrderId INT,
+                LineNumber INT,
+                ProductId INT,
+                FOREIGN KEY (OrderId, LineNumber) REFERENCES OrderLines(OrderId, LineNo) ON DELETE CASCADE
+            )");
+        var create = (WitSqlStatementCreateTable)stmt;
+        var fk = create.Constraints!.OfType<TableConstraintForeignKey>().First();
+        Assert.That(fk.Columns, Has.Count.EqualTo(2));
+        Assert.That(fk.ForeignColumns, Has.Count.EqualTo(2));
+    }
+
     #endregion
 
     #region DROP/ALTER TABLE
 
     [Test]
-    public void ParseDropTable()
+    public void ParseDropTableTest()
     {
         var stmt = WitSql.ParseStatement("DROP TABLE Users");
         var drop = (WitSqlStatementDropTable)stmt;
@@ -94,7 +133,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseDropTableIfExists()
+    public void ParseDropTableIfExistsTest()
     {
         var stmt = WitSql.ParseStatement("DROP TABLE IF EXISTS TempData");
         var drop = (WitSqlStatementDropTable)stmt;
@@ -102,7 +141,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseAlterTableAddColumn()
+    public void ParseAlterTableAddColumnTest()
     {
         var stmt = WitSql.ParseStatement("ALTER TABLE Users ADD COLUMN Age INT");
         var alter = (WitSqlStatementAlterTable)stmt;
@@ -110,7 +149,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseAlterTableDropColumn()
+    public void ParseAlterTableDropColumnTest()
     {
         var stmt = WitSql.ParseStatement("ALTER TABLE Users DROP COLUMN Age");
         var alter = (WitSqlStatementAlterTable)stmt;
@@ -118,7 +157,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseAlterTableRename()
+    public void ParseAlterTableRenameTest()
     {
         var stmt = WitSql.ParseStatement("ALTER TABLE Users RENAME TO Accounts");
         var alter = (WitSqlStatementAlterTable)stmt;
@@ -126,11 +165,59 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseAlterTableRenameColumn()
+    public void ParseAlterTableRenameColumnTest()
     {
         var stmt = WitSql.ParseStatement("ALTER TABLE Users RENAME COLUMN Username TO Login");
         var alter = (WitSqlStatementAlterTable)stmt;
         Assert.That(alter.Action, Is.InstanceOf<AlterActionRenameColumn>());
+    }
+
+    [Test]
+    public void ParseAlterTableAlterColumnTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("ALTER TABLE Users ALTER COLUMN Age TYPE BIGINT");
+        var alter = (WitSqlStatementAlterTable)stmt;
+        Assert.That(alter.Action, Is.InstanceOf<AlterActionAlterColumn>());
+        var alterCol = (AlterActionAlterColumn)alter.Action;
+        Assert.That(alterCol.ColumnName, Is.EqualTo("Age"));
+        Assert.That(alterCol.NewType, Is.Not.Null);
+        Assert.That(alterCol.NewType!.TypeName, Is.EqualTo("BIGINT"));
+    }
+
+    [Test]
+    public void ParseAlterTableAlterColumnSetDefaultTest()
+    {
+        var stmt = WitSql.ParseStatement("ALTER TABLE Users ALTER COLUMN Status SET DEFAULT 'active'");
+        var alter = (WitSqlStatementAlterTable)stmt;
+        var alterCol = (AlterActionAlterColumn)alter.Action;
+        Assert.That(alterCol.NewDefault, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseAlterTableAlterColumnDropDefaultTest()
+    {
+        var stmt = WitSql.ParseStatement("ALTER TABLE Users ALTER COLUMN Status DROP DEFAULT");
+        var alter = (WitSqlStatementAlterTable)stmt;
+        var alterCol = (AlterActionAlterColumn)alter.Action;
+        Assert.That(alterCol.DropDefault, Is.True);
+    }
+
+    [Test]
+    public void ParseAlterTableAlterColumnSetNotNullTest()
+    {
+        var stmt = WitSql.ParseStatement("ALTER TABLE Users ALTER COLUMN Email SET NOT NULL");
+        var alter = (WitSqlStatementAlterTable)stmt;
+        var alterCol = (AlterActionAlterColumn)alter.Action;
+        Assert.That(alterCol.SetNotNull, Is.True);
+    }
+
+    [Test]
+    public void ParseAlterTableAlterColumnDropNotNullTest()
+    {
+        var stmt = WitSql.ParseStatement("ALTER TABLE Users ALTER COLUMN Nickname DROP NOT NULL");
+        var alter = (WitSqlStatementAlterTable)stmt;
+        var alterCol = (AlterActionAlterColumn)alter.Action;
+        Assert.That(alterCol.SetNotNull, Is.False);
     }
 
     #endregion
@@ -138,7 +225,7 @@ public class DdlParserTests
     #region INDEX
 
     [Test]
-    public void ParseCreateIndex()
+    public void ParseCreateIndexTest()
     {
         var stmt = WitSql.ParseStatement("CREATE INDEX IX_Users_Email ON Users (Email)");
         var create = (WitSqlStatementCreateIndex)stmt;
@@ -148,7 +235,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseCreateUniqueIndex()
+    public void ParseCreateUniqueIndexTest()
     {
         var stmt = WitSql.ParseStatement("CREATE UNIQUE INDEX IX_Users_Username ON Users (Username)");
         var create = (WitSqlStatementCreateIndex)stmt;
@@ -156,7 +243,15 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseCreateIndexMultiColumn()
+    public void ParseCreateIndexIfNotExistsTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE INDEX IF NOT EXISTS IX_Users_Email ON Users (Email)");
+        var create = (WitSqlStatementCreateIndex)stmt;
+        Assert.That(create.IfNotExists, Is.True);
+    }
+
+    [Test]
+    public void ParseCreateIndexMultiColumnTest()
     {
         var stmt = WitSql.ParseStatement("CREATE INDEX IX_Orders ON Orders (UserId, OrderDate DESC)");
         var create = (WitSqlStatementCreateIndex)stmt;
@@ -165,7 +260,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseDropIndex()
+    public void ParseDropIndexTest()
     {
         var stmt = WitSql.ParseStatement("DROP INDEX IF EXISTS IX_Users_Email");
         var drop = (WitSqlStatementDropIndex)stmt;
@@ -178,7 +273,7 @@ public class DdlParserTests
     #region VIEW
 
     [Test]
-    public void ParseCreateView()
+    public void ParseCreateViewTest()
     {
         var stmt = WitSql.ParseStatement("CREATE VIEW ActiveUsers AS SELECT * FROM Users WHERE IsActive = TRUE");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateView>());
@@ -188,7 +283,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseCreateViewIfNotExists()
+    public void ParseCreateViewIfNotExistsTest()
     {
         var stmt = WitSql.ParseStatement("CREATE VIEW IF NOT EXISTS V AS SELECT 1");
         var create = (WitSqlStatementCreateView)stmt;
@@ -196,7 +291,17 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseDropView()
+    public void ParseCreateViewWithColumnListTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "CREATE VIEW UserSummary (UserId, UserName, OrderCount) AS SELECT Id, Name, COUNT(*) FROM Users");
+        var create = (WitSqlStatementCreateView)stmt;
+        Assert.That(create.ColumnNames, Has.Count.EqualTo(3));
+        Assert.That(create.ColumnNames![0], Is.EqualTo("UserId"));
+    }
+
+    [Test]
+    public void ParseDropViewTest()
     {
         var stmt = WitSql.ParseStatement("DROP VIEW IF EXISTS ActiveUsers");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementDropView>());
@@ -210,7 +315,7 @@ public class DdlParserTests
     #region TRIGGER
 
     [Test]
-    public void ParseCreateTrigger()
+    public void ParseCreateTriggerTest()
     {
         var stmt = WitSql.ParseStatement(@"
             CREATE TRIGGER UpdateTimestamp
@@ -229,7 +334,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseCreateTriggerIfNotExists()
+    public void ParseCreateTriggerIfNotExistsTest()
     {
         var stmt = WitSql.ParseStatement(@"
             CREATE TRIGGER IF NOT EXISTS AuditLog
@@ -244,7 +349,62 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseDropTrigger()
+    public void ParseCreateTriggerWithWhenConditionTest()
+    {
+        var stmt = WitSql.ParseStatement(@"
+            CREATE TRIGGER PreventNegativeBalance
+            BEFORE UPDATE ON Accounts
+            FOR EACH ROW
+            WHEN (1 = 1)
+            BEGIN
+                SELECT 1;
+            END");
+        var create = (WitSqlStatementCreateTrigger)stmt;
+        Assert.That(create.WhenCondition, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseCreateTriggerInsteadOfTest()
+    {
+        var stmt = WitSql.ParseStatement(@"
+            CREATE TRIGGER InsertIntoView
+            INSTEAD OF INSERT ON ActiveUsersView
+            BEGIN
+                INSERT INTO Users (Name) VALUES ('test');
+            END");
+        var create = (WitSqlStatementCreateTrigger)stmt;
+        Assert.That(create.Time, Is.EqualTo(TriggerTimingType.InsteadOf));
+    }
+
+    [Test]
+    public void ParseCreateTriggerDeleteTest()
+    {
+        var stmt = WitSql.ParseStatement(@"
+            CREATE TRIGGER AuditDelete
+            AFTER DELETE ON Users
+            BEGIN
+                INSERT INTO DeleteLog (DeletedAt) VALUES (NOW());
+            END");
+        var create = (WitSqlStatementCreateTrigger)stmt;
+        Assert.That(create.Event, Is.EqualTo(TriggerEventType.Delete));
+    }
+
+    [Test]
+    public void ParseCreateTriggerUpdateOfColumnsTest()
+    {
+        var stmt = WitSql.ParseStatement(@"
+            CREATE TRIGGER TrackPriceChange
+            AFTER UPDATE OF Price, Quantity ON Products
+            BEGIN
+                INSERT INTO PriceHistory (ProductId) VALUES (1);
+            END");
+        var create = (WitSqlStatementCreateTrigger)stmt;
+        Assert.That(create.Event, Is.EqualTo(TriggerEventType.Update));
+        Assert.That(create.UpdateColumns, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseDropTriggerTest()
     {
         var stmt = WitSql.ParseStatement("DROP TRIGGER IF EXISTS UpdateTimestamp");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementDropTrigger>());
@@ -258,7 +418,7 @@ public class DdlParserTests
     #region SEQUENCE
 
     [Test]
-    public void ParseCreateSequence()
+    public void ParseCreateSequenceTest()
     {
         var stmt = WitSql.ParseStatement("CREATE SEQUENCE order_seq START WITH 1000");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateSequence>());
@@ -268,7 +428,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseCreateSequenceIfNotExists()
+    public void ParseCreateSequenceIfNotExistsTest()
     {
         var stmt = WitSql.ParseStatement("CREATE SEQUENCE IF NOT EXISTS my_seq");
         var create = (WitSqlStatementCreateSequence)stmt;
@@ -277,7 +437,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseDropSequence()
+    public void ParseDropSequenceTest()
     {
         var stmt = WitSql.ParseStatement("DROP SEQUENCE IF EXISTS order_seq");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementDropSequence>());
@@ -287,7 +447,7 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseAlterSequence()
+    public void ParseAlterSequenceTest()
     {
         var stmt = WitSql.ParseStatement("ALTER SEQUENCE order_seq RESTART WITH 5000");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementAlterSequence>());
@@ -298,10 +458,10 @@ public class DdlParserTests
 
     #endregion
 
-    #region Data Types
+    #region Data Types - Integer
 
     [Test]
-    public void ParseAllIntegerTypes()
+    public void ParseAllIntegerTypesTest()
     {
         var types = new[] { "TINYINT", "SMALLINT", "INT", "INTEGER", "BIGINT", "INT8", "INT16", "INT32", "INT64" };
         foreach (var type in types)
@@ -312,7 +472,22 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseFloatTypes()
+    public void ParseUnsignedIntegerTypesTest()
+    {
+        var types = new[] { "UTINYINT", "UINT8", "USMALLINT", "UINT16", "UINT", "UINT32", "UBIGINT", "UINT64", "ULONG" };
+        foreach (var type in types)
+        {
+            var stmt = WitSql.ParseStatement($"CREATE TABLE T (Col {type})");
+            Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+        }
+    }
+
+    #endregion
+
+    #region Data Types - Float
+
+    [Test]
+    public void ParseFloatTypesTest()
     {
         var types = new[] { "FLOAT", "REAL", "DOUBLE", "DECIMAL", "NUMERIC" };
         foreach (var type in types)
@@ -323,7 +498,35 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseStringTypes()
+    public void ParseFloat16HalfTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col FLOAT16)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+        
+        stmt = WitSql.ParseStatement("CREATE TABLE T (Col HALF)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+    }
+
+    [Test]
+    public void ParseFloat64DoubleTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col FLOAT64)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+    }
+
+    [Test]
+    public void ParseMoneyTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Price MONEY)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+    }
+
+    #endregion
+
+    #region Data Types - String
+
+    [Test]
+    public void ParseStringTypesTest()
     {
         var types = new[] { "TEXT", "VARCHAR(100)", "CHAR(10)", "NVARCHAR(255)" };
         foreach (var type in types)
@@ -334,7 +537,18 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseDateTimeTypes()
+    public void ParseNtextTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col NTEXT)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+    }
+
+    #endregion
+
+    #region Data Types - DateTime
+
+    [Test]
+    public void ParseDateTimeTypesTest()
     {
         var types = new[] { "DATE", "TIME", "DATETIME", "TIMESTAMP", "TIMESPAN" };
         foreach (var type in types)
@@ -345,21 +559,53 @@ public class DdlParserTests
     }
 
     [Test]
-    public void ParseGuidType()
+    public void ParseDateOnlyTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col DATEONLY)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+    }
+
+    [Test]
+    public void ParseTimeOnlyTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col TIMEONLY)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+    }
+
+    [Test]
+    public void ParseDateTimeOffsetTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Col DATETIMEOFFSET)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+    }
+
+    #endregion
+
+    #region Data Types - Other
+
+    [Test]
+    public void ParseGuidTypeTest()
     {
         var stmt = WitSql.ParseStatement("CREATE TABLE T (Id GUID PRIMARY KEY)");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
     }
 
     [Test]
-    public void ParseBooleanType()
+    public void ParseUniqueIdentifierTypeTest()
+    {
+        var stmt = WitSql.ParseStatement("CREATE TABLE T (Id UNIQUEIDENTIFIER PRIMARY KEY)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
+    }
+
+    [Test]
+    public void ParseBooleanTypeTest()
     {
         var stmt = WitSql.ParseStatement("CREATE TABLE T (Flag BOOLEAN DEFAULT TRUE)");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementCreateTable>());
     }
 
     [Test]
-    public void ParseBinaryTypes()
+    public void ParseBinaryTypesTest()
     {
         var types = new[] { "BLOB", "BINARY(16)", "VARBINARY(1024)" };
         foreach (var type in types)

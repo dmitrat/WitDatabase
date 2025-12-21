@@ -12,7 +12,7 @@ public class ExpressionParserTests
     #region Arithmetic
 
     [Test]
-    public void ParseArithmeticPrecedence()
+    public void ParseArithmeticPrecedenceTest()
     {
         var expr = WitSql.ParseExpression("1 + 2 * 3");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionBinary>());
@@ -22,7 +22,27 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseUnaryMinus()
+    public void ParseParenthesizedExpressionTest()
+    {
+        var expr = WitSql.ParseExpression("(1 + 2) * 3");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionBinary>());
+        var mul = (WitSqlExpressionBinary)expr;
+        Assert.That(mul.Operator, Is.EqualTo(BinaryOperatorType.Multiply));
+        Assert.That(mul.Left, Is.InstanceOf<WitSqlExpressionBinary>());
+    }
+
+    [Test]
+    public void ParseComplexPrecedenceTest()
+    {
+        // (1 + 2) * 3 - 4 / 2 should be ((1+2)*3) - (4/2)
+        var expr = WitSql.ParseExpression("(1 + 2) * 3 - 4 / 2");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionBinary>());
+        var sub = (WitSqlExpressionBinary)expr;
+        Assert.That(sub.Operator, Is.EqualTo(BinaryOperatorType.Subtract));
+    }
+
+    [Test]
+    public void ParseUnaryMinusTest()
     {
         var expr = WitSql.ParseExpression("-5");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionUnary>());
@@ -31,7 +51,16 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseModulo()
+    public void ParseUnaryPlusTest()
+    {
+        var expr = WitSql.ParseExpression("+5");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionUnary>());
+        var unary = (WitSqlExpressionUnary)expr;
+        Assert.That(unary.Operator, Is.EqualTo(UnaryOperatorType.Plus));
+    }
+
+    [Test]
+    public void ParseModuloTest()
     {
         var expr = WitSql.ParseExpression("10 % 3");
         var bin = (WitSqlExpressionBinary)expr;
@@ -43,7 +72,7 @@ public class ExpressionParserTests
     #region Comparison
 
     [Test]
-    public void ParseComparison()
+    public void ParseComparisonTest()
     {
         var expr = WitSql.ParseExpression("Age >= 18");
         var bin = (WitSqlExpressionBinary)expr;
@@ -51,7 +80,7 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseNotEqual()
+    public void ParseNotEqualTest()
     {
         var expr = WitSql.ParseExpression("Status <> 'deleted'");
         var bin = (WitSqlExpressionBinary)expr;
@@ -59,7 +88,15 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseIsNull()
+    public void ParseNotEqualAltSyntaxTest()
+    {
+        var expr = WitSql.ParseExpression("Status != 'deleted'");
+        var bin = (WitSqlExpressionBinary)expr;
+        Assert.That(bin.Operator, Is.EqualTo(BinaryOperatorType.NotEqual));
+    }
+
+    [Test]
+    public void ParseIsNullTest()
     {
         var expr = WitSql.ParseExpression("DeletedAt IS NULL");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionIsNull>());
@@ -67,7 +104,7 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseIsNotNull()
+    public void ParseIsNotNullTest()
     {
         var expr = WitSql.ParseExpression("Email IS NOT NULL");
         Assert.That(((WitSqlExpressionIsNull)expr).IsNot, Is.True);
@@ -78,7 +115,7 @@ public class ExpressionParserTests
     #region Logical
 
     [Test]
-    public void ParseAndOr()
+    public void ParseAndOrTest()
     {
         var expr = WitSql.ParseExpression("A AND B OR C");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionBinary>());
@@ -87,7 +124,7 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseNot()
+    public void ParseNotTest()
     {
         var expr = WitSql.ParseExpression("NOT IsDeleted");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionUnary>());
@@ -95,12 +132,23 @@ public class ExpressionParserTests
         Assert.That(unary.Operator, Is.EqualTo(UnaryOperatorType.Not));
     }
 
+    [Test]
+    public void ParseComplexLogicalWithParenthesesTest()
+    {
+        var expr = WitSql.ParseExpression("(A OR B) AND (C OR D)");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionBinary>());
+        var and = (WitSqlExpressionBinary)expr;
+        Assert.That(and.Operator, Is.EqualTo(BinaryOperatorType.And));
+        Assert.That(and.Left, Is.InstanceOf<WitSqlExpressionBinary>());
+        Assert.That(and.Right, Is.InstanceOf<WitSqlExpressionBinary>());
+    }
+
     #endregion
 
     #region BETWEEN/IN/LIKE/GLOB
 
     [Test]
-    public void ParseBetween()
+    public void ParseBetweenTest()
     {
         var expr = WitSql.ParseExpression("Age BETWEEN 18 AND 65");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionBetween>());
@@ -108,14 +156,14 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseNotBetween()
+    public void ParseNotBetweenTest()
     {
         var expr = WitSql.ParseExpression("Price NOT BETWEEN 10 AND 100");
         Assert.That(((WitSqlExpressionBetween)expr).IsNot, Is.True);
     }
 
     [Test]
-    public void ParseInList()
+    public void ParseInListTest()
     {
         var expr = WitSql.ParseExpression("Status IN ('active', 'pending', 'new')");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionIn>());
@@ -123,31 +171,48 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseNotIn()
+    public void ParseNotInTest()
     {
         var expr = WitSql.ParseExpression("Id NOT IN (1, 2, 3)");
         Assert.That(((WitSqlExpressionIn)expr).IsNot, Is.True);
     }
 
     [Test]
-    public void ParseLike()
+    public void ParseLikeTest()
     {
         var expr = WitSql.ParseExpression("Name LIKE 'John%'");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionLike>());
     }
 
     [Test]
-    public void ParseNotLike()
+    public void ParseNotLikeTest()
     {
         var expr = WitSql.ParseExpression("Email NOT LIKE '%@spam.com'");
         Assert.That(((WitSqlExpressionLike)expr).IsNot, Is.True);
     }
 
     [Test]
-    public void ParseGlob()
+    public void ParseLikeWithEscapeTest()
+    {
+        var expr = WitSql.ParseExpression("Name LIKE '100\\%%' ESCAPE '\\'");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionLike>());
+        var like = (WitSqlExpressionLike)expr;
+        Assert.That(like.Escape, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseGlobTest()
     {
         var expr = WitSql.ParseExpression("Filename GLOB '*.txt'");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionGlob>());
+    }
+
+    [Test]
+    public void ParseNotGlobTest()
+    {
+        var expr = WitSql.ParseExpression("Filename NOT GLOB '*.tmp'");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionGlob>());
+        Assert.That(((WitSqlExpressionGlob)expr).IsNot, Is.True);
     }
 
     #endregion
@@ -155,7 +220,7 @@ public class ExpressionParserTests
     #region CASE/IIF
 
     [Test]
-    public void ParseSearchedCase()
+    public void ParseSearchedCaseTest()
     {
         var expr = WitSql.ParseExpression(
             "CASE WHEN Status = 1 THEN 'Active' WHEN Status = 2 THEN 'Pending' ELSE 'Unknown' END");
@@ -166,7 +231,7 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseSimpleCase()
+    public void ParseSimpleCaseTest()
     {
         var expr = WitSql.ParseExpression(
             "CASE Status WHEN 1 THEN 'Active' WHEN 2 THEN 'Pending' END");
@@ -175,7 +240,21 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseIif()
+    public void ParseNestedCaseTest()
+    {
+        var expr = WitSql.ParseExpression(@"
+            CASE 
+                WHEN Category = 1 THEN 
+                    CASE WHEN SubCategory = 'A' THEN 'Cat1-A' ELSE 'Cat1-Other' END
+                ELSE 'Other' 
+            END");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionCase>());
+        var caseExpr = (WitSqlExpressionCase)expr;
+        Assert.That(caseExpr.WhenClauses[0].Then, Is.InstanceOf<WitSqlExpressionCase>());
+    }
+
+    [Test]
+    public void ParseIifTest()
     {
         var expr = WitSql.ParseExpression("IIF(IsActive, 'Yes', 'No')");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionIif>());
@@ -186,7 +265,7 @@ public class ExpressionParserTests
     #region Bitwise
 
     [Test]
-    public void ParseBitwiseAnd()
+    public void ParseBitwiseAndTest()
     {
         var expr = WitSql.ParseExpression("Flags & 15");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionBinary>());
@@ -194,14 +273,14 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseBitwiseOr()
+    public void ParseBitwiseOrTest()
     {
         var expr = WitSql.ParseExpression("Flags | 16");
         Assert.That(((WitSqlExpressionBinary)expr).Operator, Is.EqualTo(BinaryOperatorType.BitwiseOr));
     }
 
     [Test]
-    public void ParseBitwiseNot()
+    public void ParseBitwiseNotTest()
     {
         var expr = WitSql.ParseExpression("~Flags");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionUnary>());
@@ -209,14 +288,14 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseLeftShift()
+    public void ParseLeftShiftTest()
     {
         var expr = WitSql.ParseExpression("Value << 2");
         Assert.That(((WitSqlExpressionBinary)expr).Operator, Is.EqualTo(BinaryOperatorType.LeftShift));
     }
 
     [Test]
-    public void ParseRightShift()
+    public void ParseRightShiftTest()
     {
         var expr = WitSql.ParseExpression("Value >> 2");
         Assert.That(((WitSqlExpressionBinary)expr).Operator, Is.EqualTo(BinaryOperatorType.RightShift));
@@ -224,10 +303,10 @@ public class ExpressionParserTests
 
     #endregion
 
-    #region Functions
+    #region Aggregate Functions
 
     [Test]
-    public void ParseFunctionCall()
+    public void ParseFunctionCallTest()
     {
         var expr = WitSql.ParseExpression("UPPER(Name)");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionFunctionCall>());
@@ -235,38 +314,253 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseCountStar()
+    public void ParseCountStarTest()
     {
         var expr = WitSql.ParseExpression("COUNT(*)");
         Assert.That(((WitSqlExpressionFunctionCall)expr).IsStar, Is.True);
     }
 
     [Test]
-    public void ParseCountDistinct()
+    public void ParseCountDistinctTest()
     {
         var expr = WitSql.ParseExpression("COUNT(DISTINCT Status)");
         Assert.That(((WitSqlExpressionFunctionCall)expr).IsDistinct, Is.True);
     }
 
     [Test]
-    public void ParseCoalesce()
+    public void ParseSumFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("SUM(Amount)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("SUM"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void ParseAvgFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("AVG(Price)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("AVG"));
+    }
+
+    [Test]
+    public void ParseMinFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("MIN(CreatedAt)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("MIN"));
+    }
+
+    [Test]
+    public void ParseMaxFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("MAX(Price)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("MAX"));
+    }
+
+    #endregion
+
+    #region String Functions
+
+    [Test]
+    public void ParseLowerFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LOWER(Email)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LOWER"));
+    }
+
+    [Test]
+    public void ParseLengthFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LENGTH(Name)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LENGTH"));
+    }
+
+    [Test]
+    public void ParseSubstrFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("SUBSTR(Name, 1, 10)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("SUBSTR"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public void ParseTrimFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("TRIM(Input)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("TRIM"));
+    }
+
+    [Test]
+    public void ParseReplaceFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("REPLACE(Content, 'old', 'new')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("REPLACE"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public void ParseCoalesceTest()
     {
         var expr = WitSql.ParseExpression("COALESCE(Nickname, Username, 'Anonymous')");
         Assert.That(((WitSqlExpressionFunctionCall)expr).Arguments, Has.Count.EqualTo(3));
     }
 
     [Test]
-    public void ParseNewGuid()
+    public void ParseNullifFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("NULLIF(Value, 0)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("NULLIF"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(2));
+    }
+
+    #endregion
+
+    #region Math Functions
+
+    [Test]
+    public void ParseAbsFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("ABS(-5)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("ABS"));
+    }
+
+    [Test]
+    public void ParseRoundFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("ROUND(Price, 2)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("ROUND"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseFloorFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("FLOOR(3.7)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("FLOOR"));
+    }
+
+    [Test]
+    public void ParseCeilFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("CEIL(3.2)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("CEIL"));
+    }
+
+    #endregion
+
+    #region Date Functions
+
+    [Test]
+    public void ParseNowFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("NOW()");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("NOW"));
+        Assert.That(func.Arguments, Is.Null.Or.Empty);
+    }
+
+    [Test]
+    public void ParseNewGuidTest()
     {
         var expr = WitSql.ParseExpression("NEWGUID()");
         Assert.That(((WitSqlExpressionFunctionCall)expr).FunctionName, Is.EqualTo("NEWGUID"));
     }
 
+    #endregion
+
+    #region Window Functions
+
     [Test]
-    public void ParseCast()
+    public void ParseRowNumberWindowFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("ROW_NUMBER() OVER (ORDER BY Id)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("ROW_NUMBER"));
+        Assert.That(func.Over, Is.Not.Null);
+        Assert.That(func.Over!.OrderBy, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseRankWindowFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("RANK() OVER (ORDER BY Score DESC)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("RANK"));
+        Assert.That(func.Over, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseDenseRankWindowFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("DENSE_RANK() OVER (PARTITION BY Department ORDER BY Salary DESC)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("DENSE_RANK"));
+        Assert.That(func.Over, Is.Not.Null);
+        Assert.That(func.Over!.PartitionBy, Is.Not.Null);
+        Assert.That(func.Over.OrderBy, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseLagWindowFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LAG(Price, 1) OVER (PARTITION BY Category ORDER BY CreatedAt)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LAG"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(2));
+        Assert.That(func.Over, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseLeadWindowFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LEAD(Price) OVER (PARTITION BY Category ORDER BY CreatedAt)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LEAD"));
+        Assert.That(func.Over, Is.Not.Null);
+        Assert.That(func.Over!.PartitionBy, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseSumOverPartitionTest()
+    {
+        var expr = WitSql.ParseExpression("SUM(Amount) OVER (PARTITION BY UserId)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("SUM"));
+        Assert.That(func.Over, Is.Not.Null);
+        Assert.That(func.Over!.PartitionBy, Has.Count.EqualTo(1));
+    }
+
+    #endregion
+
+    #region CAST
+
+    [Test]
+    public void ParseCastTest()
     {
         var expr = WitSql.ParseExpression("CAST('123' AS INT)");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionCast>());
+    }
+
+    [Test]
+    public void ParseCastToVarcharTest()
+    {
+        var expr = WitSql.ParseExpression("CAST(Price AS VARCHAR(20))");
+        var cast = (WitSqlExpressionCast)expr;
+        Assert.That(cast.TargetType.TypeName, Is.EqualTo("VARCHAR"));
+        Assert.That(cast.TargetType.Length, Is.EqualTo(20));
     }
 
     #endregion
@@ -274,7 +568,7 @@ public class ExpressionParserTests
     #region String Concatenation
 
     [Test]
-    public void ParseConcat()
+    public void ParseConcatTest()
     {
         var expr = WitSql.ParseExpression("FirstName || ' ' || LastName");
         Assert.That(expr, Is.InstanceOf<WitSqlExpressionBinary>());
@@ -286,7 +580,7 @@ public class ExpressionParserTests
     #region Literals
 
     [Test]
-    public void ParseIntegerLiteral()
+    public void ParseIntegerLiteralTest()
     {
         var expr = WitSql.ParseExpression("12345");
         var lit = (WitSqlExpressionLiteral)expr;
@@ -295,14 +589,30 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseRealLiteral()
+    public void ParseRealLiteralTest()
     {
         var expr = WitSql.ParseExpression("3.14159");
         Assert.That(((WitSqlExpressionLiteral)expr).Type, Is.EqualTo(LiteralType.Real));
     }
 
     [Test]
-    public void ParseStringLiteral()
+    public void ParseScientificNotationLiteralTest()
+    {
+        var expr = WitSql.ParseExpression("1.5e10");
+        var lit = (WitSqlExpressionLiteral)expr;
+        Assert.That(lit.Type, Is.EqualTo(LiteralType.Real));
+    }
+
+    [Test]
+    public void ParseNegativeScientificNotationTest()
+    {
+        var expr = WitSql.ParseExpression("2.5E-3");
+        var lit = (WitSqlExpressionLiteral)expr;
+        Assert.That(lit.Type, Is.EqualTo(LiteralType.Real));
+    }
+
+    [Test]
+    public void ParseStringLiteralTest()
     {
         var expr = WitSql.ParseExpression("'Hello, World!'");
         var lit = (WitSqlExpressionLiteral)expr;
@@ -311,7 +621,16 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseBooleanLiterals()
+    public void ParseEscapedQuotesInStringTest()
+    {
+        var expr = WitSql.ParseExpression("'It''s a test'");
+        var lit = (WitSqlExpressionLiteral)expr;
+        Assert.That(lit.Type, Is.EqualTo(LiteralType.String));
+        Assert.That(lit.Value, Is.EqualTo("It's a test"));
+    }
+
+    [Test]
+    public void ParseBooleanLiteralsTest()
     {
         var trueExpr = (WitSqlExpressionLiteral)WitSql.ParseExpression("TRUE");
         var falseExpr = (WitSqlExpressionLiteral)WitSql.ParseExpression("FALSE");
@@ -320,17 +639,41 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseNullLiteral()
+    public void ParseNullLiteralTest()
     {
         var expr = (WitSqlExpressionLiteral)WitSql.ParseExpression("NULL");
         Assert.That(expr.Type, Is.EqualTo(LiteralType.Null));
     }
 
     [Test]
-    public void ParseBlobLiteral()
+    public void ParseBlobLiteralTest()
     {
         var expr = (WitSqlExpressionLiteral)WitSql.ParseExpression("X'48656C6C6F'");
         Assert.That(expr.Type, Is.EqualTo(LiteralType.Blob));
+    }
+
+    [Test]
+    public void ParseCurrentTimestampLiteralTest()
+    {
+        var expr = WitSql.ParseExpression("CURRENT_TIMESTAMP");
+        var lit = (WitSqlExpressionLiteral)expr;
+        Assert.That(lit.Type, Is.EqualTo(LiteralType.CurrentTimestamp));
+    }
+
+    [Test]
+    public void ParseCurrentDateLiteralTest()
+    {
+        var expr = WitSql.ParseExpression("CURRENT_DATE");
+        var lit = (WitSqlExpressionLiteral)expr;
+        Assert.That(lit.Type, Is.EqualTo(LiteralType.CurrentDate));
+    }
+
+    [Test]
+    public void ParseCurrentTimeLiteralTest()
+    {
+        var expr = WitSql.ParseExpression("CURRENT_TIME");
+        var lit = (WitSqlExpressionLiteral)expr;
+        Assert.That(lit.Type, Is.EqualTo(LiteralType.CurrentTime));
     }
 
     #endregion

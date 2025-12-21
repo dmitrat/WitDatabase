@@ -1,3 +1,4 @@
+using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.TableSources;
 using OutWit.Database.Parser.Schema.Types;
 using OutWit.Database.Parser.Statements;
@@ -10,17 +11,26 @@ namespace OutWit.Database.Parser.Tests;
 [TestFixture]
 public class DmlParserTests
 {
-    #region SELECT
+    #region SELECT Basic
 
     [Test]
-    public void ParseSelectStar()
+    public void ParseSelectStarTest()
     {
         var stmt = WitSql.ParseStatement("SELECT * FROM Users");
         Assert.That(stmt, Is.InstanceOf<WitSqlStatementSelect>());
     }
 
     [Test]
-    public void ParseSelectColumns()
+    public void ParseSelectAllTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT ALL Id, Name FROM Users");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.IsDistinct, Is.False);
+        Assert.That(select.SelectList, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseSelectColumnsTest()
     {
         var stmt = WitSql.ParseStatement("SELECT Id, Name, Email FROM Users");
         var select = (WitSqlStatementSelect)stmt;
@@ -28,7 +38,7 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseSelectWithAlias()
+    public void ParseSelectWithAliasTest()
     {
         var stmt = WitSql.ParseStatement("SELECT Id AS UserId, Name UserName FROM Users u");
         var select = (WitSqlStatementSelect)stmt;
@@ -37,7 +47,7 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseSelectDistinct()
+    public void ParseSelectDistinctTest()
     {
         var stmt = WitSql.ParseStatement("SELECT DISTINCT Status FROM Orders");
         var select = (WitSqlStatementSelect)stmt;
@@ -45,7 +55,59 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseSelectWithWhere()
+    public void ParseSelectQualifiedColumnTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT Users.Id, Users.Name FROM Users");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SelectList, Has.Count.EqualTo(2));
+        
+        var col1 = (WitSqlExpressionColumnRef)select.SelectList[0].Expression!;
+        Assert.That(col1.TableName, Is.EqualTo("Users"));
+        Assert.That(col1.ColumnName, Is.EqualTo("Id"));
+    }
+
+    [Test]
+    public void ParseSelectTableAliasWithStarTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT t.* FROM Users t");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SelectList[0].IsStar, Is.True);
+        Assert.That(select.SelectList[0].TableName, Is.EqualTo("t"));
+    }
+
+    #endregion
+
+    #region SELECT FROM
+
+    [Test]
+    public void ParseSelectMultipleTablesTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users, Orders");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.FromClause, Has.Count.EqualTo(2));
+        Assert.That(select.FromClause![0], Is.InstanceOf<TableSourceSimple>());
+        Assert.That(select.FromClause[1], Is.InstanceOf<TableSourceSimple>());
+    }
+
+    [Test]
+    public void ParseSelectSubqueryInFromTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT sub.Id FROM (SELECT Id FROM Users WHERE IsActive = TRUE) AS sub");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.FromClause![0], Is.InstanceOf<TableSourceSubquery>());
+        
+        var subquery = (TableSourceSubquery)select.FromClause[0];
+        Assert.That(subquery.Alias, Is.EqualTo("sub"));
+        Assert.That(subquery.Subquery, Is.Not.Null);
+    }
+
+    #endregion
+
+    #region SELECT WHERE
+
+    [Test]
+    public void ParseSelectWithWhereTest()
     {
         var stmt = WitSql.ParseStatement("SELECT * FROM Users WHERE Age >= 18 AND IsActive = TRUE");
         var select = (WitSqlStatementSelect)stmt;
@@ -53,7 +115,34 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseSelectWithOrderBy()
+    public void ParseSelectSubqueryInWhereTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT * FROM Users WHERE Id IN (SELECT UserId FROM Orders)");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.WhereClause, Is.InstanceOf<WitSqlExpressionIn>());
+        
+        var inExpr = (WitSqlExpressionIn)select.WhereClause!;
+        Assert.That(inExpr.Subquery, Is.Not.Null);
+        Assert.That(inExpr.Values, Is.Null);
+    }
+
+    [Test]
+    public void ParseSelectSubqueryInSelectListTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT Name, (SELECT COUNT(*) FROM Orders WHERE Orders.UserId = Users.Id) AS OrderCount FROM Users");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SelectList, Has.Count.EqualTo(2));
+        Assert.That(select.SelectList[1].Expression, Is.InstanceOf<WitSqlExpressionSubquery>());
+    }
+
+    #endregion
+
+    #region SELECT ORDER BY
+
+    [Test]
+    public void ParseSelectWithOrderByTest()
     {
         var stmt = WitSql.ParseStatement("SELECT * FROM Users ORDER BY Name ASC, CreatedAt DESC");
         var select = (WitSqlStatementSelect)stmt;
@@ -63,7 +152,27 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseSelectWithLimitOffset()
+    public void ParseSelectOrderByNullsFirstTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users ORDER BY Name ASC NULLS FIRST");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.OrderByClause![0].NullsOrder, Is.EqualTo(NullsOrderType.First));
+    }
+
+    [Test]
+    public void ParseSelectOrderByNullsLastTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users ORDER BY Name DESC NULLS LAST");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.OrderByClause![0].NullsOrder, Is.EqualTo(NullsOrderType.Last));
+    }
+
+    #endregion
+
+    #region SELECT LIMIT
+
+    [Test]
+    public void ParseSelectWithLimitOffsetTest()
     {
         var stmt = WitSql.ParseStatement("SELECT * FROM Users LIMIT 10 OFFSET 20");
         var select = (WitSqlStatementSelect)stmt;
@@ -72,7 +181,21 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseSelectWithGroupByHaving()
+    public void ParseSelectMySqlStyleLimitTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users LIMIT 20, 10");
+        var select = (WitSqlStatementSelect)stmt;
+        // MySQL style: LIMIT offset, count - ?????? ????? ??? offset, ?????? - count
+        Assert.That(select.LimitCount, Is.Not.Null);
+        Assert.That(select.LimitOffset, Is.Not.Null);
+    }
+
+    #endregion
+
+    #region SELECT GROUP BY/HAVING
+
+    [Test]
+    public void ParseSelectWithGroupByHavingTest()
     {
         var stmt = WitSql.ParseStatement(
             "SELECT Status, COUNT(*) FROM Orders GROUP BY Status HAVING COUNT(*) > 5");
@@ -82,7 +205,20 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseSelectWithJoin()
+    public void ParseSelectGroupByMultipleColumnsTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT Year, Month, SUM(Amount) FROM Sales GROUP BY Year, Month");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.GroupByClause, Has.Count.EqualTo(2));
+    }
+
+    #endregion
+
+    #region SELECT JOIN
+
+    [Test]
+    public void ParseSelectWithJoinTest()
     {
         var stmt = WitSql.ParseStatement(
             "SELECT o.Id, u.Name FROM Orders o INNER JOIN Users u ON o.UserId = u.Id");
@@ -91,10 +227,62 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseSelectWithLeftJoin()
+    public void ParseSelectWithLeftJoinTest()
     {
         var stmt = WitSql.ParseStatement(
             "SELECT * FROM Users u LEFT JOIN Orders o ON u.Id = o.UserId");
+        var select = (WitSqlStatementSelect)stmt;
+        var join = (TableSourceJoin)select.FromClause![0];
+        Assert.That(join.JoinType, Is.EqualTo(JoinType.Left));
+    }
+
+    [Test]
+    public void ParseSelectWithRightJoinTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT * FROM Orders o RIGHT JOIN Users u ON o.UserId = u.Id");
+        var select = (WitSqlStatementSelect)stmt;
+        var join = (TableSourceJoin)select.FromClause![0];
+        Assert.That(join.JoinType, Is.EqualTo(JoinType.Right));
+    }
+
+    [Test]
+    public void ParseSelectWithFullJoinTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT * FROM Users u FULL JOIN Orders o ON u.Id = o.UserId");
+        var select = (WitSqlStatementSelect)stmt;
+        var join = (TableSourceJoin)select.FromClause![0];
+        Assert.That(join.JoinType, Is.EqualTo(JoinType.Full));
+    }
+
+    [Test]
+    public void ParseSelectWithCrossJoinTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT * FROM Colors CROSS JOIN Sizes");
+        var select = (WitSqlStatementSelect)stmt;
+        var join = (TableSourceJoin)select.FromClause![0];
+        Assert.That(join.JoinType, Is.EqualTo(JoinType.Cross));
+    }
+
+    [Test]
+    public void ParseSelectWithMultipleJoinsTest()
+    {
+        var stmt = WitSql.ParseStatement(@"
+            SELECT o.Id, u.Name, p.Title
+            FROM Orders o
+            INNER JOIN Users u ON o.UserId = u.Id
+            INNER JOIN Products p ON o.ProductId = p.Id");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.FromClause![0], Is.InstanceOf<TableSourceJoin>());
+    }
+
+    [Test]
+    public void ParseSelectSelfJoinTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT e.Name, m.Name AS Manager FROM Employees e LEFT JOIN Employees m ON e.ManagerId = m.Id");
         var select = (WitSqlStatementSelect)stmt;
         var join = (TableSourceJoin)select.FromClause![0];
         Assert.That(join.JoinType, Is.EqualTo(JoinType.Left));
@@ -105,7 +293,7 @@ public class DmlParserTests
     #region INSERT
 
     [Test]
-    public void ParseInsertWithColumns()
+    public void ParseInsertWithColumnsTest()
     {
         var stmt = WitSql.ParseStatement(
             "INSERT INTO Users (Id, Name, Email) VALUES (1, 'John', 'john@test.com')");
@@ -116,7 +304,7 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseInsertWithoutColumns()
+    public void ParseInsertWithoutColumnsTest()
     {
         var stmt = WitSql.ParseStatement("INSERT INTO Users VALUES (1, 'John')");
         var insert = (WitSqlStatementInsert)stmt;
@@ -124,7 +312,7 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseInsertMultipleRows()
+    public void ParseInsertMultipleRowsTest()
     {
         var stmt = WitSql.ParseStatement(
             "INSERT INTO Logs (Message, Level) VALUES ('Msg1', 1), ('Msg2', 2), ('Msg3', 3)");
@@ -133,7 +321,7 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseInsertSelect()
+    public void ParseInsertSelectTest()
     {
         var stmt = WitSql.ParseStatement(
             "INSERT INTO Archive SELECT * FROM Orders WHERE Status = 'completed'");
@@ -146,7 +334,7 @@ public class DmlParserTests
     #region UPDATE
 
     [Test]
-    public void ParseUpdate()
+    public void ParseUpdateTest()
     {
         var stmt = WitSql.ParseStatement(
             "UPDATE Users SET Name = 'Jane', Age = 25 WHERE Id = 1");
@@ -161,7 +349,7 @@ public class DmlParserTests
     #region DELETE
 
     [Test]
-    public void ParseDelete()
+    public void ParseDeleteTest()
     {
         var stmt = WitSql.ParseStatement("DELETE FROM Users WHERE IsActive = FALSE");
         var delete = (WitSqlStatementDelete)stmt;
@@ -170,7 +358,7 @@ public class DmlParserTests
     }
 
     [Test]
-    public void ParseDeleteAll()
+    public void ParseDeleteAllTest()
     {
         var stmt = WitSql.ParseStatement("DELETE FROM TempData");
         var delete = (WitSqlStatementDelete)stmt;
