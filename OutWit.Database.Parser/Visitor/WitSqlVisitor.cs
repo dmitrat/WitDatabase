@@ -6,7 +6,7 @@ namespace OutWit.Database.Parser.Visitor;
 /// <summary>
 /// Visitor that builds AST from ANTLR parse tree.
 /// </summary>
-internal sealed partial class WitSqlVisitor : WitSqlBaseVisitor<object?>
+internal sealed partial class WitSqlVisitor : WitSqlParserBaseVisitor<object?>
 {
     #region Script and Statement Entry Points
 
