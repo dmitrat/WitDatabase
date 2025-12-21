@@ -1,5 +1,6 @@
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Types;
+using OutWit.Database.Parser.Statements;
 
 namespace OutWit.Database.Parser.Tests;
 
@@ -674,6 +675,86 @@ public class ExpressionParserTests
         var expr = WitSql.ParseExpression("CURRENT_TIME");
         var lit = (WitSqlExpressionLiteral)expr;
         Assert.That(lit.Type, Is.EqualTo(LiteralType.CurrentTime));
+    }
+
+    #endregion
+
+    #region EXISTS Expression
+
+    [Test]
+    public void ParseExistsSubqueryTest()
+    {
+        var expr = WitSql.ParseExpression("EXISTS (SELECT 1 FROM Orders WHERE UserId = 1)");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionExists>());
+        var exists = (WitSqlExpressionExists)expr;
+        Assert.That(exists.IsNot, Is.False);
+        Assert.That(exists.Query, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseNotExistsSubqueryTest()
+    {
+        var expr = WitSql.ParseExpression("NOT EXISTS (SELECT 1 FROM Bans WHERE UserId = Users.Id)");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionExists>());
+        var exists = (WitSqlExpressionExists)expr;
+        Assert.That(exists.IsNot, Is.True);
+    }
+
+    #endregion
+
+    #region Parameters
+
+    [Test]
+    public void ParseNamedParameterTest()
+    {
+        var expr = WitSql.ParseExpression("@userId");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionParameter>());
+        var param = (WitSqlExpressionParameter)expr;
+        Assert.That(param.ParameterType, Is.EqualTo(ParameterType.Named));
+        Assert.That(param.Name, Is.EqualTo("userId"));
+    }
+
+    [Test]
+    public void ParseColonParameterTest()
+    {
+        var expr = WitSql.ParseExpression(":name");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionParameter>());
+        var param = (WitSqlExpressionParameter)expr;
+        Assert.That(param.ParameterType, Is.EqualTo(ParameterType.Colon));
+        Assert.That(param.Name, Is.EqualTo("name"));
+    }
+
+    [Test]
+    public void ParsePositionalParameterTest()
+    {
+        var expr = WitSql.ParseExpression("?");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionParameter>());
+        var param = (WitSqlExpressionParameter)expr;
+        Assert.That(param.ParameterType, Is.EqualTo(ParameterType.Positional));
+    }
+
+    [Test]
+    public void ParseNumberedParameterTest()
+    {
+        var expr = WitSql.ParseExpression("$1");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionParameter>());
+        var param = (WitSqlExpressionParameter)expr;
+        Assert.That(param.ParameterType, Is.EqualTo(ParameterType.Numbered));
+        Assert.That(param.Position, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ParseStatementWithNamedParametersTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users WHERE Id = @id AND Status = @status");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementSelect>());
+    }
+
+    [Test]
+    public void ParseStatementWithPositionalParametersTest()
+    {
+        var stmt = WitSql.ParseStatement("INSERT INTO Users (Name, Email) VALUES (?, ?)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementInsert>());
     }
 
     #endregion

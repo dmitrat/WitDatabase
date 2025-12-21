@@ -88,6 +88,21 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
     public string VisitStatementAlterSequence(WitSqlStatementAlterSequence node) =>
         throw new NotSupportedException("ALTER SEQUENCE statement serialization not supported");
 
+    public string VisitStatementBeginTransaction(WitSqlStatementBeginTransaction node) =>
+        throw new NotSupportedException("BEGIN TRANSACTION statement serialization not supported");
+
+    public string VisitStatementCommit(WitSqlStatementCommit node) =>
+        throw new NotSupportedException("COMMIT statement serialization not supported");
+
+    public string VisitStatementRollback(WitSqlStatementRollback node) =>
+        throw new NotSupportedException("ROLLBACK statement serialization not supported");
+
+    public string VisitStatementSavepoint(WitSqlStatementSavepoint node) =>
+        throw new NotSupportedException("SAVEPOINT statement serialization not supported");
+
+    public string VisitStatementReleaseSavepoint(WitSqlStatementReleaseSavepoint node) =>
+        throw new NotSupportedException("RELEASE SAVEPOINT statement serialization not supported");
+
     #endregion
 
     #region IWitSqlVisitor - Expressions
@@ -295,6 +310,25 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
         var trueVal = node.TrueValue.Accept(this);
         var falseVal = node.FalseValue.Accept(this);
         return $"IIF({condition}, {trueVal}, {falseVal})";
+    }
+
+    public string VisitExpressionExists(WitSqlExpressionExists node)
+    {
+        var notStr = node.IsNot ? "NOT " : "";
+        // Full subquery serialization is complex - defer for now
+        return $"({notStr}EXISTS (SELECT ...))";
+    }
+
+    public string VisitExpressionParameter(WitSqlExpressionParameter node)
+    {
+        return node.ParameterType switch
+        {
+            ParameterType.Named => $"@{node.Name}",
+            ParameterType.Colon => $":{node.Name}",
+            ParameterType.Positional => "?",
+            ParameterType.Numbered => $"${node.Position}",
+            _ => throw new NotSupportedException($"Unsupported parameter type: {node.ParameterType}")
+        };
     }
 
     #endregion

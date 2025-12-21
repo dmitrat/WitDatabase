@@ -17,12 +17,20 @@ internal sealed partial class WitSqlVisitor
             WitSqlParser.LiteralExprContext lit => VisitLiteral(lit.literal()),
             WitSqlParser.ColumnRefExprContext col => VisitColumnRef(col.columnRef()),
             WitSqlParser.FunctionCallExprContext func => VisitFunctionCall(func.functionCall()),
+            WitSqlParser.ParameterExprContext param => VisitParameter(param.parameter()),
             WitSqlParser.ParenExprContext paren => VisitExpression(paren.expression()),
             WitSqlParser.SubqueryExprContext sub => new WitSqlExpressionSubquery
             {
                 Line = sub.Start.Line,
                 Column = sub.Start.Column,
                 Query = VisitSelectStatement(sub.selectStatement())
+            },
+            WitSqlParser.ExistsExprContext exists => new WitSqlExpressionExists
+            {
+                Line = exists.Start.Line,
+                Column = exists.Start.Column,
+                Query = VisitSelectStatement(exists.selectStatement()),
+                IsNot = exists.NOT() != null
             },
             WitSqlParser.UnaryExprContext unary => new WitSqlExpressionUnary
             {
@@ -166,6 +174,44 @@ internal sealed partial class WitSqlVisitor
             Left = VisitExpression(context.expression(0)),
             Operator = op,
             Right = VisitExpression(context.expression(1))
+        };
+    }
+
+    private WitSqlExpressionParameter VisitParameter(WitSqlParser.ParameterContext context)
+    {
+        var line = context.Start.Line;
+        var col = context.Start.Column;
+
+        return context switch
+        {
+            WitSqlParser.NamedParameterContext named => new WitSqlExpressionParameter
+            {
+                Line = line,
+                Column = col,
+                ParameterType = ParameterType.Named,
+                Name = named.GetText()[1..] // Remove @ prefix
+            },
+            WitSqlParser.ColonParameterContext colon => new WitSqlExpressionParameter
+            {
+                Line = line,
+                Column = col,
+                ParameterType = ParameterType.Colon,
+                Name = colon.GetText()[1..] // Remove : prefix
+            },
+            WitSqlParser.PositionalParameterContext => new WitSqlExpressionParameter
+            {
+                Line = line,
+                Column = col,
+                ParameterType = ParameterType.Positional
+            },
+            WitSqlParser.NumberedParameterContext numbered => new WitSqlExpressionParameter
+            {
+                Line = line,
+                Column = col,
+                ParameterType = ParameterType.Numbered,
+                Position = int.Parse(numbered.GetText()[1..]) // Remove $ prefix
+            },
+            _ => throw new InvalidOperationException($"Unknown parameter type: {context.GetType()}")
         };
     }
 

@@ -5,12 +5,17 @@ namespace OutWit.Database.Parser.Interfaces
 {
     public interface IWitSqlVisitor<out T>
     {
-        #region Statements
+        #region Statements - DML
 
         T VisitStatementSelect(WitSqlStatementSelect node);
         T VisitStatementInsert(WitSqlStatementInsert node);
         T VisitStatementUpdate(WitSqlStatementUpdate node);
         T VisitStatementDelete(WitSqlStatementDelete node);
+
+        #endregion
+
+        #region Statements - DDL
+
         T VisitStatementCreateTable(WitSqlStatementCreateTable node);
         T VisitStatementDropTable(WitSqlStatementDropTable node);
         T VisitStatementAlterTable(WitSqlStatementAlterTable node);
@@ -23,6 +28,16 @@ namespace OutWit.Database.Parser.Interfaces
         T VisitStatementCreateSequence(WitSqlStatementCreateSequence node);
         T VisitStatementDropSequence(WitSqlStatementDropSequence node);
         T VisitStatementAlterSequence(WitSqlStatementAlterSequence node);
+
+        #endregion
+
+        #region Statements - Transactions
+
+        T VisitStatementBeginTransaction(WitSqlStatementBeginTransaction node);
+        T VisitStatementCommit(WitSqlStatementCommit node);
+        T VisitStatementRollback(WitSqlStatementRollback node);
+        T VisitStatementSavepoint(WitSqlStatementSavepoint node);
+        T VisitStatementReleaseSavepoint(WitSqlStatementReleaseSavepoint node);
 
         #endregion
 
@@ -42,6 +57,8 @@ namespace OutWit.Database.Parser.Interfaces
         T VisitExpressionSubquery(WitSqlExpressionSubquery node);
         T VisitExpressionGlob(WitSqlExpressionGlob node);
         T VisitExpressionIif(WitSqlExpressionIif node);
+        T VisitExpressionExists(WitSqlExpressionExists node);
+        T VisitExpressionParameter(WitSqlExpressionParameter node);
 
         #endregion
     }

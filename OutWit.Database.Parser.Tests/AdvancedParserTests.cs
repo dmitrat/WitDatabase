@@ -1,4 +1,6 @@
 using OutWit.Database.Parser.Exceptions;
+using OutWit.Database.Parser.Schema.Types;
+using OutWit.Database.Parser.Statements;
 
 namespace OutWit.Database.Parser.Tests;
 
@@ -8,105 +10,195 @@ namespace OutWit.Database.Parser.Tests;
 [TestFixture]
 public class AdvancedParserTests
 {
-    #region CTE (throws NotImplementedException)
+    #region CTE
 
     [Test]
-    public void ParseWithCteTest()
+    public void ParseSimpleCteTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("WITH ActiveOrders AS (SELECT * FROM Orders WHERE Status = 'active') SELECT * FROM ActiveOrders"));
+        var stmt = WitSql.ParseStatement(
+            "WITH ActiveOrders AS (SELECT * FROM Orders WHERE Status = 'active') SELECT * FROM ActiveOrders");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.CteDefinitions, Is.Not.Null);
+        Assert.That(select.CteDefinitions, Has.Count.EqualTo(1));
+        Assert.That(select.CteDefinitions![0].Name, Is.EqualTo("ActiveOrders"));
+        Assert.That(select.IsRecursive, Is.False);
     }
 
     [Test]
-    public void ParseWithRecursiveCteTest()
+    public void ParseCteWithColumnsTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement(@"
-                WITH RECURSIVE CategoryTree AS (
-                    SELECT Id, Name, ParentId FROM Categories WHERE ParentId IS NULL
-                    UNION ALL
-                    SELECT c.Id, c.Name, c.ParentId FROM Categories c 
-                    INNER JOIN CategoryTree ct ON c.ParentId = ct.Id
-                )
-                SELECT * FROM CategoryTree"));
+        var stmt = WitSql.ParseStatement(
+            "WITH UserCounts (UserId, OrderCount) AS (SELECT UserId, COUNT(*) FROM Orders GROUP BY UserId) SELECT * FROM UserCounts");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.CteDefinitions![0].ColumnNames, Has.Count.EqualTo(2));
+        Assert.That(select.CteDefinitions[0].ColumnNames![0], Is.EqualTo("UserId"));
+    }
+
+    [Test]
+    public void ParseMultipleCteTest()
+    {
+        var stmt = WitSql.ParseStatement(@"
+            WITH 
+                ActiveUsers AS (SELECT * FROM Users WHERE IsActive = TRUE),
+                RecentOrders AS (SELECT * FROM Orders WHERE OrderDate > '2024-01-01')
+            SELECT u.Name, o.Total 
+            FROM ActiveUsers u 
+            INNER JOIN RecentOrders o ON u.Id = o.UserId");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.CteDefinitions, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseRecursiveCteTest()
+    {
+        var stmt = WitSql.ParseStatement(@"
+            WITH RECURSIVE CategoryTree AS (
+                SELECT Id, Name, ParentId, 0 AS Level FROM Categories WHERE ParentId IS NULL
+                UNION ALL
+                SELECT c.Id, c.Name, c.ParentId, ct.Level + 1 
+                FROM Categories c 
+                INNER JOIN CategoryTree ct ON c.ParentId = ct.Id
+            )
+            SELECT * FROM CategoryTree");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.IsRecursive, Is.True);
+        Assert.That(select.CteDefinitions, Has.Count.EqualTo(1));
+        // The CTE query itself contains a UNION ALL
+        Assert.That(select.CteDefinitions![0].Query.SetOperations, Has.Count.EqualTo(1));
     }
 
     #endregion
 
-    #region Set Operations (throws NotImplementedException)
+    #region Set Operations
 
     [Test]
     public void ParseUnionTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("SELECT Email FROM Customers UNION SELECT Email FROM Subscribers"));
+        var stmt = WitSql.ParseStatement("SELECT Email FROM Customers UNION SELECT Email FROM Subscribers");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SetOperations, Is.Not.Null);
+        Assert.That(select.SetOperations, Has.Count.EqualTo(1));
+        Assert.That(select.SetOperations![0].OperationType, Is.EqualTo(SetOperationType.Union));
+        Assert.That(select.SetOperations[0].IsAll, Is.False);
     }
 
     [Test]
     public void ParseUnionAllTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("SELECT Id FROM A UNION ALL SELECT Id FROM B"));
+        var stmt = WitSql.ParseStatement("SELECT Id FROM A UNION ALL SELECT Id FROM B");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SetOperations![0].OperationType, Is.EqualTo(SetOperationType.Union));
+        Assert.That(select.SetOperations[0].IsAll, Is.True);
     }
 
     [Test]
     public void ParseIntersectTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("SELECT Id FROM A INTERSECT SELECT Id FROM B"));
+        var stmt = WitSql.ParseStatement("SELECT Id FROM A INTERSECT SELECT Id FROM B");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SetOperations![0].OperationType, Is.EqualTo(SetOperationType.Intersect));
     }
 
     [Test]
     public void ParseExceptTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("SELECT Id FROM A EXCEPT SELECT Id FROM B"));
+        var stmt = WitSql.ParseStatement("SELECT Id FROM A EXCEPT SELECT Id FROM B");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SetOperations![0].OperationType, Is.EqualTo(SetOperationType.Except));
+    }
+
+    [Test]
+    public void ParseMultipleSetOperationsTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT Id FROM A UNION SELECT Id FROM B UNION ALL SELECT Id FROM C");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SetOperations, Has.Count.EqualTo(2));
+        Assert.That(select.SetOperations![0].IsAll, Is.False);
+        Assert.That(select.SetOperations[1].IsAll, Is.True);
+    }
+
+    [Test]
+    public void ParseSetOperationWithOrderByTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT Name FROM Users UNION SELECT Name FROM Customers ORDER BY Name");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SetOperations, Has.Count.EqualTo(1));
+        Assert.That(select.OrderByClause, Is.Not.Null);
     }
 
     #endregion
 
-    #region Transactions (throws NotImplementedException)
+    #region Transactions
 
     [Test]
     public void ParseBeginTransactionTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("BEGIN TRANSACTION"));
+        var stmt = WitSql.ParseStatement("BEGIN TRANSACTION");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementBeginTransaction>());
+    }
+
+    [Test]
+    public void ParseBeginWithoutTransactionKeywordTest()
+    {
+        var stmt = WitSql.ParseStatement("BEGIN");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementBeginTransaction>());
     }
 
     [Test]
     public void ParseCommitTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("COMMIT"));
+        var stmt = WitSql.ParseStatement("COMMIT");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementCommit>());
     }
 
     [Test]
     public void ParseRollbackTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("ROLLBACK"));
-    }
-
-    [Test]
-    public void ParseSavepointTest()
-    {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("SAVEPOINT sp1"));
+        var stmt = WitSql.ParseStatement("ROLLBACK");
+        var rollback = (WitSqlStatementRollback)stmt;
+        Assert.That(rollback.SavepointName, Is.Null);
     }
 
     [Test]
     public void ParseRollbackToSavepointTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("ROLLBACK TO SAVEPOINT sp1"));
+        var stmt = WitSql.ParseStatement("ROLLBACK TO SAVEPOINT sp1");
+        var rollback = (WitSqlStatementRollback)stmt;
+        Assert.That(rollback.SavepointName, Is.EqualTo("sp1"));
+    }
+
+    [Test]
+    public void ParseRollbackToWithoutSavepointKeywordTest()
+    {
+        var stmt = WitSql.ParseStatement("ROLLBACK TO sp1");
+        var rollback = (WitSqlStatementRollback)stmt;
+        Assert.That(rollback.SavepointName, Is.EqualTo("sp1"));
+    }
+
+    [Test]
+    public void ParseSavepointTest()
+    {
+        var stmt = WitSql.ParseStatement("SAVEPOINT sp1");
+        var savepoint = (WitSqlStatementSavepoint)stmt;
+        Assert.That(savepoint.Name, Is.EqualTo("sp1"));
     }
 
     [Test]
     public void ParseReleaseSavepointTest()
     {
-        Assert.Throws<NotImplementedException>(() =>
-            WitSql.ParseStatement("RELEASE SAVEPOINT sp1"));
+        var stmt = WitSql.ParseStatement("RELEASE SAVEPOINT sp1");
+        var release = (WitSqlStatementReleaseSavepoint)stmt;
+        Assert.That(release.Name, Is.EqualTo("sp1"));
+    }
+
+    [Test]
+    public void ParseReleaseWithoutSavepointKeywordTest()
+    {
+        var stmt = WitSql.ParseStatement("RELEASE sp1");
+        var release = (WitSqlStatementReleaseSavepoint)stmt;
+        Assert.That(release.Name, Is.EqualTo("sp1"));
     }
 
     #endregion
@@ -140,7 +232,7 @@ public class AdvancedParserTests
     [Test]
     public void UnbalancedParenthesesThrowsTest()
     {
-        var ex = Assert.Throws<WitSqlParsingException>(() => 
+        var ex = Assert.Throws<WitSqlParsingException>(() =>
             WitSql.Parse("SELECT * FROM Users WHERE (Id = 1"));
         Assert.That(ex!.Errors, Has.Count.GreaterThan(0));
     }
@@ -148,7 +240,7 @@ public class AdvancedParserTests
     [Test]
     public void MissingFromKeywordThrowsTest()
     {
-        var ex = Assert.Throws<WitSqlParsingException>(() => 
+        var ex = Assert.Throws<WitSqlParsingException>(() =>
             WitSql.Parse("SELECT * Users WHERE Id = 1"));
         Assert.That(ex!.Errors, Has.Count.GreaterThan(0));
     }
@@ -156,7 +248,7 @@ public class AdvancedParserTests
     [Test]
     public void UnexpectedTokenThrowsTest()
     {
-        var ex = Assert.Throws<WitSqlParsingException>(() => 
+        var ex = Assert.Throws<WitSqlParsingException>(() =>
             WitSql.Parse("SELECT * FROM Users WHERE WHERE Id = 1"));
         Assert.That(ex!.Errors, Has.Count.GreaterThan(0));
     }
@@ -164,7 +256,7 @@ public class AdvancedParserTests
     [Test]
     public void MultipleStatementsWhenSingleExpectedThrowsTest()
     {
-        var ex = Assert.Throws<WitSqlParsingException>(() => 
+        var ex = Assert.Throws<WitSqlParsingException>(() =>
             WitSql.ParseStatement("SELECT 1; SELECT 2"));
         Assert.That(ex!.Message, Does.Contain("single statement"));
     }
@@ -172,7 +264,7 @@ public class AdvancedParserTests
     [Test]
     public void InvalidCreateTableSyntaxThrowsTest()
     {
-        var ex = Assert.Throws<WitSqlParsingException>(() => 
+        var ex = Assert.Throws<WitSqlParsingException>(() =>
             WitSql.Parse("CREATE TABLE ()"));
         Assert.That(ex!.Errors, Has.Count.GreaterThan(0));
     }
@@ -183,7 +275,7 @@ public class AdvancedParserTests
         var result = WitSql.TryParse("SELECT * FROM WHERE");
         Assert.That(result.IsSuccess, Is.False);
         Assert.That(result.Errors, Is.Not.Empty);
-        
+
         var firstError = result.Errors.First();
         Assert.That(firstError.Line, Is.GreaterThan(0));
         Assert.That(firstError.Message, Is.Not.Null.And.Not.Empty);

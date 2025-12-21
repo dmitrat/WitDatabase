@@ -5,6 +5,7 @@ using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Interfaces;
 using OutWit.Database.Parser.Schema.Clauses;
 using OutWit.Database.Parser.Schema.TableSources;
+using OutWit.Database.Parser.Schema.Types;
 
 namespace OutWit.Database.Parser.Statements
 {
@@ -28,6 +29,8 @@ namespace OutWit.Database.Parser.Statements
 
             return base.Is(select, tolerance)
                    && IsDistinct.Is(select.IsDistinct)
+                   && IsRecursive.Is(select.IsRecursive)
+                   && CteDefinitions.Is(select.CteDefinitions)
                    && SelectList.Is(select.SelectList)
                    && FromClause.Is(select.FromClause)
                    && WhereClause.Check(select.WhereClause)
@@ -35,7 +38,8 @@ namespace OutWit.Database.Parser.Statements
                    && HavingClause.Check(select.HavingClause)
                    && OrderByClause.Is(select.OrderByClause)
                    && LimitCount.Check(select.LimitCount)
-                   && LimitOffset.Check(select.LimitOffset);
+                   && LimitOffset.Check(select.LimitOffset)
+                   && SetOperations.Is(select.SetOperations);
         }
 
         public override WitSqlStatementSelect Clone()
@@ -45,6 +49,8 @@ namespace OutWit.Database.Parser.Statements
                 Line = Line,
                 Column = Column,
                 IsDistinct = IsDistinct,
+                IsRecursive = IsRecursive,
+                CteDefinitions = CteDefinitions?.Select(cte => cte.Clone()).ToList(),
                 SelectList = SelectList.Select(item => item.Clone()).ToList(),
                 FromClause = FromClause?.Select(source => (TableSource)source.Clone()).ToList(),
                 WhereClause = (WitSqlExpression?)WhereClause?.Clone(),
@@ -52,7 +58,8 @@ namespace OutWit.Database.Parser.Statements
                 HavingClause = (WitSqlExpression?)HavingClause?.Clone(),
                 OrderByClause = OrderByClause?.Select(item => item.Clone()).ToList(),
                 LimitCount = (WitSqlExpression?)LimitCount?.Clone(),
-                LimitOffset = (WitSqlExpression?)LimitOffset?.Clone()
+                LimitOffset = (WitSqlExpression?)LimitOffset?.Clone(),
+                SetOperations = SetOperations?.Select(op => op.Clone()).ToList()
             };
         }
 
@@ -60,15 +67,65 @@ namespace OutWit.Database.Parser.Statements
 
         #region Properties
 
+        /// <summary>
+        /// Whether this is a DISTINCT select.
+        /// </summary>
         public bool IsDistinct { get; init; }
+
+        /// <summary>
+        /// Whether this is a recursive CTE (WITH RECURSIVE).
+        /// </summary>
+        public bool IsRecursive { get; init; }
+
+        /// <summary>
+        /// CTE definitions from the WITH clause.
+        /// </summary>
+        public IReadOnlyList<ClauseCteDefinition>? CteDefinitions { get; init; }
+
+        /// <summary>
+        /// The select list (columns/expressions).
+        /// </summary>
         public required IReadOnlyList<ClauseSelectItem> SelectList { get; init; }
+
+        /// <summary>
+        /// Table sources from the FROM clause.
+        /// </summary>
         public IReadOnlyList<TableSource>? FromClause { get; init; }
+
+        /// <summary>
+        /// The WHERE condition.
+        /// </summary>
         public WitSqlExpression? WhereClause { get; init; }
+
+        /// <summary>
+        /// GROUP BY expressions.
+        /// </summary>
         public IReadOnlyList<WitSqlExpression>? GroupByClause { get; init; }
+
+        /// <summary>
+        /// The HAVING condition.
+        /// </summary>
         public WitSqlExpression? HavingClause { get; init; }
-        public IReadOnlyList<ClauseOrderByItem>? OrderByClause { get; set; }  // set for queryExpression
-        public WitSqlExpression? LimitCount { get; set; }  // set for queryExpression
-        public WitSqlExpression? LimitOffset { get; set; }  // set for queryExpression
+
+        /// <summary>
+        /// ORDER BY items (set by queryExpression level).
+        /// </summary>
+        public IReadOnlyList<ClauseOrderByItem>? OrderByClause { get; set; }
+
+        /// <summary>
+        /// LIMIT count expression (set by queryExpression level).
+        /// </summary>
+        public WitSqlExpression? LimitCount { get; set; }
+
+        /// <summary>
+        /// LIMIT offset expression (set by queryExpression level).
+        /// </summary>
+        public WitSqlExpression? LimitOffset { get; set; }
+
+        /// <summary>
+        /// Set operations (UNION, INTERSECT, EXCEPT) with their right operands.
+        /// </summary>
+        public IReadOnlyList<ClauseSetOperation>? SetOperations { get; set; }
 
         #endregion
     }

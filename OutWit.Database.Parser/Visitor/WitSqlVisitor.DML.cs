@@ -13,19 +13,25 @@ internal sealed partial class WitSqlVisitor
 
     private new WitSqlStatementSelect VisitQueryExpression(WitSqlParser.QueryExpressionContext context)
     {
-        // For now, handle simple case: single selectStatement
-        // TODO: Full CTE and set operations support
-        if (context.withClause() != null)
-            throw new NotImplementedException("WITH (CTE) not yet implemented");
-        if (context.setOperation().Length > 0)
-            throw new NotImplementedException("Set operations (UNION/INTERSECT/EXCEPT) not yet implemented");
+        // Parse CTE definitions if present
+        List<ClauseCteDefinition>? cteDefinitions = null;
+        var isRecursive = false;
 
+        if (context.withClause() is { } withClause)
+        {
+            isRecursive = withClause.RECURSIVE() != null;
+            cteDefinitions = withClause.cteDefinition()
+                .Select(VisitCteDefinition)
+                .ToList();
+        }
+
+        // Parse the first query term
         var queryTerm = context.queryTerm(0);
         WitSqlStatementSelect select;
 
         if (queryTerm.selectStatement() is { } selectCtx)
         {
-            select = VisitSelectStatement(selectCtx);
+            select = VisitSelectStatementWithCte(selectCtx, isRecursive, cteDefinitions);
         }
         else
         {
@@ -33,7 +39,39 @@ internal sealed partial class WitSqlVisitor
             select = VisitQueryExpression(queryTerm.queryExpression());
         }
 
-        // ORDER BY and LIMIT are now at queryExpression level
+        // Parse set operations (UNION, INTERSECT, EXCEPT)
+        var setOperations = context.setOperation();
+        if (setOperations.Length > 0)
+        {
+            var setOpList = new List<ClauseSetOperation>();
+
+            for (int i = 0; i < setOperations.Length; i++)
+            {
+                var setOp = setOperations[i];
+                var rightTerm = context.queryTerm(i + 1);
+
+                WitSqlStatementSelect rightQuery;
+                if (rightTerm.selectStatement() is { } rightSelectCtx)
+                {
+                    rightQuery = VisitSelectStatement(rightSelectCtx);
+                }
+                else
+                {
+                    rightQuery = VisitQueryExpression(rightTerm.queryExpression());
+                }
+
+                setOpList.Add(new ClauseSetOperation
+                {
+                    OperationType = ParseSetOperationType(setOp),
+                    IsAll = setOp.ALL() != null,
+                    RightQuery = rightQuery
+                });
+            }
+
+            select.SetOperations = setOpList;
+        }
+
+        // ORDER BY and LIMIT are at queryExpression level
         if (context.orderByClause() is { } orderBy)
             select.OrderByClause = VisitOrderByClause(orderBy);
         if (context.limitClause() is { } limit)
@@ -45,17 +83,42 @@ internal sealed partial class WitSqlVisitor
         return select;
     }
 
+    private ClauseCteDefinition VisitCteDefinition(WitSqlParser.CteDefinitionContext context)
+    {
+        var columnNames = context.columnName()?.Select(c => c.GetText()).ToList();
+
+        return new ClauseCteDefinition
+        {
+            Name = context.IDENTIFIER().GetText(),
+            ColumnNames = columnNames,
+            Query = VisitQueryExpression(context.queryExpression())
+        };
+    }
+
+    private static SetOperationType ParseSetOperationType(WitSqlParser.SetOperationContext context)
+    {
+        if (context.UNION() != null) return SetOperationType.Union;
+        if (context.INTERSECT() != null) return SetOperationType.Intersect;
+        if (context.EXCEPT() != null) return SetOperationType.Except;
+        throw new InvalidOperationException($"Unknown set operation type: {context.GetText()}");
+    }
+
     #endregion
 
     #region SELECT Statement
 
-    public override WitSqlStatementSelect VisitSelectStatement(WitSqlParser.SelectStatementContext context)
+    private WitSqlStatementSelect VisitSelectStatementWithCte(
+        WitSqlParser.SelectStatementContext context,
+        bool isRecursive,
+        List<ClauseCteDefinition>? cteDefinitions)
     {
         return new WitSqlStatementSelect
         {
             Line = context.Start.Line,
             Column = context.Start.Column,
             IsDistinct = context.DISTINCT() != null,
+            IsRecursive = isRecursive,
+            CteDefinitions = cteDefinitions,
             SelectList = VisitSelectList(context.selectList()),
             FromClause = context.fromClause() is { } from ? VisitFromClause(from) : null,
             WhereClause = context.whereClause() is { } where ? VisitExpression(where.expression()) : null,
@@ -63,8 +126,12 @@ internal sealed partial class WitSqlVisitor
                 ? groupBy.expression().Select(VisitExpression).ToList<WitSqlExpression>()
                 : null,
             HavingClause = context.havingClause() is { } having ? VisitExpression(having.expression()) : null,
-            // OrderByClause and LimitCount/LimitOffset are now set by VisitQueryExpression
         };
+    }
+
+    public override WitSqlStatementSelect VisitSelectStatement(WitSqlParser.SelectStatementContext context)
+    {
+        return VisitSelectStatementWithCte(context, false, null);
     }
 
     public override List<ClauseSelectItem> VisitSelectList(WitSqlParser.SelectListContext context)

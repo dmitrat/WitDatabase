@@ -84,17 +84,54 @@ internal sealed partial class WitSqlVisitor : WitSqlBaseVisitor<object?>
 
     private new WitSqlStatement? VisitTransactionStatement(WitSqlParser.TransactionStatementContext context)
     {
-        // Stubs for transaction statements
-        if (context.beginTransaction() != null)
-            throw new NotImplementedException("BEGIN TRANSACTION not yet implemented");
-        if (context.commitStatement() != null)
-            throw new NotImplementedException("COMMIT not yet implemented");
-        if (context.rollbackStatement() != null)
-            throw new NotImplementedException("ROLLBACK not yet implemented");
-        if (context.savepointStatement() != null)
-            throw new NotImplementedException("SAVEPOINT not yet implemented");
-        if (context.releaseStatement() != null)
-            throw new NotImplementedException("RELEASE SAVEPOINT not yet implemented");
+        if (context.beginTransaction() is { } begin)
+        {
+            return new WitSqlStatementBeginTransaction
+            {
+                Line = begin.Start.Line,
+                Column = begin.Start.Column
+            };
+        }
+
+        if (context.commitStatement() is { } commit)
+        {
+            return new WitSqlStatementCommit
+            {
+                Line = commit.Start.Line,
+                Column = commit.Start.Column
+            };
+        }
+
+        if (context.rollbackStatement() is { } rollback)
+        {
+            return new WitSqlStatementRollback
+            {
+                Line = rollback.Start.Line,
+                Column = rollback.Start.Column,
+                SavepointName = rollback.IDENTIFIER()?.GetText()
+            };
+        }
+
+        if (context.savepointStatement() is { } savepoint)
+        {
+            return new WitSqlStatementSavepoint
+            {
+                Line = savepoint.Start.Line,
+                Column = savepoint.Start.Column,
+                Name = savepoint.IDENTIFIER().GetText()
+            };
+        }
+
+        if (context.releaseStatement() is { } release)
+        {
+            return new WitSqlStatementReleaseSavepoint
+            {
+                Line = release.Start.Line,
+                Column = release.Start.Column,
+                Name = release.IDENTIFIER().GetText()
+            };
+        }
+
         return null;
     }
 

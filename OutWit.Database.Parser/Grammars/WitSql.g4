@@ -70,6 +70,7 @@ releaseStatement
     : RELEASE SAVEPOINT? IDENTIFIER
     ;
 
+
 // ----------------------------------------------------------------------------
 // Query Expressions (with set operations and CTE)
 // ----------------------------------------------------------------------------
@@ -201,7 +202,7 @@ setClause
 
 deleteStatement
     : DELETE FROM tableName whereClause?
-    ;
+   ;
 
 // ----------------------------------------------------------------------------
 // CREATE TABLE Statement
@@ -297,7 +298,7 @@ tableConstraint
         # tableCheck
     ;
 
-// ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
 // DROP TABLE Statement
 // ----------------------------------------------------------------------------
 
@@ -305,7 +306,7 @@ dropTableStatement
     : DROP TABLE (IF EXISTS)? tableName
     ;
 
-// ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
 // ALTER TABLE Statement
 // ----------------------------------------------------------------------------
 
@@ -329,7 +330,7 @@ alterColumnAction
     | DROP NOT NULL                                         # alterColumnDropNotNull
     ;
 
-// ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
 // CREATE INDEX Statement
 // ----------------------------------------------------------------------------
 
@@ -346,7 +347,7 @@ indexName
     : IDENTIFIER
     ;
 
-// ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
 // DROP INDEX Statement
 // ----------------------------------------------------------------------------
 
@@ -354,7 +355,7 @@ dropIndexStatement
     : DROP INDEX (IF EXISTS)? indexName
     ;
 
-// ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
 // CREATE/DROP VIEW Statements
 // ----------------------------------------------------------------------------
 
@@ -371,7 +372,7 @@ viewName
     : IDENTIFIER
     ;
 
-// ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
 // CREATE/DROP TRIGGER Statements
 // ----------------------------------------------------------------------------
 
@@ -403,7 +404,7 @@ triggerName
     : IDENTIFIER
     ;
 
-// ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
 // SEQUENCE Statements
 // ----------------------------------------------------------------------------
 
@@ -424,7 +425,7 @@ sequenceName
     : IDENTIFIER
     ;
 
-// ----------------------------------------------------------------------------
+    // ----------------------------------------------------------------------------
 // Expressions
 // ----------------------------------------------------------------------------
 
@@ -432,8 +433,10 @@ expression
     : literal                                       # literalExpr
     | columnRef                                     # columnRefExpr
     | functionCall                                  # functionCallExpr
+    | parameter                                     # parameterExpr
     | LPAREN expression RPAREN                      # parenExpr
     | LPAREN selectStatement RPAREN                 # subqueryExpr
+    | NOT? EXISTS LPAREN selectStatement RPAREN     # existsExpr
     | (PLUS | MINUS | NOT | TILDE) expression       # unaryExpr
     | expression (STAR | SLASH | PERCENT) expression    # mulDivExpr
     | expression (PLUS | MINUS) expression          # addSubExpr
@@ -451,6 +454,13 @@ expression
     | CASE expression? (WHEN expression THEN expression)+ (ELSE expression)? END # caseExpr
     | CAST LPAREN expression AS dataType RPAREN     # castExpr
     | IIF LPAREN expression COMMA expression COMMA expression RPAREN # iifExpr
+    ;
+
+parameter
+    : PARAM_NAMED                                   # namedParameter
+    | PARAM_COLON                                   # colonParameter
+    | PARAM_POSITIONAL                              # positionalParameter
+    | PARAM_NUMBERED                                # numberedParameter
     ;
 
 literal
@@ -750,7 +760,7 @@ STRING_LITERAL
 
 BLOB_LITERAL
     : [Xx] '\'' [0-9A-Fa-f]* '\''
-    ;
+   ;
 
 // Identifier
 IDENTIFIER
@@ -760,7 +770,7 @@ IDENTIFIER
     | '`' ~'`'* '`'
     ;
 
-// Parameter placeholders
+    // Parameter placeholders
 PARAM_NAMED: '@' [a-zA-Z_] [a-zA-Z0-9_]*;
 PARAM_COLON: ':' [a-zA-Z_] [a-zA-Z0-9_]*;
 PARAM_POSITIONAL: '?';
