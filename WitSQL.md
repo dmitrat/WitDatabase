@@ -956,6 +956,617 @@ WHEN, WHERE, WITH, YEAR
 
 ---
 
+## 13. Schema Information
+
+### 13.1 INFORMATION_SCHEMA Views
+
+WitSQL provides INFORMATION_SCHEMA views for metadata discovery:
+
+```sql
+-- Tables metadata
+SELECT * FROM INFORMATION_SCHEMA.TABLES;
+-- Columns: TABLE_NAME, TABLE_TYPE
+
+-- Columns metadata  
+SELECT * FROM INFORMATION_SCHEMA.COLUMNS;
+-- Columns: TABLE_NAME, COLUMN_NAME, ORDINAL_POSITION, COLUMN_DEFAULT,
+--          IS_NULLABLE, DATA_TYPE, CHARACTER_MAXIMUM_LENGTH,
+--          NUMERIC_PRECISION, NUMERIC_SCALE
+
+-- Primary keys
+SELECT * FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE;
+
+-- Foreign keys
+SELECT * FROM INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS;
+
+-- Indexes
+SELECT * FROM INFORMATION_SCHEMA.INDEXES;
+
+-- Views
+SELECT * FROM INFORMATION_SCHEMA.VIEWS;
+```
+
+### 13.2 Extended Type Specifications
+
+```sql
+-- DECIMAL with precision and scale
+column_name DECIMAL(precision, scale)
+
+-- VARCHAR with max length
+column_name VARCHAR(max_length)
+
+-- Examples
+Price DECIMAL(18, 4)        -- 18 total digits, 4 after decimal
+Email VARCHAR(255)          -- max 255 characters
+```
+
+### 13.3 Named Constraints
+
+```sql
+CREATE TABLE Orders (
+    Id BIGINT PRIMARY KEY,
+    UserId GUID NOT NULL,
+    Amount DECIMAL(18, 2) NOT NULL,
+    
+    CONSTRAINT FK_Orders_Users 
+        FOREIGN KEY (UserId) REFERENCES Users(Id),
+    
+    CONSTRAINT CHK_Orders_Amount 
+        CHECK (Amount > 0),
+    
+    CONSTRAINT UQ_Orders_Code 
+        UNIQUE (OrderCode)
+);
+
+-- Drop constraint
+ALTER TABLE Orders DROP CONSTRAINT FK_Orders_Users;
+```
+
+---
+
+## 14. Transactions and Isolation
+
+### 14.1 Isolation Levels
+
+```sql
+-- Set isolation level for transaction
+SET TRANSACTION ISOLATION LEVEL level;
+
+-- Supported levels:
+--   READ UNCOMMITTED
+--   READ COMMITTED (default)
+--   REPEATABLE READ
+--   SERIALIZABLE
+--   SNAPSHOT
+
+-- Example
+BEGIN TRANSACTION;
+SET TRANSACTION ISOLATION LEVEL SERIALIZABLE;
+-- statements
+COMMIT;
+```
+
+### 14.2 Locking Hints
+
+```sql
+-- Row-level locks in SELECT
+SELECT * FROM Orders WHERE Id = 1 FOR UPDATE;
+SELECT * FROM Orders WHERE Id = 1 FOR SHARE;
+
+-- No wait / skip locked
+SELECT * FROM Orders WHERE Status = 'pending' 
+FOR UPDATE NOWAIT;
+
+SELECT * FROM Orders WHERE Status = 'pending' 
+FOR UPDATE SKIP LOCKED;
+```
+
+---
+
+## 15. Concurrency Control
+
+### 15.1 Row Version Type
+
+```sql
+-- ROWVERSION type for optimistic concurrency
+CREATE TABLE Products (
+    Id BIGINT PRIMARY KEY,
+    Name VARCHAR(100) NOT NULL,
+    Price DECIMAL(18, 2) NOT NULL,
+    Version ROWVERSION NOT NULL
+);
+
+-- Update with concurrency check
+UPDATE Products 
+SET Name = 'New Name', Price = 99.99
+WHERE Id = 1 AND Version = @OldVersion;
+```
+
+| WitSQL Type  | .NET Type | Storage  | Description                      |
+| ------------ | --------- | -------- | -------------------------------- |
+| `ROWVERSION` | `byte[]`  | 8 bytes  | Auto-incrementing version stamp  |
+| `TIMESTAMP`  | `byte[]`  | 8 bytes  | Alias for ROWVERSION             |
+
+---
+
+## 16. UPSERT and MERGE Operations
+
+### 16.1 INSERT OR REPLACE
+
+```sql
+INSERT OR REPLACE INTO table_name (columns)
+VALUES (values);
+```
+
+### 16.2 INSERT ON CONFLICT
+
+```sql
+INSERT INTO table_name (columns)
+VALUES (values)
+ON CONFLICT (conflict_columns) DO UPDATE 
+SET column = expression [, ...];
+
+INSERT INTO table_name (columns)
+VALUES (values)
+ON CONFLICT (conflict_columns) DO NOTHING;
+```
+
+### 16.3 MERGE Statement
+
+```sql
+MERGE INTO target_table AS target
+USING source_table AS source
+ON (target.key = source.key)
+WHEN MATCHED THEN
+    UPDATE SET target.col = source.col
+WHEN NOT MATCHED THEN
+    INSERT (columns) VALUES (source.columns);
+```
+
+**Examples:**
+
+```sql
+-- Upsert user
+INSERT INTO Users (Id, Name, Email)
+VALUES (@Id, @Name, @Email)
+ON CONFLICT (Id) DO UPDATE 
+SET Name = EXCLUDED.Name, Email = EXCLUDED.Email;
+
+-- Insert if not exists
+INSERT INTO Settings (Key, Value)
+VALUES ('theme', 'dark')
+ON CONFLICT (Key) DO NOTHING;
+```
+
+---
+
+## 17. Additional DML Statements
+
+### 17.1 TRUNCATE TABLE
+
+```sql
+TRUNCATE TABLE table_name;
+-- Removes all rows, resets auto-increment
+-- Faster than DELETE, cannot be rolled back
+```
+
+### 17.2 UPDATE with FROM
+
+```sql
+UPDATE target_table
+SET column = expression
+FROM other_table
+WHERE condition;
+```
+
+### 17.3 DELETE with FROM
+
+```sql
+DELETE FROM target_table
+USING other_table
+WHERE condition;
+```
+
+---
+
+## 18. Subquery Operators
+
+### 18.1 EXISTS
+
+```sql
+SELECT * FROM Orders o
+WHERE EXISTS (
+    SELECT 1 FROM OrderItems oi 
+    WHERE oi.OrderId = o.Id
+);
+
+SELECT * FROM Customers c
+WHERE NOT EXISTS (
+    SELECT 1 FROM Orders o 
+    WHERE o.CustomerId = c.Id
+);
+```
+
+### 18.2 ANY / SOME / ALL
+
+```sql
+-- ANY/SOME - true if any row matches
+SELECT * FROM Products 
+WHERE Price > ANY (SELECT Price FROM DiscountedProducts);
+
+-- ALL - true if all rows match
+SELECT * FROM Products 
+WHERE Price > ALL (SELECT Price FROM BudgetProducts);
+```
+
+---
+
+## 19. Advanced Index Features
+
+### 19.1 Partial (Filtered) Indexes
+
+```sql
+CREATE INDEX IX_Orders_Pending 
+ON Orders (OrderDate)
+WHERE Status = 'pending';
+```
+
+### 19.2 Expression Indexes
+
+```sql
+CREATE INDEX IX_Users_LowerEmail 
+ON Users (LOWER(Email));
+
+CREATE INDEX IX_Orders_Year 
+ON Orders (YEAR(OrderDate));
+```
+
+### 19.3 Covering Indexes (INCLUDE)
+
+```sql
+CREATE INDEX IX_Orders_Customer 
+ON Orders (CustomerId)
+INCLUDE (OrderDate, TotalAmount);
+```
+
+---
+
+## 20. Computed Columns
+
+```sql
+CREATE TABLE Orders (
+    Id BIGINT PRIMARY KEY,
+    Quantity INT NOT NULL,
+    UnitPrice DECIMAL(18, 2) NOT NULL,
+    
+    -- Computed column (stored)
+    TotalPrice AS (Quantity * UnitPrice) STORED,
+    
+    -- Computed column (virtual)
+    Discount AS (TotalPrice * 0.1)
+);
+
+-- Alter table to add computed column
+ALTER TABLE Orders 
+ADD COLUMN SubTotal AS (Quantity * UnitPrice);
+```
+
+---
+
+## 21. JSON Support
+
+### 21.1 JSON Type
+
+| WitSQL Type | .NET Type      | Storage        | Description        |
+| ----------- | -------------- | -------------- | ------------------ |
+| `JSON`      | `JsonDocument` | VarInt + bytes | JSON document      |
+| `JSONB`     | `JsonDocument` | VarInt + bytes | Binary JSON format |
+
+### 21.2 JSON Functions
+
+| Function                          | Description                    | Example                               |
+| --------------------------------- | ------------------------------ | ------------------------------------- |
+| `JSON_VALUE(json, path)`          | Extract scalar value           | `JSON_VALUE(Data, '$.name')`          |
+| `JSON_QUERY(json, path)`          | Extract object/array           | `JSON_QUERY(Data, '$.items')`         |
+| `JSON_EXTRACT(json, path)`        | Extract any value              | `JSON_EXTRACT(Data, '$.id')`          |
+| `JSON_SET(json, path, value)`     | Set value at path              | `JSON_SET(Data, '$.status', 'done')` |
+| `JSON_INSERT(json, path, value)`  | Insert if not exists           |                                       |
+| `JSON_REPLACE(json, path, value)` | Replace if exists              |                                       |
+| `JSON_REMOVE(json, path)`         | Remove at path                 | `JSON_REMOVE(Data, '$.temp')`         |
+| `JSON_TYPE(json)`                 | Get JSON value type            | `JSON_TYPE(Data)` → `'object'`        |
+| `JSON_VALID(str)`                 | Check if valid JSON            | `JSON_VALID('{"a":1}')` → `TRUE`      |
+| `JSON_ARRAY(values...)`           | Create JSON array              | `JSON_ARRAY(1, 2, 3)`                 |
+| `JSON_OBJECT(pairs...)`           | Create JSON object             | `JSON_OBJECT('a', 1, 'b', 2)`         |
+
+**Examples:**
+
+```sql
+CREATE TABLE Products (
+    Id BIGINT PRIMARY KEY,
+    Name VARCHAR(100) NOT NULL,
+    Metadata JSON
+);
+
+-- Query JSON
+SELECT Name, JSON_VALUE(Metadata, '$.category') AS Category
+FROM Products
+WHERE JSON_VALUE(Metadata, '$.inStock') = 'true';
+
+-- Update JSON
+UPDATE Products
+SET Metadata = JSON_SET(Metadata, '$.lastUpdated', NOW())
+WHERE Id = 1;
+```
+
+---
+
+## 22. User-Defined Functions
+
+### 22.1 Scalar Functions
+
+```sql
+CREATE FUNCTION function_name (parameters)
+RETURNS return_type
+[DETERMINISTIC]
+AS
+BEGIN
+    -- function body
+    RETURN expression;
+END;
+```
+
+### 22.2 Table-Valued Functions
+
+```sql
+CREATE FUNCTION function_name (parameters)
+RETURNS TABLE (column_definitions)
+AS
+BEGIN
+    RETURN SELECT ...;
+END;
+```
+
+**Examples:**
+
+```sql
+-- Scalar function
+CREATE FUNCTION FormatPrice(price DECIMAL)
+RETURNS VARCHAR(20)
+DETERMINISTIC
+AS
+BEGIN
+    RETURN '$' || CAST(ROUND(price, 2) AS VARCHAR);
+END;
+
+-- Usage
+SELECT Name, FormatPrice(Price) FROM Products;
+
+-- Drop function
+DROP FUNCTION [IF EXISTS] function_name;
+```
+
+---
+
+## 23. Stored Procedures
+
+```sql
+CREATE PROCEDURE procedure_name (parameters)
+AS
+BEGIN
+    -- procedure body
+END;
+
+-- Execute procedure
+CALL procedure_name(arguments);
+EXECUTE procedure_name(arguments);
+```
+
+**Example:**
+
+```sql
+CREATE PROCEDURE TransferFunds(
+    @FromAccount BIGINT,
+    @ToAccount BIGINT,
+    @Amount DECIMAL
+)
+AS
+BEGIN
+    BEGIN TRANSACTION;
+    
+    UPDATE Accounts SET Balance = Balance - @Amount 
+    WHERE Id = @FromAccount;
+    
+    UPDATE Accounts SET Balance = Balance + @Amount 
+    WHERE Id = @ToAccount;
+    
+    COMMIT;
+END;
+
+CALL TransferFunds(1001, 1002, 500.00);
+```
+
+---
+
+## 24. Collation
+
+```sql
+-- Column-level collation
+CREATE TABLE Users (
+    Id BIGINT PRIMARY KEY,
+    Name VARCHAR(100) COLLATE NOCASE,
+    Code VARCHAR(20) COLLATE BINARY
+);
+
+-- Expression collation
+SELECT * FROM Users 
+WHERE Name = 'john' COLLATE NOCASE;
+
+ORDER BY Name COLLATE NOCASE;
+```
+
+**Supported Collations:**
+- `BINARY` - byte-by-byte comparison
+- `NOCASE` - case-insensitive ASCII
+- `UNICODE` - Unicode-aware comparison
+- `UNICODE_CI` - Unicode case-insensitive
+
+---
+
+## 25. Query Analysis
+
+### 25.1 EXPLAIN
+
+```sql
+-- Show query execution plan
+EXPLAIN select_statement;
+
+-- Show detailed plan with estimates
+EXPLAIN ANALYZE select_statement;
+
+-- Show plan in different formats
+EXPLAIN (FORMAT JSON) select_statement;
+EXPLAIN (FORMAT TEXT) select_statement;
+```
+
+---
+
+## 26. Database Administration
+
+### 26.1 Database Commands
+
+```sql
+-- Create database (for multi-database support)
+CREATE DATABASE database_name;
+
+-- Drop database
+DROP DATABASE [IF EXISTS] database_name;
+
+-- Attach external database file
+ATTACH DATABASE 'path/to/file.db' AS alias;
+
+-- Detach database
+DETACH DATABASE alias;
+```
+
+### 26.2 Maintenance Commands
+
+```sql
+-- Reclaim unused space
+VACUUM;
+VACUUM table_name;
+
+-- Update statistics for query optimizer
+ANALYZE;
+ANALYZE table_name;
+
+-- Check database integrity
+PRAGMA integrity_check;
+```
+
+### 26.3 PRAGMA Statements
+
+```sql
+-- Get/set database settings
+PRAGMA setting_name;
+PRAGMA setting_name = value;
+
+-- Common pragmas
+PRAGMA page_size;
+PRAGMA cache_size = 10000;
+PRAGMA journal_mode = WAL;
+PRAGMA synchronous = NORMAL;
+PRAGMA foreign_keys = ON;
+PRAGMA auto_vacuum = INCREMENTAL;
+```
+
+---
+
+## 27. Bulk Operations
+
+### 27.1 Bulk Update
+
+```sql
+-- Update multiple rows with different values
+UPDATE table_name
+SET column = CASE id
+    WHEN 1 THEN value1
+    WHEN 2 THEN value2
+    WHEN 3 THEN value3
+END
+WHERE id IN (1, 2, 3);
+
+-- EF Core ExecuteUpdate style
+UPDATE Products
+SET Price = Price * 1.1, UpdatedAt = NOW()
+WHERE CategoryId = 5;
+```
+
+### 27.2 Bulk Delete
+
+```sql
+-- EF Core ExecuteDelete style
+DELETE FROM Logs
+WHERE CreatedAt < DATEADD('month', -6, NOW());
+```
+
+---
+
+## 28. Multiple Result Sets
+
+```sql
+-- Return multiple result sets
+BEGIN
+    SELECT * FROM Orders WHERE UserId = @UserId;
+    SELECT * FROM OrderItems WHERE OrderId IN 
+        (SELECT Id FROM Orders WHERE UserId = @UserId);
+END;
+```
+
+---
+
+## 29. Reserved Words (Extended)
+
+The following keywords are added to the reserved words list:
+
+```
+ANALYZE, ANY, ALL, APPLY, ATTACH,
+BINARY, BULK,
+CALL, COLLATE, CONFLICT, COVERING, CROSS,
+DATABASE, DETACH, DETERMINISTIC,
+EXCLUDED, EXECUTE, EXPLAIN,
+FILTERED, FORMAT, FUNCTION,
+INCLUDE, INCREMENTAL,
+JSONB,
+LATERAL, LEVEL, LOCKED,
+MATCHED, MERGE,
+NOWAIT,
+OUTER,
+PARTIAL, PRAGMA, PROCEDURE,
+REPLACE, RETURNS, ROWVERSION,
+SCHEMA, SERIALIZABLE, SHARE, SKIP, SNAPSHOT, SOME, STORED,
+TRUNCATE,
+UNCOMMITTED, USING,
+VACUUM, VIRTUAL
+```
+
+---
+
 **Document Version History:**
 - v1.0 (2024-12-12): Initial specification
-- v1.1 (2024-12-19): Added RETURNING clause, date extraction functions (YEAR, MONTH, DAY, HOUR, MINUTE, SECOND)
+- v1.1 (2024-12-19): Added RETURNING clause, date extraction functions
+- v1.2 (2024-12-XX): Added ADO.NET/EF Core compatibility features:
+  - INFORMATION_SCHEMA views
+  - Named constraints
+  - Isolation levels and locking hints
+  - ROWVERSION for concurrency
+  - UPSERT/MERGE operations
+  - TRUNCATE, EXISTS, ANY/ALL operators
+  - Partial and expression indexes
+  - Computed columns
+  - JSON support
+  - User-defined functions and stored procedures
+  - Collation support
+  - EXPLAIN query analysis
+  - Database administration commands
+  - Bulk operations
+  - Multiple result sets
