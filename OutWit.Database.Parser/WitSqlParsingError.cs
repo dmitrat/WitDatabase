@@ -1,7 +1,7 @@
 using OutWit.Common.Abstract;
 using OutWit.Common.Values;
 
-namespace OutWit.Database.Parser.Model;
+namespace OutWit.Database.Parser;
 
 /// <summary>
 /// Parsing error with location information.

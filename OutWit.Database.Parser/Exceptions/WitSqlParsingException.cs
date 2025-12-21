@@ -1,5 +1,3 @@
-using OutWit.Database.Parser.Model;
-
 namespace OutWit.Database.Parser.Exceptions
 {
     /// <summary>
