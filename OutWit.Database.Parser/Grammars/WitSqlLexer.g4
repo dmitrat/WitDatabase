@@ -269,6 +269,22 @@ JSONB: J S O N B;
 JSON: J S O N;
 
 // ============================================================================
+// JSON Functions (longer first)
+// ============================================================================
+
+JSON_EXTRACT: J S O N '_' E X T R A C T;
+JSON_INSERT: J S O N '_' I N S E R T;
+JSON_OBJECT: J S O N '_' O B J E C T;
+JSON_REMOVE: J S O N '_' R E M O V E;
+JSON_REPLACE: J S O N '_' R E P L A C E;
+JSON_ARRAY: J S O N '_' A R R A Y;
+JSON_QUERY: J S O N '_' Q U E R Y;
+JSON_TYPE: J S O N '_' T Y P E;
+JSON_VALID: J S O N '_' V A L I D;
+JSON_VALUE: J S O N '_' V A L U E;
+JSON_SET: J S O N '_' S E T;
+
+// ============================================================================
 // Functions - Generator
 // ============================================================================
 

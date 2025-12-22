@@ -48,7 +48,7 @@
 | Date/Time Functions | 17 | 0 | 100% |
 | ID/Conversion/Null Functions | 14 | 0 | 100% |
 | System Functions | 6 | 0 | 100% |
-| JSON Functions | 0 | 11 | 0% |
+| JSON Functions | 11 | 0 | 100% |
 | Window Functions | 18 | 0 | 100% |
 | Transactions | 8 | 0 | 100% |
 | User-Defined Functions | 0 | 4 | 0% - Deferred to v2 |
@@ -56,7 +56,7 @@
 | EXPLAIN | 0 | 3 | 0% - Deferred to v2 |
 | Database Administration | 0 | 7 | 0% - Deferred to v2 |
 | Comments | 2 | 0 | 100% |
-| **TOTAL (v1)** | **264** | **18** | **94%** |
+| **TOTAL (v1)** | **275** | **7** | **98%** |
 
 ---
 
@@ -408,14 +408,14 @@
 | `DATEADD`, `DATEDIFF`, `STRFTIME` | [x] | SS5.4 |
 | `MAKEDATE`, `MAKETIME` | [x] | SS5.4 |
 
-### JSON Functions (0%)
+### JSON Functions (100%)
 
 | Function | Status | Spec |
 |----------|--------|------|
-| `JSON_VALUE`, `JSON_QUERY`, `JSON_EXTRACT` | [ ] | SS21.2 |
-| `JSON_SET`, `JSON_INSERT`, `JSON_REPLACE` | [ ] | SS21.2 |
-| `JSON_REMOVE`, `JSON_TYPE`, `JSON_VALID` | [ ] | SS21.2 |
-| `JSON_ARRAY`, `JSON_OBJECT` | [ ] | SS21.2 |
+| `JSON_VALUE`, `JSON_QUERY`, `JSON_EXTRACT` | [x] | SS21.2 |
+| `JSON_SET`, `JSON_INSERT`, `JSON_REPLACE` | [x] | SS21.2 |
+| `JSON_REMOVE`, `JSON_TYPE`, `JSON_VALID` | [x] | SS21.2 |
+| `JSON_ARRAY`, `JSON_OBJECT` | [x] | SS21.2 |
 
 ---
 

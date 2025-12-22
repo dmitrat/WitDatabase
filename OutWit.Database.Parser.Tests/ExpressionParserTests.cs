@@ -871,4 +871,123 @@ public class ExpressionParserTests
     }
 
     #endregion
+
+    #region JSON Functions
+
+    [Test]
+    public void ParseJsonValueFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_VALUE(Data, '$.name')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_VALUE"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseJsonQueryFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_QUERY(Data, '$.items')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_QUERY"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseJsonExtractFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_EXTRACT(Payload, '$.user.id')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_EXTRACT"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseJsonSetFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_SET(Data, '$.status', 'active')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_SET"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public void ParseJsonInsertFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_INSERT(Data, '$.newField', 123)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_INSERT"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public void ParseJsonReplaceFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_REPLACE(Data, '$.name', 'NewName')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_REPLACE"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public void ParseJsonRemoveFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_REMOVE(Data, '$.obsolete')");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_REMOVE"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseJsonTypeFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_TYPE(Data)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_TYPE"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void ParseJsonValidFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_VALID(RawText)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_VALID"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(1));
+    }
+
+    [Test]
+    public void ParseJsonArrayFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_ARRAY(1, 2, 'three', 4.0)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_ARRAY"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(4));
+    }
+
+    [Test]
+    public void ParseJsonObjectFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("JSON_OBJECT('name', Name, 'id', Id)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("JSON_OBJECT"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(4));
+    }
+
+    [Test]
+    public void ParseJsonFunctionInSelectTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT JSON_VALUE(Profile, '$.email') AS Email FROM Users");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementSelect>());
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SelectList[0].Expression, Is.InstanceOf<WitSqlExpressionFunctionCall>());
+    }
+
+    [Test]
+    public void ParseJsonFunctionInWhereTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users WHERE JSON_VALUE(Settings, '$.theme') = 'dark'");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementSelect>());
+    }
+
+    #endregion
 }

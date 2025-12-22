@@ -109,14 +109,14 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 ### Category 8: JSON Functions
 
-- [ ] **8.1** `JSON_VALUE(json, path)` function
-- [ ] **8.2** `JSON_QUERY(json, path)` function
-- [ ] **8.3** `JSON_EXTRACT(json, path)` function
-- [ ] **8.4** `JSON_SET(json, path, value)` function
-- [ ] **8.5** `JSON_INSERT`, `JSON_REPLACE`, `JSON_REMOVE` functions
-- [ ] **8.6** `JSON_TYPE`, `JSON_VALID` functions
-- [ ] **8.7** `JSON_ARRAY`, `JSON_OBJECT` functions
-- [ ] **8.8** Add to `functionName` rule in grammar
+- [x] **8.1** `JSON_VALUE(json, path)` function
+- [x] **8.2** `JSON_QUERY(json, path)` function
+- [x] **8.3** `JSON_EXTRACT(json, path)` function
+- [x] **8.4** `JSON_SET(json, path, value)` function
+- [x] **8.5** `JSON_INSERT`, `JSON_REPLACE`, `JSON_REMOVE` functions
+- [x] **8.6** `JSON_TYPE`, `JSON_VALID` functions
+- [x] **8.7** `JSON_ARRAY`, `JSON_OBJECT` functions
+- [x] **8.8** Add to `functionName` rule in grammar
 
 ### Category 9: User-Defined Functions
 
