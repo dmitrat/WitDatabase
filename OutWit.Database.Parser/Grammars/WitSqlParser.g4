@@ -577,15 +577,63 @@ frameBound
 
 tableName
     : IDENTIFIER
+    | nonReservedKeyword
     ;
 
 columnName
     : IDENTIFIER
     | ROWID
     | LEVEL
+    | nonReservedKeyword
     ;
 
 alias
     : IDENTIFIER
     | LEVEL
+    | nonReservedKeyword
+    ;
+
+ // Keywords that can be used as identifiers (table names, column names, aliases)
+// These are function names and other keywords that should not be reserved
+nonReservedKeyword
+    // Math functions
+    : ABS | ROUND | FLOOR | CEIL | CEILING | SIGN | TRUNC | MOD
+    | POWER | SQRT | EXP | LOG | LOG10 | LOG2 | PI | RANDOM
+    | SIN | COS | TAN | ASIN | ACOS | ATAN | ATAN2
+    | DEGREES | RADIANS
+    // String functions
+    | UPPER | LOWER | LENGTH | SUBSTR | SUBSTRING | TRIM | REPLACE
+    | LTRIM | RTRIM | INSTR | REVERSE | CONCAT_FUNC | CONCAT_WS
+    | CHAR_LENGTH | OCTET_LENGTH | LPAD | RPAD | REPEAT | SPACE_FUNC
+    | POSITION | FORMAT
+    // Date/time functions
+    | DATE | TIME | DATETIME | NOW
+    | YEAR | MONTH | DAY | HOUR | MINUTE | SECOND
+    | DAYOFWEEK | DAYOFYEAR | WEEKOFYEAR | QUARTER
+    | DATEADD | DATEDIFF | STRFTIME | MAKEDATE | MAKETIME
+    // Null handling functions
+    | COALESCE | NULLIF | IFNULL | NVL
+    // Conversion functions
+    | CONVERT | HEX | UNHEX | TYPEOF
+    | TOSTRING | TOINT | TODOUBLE | TODECIMAL | TOBOOLEAN
+    | TODATE | TODATETIME | TOGUID
+    | BASE64 | UNBASE64
+    // ID generation functions
+    | NEWGUID | NEWUUID | INCREMENT | LASTINCREMENT
+    // System functions
+    | LAST_INSERT_ROWID | DATABASE_FUNC | VERSION_FUNC | CHANGES
+    // Window functions
+    | ROW_NUMBER | RANK | DENSE_RANK | NTILE
+    | LAG | LEAD | FIRST_VALUE | LAST_VALUE | NTH_VALUE
+    | PERCENT_RANK | CUME_DIST
+    // JSON functions
+    | JSON_VALUE | JSON_QUERY | JSON_EXTRACT
+    | JSON_SET | JSON_INSERT | JSON_REPLACE | JSON_REMOVE
+    | JSON_TYPE | JSON_VALID | JSON_ARRAY | JSON_OBJECT
+    // Aggregate functions
+    | COUNT | SUM | AVG | MIN | MAX | GROUP_CONCAT
+    // Other common identifiers
+    | ACTION | TYPE | ISOLATION | LEVEL | SNAPSHOT
+    | CONFLICT | DO | NOTHING | WRITE | SHARE
+    | FIRST | LAST | VALUE
     ;

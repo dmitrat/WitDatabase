@@ -17,6 +17,8 @@ public static class WitSql
     /// </summary>
     public static WitSqlParsingResult TryParse(string sql)
     {
+        ArgumentNullException.ThrowIfNull(sql);
+
         var inputStream = new AntlrInputStream(sql);
         var lexer = new WitSqlLexer(inputStream);
         var tokenStream = new CommonTokenStream(lexer);
