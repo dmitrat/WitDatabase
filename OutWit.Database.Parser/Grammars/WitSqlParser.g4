@@ -123,6 +123,16 @@ selectStatement
       whereClause?
       groupByClause?
       havingClause?
+      forClause?
+    ;
+
+forClause
+    : FOR (UPDATE | SHARE) forClauseOption*
+    ;
+
+forClauseOption
+    : NOWAIT
+    | SKIP_ LOCKED
     ;
 
 selectList

@@ -75,11 +75,11 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 ### Category 3: Locking Hints (FOR UPDATE/SHARE)
 
-- [ ] **3.1** `FOR UPDATE` clause in SELECT
-- [ ] **3.2** `FOR SHARE` clause in SELECT
-- [ ] **3.3** `NOWAIT` modifier
-- [ ] **3.4** `SKIP LOCKED` modifier
-- [ ] **3.5** Extend `WitSqlStatementSelect` for locking hints
+- [x] **3.1** `FOR UPDATE` clause in SELECT
+- [x] **3.2** `FOR SHARE` clause in SELECT
+- [x] **3.3** `NOWAIT` modifier
+- [x] **3.4** `SKIP LOCKED` modifier
+- [x] **3.5** Extend `WitSqlStatementSelect` for locking hints
 
 ### Category 4: UPSERT / MERGE
 
@@ -203,8 +203,8 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 | # | Component | Priority |
 |---|-----------|----------|
-| 2.1-2.3 | SET TRANSACTION ISOLATION | ?? Critical |
-| 3.1-3.5 | FOR UPDATE/SHARE | ?? Critical |
+| ~~2.1-2.3~~ | ~~SET TRANSACTION ISOLATION~~ | ~~? Done~~ |
+| ~~3.1-3.5~~ | ~~FOR UPDATE/SHARE~~ | ~~? Done~~ |
 | 14.1-14.3 | Named Constraints | ?? Critical |
 | 6.1-6.4 | Advanced Indexes | ?? Important |
 | 7.1-7.3 | Computed Columns | ?? Important |

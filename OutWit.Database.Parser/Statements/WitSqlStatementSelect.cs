@@ -39,7 +39,8 @@ namespace OutWit.Database.Parser.Statements
                    && OrderByClause.Is(select.OrderByClause)
                    && LimitCount.Check(select.LimitCount)
                    && LimitOffset.Check(select.LimitOffset)
-                   && SetOperations.Is(select.SetOperations);
+                   && SetOperations.Is(select.SetOperations)
+                   && ForClause.Check(select.ForClause);
         }
 
         public override WitSqlStatementSelect Clone()
@@ -59,7 +60,8 @@ namespace OutWit.Database.Parser.Statements
                 OrderByClause = OrderByClause?.Select(item => item.Clone()).ToList(),
                 LimitCount = (WitSqlExpression?)LimitCount?.Clone(),
                 LimitOffset = (WitSqlExpression?)LimitOffset?.Clone(),
-                SetOperations = SetOperations?.Select(op => op.Clone()).ToList()
+                SetOperations = SetOperations?.Select(op => op.Clone()).ToList(),
+                ForClause = ForClause?.Clone()
             };
         }
 
@@ -126,6 +128,11 @@ namespace OutWit.Database.Parser.Statements
         /// Set operations (UNION, INTERSECT, EXCEPT) with their right operands.
         /// </summary>
         public IReadOnlyList<ClauseSetOperation>? SetOperations { get; set; }
+
+        /// <summary>
+        /// FOR UPDATE/SHARE clause with locking options.
+        /// </summary>
+        public ClauseFor? ForClause { get; init; }
 
         #endregion
     }

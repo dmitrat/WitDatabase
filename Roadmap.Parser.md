@@ -31,7 +31,7 @@
 | DDL - VIEW | 4 | 0 | 100% |
 | DDL - TRIGGER | 9 | 1 | 90% |
 | DDL - SEQUENCE | 5 | 0 | 100% |
-| DML - SELECT | 14 | 4 | 78% |
+| DML - SELECT | 15 | 0 | 100% |
 | DML - INSERT | 7 | 1 | 88% |
 | DML - UPDATE | 3 | 1 | 75% |
 | DML - DELETE | 3 | 1 | 75% |
@@ -56,7 +56,7 @@
 | EXPLAIN | 0 | 3 | 0% |
 | Database Administration | 0 | 7 | 0% |
 | Comments | 2 | 0 | 100% |
-| **TOTAL** | **252** | **30** | **89%** |
+| **TOTAL** | **256** | **26** | **91%** |
 
 ---
 
@@ -191,7 +191,7 @@
 
 ---
 
-## 8. DML - SELECT (78%)
+## 8. DML - SELECT (100%)
 
 | Feature | Status | Spec |
 |---------|--------|------|
@@ -206,10 +206,10 @@
 | `GROUP BY` / `HAVING` | [x] | SS3.1 |
 | `ORDER BY expr [ASC/DESC] [NULLS FIRST/LAST]` | [x] | SS3.1 |
 | `LIMIT count [OFFSET offset]` | [x] | SS3.1 |
-| `FOR UPDATE` | [ ] | SS14.2 |
-| `FOR SHARE` | [ ] | SS14.2 |
-| `FOR UPDATE NOWAIT` | [ ] | SS14.2 |
-| `FOR UPDATE SKIP LOCKED` | [ ] | SS14.2 |
+| `FOR UPDATE` | [x] | SS14.2 |
+| `FOR SHARE` | [x] | SS14.2 |
+| `FOR UPDATE NOWAIT` | [x] | SS14.2 |
+| `FOR UPDATE SKIP LOCKED` | [x] | SS14.2 |
 
 ---
 

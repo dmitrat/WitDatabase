@@ -459,4 +459,65 @@ public class DmlParserTests
     }
 
     #endregion
+
+    #region FOR UPDATE/SHARE
+
+    [Test]
+    public void ParseSelectForUpdateTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users WHERE Id = 1 FOR UPDATE");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.ForClause, Is.Not.Null);
+        Assert.That(select.ForClause!.LockingType, Is.EqualTo(LockingType.ForUpdate));
+        Assert.That(select.ForClause.IsNoWait, Is.False);
+        Assert.That(select.ForClause.IsSkipLocked, Is.False);
+    }
+
+    [Test]
+    public void ParseSelectForShareTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users WHERE Id = 1 FOR SHARE");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.ForClause, Is.Not.Null);
+        Assert.That(select.ForClause!.LockingType, Is.EqualTo(LockingType.ForShare));
+    }
+
+    [Test]
+    public void ParseSelectForUpdateNoWaitTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users WHERE Id = 1 FOR UPDATE NOWAIT");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.ForClause, Is.Not.Null);
+        Assert.That(select.ForClause!.LockingType, Is.EqualTo(LockingType.ForUpdate));
+        Assert.That(select.ForClause.IsNoWait, Is.True);
+    }
+
+    [Test]
+    public void ParseSelectForUpdateSkipLockedTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users WHERE Id = 1 FOR UPDATE SKIP LOCKED");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.ForClause, Is.Not.Null);
+        Assert.That(select.ForClause!.LockingType, Is.EqualTo(LockingType.ForUpdate));
+        Assert.That(select.ForClause.IsSkipLocked, Is.True);
+    }
+
+    [Test]
+    public void ParseSelectForShareNoWaitTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users FOR SHARE NOWAIT");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.ForClause!.LockingType, Is.EqualTo(LockingType.ForShare));
+        Assert.That(select.ForClause.IsNoWait, Is.True);
+    }
+
+    [Test]
+    public void ParseSelectWithoutForClauseTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users");
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.ForClause, Is.Null);
+    }
+
+    #endregion
 }

@@ -126,6 +126,29 @@ internal sealed partial class WitSqlVisitor
                 ? groupBy.expression().Select(VisitExpression).ToList<WitSqlExpression>()
                 : null,
             HavingClause = context.havingClause() is { } having ? VisitExpression(having.expression()) : null,
+            ForClause = context.forClause() is { } forClause ? VisitForClause(forClause) : null
+        };
+    }
+
+    private ClauseFor VisitForClause(WitSqlParser.ForClauseContext context)
+    {
+        var lockingType = context.UPDATE() != null ? LockingType.ForUpdate : LockingType.ForShare;
+        var isNoWait = false;
+        var isSkipLocked = false;
+
+        foreach (var option in context.forClauseOption())
+        {
+            if (option.NOWAIT() != null)
+                isNoWait = true;
+            if (option.SKIP_() != null)
+                isSkipLocked = true;
+        }
+
+        return new ClauseFor
+        {
+            LockingType = lockingType,
+            IsNoWait = isNoWait,
+            IsSkipLocked = isSkipLocked
         };
     }
 

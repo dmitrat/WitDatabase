@@ -333,6 +333,16 @@ SERIALIZABLE: S E R I A L I Z A B L E;
 SNAPSHOT: S N A P S H O T;
 
 // ============================================================================
+// Locking Hints
+// ============================================================================
+
+SHARE: S H A R E;
+NOWAIT: N O W A I T;
+SKIP_: S K I P;
+LOCKED: L O C K E D;
+WRITE: W R I T E;
+
+// ============================================================================
 // Functions - Math (longer first)
 // ============================================================================
 
@@ -522,5 +532,6 @@ fragment X: [Xx];
 fragment Y: [Yy];
 fragment Z: [Zz];
 fragment DIGIT: [0-9];
+
 
 
