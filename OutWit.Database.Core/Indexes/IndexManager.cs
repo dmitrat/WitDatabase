@@ -1,19 +1,18 @@
 using OutWit.Database.Core.Comparers;
 using OutWit.Database.Core.Interfaces;
-using OutWit.Database.Core.Managers;
-using OutWit.Database.Core.Tree;
 
 namespace OutWit.Database.Core.Indexes
 {
     /// <summary>
-    /// Manages secondary indexes for a table using B+Tree storage.
+    /// Manages secondary indexes for a table.
+    /// Uses a factory to create storage-appropriate index implementations.
     /// </summary>
     public sealed class IndexManager : IIndexManager
     {
         #region Fields
 
-        private readonly PageManager m_pageManager;
-        private readonly Dictionary<string, SecondaryIndexBTree> m_indexes;
+        private readonly ISecondaryIndexFactory m_indexFactory;
+        private readonly Dictionary<string, ISecondaryIndex> m_indexes;
         private readonly object m_lock = new();
         private bool m_disposed;
 
@@ -22,13 +21,13 @@ namespace OutWit.Database.Core.Indexes
         #region Constructors
 
         /// <summary>
-        /// Creates a new index manager.
+        /// Creates a new index manager using the specified factory.
         /// </summary>
-        /// <param name="pageManager">The page manager for index storage.</param>
-        public IndexManager(PageManager pageManager)
+        /// <param name="indexFactory">The factory for creating secondary indexes.</param>
+        public IndexManager(ISecondaryIndexFactory indexFactory)
         {
-            m_pageManager = pageManager ?? throw new ArgumentNullException(nameof(pageManager));
-            m_indexes = new Dictionary<string, SecondaryIndexBTree>(StringComparer.OrdinalIgnoreCase);
+            m_indexFactory = indexFactory ?? throw new ArgumentNullException(nameof(indexFactory));
+            m_indexes = new Dictionary<string, ISecondaryIndex>(StringComparer.OrdinalIgnoreCase);
         }
 
         #endregion
@@ -48,8 +47,7 @@ namespace OutWit.Database.Core.Indexes
                 if (m_indexes.ContainsKey(name))
                     throw new ArgumentException($"Index '{name}' already exists.", nameof(name));
 
-                var tree = new BTree(m_pageManager);
-                var index = new SecondaryIndexBTree(name, tree, isUnique, ownsTree: true);
+                var index = m_indexFactory.CreateIndex(name, isUnique);
                 m_indexes[name] = index;
                 return index;
             }
@@ -215,7 +213,7 @@ namespace OutWit.Database.Core.Indexes
             ThrowIfDisposed();
             cancellationToken.ThrowIfCancellationRequested();
 
-            List<SecondaryIndexBTree> indexes;
+            List<ISecondaryIndex> indexes;
             lock (m_lock)
             {
                 indexes = m_indexes.Values.ToList();

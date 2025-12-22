@@ -1,8 +1,7 @@
 using NUnit.Framework;
 using OutWit.Database.Core.Indexes;
 using OutWit.Database.Core.Interfaces;
-using OutWit.Database.Core.Managers;
-using OutWit.Database.Core.Storage;
+using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.Tests.Indexes
 {
@@ -11,7 +10,7 @@ namespace OutWit.Database.Core.Tests.Indexes
     {
         #region Fields
 
-        private PageManager m_pageManager = null!;
+        private ISecondaryIndexFactory m_factory = null!;
 
         #endregion
 
@@ -20,14 +19,12 @@ namespace OutWit.Database.Core.Tests.Indexes
         [SetUp]
         public void Setup()
         {
-            var storage = new StorageMemory();
-            m_pageManager = new PageManager(storage);
+            m_factory = new SecondaryIndexFactoryKeyValueStore(_ => new StoreInMemory());
         }
 
         [TearDown]
         public void TearDown()
         {
-            m_pageManager?.Dispose();
         }
 
         #endregion
@@ -38,7 +35,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void CreateIndexSucceedsTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
 
             // Act
             var index = manager.CreateIndex("idx_email", isUnique: true);
@@ -53,7 +50,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void CreateNonUniqueIndexSucceedsTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
 
             // Act
             var index = manager.CreateIndex("idx_category", isUnique: false);
@@ -67,7 +64,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void CreateDuplicateIndexThrowsTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             manager.CreateIndex("idx_email", isUnique: true);
 
             // Act & Assert
@@ -78,7 +75,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void CreateIndexWithNullNameThrowsTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
 
             // Act & Assert
             Assert.Throws<ArgumentNullException>(() => manager.CreateIndex(null!, isUnique: true));
@@ -92,7 +89,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void GetIndexReturnsExistingIndexTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             manager.CreateIndex("idx_email", isUnique: true);
 
             // Act
@@ -107,7 +104,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void GetIndexReturnsNullForNonExistentTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
 
             // Act
             var index = manager.GetIndex("nonexistent");
@@ -120,7 +117,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void GetIndexIsCaseInsensitiveTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             manager.CreateIndex("idx_Email", isUnique: true);
 
             // Act
@@ -138,7 +135,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void DropIndexSucceedsTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             manager.CreateIndex("idx_email", isUnique: true);
 
             // Act
@@ -154,7 +151,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void DropNonExistentIndexReturnsFalseTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
 
             // Act
             bool dropped = manager.DropIndex("nonexistent");
@@ -171,7 +168,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void HasIndexReturnsTrueForExistingIndexTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             manager.CreateIndex("idx_email", isUnique: true);
 
             // Act & Assert
@@ -182,7 +179,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void HasIndexReturnsFalseForNonExistentIndexTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
 
             // Act & Assert
             Assert.That(manager.HasIndex("nonexistent"), Is.False);
@@ -196,7 +193,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void OnRowInsertedUpdatesIndexTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             var index = manager.CreateIndex("idx_email", isUnique: true);
 
             var primaryKey = GetBytes("user-123");
@@ -218,7 +215,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void OnRowInsertedUpdatesMultipleIndexesTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             var emailIndex = manager.CreateIndex("idx_email", isUnique: true);
             var categoryIndex = manager.CreateIndex("idx_category", isUnique: false);
 
@@ -241,7 +238,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void OnRowInsertedIgnoresNonExistentIndexesTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             manager.CreateIndex("idx_email", isUnique: true);
 
             var primaryKey = GetBytes("user-123");
@@ -262,7 +259,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void OnRowDeletedRemovesFromIndexTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             var index = manager.CreateIndex("idx_email", isUnique: true);
 
             var primaryKey = GetBytes("user-123");
@@ -288,7 +285,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void OnRowUpdatedChangesIndexKeyTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             var index = manager.CreateIndex("idx_email", isUnique: true);
 
             var primaryKey = GetBytes("user-123");
@@ -316,7 +313,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void OnRowUpdatedSkipsUnchangedKeysTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             var index = manager.CreateIndex("idx_email", isUnique: true);
 
             var primaryKey = GetBytes("user-123");
@@ -347,7 +344,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void IndexNamesReturnsAllIndexNamesTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
             manager.CreateIndex("idx_a", isUnique: true);
             manager.CreateIndex("idx_b", isUnique: false);
             manager.CreateIndex("idx_c", isUnique: true);
@@ -366,7 +363,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void IndexCountReturnsCorrectCountTest()
         {
             // Arrange
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
 
             // Act & Assert
             Assert.That(manager.IndexCount, Is.EqualTo(0));
@@ -389,7 +386,7 @@ namespace OutWit.Database.Core.Tests.Indexes
         public void ImplementsIIndexManagerTest()
         {
             // Arrange & Act
-            using var manager = new IndexManager(m_pageManager);
+            using var manager = new IndexManager(m_factory);
 
             // Assert
             Assert.That(manager, Is.InstanceOf<IIndexManager>());

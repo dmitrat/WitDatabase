@@ -96,5 +96,17 @@ public sealed class WitDatabaseBuilderOptions
     /// </summary>
     public string? LsmDirectory { get; set; }
 
+    /// <summary>
+    /// Custom secondary index factory.
+    /// If not set, a default factory based on the storage engine will be used.
+    /// </summary>
+    public ISecondaryIndexFactory? SecondaryIndexFactory { get; set; }
+
+    /// <summary>
+    /// Directory for secondary index storage (used when separate index storage is needed).
+    /// If not set, indexes are stored alongside the main data.
+    /// </summary>
+    public string? IndexDirectory { get; set; }
+
     #endregion
 }

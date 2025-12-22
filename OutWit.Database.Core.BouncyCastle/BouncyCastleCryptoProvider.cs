@@ -120,6 +120,13 @@ namespace OutWit.Database.Core.BouncyCastle
             }
         }
 
+        /// <inheritdoc/>
+        public ICryptoProvider Clone()
+        {
+            ThrowIfDisposed();
+            return new BouncyCastleCryptoProvider(m_key);
+        }
+
         #endregion
 
         #region Tools

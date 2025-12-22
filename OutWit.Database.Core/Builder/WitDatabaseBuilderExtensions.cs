@@ -115,6 +115,33 @@ public static class WitDatabaseBuilderExtensions
 
     #endregion
 
+    #region Secondary Indexes
+
+    /// <summary>
+    /// Use a custom secondary index factory.
+    /// </summary>
+    /// <param name="builder">The database builder.</param>
+    /// <param name="factory">The factory for creating secondary indexes.</param>
+    public static WitDatabaseBuilder WithSecondaryIndexFactory(this WitDatabaseBuilder builder, ISecondaryIndexFactory factory)
+    {
+        builder.Options.SecondaryIndexFactory = factory ?? throw new ArgumentNullException(nameof(factory));
+        return builder;
+    }
+
+    /// <summary>
+    /// Set the directory for secondary index storage.
+    /// Indexes will be stored separately from the main data.
+    /// </summary>
+    /// <param name="builder">The database builder.</param>
+    /// <param name="directory">Directory path for index storage.</param>
+    public static WitDatabaseBuilder WithIndexDirectory(this WitDatabaseBuilder builder, string directory)
+    {
+        builder.Options.IndexDirectory = directory ?? throw new ArgumentNullException(nameof(directory));
+        return builder;
+    }
+
+    #endregion
+
     #region Encryption
 
     /// <summary>

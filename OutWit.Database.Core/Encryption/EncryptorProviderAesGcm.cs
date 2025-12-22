@@ -121,6 +121,13 @@ public sealed class EncryptorProviderAesGcm : ICryptoProvider
         }
     }
 
+    /// <inheritdoc/>
+    public ICryptoProvider Clone()
+    {
+        ThrowIfDisposed();
+        return new EncryptorProviderAesGcm(m_key);
+    }
+
     #endregion
 
     #region Tools

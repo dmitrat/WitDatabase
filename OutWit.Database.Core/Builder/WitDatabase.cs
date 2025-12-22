@@ -14,6 +14,7 @@ public sealed class WitDatabase : IDisposable
 
     private readonly IKeyValueStore m_store;
     private readonly ITransactionalStore? m_transactionalStore;
+    private readonly IIndexManager? m_indexManager;
     private readonly bool m_disposeStore;
     private bool m_disposed;
 
@@ -24,20 +25,22 @@ public sealed class WitDatabase : IDisposable
     /// <summary>
     /// Creates a new WitDatabase wrapping a key-value store.
     /// </summary>
-    internal WitDatabase(IKeyValueStore store, bool disposeStore = true)
+    internal WitDatabase(IKeyValueStore store, IIndexManager? indexManager = null, bool disposeStore = true)
     {
         m_store = store ?? throw new ArgumentNullException(nameof(store));
         m_transactionalStore = store as ITransactionalStore;
+        m_indexManager = indexManager;
         m_disposeStore = disposeStore;
     }
 
     /// <summary>
     /// Creates a new WitDatabase wrapping a transactional store.
     /// </summary>
-    internal WitDatabase(ITransactionalStore store, bool disposeStore = true)
+    internal WitDatabase(ITransactionalStore store, IIndexManager? indexManager = null, bool disposeStore = true)
     {
         m_store = store ?? throw new ArgumentNullException(nameof(store));
         m_transactionalStore = store;
+        m_indexManager = indexManager;
         m_disposeStore = disposeStore;
     }
 
@@ -447,6 +450,59 @@ public sealed class WitDatabase : IDisposable
 
     #endregion
 
+    #region Indexes
+
+    /// <summary>
+    /// Creates a new secondary index.
+    /// </summary>
+    /// <param name="name">The unique name of the index.</param>
+    /// <param name="isUnique">Whether the index should enforce uniqueness.</param>
+    /// <returns>The created index.</returns>
+    /// <exception cref="InvalidOperationException">Thrown if index manager is not available.</exception>
+    public ISecondaryIndex CreateIndex(string name, bool isUnique = false)
+    {
+        ThrowIfDisposed();
+        if (m_indexManager == null)
+            throw new InvalidOperationException("Index manager is not available.");
+        
+        return m_indexManager.CreateIndex(name, isUnique);
+    }
+
+    /// <summary>
+    /// Gets an existing index by name.
+    /// </summary>
+    /// <param name="name">The name of the index.</param>
+    /// <returns>The index, or null if not found.</returns>
+    public ISecondaryIndex? GetIndex(string name)
+    {
+        ThrowIfDisposed();
+        return m_indexManager?.GetIndex(name);
+    }
+
+    /// <summary>
+    /// Drops (removes) an index.
+    /// </summary>
+    /// <param name="name">The name of the index to drop.</param>
+    /// <returns>True if the index was dropped; false if it didn't exist.</returns>
+    public bool DropIndex(string name)
+    {
+        ThrowIfDisposed();
+        return m_indexManager?.DropIndex(name) ?? false;
+    }
+
+    /// <summary>
+    /// Checks if an index with the specified name exists.
+    /// </summary>
+    /// <param name="name">The name of the index.</param>
+    /// <returns>True if the index exists; otherwise false.</returns>
+    public bool HasIndex(string name)
+    {
+        ThrowIfDisposed();
+        return m_indexManager?.HasIndex(name) ?? false;
+    }
+
+    #endregion
+
     #region Flush
 
     /// <summary>
@@ -456,15 +512,18 @@ public sealed class WitDatabase : IDisposable
     {
         ThrowIfDisposed();
         m_store.Flush();
+        m_indexManager?.Flush();
     }
 
     /// <summary>
     /// Flushes any pending writes asynchronously.
     /// </summary>
-    public ValueTask FlushAsync(CancellationToken cancellationToken = default)
+    public async ValueTask FlushAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        return m_store.FlushAsync(cancellationToken);
+        await m_store.FlushAsync(cancellationToken).ConfigureAwait(false);
+        if (m_indexManager != null)
+            await m_indexManager.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
     #endregion
@@ -485,6 +544,8 @@ public sealed class WitDatabase : IDisposable
     {
         if (m_disposed) return;
         m_disposed = true;
+
+        m_indexManager?.Dispose();
 
         if (m_disposeStore)
         {
@@ -510,6 +571,21 @@ public sealed class WitDatabase : IDisposable
     /// Gets the underlying key-value store.
     /// </summary>
     public IKeyValueStore Store => m_store;
+
+    /// <summary>
+    /// Gets the index manager, or null if not available.
+    /// </summary>
+    public IIndexManager? IndexManager => m_indexManager;
+
+    /// <summary>
+    /// Gets whether secondary index support is available.
+    /// </summary>
+    public bool SupportsIndexes => m_indexManager != null;
+
+    /// <summary>
+    /// Gets the names of all indexes.
+    /// </summary>
+    public IReadOnlyList<string> IndexNames => m_indexManager?.IndexNames ?? [];
 
     #endregion
 }

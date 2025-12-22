@@ -1,5 +1,6 @@
 using OutWit.Database.Core.Concurrency;
 using OutWit.Database.Core.Encryption;
+using OutWit.Database.Core.Indexes;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.LSM;
 using OutWit.Database.Core.Managers;
@@ -34,14 +35,15 @@ public sealed class WitDatabaseBuilder
         ValidateConfiguration();
         
         var store = BuildStoreInternal();
+        var indexManager = BuildIndexManagerInternal();
         
         if (Options.EnableTransactions)
         {
             var transactionalStore = BuildTransactionalStoreInternal(store);
-            return new WitDatabase(transactionalStore, disposeStore: true);
+            return new WitDatabase(transactionalStore, indexManager, disposeStore: true);
         }
         
-        return new WitDatabase(store, disposeStore: true);
+        return new WitDatabase(store, indexManager, disposeStore: true);
     }
 
     /// <summary>
@@ -61,6 +63,15 @@ public sealed class WitDatabaseBuilder
         ValidateConfiguration();
         var store = BuildStoreInternal();
         return BuildTransactionalStoreInternal(store);
+    }
+
+    /// <summary>
+    /// Builds an index manager with the configured factory.
+    /// </summary>
+    public IIndexManager BuildIndexManager()
+    {
+        ValidateConfiguration();
+        return BuildIndexManagerInternal();
     }
 
     #endregion
@@ -243,6 +254,111 @@ public sealed class WitDatabaseBuilder
             Options.TransactionJournal, 
             lockManager,
             ownsStore: true);
+    }
+
+    private IIndexManager BuildIndexManagerInternal()
+    {
+        // Use custom factory if provided
+        if (Options.SecondaryIndexFactory != null)
+        {
+            return new IndexManager(Options.SecondaryIndexFactory);
+        }
+
+        // Build factory based on storage engine
+        var factory = BuildDefaultIndexFactory();
+        return new IndexManager(factory);
+    }
+
+    private ISecondaryIndexFactory BuildDefaultIndexFactory()
+    {
+        // If custom store is provided without custom index factory,
+        // use in-memory indexes (safest default)
+        if (Options.KeyValueStore != null)
+        {
+            return new SecondaryIndexFactoryKeyValueStore(
+                indexName => new StoreInMemory(),
+                "inmemory"
+            );
+        }
+
+        // Determine the base directory for indexes
+        string? baseDirectory = Options.IndexDirectory 
+            ?? Options.LsmDirectory 
+            ?? (Options.FilePath != null ? Path.GetDirectoryName(Options.FilePath) : null);
+
+        // For memory storage, use in-memory indexes
+        if (Options.UseMemoryStorage || baseDirectory == null)
+        {
+            return new SecondaryIndexFactoryKeyValueStore(
+                indexName => new StoreInMemory(),
+                "inmemory"
+            );
+        }
+
+        // For LSM-Tree, use LSM-based indexes
+        if (Options.UseLsmTree)
+        {
+            var indexDir = Path.Combine(baseDirectory, "_indexes");
+            
+            // Capture encryption settings for lambda (create new instances per index)
+            var cryptoProvider = Options.CryptoProvider;
+            var encryptionSalt = Options.EncryptionSalt;
+            
+            return new SecondaryIndexFactoryKeyValueStore(
+                indexName =>
+                {
+                    var indexPath = Path.Combine(indexDir, indexName);
+                    Directory.CreateDirectory(indexPath);
+                    
+                    var lsmOptions = new LsmOptions();
+                    if (cryptoProvider != null)
+                    {
+                        // Create new encryptor instance for each index
+                        lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider.Clone(), encryptionSalt);
+                    }
+                    
+                    return new StoreLsm(indexPath, lsmOptions);
+                },
+                StoreLsm.PROVIDER_KEY
+            );
+        }
+
+        // For BTree, use BTree-based indexes (each index gets its own file)
+        var btreeIndexDir = Path.Combine(baseDirectory, "_indexes");
+        
+        // Capture settings for lambda
+        var pageSize = Options.PageSize;
+        var cacheSize = Options.CacheSize;
+        var btreeCryptoProvider = Options.CryptoProvider;
+        var btreeEncryptionSalt = Options.EncryptionSalt;
+        
+        return new SecondaryIndexFactoryKeyValueStore(
+            indexName =>
+            {
+                Directory.CreateDirectory(btreeIndexDir);
+                var indexPath = Path.Combine(btreeIndexDir, $"{indexName}.idx");
+                
+                IStorage storage;
+                int storagePageSize = pageSize;
+                
+                if (btreeCryptoProvider != null)
+                {
+                    var overhead = btreeCryptoProvider.Overhead;
+                    storagePageSize = pageSize + overhead;
+                    var baseStorage = new StorageFile(indexPath, storagePageSize);
+                    // Create new crypto provider instance for each index to avoid shared disposal
+                    var encryptor = new EncryptorPage(btreeCryptoProvider.Clone(), btreeEncryptionSalt);
+                    storage = new StorageEncrypted(baseStorage, encryptor);
+                }
+                else
+                {
+                    storage = new StorageFile(indexPath, storagePageSize);
+                }
+                
+                return new StoreBTree(storage, cacheSize / 4, ownsStorage: true);
+            },
+            StoreBTree.PROVIDER_KEY
+        );
     }
 
     #endregion

@@ -30,6 +30,8 @@ public class ProviderRegistryTests
         public bool Decrypt(ReadOnlySpan<byte> nonce, ReadOnlySpan<byte> ciphertext, ReadOnlySpan<byte> tag, Span<byte> plaintext)
             => throw new NotImplementedException();
 
+        public ICryptoProvider Clone() => new TestProvider(ProviderKey, Name);
+
         public int NonceSize => 12;
         public int TagSize => 16;
         

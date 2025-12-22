@@ -29,6 +29,18 @@ namespace OutWit.Database.Core.Interfaces
 
         #endregion
 
+        #region Clone
+
+        /// <summary>
+        /// Creates a new instance of this crypto provider with the same key.
+        /// Used when multiple independent consumers need their own instance
+        /// (e.g., main store and secondary indexes).
+        /// </summary>
+        /// <returns>A new instance with the same encryption key.</returns>
+        ICryptoProvider Clone();
+
+        #endregion
+
         #region Properties
 
         /// <summary>

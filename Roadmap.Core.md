@@ -2,7 +2,7 @@
 
 **Version:** 1.0  
 **Based on:** OutWit.Database.Core.TODO.md  
-**Last Updated:** 2024-12-21
+**Last Updated:** 2025-01-15
 
 ---
 
@@ -36,13 +36,13 @@
 | Multiple Result Sets | 0 | 3 | 0% |
 | Cursor Support | 0 | 4 | 0% - v2 |
 | Query Context | 5 | 0 | 100% |
-| Secondary Indexes | 5 | 0 | 100% |
+| Secondary Indexes | 7 | 0 | 100% |
 | Bulk Operations | 0 | 3 | 0% |
 | Statistics | 0 | 2 | 0% |
 | VACUUM/Compaction | 0 | 3 | 0% - v2 |
 | Concurrent Transactions | 0 | 3 | 0% |
 | ROWVERSION | 0 | 3 | 0% |
-| **TOTAL** | **33** | **29** | **53%** |
+| **TOTAL** | **35** | **29** | **55%** |
 
 ---
 
@@ -172,8 +172,20 @@
 | Unique index support | [x] | P0 | SS7.3 |
 | Composite index support | [x] | P0 | SS7.4 |
 | Index maintenance (auto-update) | [x] | P0 | SS7.5 |
+| Storage-agnostic index factory | [x] | P1 | SS7.6 |
+| WitDatabase integration | [x] | P1 | SS7.7 |
 
-**Notes:** Critical for any SQL engine. Without secondary indexes, efficient filtering and JOIN operations are impossible. ? Implemented in `ISecondaryIndex`, `SecondaryIndexBTree`, `IIndexManager`, and `IndexManager`.
+**Notes:** Critical for any SQL engine. Without secondary indexes, efficient filtering and JOIN operations are impossible.
+
+? Fully Implemented:
+- `ISecondaryIndex` - interface for secondary index operations
+- `SecondaryIndexBTree` - B+Tree based implementation with unique/non-unique support
+- `SecondaryIndexKeyValueStore` - generic implementation using any `IKeyValueStore`
+- `ISecondaryIndexFactory` - factory interface for creating storage-appropriate indexes
+- `SecondaryIndexFactoryKeyValueStore` - universal factory using any `IKeyValueStore` (works with BTree, LSM, InMemory, or custom stores)
+- `IIndexManager` - interface for managing multiple indexes per table
+- `IndexManager` - implementation with auto-update on row insert/update/delete
+- `WitDatabase` integration - fluent API (`WithSecondaryIndexFactory`, `WithIndexDirectory`) and methods (`CreateIndex`, `GetIndex`, `DropIndex`, `HasIndex`)
 
 ### 2.8 Bulk Operations
 
@@ -220,20 +232,22 @@
 
 ## 3. Implementation Priorities
 
-### 3.1 Phase 1: MVP for ADO.NET
+### 3.1 Phase 1: MVP for ADO.NET ?
 
-| Feature | Priority |
-|---------|----------|
-| `IQueryContext` interface | P0 |
-| `AffectedRows` property | P0 |
-| `LastInsertId` property | P0 |
-| Query timeout | P0 |
-| `CancellationToken` support | P0 |
-| `ISecondaryIndex` interface | P0 |
-| B+Tree secondary indexes | P0 |
-| Unique index support | P0 |
-| Composite index support | P0 |
-| Savepoints | P1 |
+| Feature | Priority | Status |
+|---------|----------|--------|
+| `IQueryContext` interface | P0 | ? |
+| `AffectedRows` property | P0 | ? |
+| `LastInsertId` property | P0 | ? |
+| Query timeout | P0 | ? |
+| `CancellationToken` support | P0 | ? |
+| `ISecondaryIndex` interface | P0 | ? |
+| B+Tree secondary indexes | P0 | ? |
+| Unique index support | P0 | ? |
+| Composite index support | P0 | ? |
+| Savepoints | P1 | ? |
+| Storage-agnostic index factory | P1 | ? |
+| WitDatabase index integration | P1 | ? |
 
 ### 3.2 Phase 2: EF Core Compatibility
 
@@ -271,9 +285,102 @@
 | Priority | Count | Description |
 |----------|-------|-------------|
 | P0 | 21 | Required for ADO.NET/EF Core |
-| P1 | 17 | Production ready features |
+| P1 | 16 | Production ready features |
 | P2 | 7 | Nice-to-have features |
 
 ---
 
-**Last Updated:** 2024-12-21
+## 5. Architecture Notes
+
+### 5.1 Modular Storage Design
+
+WitDatabase uses a modular storage architecture where users can choose or implement their own storage engines:
+
+```
+IKeyValueStore (interface)
+??? StoreBTree     - B+Tree, optimized for reads
+??? StoreLsm       - LSM-Tree, optimized for writes  
+??? StoreInMemory  - In-memory, for testing
+```
+
+### 5.2 Secondary Index Architecture
+
+The secondary index system is fully modular and storage-agnostic:
+
+```
+ISecondaryIndex (interface)
+??? SecondaryIndexBTree         - Uses BTree directly (PageManager)
+??? SecondaryIndexKeyValueStore - Uses any IKeyValueStore
+
+ISecondaryIndexFactory (interface)
+??? SecondaryIndexFactoryKeyValueStore - Universal factory
+    ??? Creates BTree-based indexes (via StoreBTree)
+    ??? Creates LSM-based indexes (via StoreLsm)
+    ??? Creates in-memory indexes (via StoreInMemory)
+    ??? Works with custom IKeyValueStore implementations
+
+IndexManager
+??? Accepts ISecondaryIndexFactory in constructor
+??? Manages index lifecycle and auto-updates
+??? Thread-safe operations
+
+WitDatabase Integration
+??? CreateIndex(name, isUnique) - creates new index
+??? GetIndex(name) - retrieves existing index
+??? DropIndex(name) - removes index
+??? HasIndex(name) - checks if index exists
+??? IndexNames - lists all index names
+??? Fluent API:
+?   ??? WithSecondaryIndexFactory(factory) - custom factory
+?   ??? WithIndexDirectory(path) - custom index storage location
+??? Automatic factory selection based on storage engine
+```
+
+### 5.3 Tested Storage Combinations
+
+All combinations are tested and working:
+
+| Storage Engine | Backend | Encryption | Indexes | Status |
+|----------------|---------|------------|---------|--------|
+| BTree | Memory | No | ? | Working |
+| BTree | Memory | AES-GCM | ? | Working |
+| BTree | File | No | ? | Working |
+| BTree | File | AES-GCM | ? | Working |
+| LSM | Directory | No | ? | Working |
+| LSM | Directory | AES-GCM | ? | Working |
+| Custom Store | - | - | ? | Working (with in-memory indexes) |
+| Custom Store | - | - | ? | Working (with custom index factory) |
+
+### 5.4 Adding Custom IKeyValueStore
+
+To add a custom `IKeyValueStore` implementation:
+
+1. **Implement `IKeyValueStore`** - no additional classes needed for indexes
+2. **Use with builder**:
+   ```csharp
+   var db = new WitDatabaseBuilder()
+       .WithStore(myCustomStore)
+       .WithTransactions()
+       .Build();
+   ```
+3. **Indexes**: By default, in-memory indexes are used. To use your storage for indexes:
+   ```csharp
+   var indexFactory = new SecondaryIndexFactoryKeyValueStore(
+       indexName => new MyCustomStore($"index_{indexName}"));
+   
+   var db = new WitDatabaseBuilder()
+       .WithStore(myCustomStore)
+       .WithSecondaryIndexFactory(indexFactory)
+       .WithTransactions()
+       .Build();
+   ```
+
+### 5.5 Known Limitations
+
+1. **Index Persistence**: Index metadata (names, isUnique flags) is NOT persisted. When reopening a database, indexes must be recreated. This will be addressed in a future update with index metadata storage.
+
+2. **LSM Database Open**: `WitDatabase.Open()` does not auto-detect LSM databases. Use `WitDatabaseBuilder` directly for LSM.
+
+---
+
+**Last Updated:** 2025-01-15
