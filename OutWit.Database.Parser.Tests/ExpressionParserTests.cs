@@ -408,6 +408,49 @@ public class ExpressionParserTests
     }
 
     [Test]
+    public void ParseLeftFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("LEFT(Title, 20)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("LEFT"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseRightFunctionTest()
+    {
+        var expr = WitSql.ParseExpression("RIGHT(Code, 4)");
+        var func = (WitSqlExpressionFunctionCall)expr;
+        Assert.That(func.FunctionName, Is.EqualTo("RIGHT"));
+        Assert.That(func.Arguments, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseLeftFunctionInSelectTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT LEFT(Name, 10) AS ShortName FROM Users");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementSelect>());
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.SelectList[0].Expression, Is.InstanceOf<WitSqlExpressionFunctionCall>());
+        var func = (WitSqlExpressionFunctionCall)select.SelectList[0].Expression!;
+        Assert.That(func.FunctionName, Is.EqualTo("LEFT"));
+    }
+
+    [Test]
+    public void ParseLeftJoinStillWorksTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users LEFT JOIN Orders ON Users.Id = Orders.UserId");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementSelect>());
+    }
+
+    [Test]
+    public void ParseRightJoinStillWorksTest()
+    {
+        var stmt = WitSql.ParseStatement("SELECT * FROM Users RIGHT JOIN Orders ON Users.Id = Orders.UserId");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementSelect>());
+    }
+
+    [Test]
     public void ParseCoalesceTest()
     {
         var expr = WitSql.ParseExpression("COALESCE(Nickname, Username, 'Anonymous')");

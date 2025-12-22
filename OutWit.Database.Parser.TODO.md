@@ -181,9 +181,9 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 ### Category 17: LEFT/RIGHT Functions
 
-- [ ] **17.1** `LEFT(str, n)` function
-- [ ] **17.2** `RIGHT(str, n)` function
-- [ ] **17.3** Add to `functionName` rule
+- [x] **17.1** `LEFT(str, n)` function
+- [x] **17.2** `RIGHT(str, n)` function
+- [x] **17.3** Add to `functionName` rule
 
 ---
 

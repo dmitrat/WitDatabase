@@ -43,7 +43,7 @@
 | Literals & Parameters | 6 | 0 | 100% |
 | Collation | 0 | 4 | 0% |
 | Aggregate Functions | 5 | 0 | 100% |
-| String Functions | 18 | 2 | 90% |
+| String Functions | 20 | 0 | 100% |
 | Numeric Functions | 20 | 0 | 100% |
 | Date/Time Functions | 17 | 0 | 100% |
 | ID/Conversion/Null Functions | 14 | 0 | 100% |
@@ -56,7 +56,7 @@
 | EXPLAIN | 0 | 3 | 0% |
 | Database Administration | 0 | 7 | 0% |
 | Comments | 2 | 0 | 100% |
-| **TOTAL** | **242** | **40** | **86%** |
+| **TOTAL** | **244** | **38** | **87%** |
 
 ---
 
@@ -371,15 +371,15 @@
 | `SUM`, `AVG`, `MIN`, `MAX` | [x] | SS5.1 |
 | `GROUP_CONCAT(expr, sep)` | [x] | SS5.1 |
 
-### String Functions (90%)
+### String Functions [x] (100%)
 
 | Function | Status | Spec |
 |----------|--------|------|
 | `LENGTH`, `CHAR_LENGTH`, `OCTET_LENGTH` | [x] | SS5.2 |
 | `UPPER`, `LOWER` | [x] | SS5.2 |
 | `SUBSTR`, `SUBSTRING` | [x] | SS5.2 |
-| `LEFT(str, n)` | [ ] | SS5.2 |
-| `RIGHT(str, n)` | [ ] | SS5.2 |
+| `LEFT(str, n)` | [x] | SS5.2 |
+| `RIGHT(str, n)` | [x] | SS5.2 |
 | `TRIM`, `LTRIM`, `RTRIM` | [x] | SS5.2 |
 | `REPLACE`, `INSTR`, `POSITION` | [x] | SS5.2 |
 | `CONCAT`, `CONCAT_WS` | [x] | SS5.2 |

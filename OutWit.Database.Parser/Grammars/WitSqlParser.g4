@@ -1,4 +1,4 @@
-parser grammar WitSqlParser;
+﻿parser grammar WitSqlParser;
 
 options {
     tokenVocab = WitSqlLexer;
@@ -561,7 +561,7 @@ functionName
     | UPPER | LOWER | LENGTH | SUBSTR | SUBSTRING | TRIM | REPLACE
     | LTRIM | RTRIM | INSTR | REVERSE | CONCAT_FUNC | CONCAT_WS
     | CHAR_LENGTH | OCTET_LENGTH | LPAD | RPAD | REPEAT | SPACE_FUNC
-    | POSITION | FORMAT
+    | POSITION | FORMAT | LEFT | RIGHT
     | ABS | ROUND | FLOOR | CEIL | CEILING | SIGN | TRUNC | MOD
     | POWER | SQRT | EXP | LOG | LOG10 | LOG2 | PI | RANDOM
     | SIN | COS | TAN | ASIN | ACOS | ATAN | ATAN2
