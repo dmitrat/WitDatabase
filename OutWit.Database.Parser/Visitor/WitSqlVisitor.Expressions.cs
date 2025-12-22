@@ -163,7 +163,33 @@ internal sealed partial class WitSqlVisitor
                 FalseValue = VisitExpression(iif.expression(2))
             },
             WitSqlParser.BitwiseExprContext bitwise => VisitBitwiseExpression(bitwise),
+            WitSqlParser.QuantifiedExprContext quantified => VisitQuantifiedExpression(quantified),
             _ => throw new InvalidOperationException($"Unknown expression type: {context.GetType()}")
+        };
+    }
+
+    private WitSqlExpressionQuantified VisitQuantifiedExpression(WitSqlParser.QuantifiedExprContext context)
+    {
+        var compOp = context.comparisonOp();
+        var op = compOp.EQ() != null ? BinaryOperatorType.Equal :
+                 compOp.NE() != null || compOp.NE2() != null ? BinaryOperatorType.NotEqual :
+                 compOp.LT() != null ? BinaryOperatorType.LessThan :
+                 compOp.LE() != null ? BinaryOperatorType.LessOrEqual :
+                 compOp.GT() != null ? BinaryOperatorType.GreaterThan :
+                 BinaryOperatorType.GreaterOrEqual;
+
+        var quantifierType = context.ANY() != null ? QuantifierType.Any :
+                             context.SOME() != null ? QuantifierType.Some :
+                             QuantifierType.All;
+
+        return new WitSqlExpressionQuantified
+        {
+            Line = context.Start.Line,
+            Column = context.Start.Column,
+            Expression = VisitExpression(context.expression()),
+            Operator = op,
+            QuantifierType = quantifierType,
+            Subquery = VisitSelectStatement(context.selectStatement())
         };
     }
 

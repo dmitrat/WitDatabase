@@ -5,6 +5,7 @@ using OutWit.Common.Values;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Interfaces;
 using OutWit.Database.Parser.Schema.Clauses;
+using OutWit.Database.Parser.Schema.Types;
 
 namespace OutWit.Database.Parser.Statements
 {
@@ -31,13 +32,14 @@ namespace OutWit.Database.Parser.Statements
                    && ColumnNames.Is(insert.ColumnNames)
                    && SelectSource.Check(insert.SelectSource)
                    && ReturningClause.Is(insert.ReturningClause)
+                   && ConflictResolution.Is(insert.ConflictResolution)
+                   && OnConflict.Check(insert.OnConflict)
                    && Values?
                        .SelectMany(expressions => expressions)
                        .ToList()
                        .Is(insert.Values?
                            .SelectMany(expressions => expressions)
                            .ToList()) == true;
-
         }
 
         public override WitSqlStatementInsert Clone()
@@ -50,7 +52,9 @@ namespace OutWit.Database.Parser.Statements
                 ColumnNames = ColumnNames?.ToList(),
                 Values = Values?.Select(row => (IReadOnlyList<WitSqlExpression>)row.Select(x => (WitSqlExpression)x.Clone()).ToList()).ToList(),
                 SelectSource = SelectSource?.Clone(),
-                ReturningClause = ReturningClause?.Select(x => x.Clone()).ToList()
+                ReturningClause = ReturningClause?.Select(x => x.Clone()).ToList(),
+                ConflictResolution = ConflictResolution,
+                OnConflict = OnConflict?.Clone()
             };
         }
 
@@ -71,6 +75,16 @@ namespace OutWit.Database.Parser.Statements
         /// RETURNING clause for retrieving generated values.
         /// </summary>
         public IReadOnlyList<ClauseSelectItem>? ReturningClause { get; init; }
+
+        /// <summary>
+        /// Conflict resolution strategy (OR REPLACE, OR IGNORE).
+        /// </summary>
+        public ConflictResolutionType ConflictResolution { get; init; } = ConflictResolutionType.None;
+
+        /// <summary>
+        /// ON CONFLICT clause for upsert functionality.
+        /// </summary>
+        public ClauseOnConflict? OnConflict { get; init; }
 
         #endregion
     }

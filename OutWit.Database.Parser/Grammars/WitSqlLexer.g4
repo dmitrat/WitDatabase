@@ -1,10 +1,11 @@
-lexer grammar WitSqlLexer;
+﻿lexer grammar WitSqlLexer;
 
 // ============================================================================
 // Keywords - SQL Statements
 // ============================================================================
 
 ADD: A D D;
+ANY: A N Y;
 ALL: A L L;
 ALTER: A L T E R;
 AND: A N D;
@@ -41,6 +42,7 @@ INDEX: I N D E X;
 INNER: I N N E R;
 INSERT: I N S E R T;
 INTO: I N T O;
+IGNORE: I G N O R E;
 IS: I S;
 JOIN: J O I N;
 KEY: K E Y;
@@ -61,6 +63,7 @@ RENAME: R E N A M E;
 RESTRICT: R E S T R I C T;
 RIGHT: R I G H T;
 SELECT: S E L E C T;
+SOME: S O M E;
 SET: S E T;
 TABLE: T A B L E;
 THEN: T H E N;
@@ -309,6 +312,14 @@ RPAD: R P A D;
 REPEAT: R E P E A T;
 
 // ============================================================================
+// UPSERT Keywords
+// ============================================================================
+
+CONFLICT: C O N F L I C T;
+DO: D O;
+NOTHING: N O T H I N G;
+
+// ============================================================================
 // Functions - Math (longer first)
 // ============================================================================
 
@@ -498,3 +509,5 @@ fragment X: [Xx];
 fragment Y: [Yy];
 fragment Z: [Zz];
 fragment DIGIT: [0-9];
+
+

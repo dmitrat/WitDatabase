@@ -366,4 +366,97 @@ public class DmlParserTests
     }
 
     #endregion
+
+    #region INSERT OR REPLACE/IGNORE
+
+    [Test]
+    public void ParseInsertOrReplaceTest()
+    {
+        var stmt = WitSql.ParseStatement("INSERT OR REPLACE INTO Users (Id, Name) VALUES (1, 'John')");
+        var insert = (WitSqlStatementInsert)stmt;
+        Assert.That(insert.ConflictResolution, Is.EqualTo(ConflictResolutionType.Replace));
+        Assert.That(insert.TableName, Is.EqualTo("Users"));
+    }
+
+    [Test]
+    public void ParseInsertOrIgnoreTest()
+    {
+        var stmt = WitSql.ParseStatement("INSERT OR IGNORE INTO Users (Id, Name) VALUES (1, 'John')");
+        var insert = (WitSqlStatementInsert)stmt;
+        Assert.That(insert.ConflictResolution, Is.EqualTo(ConflictResolutionType.Ignore));
+    }
+
+    #endregion
+
+    #region INSERT ON CONFLICT
+
+    [Test]
+    public void ParseInsertOnConflictDoNothingTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "INSERT INTO Users (Id, Name) VALUES (1, 'John') ON CONFLICT DO NOTHING");
+        var insert = (WitSqlStatementInsert)stmt;
+        Assert.That(insert.OnConflict, Is.Not.Null);
+        Assert.That(insert.OnConflict!.ActionType, Is.EqualTo(ConflictActionType.Nothing));
+        Assert.That(insert.OnConflict.ConflictColumns, Is.Null.Or.Empty);
+    }
+
+    [Test]
+    public void ParseInsertOnConflictWithColumnsDoNothingTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "INSERT INTO Users (Id, Name) VALUES (1, 'John') ON CONFLICT (Id) DO NOTHING");
+        var insert = (WitSqlStatementInsert)stmt;
+        Assert.That(insert.OnConflict, Is.Not.Null);
+        Assert.That(insert.OnConflict!.ConflictColumns, Has.Count.EqualTo(1));
+        Assert.That(insert.OnConflict.ConflictColumns![0], Is.EqualTo("Id"));
+        Assert.That(insert.OnConflict.ActionType, Is.EqualTo(ConflictActionType.Nothing));
+    }
+
+    [Test]
+    public void ParseInsertOnConflictDoUpdateTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "INSERT INTO Users (Id, Name) VALUES (1, 'John') ON CONFLICT (Id) DO UPDATE SET Name = 'Jane'");
+        var insert = (WitSqlStatementInsert)stmt;
+        Assert.That(insert.OnConflict, Is.Not.Null);
+        Assert.That(insert.OnConflict!.ActionType, Is.EqualTo(ConflictActionType.Update));
+        Assert.That(insert.OnConflict.UpdateClauses, Has.Count.EqualTo(1));
+        Assert.That(insert.OnConflict.UpdateClauses![0].ColumnName, Is.EqualTo("Name"));
+    }
+
+    [Test]
+    public void ParseInsertOnConflictDoUpdateMultipleColumnsTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "INSERT INTO Users (Id, Name, Email) VALUES (1, 'John', 'john@test.com') " +
+            "ON CONFLICT (Id, Email) DO UPDATE SET Name = 'Jane', Email = 'jane@test.com'");
+        var insert = (WitSqlStatementInsert)stmt;
+        Assert.That(insert.OnConflict!.ConflictColumns, Has.Count.EqualTo(2));
+        Assert.That(insert.OnConflict.UpdateClauses, Has.Count.EqualTo(2));
+    }
+
+    [Test]
+    public void ParseInsertOnConflictDoUpdateWithWhereTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "INSERT INTO Users (Id, Name) VALUES (1, 'John') " +
+            "ON CONFLICT (Id) DO UPDATE SET Name = 'Jane' WHERE Status = 'active'");
+        var insert = (WitSqlStatementInsert)stmt;
+        Assert.That(insert.OnConflict, Is.Not.Null);
+        Assert.That(insert.OnConflict!.WhereClause, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseInsertOnConflictWithReturningTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "INSERT INTO Users (Id, Name) VALUES (1, 'John') " +
+            "ON CONFLICT (Id) DO UPDATE SET Name = 'Jane' RETURNING *");
+        var insert = (WitSqlStatementInsert)stmt;
+        Assert.That(insert.OnConflict, Is.Not.Null);
+        Assert.That(insert.ReturningClause, Is.Not.Null);
+    }
+
+    #endregion
 }

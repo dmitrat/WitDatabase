@@ -10,7 +10,7 @@ options {
 
 script
     : statement (SEMI statement)* SEMI? EOF
-    ;
+  ;
 
 // ============================================================================
 // Statements
@@ -102,7 +102,7 @@ setOperation
     : UNION ALL?
     | INTERSECT
     | EXCEPT
-    ;
+  ;
 
 // ============================================================================
 // SELECT Statement
@@ -126,10 +126,6 @@ selectItem
     | expression (AS? alias)?                       # selectExpression
     ;
 
-// ============================================================================
-// FROM Clause
-// ============================================================================
-
 fromClause
     : FROM tableSource (COMMA tableSource)*
     ;
@@ -148,10 +144,6 @@ joinType
     | CROSS JOIN
     ;
 
-// ============================================================================
-// WHERE, GROUP BY, HAVING Clauses
-// ============================================================================
-
 whereClause
     : WHERE expression
     ;
@@ -164,10 +156,6 @@ havingClause
     : HAVING expression
     ;
 
-// ============================================================================
-// ORDER BY, LIMIT Clauses
-// ============================================================================
-
 orderByClause
     : ORDER BY orderByItem (COMMA orderByItem)*
     ;
@@ -179,16 +167,27 @@ orderByItem
 limitClause
     : LIMIT expression (OFFSET expression)?
     | LIMIT expression COMMA expression
-    ;
+  ;
 
 // ============================================================================
 // INSERT Statement
 // ============================================================================
 
 insertStatement
-    : INSERT INTO tableName (LPAREN columnName (COMMA columnName)* RPAREN)?
+    : INSERT (OR (REPLACE | IGNORE))? INTO tableName (LPAREN columnName (COMMA columnName)* RPAREN)?
       ( VALUES valuesList | selectStatement )
+      onConflictClause?
       returningClause?
+    ;
+
+onConflictClause
+    : ON CONFLICT (LPAREN columnName (COMMA columnName)* RPAREN)?
+      DO (conflictAction)
+    ;
+
+conflictAction
+    : NOTHING
+    | UPDATE SET setClause (COMMA setClause)* (WHERE expression)?
     ;
 
 valuesList
@@ -198,10 +197,6 @@ valuesList
 valueRow
     : LPAREN expression (COMMA expression)* RPAREN
     ;
-
-// ============================================================================
-// UPDATE Statement
-// ============================================================================
 
 updateStatement
     : UPDATE tableName
@@ -214,13 +209,9 @@ setClause
     : columnName EQ expression
     ;
 
-// ============================================================================
-// DELETE Statement
-// ============================================================================
-
 deleteStatement
     : DELETE FROM tableName whereClause? returningClause?
-    ;
+  ;
 
 // ============================================================================
 // RETURNING Clause
@@ -247,10 +238,6 @@ tableElement
 columnDefinition
     : columnName dataType columnConstraint*
     ;
-
-// ============================================================================
-// Data Types
-// ============================================================================
 
 dataType
     : typeName (LPAREN typeParam (COMMA typeParam)* RPAREN)?
@@ -285,11 +272,7 @@ typeName
 typeParam
     : INTEGER_LITERAL
     | MAX
-    ;
-
-// ============================================================================
-// Column Constraints
-// ============================================================================
+   ;
 
 columnConstraint
     : NOT? NULL                                     # nullConstraint
@@ -312,11 +295,7 @@ referenceAction
     | CASCADE
     | SET NULL
     | SET DEFAULT
-    ;
-
-// ============================================================================
-// Table Constraints
-// ============================================================================
+   ;
 
 tableConstraint
     : PRIMARY KEY LPAREN columnName (COMMA columnName)* RPAREN   # tablePrimaryKey
@@ -327,17 +306,9 @@ tableConstraint
     | CHECK LPAREN expression RPAREN                              # tableCheck
     ;
 
-// ============================================================================
-// DROP TABLE Statement
-// ============================================================================
-
 dropTableStatement
     : DROP TABLE (IF EXISTS)? tableName
     ;
-
-// ============================================================================
-// ALTER TABLE Statement
-// ============================================================================
 
 alterTableStatement
     : ALTER TABLE tableName alterAction
@@ -359,10 +330,6 @@ alterColumnAction
     | DROP NOT NULL                                         # alterColumnDropNotNull
     ;
 
-// ============================================================================
-// CREATE INDEX Statement
-// ============================================================================
-
 createIndexStatement
     : CREATE UNIQUE? INDEX (IF NOT EXISTS)? indexName
       ON tableName LPAREN indexColumn (COMMA indexColumn)* RPAREN
@@ -376,26 +343,14 @@ indexName
     : IDENTIFIER
     ;
 
-// ============================================================================
-// DROP INDEX Statement
-// ============================================================================
-
 dropIndexStatement
     : DROP INDEX (IF EXISTS)? indexName
     ;
-
-// ============================================================================
-// CREATE VIEW Statement
-// ============================================================================
 
 createViewStatement
     : CREATE VIEW (IF NOT EXISTS)? viewName (LPAREN columnName (COMMA columnName)* RPAREN)?
       AS queryExpression
     ;
-
-// ============================================================================
-// DROP VIEW Statement
-// ============================================================================
 
 dropViewStatement
     : DROP VIEW (IF EXISTS)? viewName
@@ -404,10 +359,6 @@ dropViewStatement
 viewName
     : IDENTIFIER
     ;
-
-// ============================================================================
-// CREATE TRIGGER Statement
-// ============================================================================
 
 createTriggerStatement
     : CREATE TRIGGER (IF NOT EXISTS)? triggerName
@@ -429,10 +380,6 @@ triggerEvent
     | DELETE
     ;
 
-// ============================================================================
-// DROP TRIGGER Statement
-// ============================================================================
-
 dropTriggerStatement
     : DROP TRIGGER (IF EXISTS)? triggerName
     ;
@@ -441,34 +388,18 @@ triggerName
     : IDENTIFIER
     ;
 
-// ============================================================================
-// CREATE SEQUENCE Statement
-// ============================================================================
-
 createSequenceStatement
     : CREATE SEQUENCE (IF NOT EXISTS)? sequenceName
       (START WITH INTEGER_LITERAL)?
     ;
 
-// ============================================================================
-// DROP SEQUENCE Statement
-// ============================================================================
-
 dropSequenceStatement
     : DROP SEQUENCE (IF EXISTS)? sequenceName
     ;
 
-// ============================================================================
-// ALTER SEQUENCE Statement
-// ============================================================================
-
 alterSequenceStatement
     : ALTER SEQUENCE sequenceName RESTART (WITH INTEGER_LITERAL)?
     ;
-
-// ============================================================================
-// TRUNCATE TABLE Statement
-// ============================================================================
 
 truncateTableStatement
     : TRUNCATE TABLE tableName
@@ -477,10 +408,6 @@ truncateTableStatement
 sequenceName
     : IDENTIFIER
     ;
-
-// ============================================================================
-// Expressions
-// ============================================================================
 
 expression
     : literal                                       # literalExpr
@@ -502,17 +429,14 @@ expression
     | expression NOT? IN LPAREN (expression (COMMA expression)* | selectStatement) RPAREN # inExpr
     | expression NOT? LIKE expression (ESCAPE expression)? # likeExpr
     | expression NOT? GLOB expression               # globExpr
+    | expression comparisonOp (ANY | SOME | ALL) LPAREN selectStatement RPAREN # quantifiedExpr
     | expression AND expression                     # andExpr
     | expression OR expression                      # orExpr
     | CASE expression? (WHEN expression THEN expression)+ (ELSE expression)? END # caseExpr
     | CAST LPAREN expression AS dataType RPAREN     # castExpr
     | CONVERT LPAREN dataType COMMA expression RPAREN # convertExpr
     | IIF LPAREN expression COMMA expression COMMA expression RPAREN # iifExpr
-    ;
-
-// ============================================================================
-// Parameters
-// ============================================================================
+   ;
 
 parameter
     : PARAM_NAMED                                   # namedParameter
@@ -521,9 +445,15 @@ parameter
     | PARAM_NUMBERED                                # numberedParameter
     ;
 
-// ============================================================================
-// Literals
-// ============================================================================
+comparisonOp
+    : EQ
+    | NE
+    | NE2
+    | LT
+    | LE
+    | GT
+    | GE
+    ;
 
 literal
     : INTEGER_LITERAL                               # intLiteral
@@ -538,17 +468,9 @@ literal
     | CURRENT_TIME                                  # currentTimeLiteral
     ;
 
-// ============================================================================
-// Column Reference
-// ============================================================================
-
 columnRef
     : (tableName DOT)? columnName
-    ;
-
-// ============================================================================
-// Function Call
-// ============================================================================
+   ;
 
 functionCall
     : functionName LPAREN (DISTINCT? expression (COMMA expression)* | STAR)? RPAREN
@@ -580,11 +502,7 @@ functionName
     | ROW_NUMBER | RANK | DENSE_RANK | NTILE
     | LAG | LEAD | FIRST_VALUE | LAST_VALUE | NTH_VALUE
     | PERCENT_RANK | CUME_DIST
-    ;
-
-// ============================================================================
-// Window Specification
-// ============================================================================
+   ;
 
 windowSpec
     : LPAREN
@@ -606,10 +524,6 @@ frameBound
     | INTEGER_LITERAL FOLLOWING
     | UNBOUNDED FOLLOWING
     ;
-
-// ============================================================================
-// Identifiers
-// ============================================================================
 
 tableName
     : IDENTIFIER

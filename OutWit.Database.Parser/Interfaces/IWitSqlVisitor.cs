@@ -60,6 +60,7 @@ namespace OutWit.Database.Parser.Interfaces
         T VisitExpressionIif(WitSqlExpressionIif node);
         T VisitExpressionExists(WitSqlExpressionExists node);
         T VisitExpressionParameter(WitSqlExpressionParameter node);
+        T VisitExpressionQuantified(WitSqlExpressionQuantified node);
 
         #endregion
     }

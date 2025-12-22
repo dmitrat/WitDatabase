@@ -230,6 +230,18 @@ internal sealed partial class WitSqlVisitor
             }
         }
 
+        var conflictResolution = ConflictResolutionType.None;
+        if (context.REPLACE() != null)
+            conflictResolution = ConflictResolutionType.Replace;
+        else if (context.IGNORE() != null)
+            conflictResolution = ConflictResolutionType.Ignore;
+
+        ClauseOnConflict? onConflict = null;
+        if (context.onConflictClause() is { } onConflictCtx)
+        {
+            onConflict = VisitOnConflictClause(onConflictCtx);
+        }
+
         return new WitSqlStatementInsert
         {
             Line = context.Start.Line,
@@ -240,7 +252,46 @@ internal sealed partial class WitSqlVisitor
             SelectSource = context.selectStatement() is { } select ? VisitSelectStatement(select) : null,
             ReturningClause = context.returningClause() is { } returning
                 ? VisitSelectList(returning.selectList())
-                : null
+                : null,
+            ConflictResolution = conflictResolution,
+            OnConflict = onConflict
+        };
+    }
+
+    private ClauseOnConflict VisitOnConflictClause(WitSqlParser.OnConflictClauseContext context)
+    {
+        var conflictColumns = context.columnName()?.Select(c => c.GetText()).ToList();
+        var conflictAction = context.conflictAction();
+
+        var actionType = conflictAction.NOTHING() != null
+            ? ConflictActionType.Nothing
+            : ConflictActionType.Update;
+
+        List<ClauseSet>? updateClauses = null;
+        WitSqlExpression? whereClause = null;
+
+        if (actionType == ConflictActionType.Update)
+        {
+            updateClauses = conflictAction.setClause()
+                .Select(s => new ClauseSet
+                {
+                    ColumnName = s.columnName().GetText(),
+                    Value = VisitExpression(s.expression())
+                })
+                .ToList();
+
+            if (conflictAction.expression() is { } whereExpr)
+            {
+                whereClause = VisitExpression(whereExpr);
+            }
+        }
+
+        return new ClauseOnConflict
+        {
+            ConflictColumns = conflictColumns,
+            ActionType = actionType,
+            UpdateClauses = updateClauses,
+            WhereClause = whereClause
         };
     }
 

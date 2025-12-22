@@ -83,12 +83,12 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 ### Category 4: UPSERT / MERGE
 
-- [ ] **4.1** `INSERT OR REPLACE` statement
-- [ ] **4.2** `INSERT ... ON CONFLICT (columns) DO UPDATE` statement
-- [ ] **4.3** `INSERT ... ON CONFLICT (columns) DO NOTHING` statement
+- [x] **4.1** `INSERT OR REPLACE` statement
+- [x] **4.2** `INSERT ... ON CONFLICT (columns) DO UPDATE` statement
+- [x] **4.3** `INSERT ... ON CONFLICT (columns) DO NOTHING` statement
 - [ ] **4.4** `MERGE INTO ... USING ... WHEN MATCHED/NOT MATCHED` statement
-- [ ] **4.5** AST nodes: `WitSqlStatementMerge`, extend `WitSqlStatementInsert`
-
+- [x] **4.5** AST nodes: `WitSqlStatementMerge`, extend `WitSqlStatementInsert`
+ 
 ### Category 5: TRUNCATE TABLE
 
 - [x] **5.1** `TRUNCATE TABLE table_name` statement
@@ -174,10 +174,10 @@ Analysis of the WitSQL parser for compliance with updated specifications (v1.2).
 
 ### Category 16: ANY / SOME / ALL Operators
 
-- [ ] **16.1** `expression > ANY (subquery)` expression
-- [ ] **16.2** `expression > SOME (subquery)` expression (alias for ANY)
-- [ ] **16.3** `expression > ALL (subquery)` expression
-- [ ] **16.4** AST node: `WitSqlExpressionQuantified`
+- [x] **16.1** `expression > ANY (subquery)` expression
+- [x] **16.2** `expression > SOME (subquery)` expression (alias for ANY)
+- [x] **16.3** `expression > ALL (subquery)` expression
+- [x] **16.4** AST node: `WitSqlExpressionQuantified`
 
 ### Category 17: LEFT/RIGHT Functions
 

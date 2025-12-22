@@ -801,4 +801,74 @@ public class ExpressionParserTests
     }
 
     #endregion
+
+    #region Quantified Expressions (ANY/SOME/ALL)
+
+    [Test]
+    public void ParseAnyWithEqualTest()
+    {
+        var expr = WitSql.ParseExpression("Price = ANY (SELECT Price FROM Products)");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionQuantified>());
+        var quantified = (WitSqlExpressionQuantified)expr;
+        Assert.That(quantified.Operator, Is.EqualTo(BinaryOperatorType.Equal));
+        Assert.That(quantified.QuantifierType, Is.EqualTo(QuantifierType.Any));
+        Assert.That(quantified.Subquery, Is.Not.Null);
+    }
+
+    [Test]
+    public void ParseSomeWithEqualTest()
+    {
+        var expr = WitSql.ParseExpression("Value = SOME (SELECT Value FROM Items)");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionQuantified>());
+        var quantified = (WitSqlExpressionQuantified)expr;
+        Assert.That(quantified.QuantifierType, Is.EqualTo(QuantifierType.Some));
+    }
+
+    [Test]
+    public void ParseAllWithGreaterThanTest()
+    {
+        var expr = WitSql.ParseExpression("Score > ALL (SELECT Score FROM Competitors)");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionQuantified>());
+        var quantified = (WitSqlExpressionQuantified)expr;
+        Assert.That(quantified.Operator, Is.EqualTo(BinaryOperatorType.GreaterThan));
+        Assert.That(quantified.QuantifierType, Is.EqualTo(QuantifierType.All));
+    }
+
+    [Test]
+    public void ParseAnyWithLessThanOrEqualTest()
+    {
+        var expr = WitSql.ParseExpression("Amount <= ANY (SELECT Budget FROM Departments)");
+        var quantified = (WitSqlExpressionQuantified)expr;
+        Assert.That(quantified.Operator, Is.EqualTo(BinaryOperatorType.LessOrEqual));
+        Assert.That(quantified.QuantifierType, Is.EqualTo(QuantifierType.Any));
+    }
+
+    [Test]
+    public void ParseAllWithNotEqualTest()
+    {
+        var expr = WitSql.ParseExpression("Status <> ALL (SELECT Status FROM Excluded)");
+        var quantified = (WitSqlExpressionQuantified)expr;
+        Assert.That(quantified.Operator, Is.EqualTo(BinaryOperatorType.NotEqual));
+        Assert.That(quantified.QuantifierType, Is.EqualTo(QuantifierType.All));
+    }
+
+    [Test]
+    public void ParseAnyWithNotEqualAltSyntaxTest()
+    {
+        var expr = WitSql.ParseExpression("Id != ANY (SELECT BlockedId FROM Blocklist)");
+        var quantified = (WitSqlExpressionQuantified)expr;
+        Assert.That(quantified.Operator, Is.EqualTo(BinaryOperatorType.NotEqual));
+    }
+
+    [Test]
+    public void ParseQuantifiedInWhereClauseTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT * FROM Orders WHERE Total > ALL (SELECT Average FROM Statistics)");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementSelect>());
+        var select = (WitSqlStatementSelect)stmt;
+        Assert.That(select.WhereClause, Is.InstanceOf<WitSqlExpressionQuantified>());
+    }
+
+    #endregion
 }

@@ -32,12 +32,12 @@
 | DDL - TRIGGER | 9 | 1 | 90% |
 | DDL - SEQUENCE | 5 | 0 | 100% |
 | DML - SELECT | 14 | 4 | 78% |
-| DML - INSERT | 4 | 4 | 50% |
+| DML - INSERT | 7 | 1 | 88% |
 | DML - UPDATE | 3 | 1 | 75% |
 | DML - DELETE | 3 | 1 | 75% |
 | DML - TRUNCATE/MERGE | 1 | 3 | 25% |
 | CTE / Set Operations | 6 | 0 | 100% |
-| Subqueries | 5 | 3 | 63% |
+| Subqueries | 7 | 0 | 100% |
 | Operators | 20 | 0 | 100% |
 | Conditional Expressions | 6 | 0 | 100% |
 | Literals & Parameters | 6 | 0 | 100% |
@@ -56,7 +56,7 @@
 | EXPLAIN | 0 | 3 | 0% |
 | Database Administration | 0 | 7 | 0% |
 | Comments | 2 | 0 | 100% |
-| **TOTAL** | **244** | **38** | **87%** |
+| **TOTAL** | **250** | **32** | **89%** |
 
 ---
 
@@ -213,7 +213,7 @@
 
 ---
 
-## 9. DML - INSERT (50%)
+## 9. DML - INSERT (88%)
 
 | Feature | Status | Spec |
 |---------|--------|------|
@@ -221,9 +221,9 @@
 | Multi-row `VALUES (...), (...)` | [x] | SS3.2 |
 | `INSERT INTO ... SELECT` | [x] | SS3.2 |
 | `INSERT ... RETURNING` | [x] | SS3.2 |
-| `INSERT OR REPLACE` | [ ] | SS16.1 |
-| `INSERT ... ON CONFLICT DO UPDATE` | [ ] | SS16.2 |
-| `INSERT ... ON CONFLICT DO NOTHING` | [ ] | SS16.2 |
+| `INSERT OR REPLACE` | [x] | SS16.1 |
+| `INSERT ... ON CONFLICT DO UPDATE` | [x] | SS16.2 |
+| `INSERT ... ON CONFLICT DO NOTHING` | [x] | SS16.2 |
 | `EXCLUDED.column` reference | [ ] | SS16 |
 
 ---
@@ -274,7 +274,7 @@
 
 ---
 
-## 14. Subqueries (63%)
+## 14. Subqueries (100%)
 
 | Feature | Status | Spec |
 |---------|--------|------|
@@ -282,9 +282,9 @@
 | Table subquery in FROM | [x] | SS3.1 |
 | Subquery with `IN` | [x] | SS3.1 |
 | `EXISTS` / `NOT EXISTS` | [x] | SS18.1 |
-| `expression > ANY (subquery)` | [ ] | SS18.2 |
-| `expression > SOME (subquery)` | [ ] | SS18.2 |
-| `expression > ALL (subquery)` | [ ] | SS18.2 |
+| `expression > ANY (subquery)` | [x] | SS18.2 |
+| `expression > SOME (subquery)` | [x] | SS18.2 |
+| `expression > ALL (subquery)` | [x] | SS18.2 |
 
 ---
 

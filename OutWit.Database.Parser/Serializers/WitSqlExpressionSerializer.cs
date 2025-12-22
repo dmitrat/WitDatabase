@@ -322,6 +322,21 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
         return $"({notStr}EXISTS (SELECT ...))";
     }
 
+    public string VisitExpressionQuantified(WitSqlExpressionQuantified node)
+    {
+        var expr = node.Expression.Accept(this);
+        var op = GetBinaryOperator(node.Operator);
+        var quantifier = node.QuantifierType switch
+        {
+            QuantifierType.Any => "ANY",
+            QuantifierType.Some => "SOME",
+            QuantifierType.All => "ALL",
+            _ => throw new NotSupportedException($"Unsupported quantifier type: {node.QuantifierType}")
+        };
+        // Full subquery serialization is complex - defer for now
+        return $"({expr} {op} {quantifier} (SELECT ...))";
+    }
+
     public string VisitExpressionParameter(WitSqlExpressionParameter node)
     {
         return node.ParameterType switch
