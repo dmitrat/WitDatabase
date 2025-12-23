@@ -15,6 +15,9 @@ Analysis of the `OutWit.Database.Core` kernel for compliance with WitSql specifi
 | StoreLsm | [x] Done | LSM-Tree storage |
 | Encryption | [x] Done | AES-GCM, ChaCha20 |
 | MVCC | [x] Done | Multi-Version Concurrency Control |
+| Row-level Locks | [x] Done | FOR UPDATE/SHARE, NOWAIT, SKIP LOCKED |
+| Deadlock Detection | [x] Done | Wait-for graph, victim selection |
+| Transaction Wait Queue | [x] Done | Priority-based queuing |
 
 ---
 
@@ -92,7 +95,7 @@ Analysis of the `OutWit.Database.Core` kernel for compliance with WitSql specifi
 
 - [x] **11.1** Multiple concurrent read transactions
 - [x] **11.2** Read transactions during write transaction (MVCC)
-- [ ] **11.3** Transaction wait queue with priorities
+- [x] **11.3** Transaction wait queue with priorities
 
 ### Category 12: ROWVERSION / Concurrency Tokens
 
@@ -102,46 +105,86 @@ Analysis of the `OutWit.Database.Core` kernel for compliance with WitSql specifi
 
 ---
 
-## Implementation Priorities
+## Implementation Status Summary
 
-### MVP (Minimum for ADO.NET) - DONE
-
-| # | Component | Priority | Status |
-|---|-----------|----------|--------|
-| 6.1-6.5 | Query execution context | P0 Critical | [x] Done |
-| 7.1-7.5 | Secondary indexes | P0 Critical | [x] Done |
-| 3.1-3.4 | Savepoints | P1 Important | [x] Done |
-| 9.1-9.2 | Basic statistics | P1 Important | [x] Done |
-
-### Production Ready (Full EF Core Support)
+### v1 Complete ?
 
 | # | Component | Priority | Status |
 |---|-----------|----------|--------|
-| 1.1-1.4 | Isolation levels + MVCC | P0 Critical | [x] Done |
-| 2.1-2.4 | Row-level locks + Deadlock detection | P0 Critical | [x] Done |
-| 4.1-4.3 | Multiple result sets | P1 Important | [x] Done |
-| 8.1-8.3 | Bulk operations | P1 Important | [x] Done |
-| 11.1-11.3 | Concurrent transactions | P0 Critical | [x] Done (MVCC) |
-| 12.1-12.3 | ROWVERSION support | P1 Important | [x] Done |
+| 1.1-1.4 | Isolation levels + MVCC | P0 Critical | ? Done |
+| 2.1-2.4 | Row-level locks + Deadlock detection | P0 Critical | ? Done |
+| 3.1-3.4 | Savepoints | P1 Important | ? Done |
+| 4.1-4.3 | Multiple result sets | P1 Important | ? Done |
+| 6.1-6.5 | Query execution context | P0 Critical | ? Done |
+| 7.1-7.5 | Secondary indexes | P0 Critical | ? Done |
+| 8.1-8.3 | Bulk operations | P1 Important | ? Done |
+| 9.1-9.2 | Basic statistics | P1 Important | ? Done |
+| 11.1-11.3 | Concurrent transactions | P0 Critical | ? Done |
+| 12.1-12.3 | ROWVERSION support | P1 Important | ? Done |
 
-### Nice to Have (v2)
+### Deferred to v2
 
 | # | Component | Priority | Status |
 |---|-----------|----------|--------|
-| 5.1-5.3 | Cursor support | P2 Optional | [ ] v2 |
-| 9.3-9.4 | Advanced statistics | P2 Optional | [ ] v2 |
-| 10.1-10.3 | VACUUM API | P2 Optional | [ ] v2 |
+| 5.1-5.3 | Cursor support | P2 Optional | Deferred |
+| 9.3-9.4 | Advanced statistics | P2 Optional | Deferred |
+| 10.1-10.3 | VACUUM API | P2 Optional | Deferred |
 
 ---
 
 ## Notes
 
-1. **Secondary indexes** - critical for any SQL engine. Without them, efficient filtering and JOIN operations are impossible.
+1. **MVCC** - **FULLY IMPLEMENTED**. Provides snapshot isolation, all isolation levels, concurrent read transactions. Integrated into WitDatabase via `.WithMvcc()` builder extension.
 
-2. **MVCC** - **FULLY IMPLEMENTED**. Provides snapshot isolation and concurrent read transactions. Integrated into WitDatabase via `.WithMvcc()` builder extension.
+2. **Row-level locks** - **FULLY IMPLEMENTED**. Includes `RowLockManager`, `FOR UPDATE`/`FOR SHARE`, `NOWAIT`/`SKIP LOCKED`, integrated with `MvccTransaction`.
 
-3. **Savepoints** - used by EF Core for nested transactions and SaveChanges with retry.
+3. **Deadlock detection** - **FULLY IMPLEMENTED**. Includes `WaitForGraph`, `DeadlockDetector` with multiple victim selection strategies, `DeadlockException`.
 
-4. **Query execution context** - ADO.NET requires information about affected rows count and last insert id.
+4. **Transaction wait queue** - **FULLY IMPLEMENTED**. Priority-based queue with FIFO/LIFO ordering, writer priority, timeout support, integrated with `MvccTransactionalStore`.
 
-5. **Current state** - MVCC is fully implemented and integrated. Only row-level locks and deadlock detection remain for complete concurrent transaction support.
+5. **Current state** - All P0 and P1 features are complete. Only v2 features remain (Cursors, VACUUM, Advanced Statistics).
+
+---
+
+## Files Created for MVCC Implementation
+
+### Core Files (21)
+1. `OutWit.Database.Core/Interfaces/ITransactionTimestampManager.cs`
+2. `OutWit.Database.Core/Interfaces/IMvccStore.cs`
+3. `OutWit.Database.Core/Interfaces/IMvccTransaction.cs`
+4. `OutWit.Database.Core/Interfaces/IRowLockManager.cs`
+5. `OutWit.Database.Core/Transactions/TransactionTimestampManager.cs`
+6. `OutWit.Database.Core/Transactions/MvccTransaction.cs`
+7. `OutWit.Database.Core/Transactions/MvccTransactionalStore.cs`
+8. `OutWit.Database.Core/Mvcc/MvccRecord.cs`
+9. `OutWit.Database.Core/Mvcc/MvccGarbageCollectorOptions.cs`
+10. `OutWit.Database.Core/Mvcc/MvccGarbageCollector.cs`
+11. `OutWit.Database.Core/Stores/MvccKeyValueStore.cs`
+12. `OutWit.Database.Core/Concurrency/RowLockMode.cs`
+13. `OutWit.Database.Core/Concurrency/RowLockRequest.cs`
+14. `OutWit.Database.Core/Concurrency/RowLockHandle.cs`
+15. `OutWit.Database.Core/Concurrency/RowLockManager.cs`
+16. `OutWit.Database.Core/Concurrency/WaitForGraph.cs`
+17. `OutWit.Database.Core/Concurrency/DeadlockDetector.cs`
+18. `OutWit.Database.Core/Concurrency/TransactionWaitQueueOptions.cs`
+19. `OutWit.Database.Core/Concurrency/TransactionWaitQueue.cs`
+20. `OutWit.Database.Core/Exceptions/RowLockException.cs`
+21. `OutWit.Database.Core/Exceptions/DeadlockException.cs`
+
+### Test Files (12)
+1. `OutWit.Database.Core.Tests/Transactions/TransactionTimestampManagerTests.cs`
+2. `OutWit.Database.Core.Tests/Transactions/MvccTransactionalStoreTests.cs`
+3. `OutWit.Database.Core.Tests/Transactions/MvccTransactionRowLockTests.cs`
+4. `OutWit.Database.Core.Tests/Transactions/MvccTransactionIsolationLevelTests.cs`
+5. `OutWit.Database.Core.Tests/Transactions/MvccTransactionalStoreStressTests.cs`
+6. `OutWit.Database.Core.Tests/Mvcc/MvccRecordTests.cs`
+7. `OutWit.Database.Core.Tests/Mvcc/MvccGarbageCollectorTests.cs`
+8. `OutWit.Database.Core.Tests/Stores/MvccKeyValueStoreTests.cs`
+9. `OutWit.Database.Core.Tests/Concurrency/RowLockManagerTests.cs`
+10. `OutWit.Database.Core.Tests/Concurrency/WaitForGraphTests.cs`
+11. `OutWit.Database.Core.Tests/Concurrency/DeadlockDetectorTests.cs`
+12. `OutWit.Database.Core.Tests/Concurrency/TransactionWaitQueueTests.cs`
+
+---
+
+**Last Updated:** 2025-01-17
