@@ -434,6 +434,10 @@ namespace OutWit.Database.Core.Transactions
             }
         }
 
+        #endregion
+
+        #region Garbage Collection
+
         /// <summary>
         /// Runs garbage collection to clean up old versions.
         /// </summary>
@@ -444,6 +448,18 @@ namespace OutWit.Database.Core.Transactions
 
             var minSnapshot = m_timestampManager.GetMinimumActiveSnapshotTimestamp();
             return m_mvccStore.GarbageCollect(minSnapshot);
+        }
+
+        /// <summary>
+        /// Creates a background garbage collector for this store.
+        /// The caller is responsible for disposing the returned collector.
+        /// </summary>
+        /// <param name="options">Configuration options for the garbage collector.</param>
+        /// <returns>A new background garbage collector.</returns>
+        public MvccGarbageCollector CreateBackgroundGarbageCollector(MvccGarbageCollectorOptions? options = null)
+        {
+            ThrowIfDisposed();
+            return new MvccGarbageCollector(m_mvccStore, m_timestampManager, options);
         }
 
         #endregion

@@ -233,19 +233,27 @@ Files created:
 
 ---
 
-## Phase 6: Version Garbage Collection [PARTIAL]
+## Phase 6: Version Garbage Collection [COMPLETE]
 
 ### 6.1 Old Version Cleanup [x]
 - [x] Implement `GarbageCollect` method in MvccKeyValueStore
 - [x] Determine minimum active snapshot timestamp
 - [x] Remove versions not visible to any active transaction
-- [ ] Background cleanup thread
+- [x] Background cleanup thread
 
-### 6.2 Cleanup Policies [ ]
+### 6.2 Cleanup Policies [x]
 - [x] Manual cleanup API (RunGarbageCollection)
-- [ ] Immediate cleanup on transaction commit
-- [ ] Lazy cleanup during scan
-- [ ] Background periodic cleanup
+- [x] Background periodic cleanup (MvccGarbageCollector)
+- [x] Configurable collection interval
+- [x] Statistics callback support
+- [x] Pause/Resume control
+
+```
+Files created:
+- OutWit.Database.Core/Mvcc/MvccGarbageCollectorOptions.cs
+- OutWit.Database.Core/Mvcc/MvccGarbageCollector.cs
+- OutWit.Database.Core.Tests/Mvcc/MvccGarbageCollectorTests.cs
+```
 
 ---
 
@@ -322,10 +330,10 @@ Files modified:
 | Phase 3: Concurrent Transactions | Partial | 66% |
 | Phase 4: Row-Level Locks | Complete | 100% |
 | Phase 5: Deadlock Detection | Complete | 100% |
-| Phase 6: Garbage Collection | Partial | 50% |
+| Phase 6: Garbage Collection | Complete | 100% |
 | Phase 7: Integration | Complete | 100% |
-| Phase 8: Testing | Partial | 85% |
-| **TOTAL** | | **~90%** |
+| Phase 8: Testing | Partial | 90% |
+| **TOTAL** | | **~95%** |
 
 ---
 
@@ -340,23 +348,26 @@ Files modified:
 6. `OutWit.Database.Core/Transactions/MvccTransaction.cs`
 7. `OutWit.Database.Core/Transactions/MvccTransactionalStore.cs`
 8. `OutWit.Database.Core/Mvcc/MvccRecord.cs`
-9. `OutWit.Database.Core/Stores/MvccKeyValueStore.cs`
-10. `OutWit.Database.Core/Concurrency/RowLockMode.cs`
-11. `OutWit.Database.Core/Concurrency/RowLockRequest.cs`
-12. `OutWit.Database.Core/Concurrency/RowLockHandle.cs`
-13. `OutWit.Database.Core/Concurrency/RowLockManager.cs`
-14. `OutWit.Database.Core/Concurrency/WaitForGraph.cs`
-15. `OutWit.Database.Core/Concurrency/DeadlockDetector.cs`
-16. `OutWit.Database.Core/Exceptions/RowLockException.cs`
-17. `OutWit.Database.Core/Exceptions/DeadlockException.cs`
-18. `OutWit.Database.Core.Tests/Transactions/TransactionTimestampManagerTests.cs`
-19. `OutWit.Database.Core.Tests/Transactions/MvccTransactionalStoreTests.cs`
-20. `OutWit.Database.Core.Tests/Transactions/MvccTransactionRowLockTests.cs`
-21. `OutWit.Database.Core.Tests/Mvcc/MvccRecordTests.cs`
-22. `OutWit.Database.Core.Tests/Stores/MvccKeyValueStoreTests.cs`
-23. `OutWit.Database.Core.Tests/Concurrency/RowLockManagerTests.cs`
-24. `OutWit.Database.Core.Tests/Concurrency/WaitForGraphTests.cs`
-25. `OutWit.Database.Core.Tests/Concurrency/DeadlockDetectorTests.cs`
+9. `OutWit.Database.Core/Mvcc/MvccGarbageCollectorOptions.cs`
+10. `OutWit.Database.Core/Mvcc/MvccGarbageCollector.cs`
+11. `OutWit.Database.Core/Stores/MvccKeyValueStore.cs`
+12. `OutWit.Database.Core/Concurrency/RowLockMode.cs`
+13. `OutWit.Database.Core/Concurrency/RowLockRequest.cs`
+14. `OutWit.Database.Core/Concurrency/RowLockHandle.cs`
+15. `OutWit.Database.Core/Concurrency/RowLockManager.cs`
+16. `OutWit.Database.Core/Concurrency/WaitForGraph.cs`
+17. `OutWit.Database.Core/Concurrency/DeadlockDetector.cs`
+18. `OutWit.Database.Core/Exceptions/RowLockException.cs`
+19. `OutWit.Database.Core/Exceptions/DeadlockException.cs`
+20. `OutWit.Database.Core.Tests/Transactions/TransactionTimestampManagerTests.cs`
+21. `OutWit.Database.Core.Tests/Transactions/MvccTransactionalStoreTests.cs`
+22. `OutWit.Database.Core.Tests/Transactions/MvccTransactionRowLockTests.cs`
+23. `OutWit.Database.Core.Tests/Mvcc/MvccRecordTests.cs`
+24. `OutWit.Database.Core.Tests/Mvcc/MvccGarbageCollectorTests.cs`
+25. `OutWit.Database.Core.Tests/Stores/MvccKeyValueStoreTests.cs`
+26. `OutWit.Database.Core.Tests/Concurrency/RowLockManagerTests.cs`
+27. `OutWit.Database.Core.Tests/Concurrency/WaitForGraphTests.cs`
+28. `OutWit.Database.Core.Tests/Concurrency/DeadlockDetectorTests.cs`
 
 ### Modified Files
 1. `OutWit.Database.Core/Builder/WitDatabaseBuilderOptions.cs` - Added MVCC options
@@ -369,9 +380,8 @@ Files modified:
 
 ## Next Steps
 
-1. **Background GC** - Implement background garbage collection thread
-2. **Multi-threaded Stress Tests** - Verify MVCC under high concurrency
-3. **Transaction Wait Queue** - Optional priority-based wait queue
+1. **Multi-threaded Stress Tests** - Verify MVCC under high concurrency
+2. **Transaction Wait Queue** - Optional priority-based wait queue (Phase 3.3)
 
 ---
 

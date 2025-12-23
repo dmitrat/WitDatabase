@@ -1,6 +1,6 @@
 # OutWit.Database.Core - Roadmap
 
-**Version:** 1.6  
+**Version:** 1.7  
 **Based on:** OutWit.Database.Core.TODO.md  
 **Last Updated:** 2025-01-17
 
@@ -43,7 +43,55 @@
 | VACUUM/Compaction | 0 | 3 | 0% - v2 |
 | Concurrent Transactions | 3 | 0 | 100% |
 | ROWVERSION | 3 | 0 | 100% |
-| **TOTAL** | **60** | **9** | **87%** |
+| MVCC Garbage Collection | 2 | 0 | 100% |
+| **TOTAL** | **62** | **9** | **87%** |
+
+---
+
+## Recent Changes (v1.7)
+
+### Background Garbage Collection [x]
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| `MvccGarbageCollectorOptions` | [x] | Configuration for GC |
+| `MvccGarbageCollector` | [x] | Background GC thread |
+| `GarbageCollectionStatistics` | [x] | GC run statistics |
+| Configurable interval | [x] | Change collection interval |
+| Pause/Resume | [x] | Control GC execution |
+| Statistics callback | [x] | Monitor GC performance |
+
+```csharp
+// Create store with background GC
+using var store = new MvccTransactionalStore(innerStore);
+
+// Create background garbage collector
+var options = new MvccGarbageCollectorOptions
+{
+    CollectionInterval = TimeSpan.FromSeconds(30),
+    RunOnStart = false,
+    EnableStatistics = true,
+    OnCollectionComplete = stats => 
+        Console.WriteLine($"GC removed {stats.VersionsRemoved} versions in {stats.Duration}")
+};
+
+using var gc = store.CreateBackgroundGarbageCollector(options);
+
+// Manual GC run
+var stats = gc.RunNow();
+
+// Async GC run
+var stats = await gc.RunAsync();
+
+// Control GC
+gc.Pause();
+gc.Resume();
+gc.SetInterval(TimeSpan.FromMinutes(1));
+
+// Check statistics
+Console.WriteLine($"Total removed: {gc.TotalVersionsRemoved}");
+Console.WriteLine($"Run count: {gc.RunCount}");
+```
 
 ---
 
