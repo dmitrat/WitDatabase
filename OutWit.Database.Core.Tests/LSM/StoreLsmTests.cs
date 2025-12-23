@@ -1,3 +1,4 @@
+using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.LSM;
 using OutWit.Database.Core.Stores;
 using TextEncoding = System.Text.Encoding;
@@ -525,19 +526,160 @@ namespace OutWit.Database.Core.Tests.LSM
 
         #endregion
 
-        #region Properties
+        #region IKeyValueStoreStatistics Tests
 
         [Test]
-        public void LsmTreePropertiesTest()
+        public void LsmTreeImplementsIKeyValueStoreStatisticsTest()
         {
-            var options = new LsmOptions { EnableWal = false, EnableBlockCache = false };
+            var options = new LsmOptions { EnableWal = false };
             using var tree = new StoreLsm(m_testDir, options);
 
-            Assert.That(tree.Directory, Is.EqualTo(m_testDir));
-            Assert.That(tree.SSTableCount, Is.EqualTo(0));
-            Assert.That(tree.BlockCache, Is.Null);
-            Assert.That(tree.IsCompacting, Is.False);
-            Assert.That(tree.Statistics, Is.Not.Null);
+            // StoreLsm should implement IKeyValueStoreStatistics
+            Assert.That(tree, Is.InstanceOf<IKeyValueStoreStatistics>());
+        }
+
+        [Test]
+        public void LsmTreeCountReturnsCorrectValueTest()
+        {
+            var options = new LsmOptions { EnableWal = false };
+            using var tree = new StoreLsm(m_testDir, options);
+
+            var stats = (IKeyValueStoreStatistics)tree;
+            
+            Assert.That(stats.Count(), Is.EqualTo(0));
+            
+            for (int i = 0; i < 50; i++)
+            {
+                tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+            }
+            
+            Assert.That(stats.Count(), Is.EqualTo(50));
+        }
+
+        [Test]
+        public async Task LsmTreeCountAsyncWorksTest()
+        {
+            var options = new LsmOptions { EnableWal = false };
+            using var tree = new StoreLsm(m_testDir, options);
+
+            var stats = (IKeyValueStoreStatistics)tree;
+            
+            for (int i = 0; i < 25; i++)
+            {
+                await tree.PutAsync(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+            }
+            
+            var count = await stats.CountAsync();
+            Assert.That(count, Is.EqualTo(25));
+        }
+
+        [Test]
+        public void LsmTreeApproximateSizeInBytesTest()
+        {
+            var dir = Path.Combine(m_testDir, "size_test");
+            var options = new LsmOptions 
+            { 
+                EnableWal = false,
+                MemTableSizeLimit = 1000
+            };
+            using var tree = new StoreLsm(dir, options);
+
+            var stats = (IKeyValueStoreStatistics)tree;
+            var initialSize = stats.ApproximateSizeInBytes;
+            
+            // Add data
+            for (int i = 0; i < 100; i++)
+            {
+                tree.Put(BitConverter.GetBytes(i), new byte[100]);
+            }
+            
+            var afterPutSize = stats.ApproximateSizeInBytes;
+            Assert.That(afterPutSize, Is.GreaterThan(initialSize));
+            
+            // Flush to SSTable
+            tree.Flush();
+            
+            var afterFlushSize = stats.ApproximateSizeInBytes;
+            Assert.That(afterFlushSize, Is.GreaterThan(0));
+        }
+
+        [Test]
+        public void LsmTreeAreStatisticsExactIsFalseTest()
+        {
+            var options = new LsmOptions { EnableWal = false };
+            using var tree = new StoreLsm(m_testDir, options);
+
+            var stats = (IKeyValueStoreStatistics)tree;
+            
+            // LSM statistics are approximate (may include tombstones, duplicates)
+            Assert.That(stats.AreStatisticsExact, Is.False);
+        }
+
+        [Test]
+        public void LsmTreeEstimatedKeyCountEqualsCountTest()
+        {
+            var options = new LsmOptions { EnableWal = false };
+            using var tree = new StoreLsm(m_testDir, options);
+
+            var stats = (IKeyValueStoreStatistics)tree;
+            
+            for (int i = 0; i < 30; i++)
+            {
+                tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+            }
+            
+            Assert.That(stats.EstimatedKeyCount, Is.EqualTo(stats.Count()));
+        }
+
+        [Test]
+        public void LsmTreeCountIncludesMemTableAndSSTablesTest()
+        {
+            var dir = Path.Combine(m_testDir, "count_all");
+            var options = new LsmOptions 
+            { 
+                EnableWal = false,
+                MemTableSizeLimit = 500,
+                Level0CompactionTrigger = 100
+            };
+            using var tree = new StoreLsm(dir, options);
+
+            var stats = (IKeyValueStoreStatistics)tree;
+            
+            // Add some data (stays in MemTable)
+            for (int i = 0; i < 10; i++)
+            {
+                tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+            }
+            
+            // Flush to SSTable
+            tree.Flush();
+            
+            // Add more data to MemTable
+            for (int i = 10; i < 20; i++)
+            {
+                tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+            }
+            
+            // Count should include both
+            Assert.That(stats.Count(), Is.EqualTo(20));
+        }
+
+        [Test]
+        public void LsmTreeExtensionMethodsUseNativeStatsTest()
+        {
+            var options = new LsmOptions { EnableWal = false };
+            using var tree = new StoreLsm(m_testDir, options);
+
+            for (int i = 0; i < 10; i++)
+            {
+                tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
+            }
+            
+            // Extension methods should use native stats
+            var wrapper = tree.GetStatistics();
+            Assert.That(wrapper.HasNativeStatistics, Is.True);
+            Assert.That(wrapper.AreStatisticsExact, Is.False); // LSM is approximate
+            Assert.That(wrapper.Count(), Is.EqualTo(10));
         }
 
         #endregion

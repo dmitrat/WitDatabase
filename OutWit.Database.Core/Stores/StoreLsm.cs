@@ -10,7 +10,7 @@ namespace OutWit.Database.Core.Stores
     /// Combines MemTable, WAL, and SSTables for efficient reads and writes.
     /// Thread-safe: concurrent reads allowed, writes are serialized.
     /// </summary>
-    public sealed class StoreLsm : IKeyValueStore
+    public sealed class StoreLsm : IKeyValueStore, IKeyValueStoreStatistics
     {
         #region Constants
 
@@ -687,6 +687,53 @@ namespace OutWit.Database.Core.Stores
 
         #endregion
 
+        #region IKeyValueStoreStatistics
+
+        /// <summary>
+        /// Gets the total number of key-value pairs in the store.
+        /// This is an approximate count that may include tombstones.
+        /// </summary>
+        public long Count()
+        {
+            ThrowIfDisposed();
+            
+            // Count from MemTables
+            long count = m_activeMemTable.Count;
+            
+            var immutable = Volatile.Read(ref m_immutableMemTable);
+            if (immutable != null)
+            {
+                count += immutable.Count;
+            }
+            
+            // Count from SSTables (approximate - includes tombstones)
+            m_sstableLock.EnterReadLock();
+            try
+            {
+                foreach (var sst in m_sstables)
+                {
+                    count += sst.EntryCount;
+                }
+            }
+            finally
+            {
+                m_sstableLock.ExitReadLock();
+            }
+            
+            return count;
+        }
+
+        /// <summary>
+        /// Gets the total number of key-value pairs asynchronously.
+        /// </summary>
+        public ValueTask<long> CountAsync(CancellationToken cancellationToken = default)
+        {
+            cancellationToken.ThrowIfCancellationRequested();
+            return ValueTask.FromResult(Count());
+        }
+
+        #endregion
+
         #region Properties
 
         /// <summary>
@@ -730,6 +777,53 @@ namespace OutWit.Database.Core.Stores
 
         /// <inheritdoc/>
         public string ProviderKey => PROVIDER_KEY;
+
+        /// <summary>
+        /// Gets the approximate size of the store in bytes.
+        /// Includes MemTable, SSTables, and estimated overhead.
+        /// </summary>
+        public long ApproximateSizeInBytes
+        {
+            get
+            {
+                ThrowIfDisposed();
+                
+                long size = m_activeMemTable.ApproximateSize;
+                
+                var immutable = Volatile.Read(ref m_immutableMemTable);
+                if (immutable != null)
+                {
+                    size += immutable.ApproximateSize;
+                }
+                
+                m_sstableLock.EnterReadLock();
+                try
+                {
+                    foreach (var sst in m_sstables)
+                    {
+                        size += sst.FileSize;
+                    }
+                }
+                finally
+                {
+                    m_sstableLock.ExitReadLock();
+                }
+                
+                return size;
+            }
+        }
+
+        /// <summary>
+        /// Gets the estimated number of distinct keys.
+        /// Note: This is approximate and may include tombstones.
+        /// </summary>
+        public long EstimatedKeyCount => Count();
+
+        /// <summary>
+        /// Gets whether the statistics are exact or approximate.
+        /// For LSM-Tree, statistics are approximate due to tombstones and duplicates.
+        /// </summary>
+        public bool AreStatisticsExact => false;
 
         #endregion
     }

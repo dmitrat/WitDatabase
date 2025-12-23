@@ -161,13 +161,13 @@ namespace OutWit.Database.Core.Tests.Stores
         #region GetApproximateSizeInBytes Tests
 
         [Test]
-        public void GetApproximateSizeInBytesReturnsMinusOneForNonStatisticsStoreTest()
+        public void GetApproximateSizeInBytesReturnsPositiveForBTreeStoreTest()
         {
-            // StoreBTree does not implement IKeyValueStoreStatistics
+            // StoreBTree now implements IKeyValueStoreStatistics
             var size = m_store.GetApproximateSizeInBytes();
 
-            // Without native stats, returns -1
-            Assert.That(size, Is.EqualTo(-1));
+            // BTree stores always have at least header page
+            Assert.That(size, Is.GreaterThan(0));
         }
 
         [Test]
@@ -220,7 +220,7 @@ namespace OutWit.Database.Core.Tests.Stores
         }
 
         [Test]
-        public void StoreStatisticsEstimatedKeyCountEqualsCountWhenNoNativeStatsTest()
+        public void StoreStatisticsEstimatedKeyCountEqualsCountTest()
         {
             for (int i = 0; i < 10; i++)
             {
@@ -233,19 +233,20 @@ namespace OutWit.Database.Core.Tests.Stores
         }
 
         [Test]
-        public void StoreStatisticsHasNativeStatisticsIsFalseForBasicStoreTest()
+        public void StoreStatisticsHasNativeStatisticsIsTrueForBTreeTest()
         {
             var stats = m_store.GetStatistics();
 
-            Assert.That(stats.HasNativeStatistics, Is.False);
+            // StoreBTree now implements IKeyValueStoreStatistics
+            Assert.That(stats.HasNativeStatistics, Is.True);
         }
 
         [Test]
-        public void StoreStatisticsAreStatisticsExactIsTrueWhenComputedTest()
+        public void StoreStatisticsAreStatisticsExactIsTrueForBTreeTest()
         {
             var stats = m_store.GetStatistics();
 
-            // When computing via scan, statistics are exact
+            // BTree provides exact statistics
             Assert.That(stats.AreStatisticsExact, Is.True);
         }
 
@@ -267,6 +268,58 @@ namespace OutWit.Database.Core.Tests.Stores
             IKeyValueStoreStatistics iStats = stats;
 
             Assert.That(iStats.Count(), Is.EqualTo(0));
+        }
+
+        [Test]
+        public void BTreeStoreImplementsIKeyValueStoreStatisticsTest()
+        {
+            // StoreBTree should now implement IKeyValueStoreStatistics
+            Assert.That(m_store, Is.InstanceOf<IKeyValueStoreStatistics>());
+
+            var stats = (IKeyValueStoreStatistics)m_store;
+            
+            m_store.Put(ToBytes("key"), ToBytes("value"));
+            
+            Assert.That(stats.Count(), Is.EqualTo(1));
+            Assert.That(stats.AreStatisticsExact, Is.True);
+            Assert.That(stats.ApproximateSizeInBytes, Is.GreaterThan(0));
+        }
+
+        #endregion
+
+        #region Native Statistics Direct Access Tests
+
+        [Test]
+        public void BTreeStoreNativeCountIsEfficientTest()
+        {
+            // Add many items
+            for (int i = 0; i < 1000; i++)
+            {
+                m_store.Put(ToBytes($"key{i:D4}"), ToBytes($"value{i}"));
+            }
+
+            // Direct count through interface should be efficient (no scan)
+            var stats = (IKeyValueStoreStatistics)m_store;
+            var count = stats.Count();
+
+            Assert.That(count, Is.EqualTo(1000));
+        }
+
+        [Test]
+        public void BTreeStoreApproximateSizeGrowsWithDataTest()
+        {
+            var stats = (IKeyValueStoreStatistics)m_store;
+            var initialSize = stats.ApproximateSizeInBytes;
+
+            // Add data
+            for (int i = 0; i < 100; i++)
+            {
+                m_store.Put(ToBytes($"key{i}"), new byte[100]);
+            }
+
+            var finalSize = stats.ApproximateSizeInBytes;
+
+            Assert.That(finalSize, Is.GreaterThanOrEqualTo(initialSize));
         }
 
         #endregion

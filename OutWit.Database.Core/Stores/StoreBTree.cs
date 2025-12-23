@@ -11,7 +11,7 @@ namespace OutWit.Database.Core.Stores;
 /// Key-value store implementation backed by B+Tree.
 /// Implements IKeyValueStore for unified storage engine interface.
 /// </summary>
-public sealed class StoreBTree : IKeyValueStore, IAsyncDisposable
+public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyncDisposable
 {
     #region Constants
 
@@ -214,6 +214,15 @@ public sealed class StoreBTree : IKeyValueStore, IAsyncDisposable
         return m_tree.Count();
     }
 
+    /// <summary>
+    /// Gets the total number of entries asynchronously.
+    /// </summary>
+    public ValueTask<long> CountAsync(CancellationToken cancellationToken = default)
+    {
+        cancellationToken.ThrowIfCancellationRequested();
+        return ValueTask.FromResult(Count());
+    }
+
     #endregion
 
     #region ContainsKey
@@ -292,6 +301,29 @@ public sealed class StoreBTree : IKeyValueStore, IAsyncDisposable
 
     /// <inheritdoc/>
     public string ProviderKey => PROVIDER_KEY;
+
+    /// <summary>
+    /// Gets the approximate size of the store in bytes.
+    /// </summary>
+    public long ApproximateSizeInBytes
+    {
+        get
+        {
+            ThrowIfDisposed();
+            var header = m_pageManager.GetHeader();
+            return (long)header.TotalPageCount * header.PageSize;
+        }
+    }
+
+    /// <summary>
+    /// Gets the estimated number of distinct keys.
+    /// </summary>
+    public long EstimatedKeyCount => Count();
+
+    /// <summary>
+    /// Gets whether the statistics are exact or approximate.
+    /// </summary>
+    public bool AreStatisticsExact => true;
 
     #endregion
 }
