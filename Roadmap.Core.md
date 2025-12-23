@@ -1,6 +1,6 @@
 # OutWit.Database.Core - Roadmap
 
-**Version:** 1.4  
+**Version:** 1.5  
 **Based on:** OutWit.Database.Core.TODO.md  
 **Last Updated:** 2025-01-17
 
@@ -31,7 +31,7 @@
 | Crash Recovery | 3 | 0 | 100% |
 | Basic Concurrency | 4 | 0 | 100% |
 | Isolation Levels + MVCC | 4 | 0 | 100% |
-| Row-level Locks | 0 | 4 | 0% |
+| Row-level Locks | 4 | 0 | 100% |
 | Savepoints | 4 | 0 | 100% |
 | Multiple Result Sets | 3 | 0 | 100% |
 | Cursor Support | 0 | 4 | 0% - v2 |
@@ -43,7 +43,64 @@
 | VACUUM/Compaction | 0 | 3 | 0% - v2 |
 | Concurrent Transactions | 3 | 0 | 100% |
 | ROWVERSION | 3 | 0 | 100% |
-| **TOTAL** | **56** | **13** | **81%** |
+| **TOTAL** | **59** | **10** | **85%** |
+
+---
+
+## Recent Changes (v1.5)
+
+### Row-Level Locks [x]
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| `IRowLockManager` | [x] | Interface for row-level lock operations |
+| `RowLockManager` | [x] | Thread-safe implementation |
+| `RowLockMode` | [x] | Shared (FOR SHARE) and Exclusive (FOR UPDATE) |
+| `RowLockWaitMode` | [x] | Wait, NoWait, SkipLocked modes |
+| `RowLockHandle` | [x] | RAII-style lock management |
+| `RowLockException` | [x] | Exception for lock failures |
+| Lock upgrade | [x] | Shared to exclusive when only holder |
+| Timeout support | [x] | Configurable wait timeout |
+| Async support | [x] | Full async API |
+
+```csharp
+// Create row lock manager
+using var lockManager = new RowLockManager(TimeSpan.FromSeconds(30));
+
+// Acquire exclusive lock (FOR UPDATE)
+var request = new RowLockRequest(key, transactionId, RowLockMode.Exclusive);
+var handle = lockManager.AcquireLock(request);
+
+// Multiple shared locks (FOR SHARE)
+var sharedRequest1 = new RowLockRequest(key, txId1, RowLockMode.Shared);
+var sharedRequest2 = new RowLockRequest(key, txId2, RowLockMode.Shared);
+var h1 = lockManager.AcquireLock(sharedRequest1);
+var h2 = lockManager.AcquireLock(sharedRequest2); // Both succeed
+
+// NOWAIT mode - fail immediately if locked
+var noWaitRequest = new RowLockRequest(key, txId, 
+    RowLockMode.Exclusive, RowLockWaitMode.NoWait);
+try
+{
+    var handle = lockManager.AcquireLock(noWaitRequest);
+}
+catch (RowLockException)
+{
+    // Lock held by another transaction
+}
+
+// SKIP LOCKED mode - returns null if locked
+var skipRequest = new RowLockRequest(key, txId, 
+    RowLockMode.Exclusive, RowLockWaitMode.SkipLocked);
+var handle = lockManager.AcquireLock(skipRequest);
+if (handle == null)
+{
+    // Row is locked, skip it
+}
+
+// Release all locks for a transaction
+lockManager.ReleaseAllLocks(transactionId);
+```
 
 ---
 
@@ -222,13 +279,13 @@ var db2 = new WitDatabaseBuilder()
 
 ## 2. Missing Components [ ]
 
-### 2.1 Row-level Locks
+### 2.1 Row-level Locks [~]
 
 | Feature | Status | Priority | TODO Ref |
 |---------|--------|----------|----------|
-| `RowLockManager` class | [ ] | P0 | SS2.1 |
-| `FOR UPDATE` / `FOR SHARE` support | [ ] | P0 | SS2.2 |
-| `NOWAIT` / `SKIP LOCKED` modes | [ ] | P1 | SS2.3 |
+| `RowLockManager` class | [x] | P0 | SS2.1 |
+| `FOR UPDATE` / `FOR SHARE` support | [x] | P0 | SS2.2 |
+| `NOWAIT` / `SKIP LOCKED` modes | [x] | P1 | SS2.3 |
 | Deadlock detection | [ ] | P0 | SS2.4 |
 
 ### 2.2 Cursor Support (Deferred to v2)

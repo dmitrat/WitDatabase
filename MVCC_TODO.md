@@ -152,41 +152,42 @@ Files to create:
 
 ---
 
-## Phase 4: Row-Level Locks [ ]
+## Phase 4: Row-Level Locks [COMPLETE]
 
-### 4.1 Row Lock Manager
-- [ ] Create `IRowLockManager` interface
-- [ ] Implement `RowLockManager` class
-- [ ] Support shared (S) and exclusive (X) locks
-- [ ] Lock granularity: per-key
+### 4.1 Row Lock Manager [x]
+- [x] Create `IRowLockManager` interface
+- [x] Implement `RowLockManager` class
+- [x] Support shared (S) and exclusive (X) locks
+- [x] Lock granularity: per-key
 
 ```
-Files to create:
+Files created:
 - OutWit.Database.Core/Interfaces/IRowLockManager.cs
 - OutWit.Database.Core/Concurrency/RowLockManager.cs
 - OutWit.Database.Core.Tests/Concurrency/RowLockManagerTests.cs
 ```
 
-### 4.2 Lock Modes
-- [ ] Shared lock (FOR SHARE) - multiple readers
-- [ ] Exclusive lock (FOR UPDATE) - single writer
-- [ ] NOWAIT mode - fail immediately if cannot acquire
-- [ ] SKIP LOCKED mode - skip locked rows
+### 4.2 Lock Modes [x]
+- [x] Shared lock (FOR SHARE) - multiple readers
+- [x] Exclusive lock (FOR UPDATE) - single writer
+- [x] NOWAIT mode - fail immediately if cannot acquire
+- [x] SKIP LOCKED mode - skip locked rows
 
 ```
-Files to create:
+Files created:
 - OutWit.Database.Core/Concurrency/RowLockMode.cs
 - OutWit.Database.Core/Concurrency/RowLockRequest.cs
 ```
 
-### 4.3 Row Lock Handle
-- [ ] Create `RowLockHandle` class
-- [ ] RAII-style lock release
-- [ ] Async support
+### 4.3 Row Lock Handle [x]
+- [x] Create `RowLockHandle` class
+- [x] RAII-style lock release
+- [x] Async support
 
 ```
-Files to create:
+Files created:
 - OutWit.Database.Core/Concurrency/RowLockHandle.cs
+- OutWit.Database.Core/Exceptions/RowLockException.cs
 ```
 
 ---
@@ -315,12 +316,12 @@ Files modified:
 | Phase 1: MVCC Foundation | Complete | 100% |
 | Phase 2: Snapshot Isolation | Complete | 100% |
 | Phase 3: Concurrent Transactions | Partial | 66% |
-| Phase 4: Row-Level Locks | Not Started | 0% |
+| Phase 4: Row-Level Locks | Complete | 100% |
 | Phase 5: Deadlock Detection | Not Started | 0% |
 | Phase 6: Garbage Collection | Partial | 50% |
 | Phase 7: Integration | Complete | 100% |
-| Phase 8: Testing | Partial | 70% |
-| **TOTAL** | | **~65%** |
+| Phase 8: Testing | Partial | 75% |
+| **TOTAL** | | **~75%** |
 
 ---
 
@@ -330,15 +331,22 @@ Files modified:
 1. `OutWit.Database.Core/Interfaces/ITransactionTimestampManager.cs`
 2. `OutWit.Database.Core/Interfaces/IMvccStore.cs`
 3. `OutWit.Database.Core/Interfaces/IMvccTransaction.cs`
-4. `OutWit.Database.Core/Transactions/TransactionTimestampManager.cs`
-5. `OutWit.Database.Core/Transactions/MvccTransaction.cs`
-6. `OutWit.Database.Core/Transactions/MvccTransactionalStore.cs`
-7. `OutWit.Database.Core/Mvcc/MvccRecord.cs`
-8. `OutWit.Database.Core/Stores/MvccKeyValueStore.cs`
-9. `OutWit.Database.Core.Tests/Transactions/TransactionTimestampManagerTests.cs`
-10. `OutWit.Database.Core.Tests/Transactions/MvccTransactionalStoreTests.cs`
-11. `OutWit.Database.Core.Tests/Mvcc/MvccRecordTests.cs`
-12. `OutWit.Database.Core.Tests/Stores/MvccKeyValueStoreTests.cs`
+4. `OutWit.Database.Core/Interfaces/IRowLockManager.cs`
+5. `OutWit.Database.Core/Transactions/TransactionTimestampManager.cs`
+6. `OutWit.Database.Core/Transactions/MvccTransaction.cs`
+7. `OutWit.Database.Core/Transactions/MvccTransactionalStore.cs`
+8. `OutWit.Database.Core/Mvcc/MvccRecord.cs`
+9. `OutWit.Database.Core/Stores/MvccKeyValueStore.cs`
+10. `OutWit.Database.Core/Concurrency/RowLockMode.cs`
+11. `OutWit.Database.Core/Concurrency/RowLockRequest.cs`
+12. `OutWit.Database.Core/Concurrency/RowLockHandle.cs`
+13. `OutWit.Database.Core/Concurrency/RowLockManager.cs`
+14. `OutWit.Database.Core/Exceptions/RowLockException.cs`
+15. `OutWit.Database.Core.Tests/Transactions/TransactionTimestampManagerTests.cs`
+16. `OutWit.Database.Core.Tests/Transactions/MvccTransactionalStoreTests.cs`
+17. `OutWit.Database.Core.Tests/Mvcc/MvccRecordTests.cs`
+18. `OutWit.Database.Core.Tests/Stores/MvccKeyValueStoreTests.cs`
+19. `OutWit.Database.Core.Tests/Concurrency/RowLockManagerTests.cs`
 
 ### Modified Files
 1. `OutWit.Database.Core/Builder/WitDatabaseBuilderOptions.cs` - Added MVCC options
@@ -351,10 +359,10 @@ Files modified:
 
 ## Next Steps
 
-1. **Row-Level Locks (Phase 4)** - Required for `FOR UPDATE` / `FOR SHARE` support
-2. **Deadlock Detection (Phase 5)** - Required for production row-level locking
-3. **Background GC** - Implement background garbage collection thread
-4. **Multi-threaded Stress Tests** - Verify MVCC under high concurrency
+1. **Deadlock Detection (Phase 5)** - Required for production row-level locking
+2. **Background GC** - Implement background garbage collection thread
+3. **Multi-threaded Stress Tests** - Verify MVCC under high concurrency
+4. **Integration with MVCC Transaction** - Use RowLockManager in MvccTransaction for FOR UPDATE/FOR SHARE
 
 ---
 
