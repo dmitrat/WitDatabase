@@ -1,6 +1,6 @@
 # OutWit.Database.Core - Roadmap
 
-**Version:** 1.7  
+**Version:** 1.8  
 **Based on:** OutWit.Database.Core.TODO.md  
 **Last Updated:** 2025-01-17
 
@@ -45,6 +45,50 @@
 | ROWVERSION | 3 | 0 | 100% |
 | MVCC Garbage Collection | 2 | 0 | 100% |
 | **TOTAL** | **62** | **9** | **87%** |
+
+---
+
+## Recent Changes (v1.8)
+
+### All Isolation Levels Implemented [x]
+
+| Isolation Level | Status | Description |
+|----------------|--------|-------------|
+| `ReadUncommitted` | [x] | Reads latest data, may see uncommitted changes |
+| `ReadCommitted` | [x] | Reads only committed data, no snapshot (allows non-repeatable reads) |
+| `RepeatableRead` | [x] | Snapshot + tracks read set, detects read conflicts at commit |
+| `Serializable` | [x] | Same as RepeatableRead (full predicate locks not implemented) |
+| `Snapshot` | [x] | Snapshot isolation, only tracks write set |
+
+```csharp
+// ReadUncommitted - can see uncommitted data
+using var tx = store.BeginTransaction(IsolationLevel.ReadUncommitted);
+var value = tx.Get(key); // May see uncommitted changes
+
+// ReadCommitted - sees only committed, but no snapshot
+using var tx = store.BeginTransaction(IsolationLevel.ReadCommitted);
+var v1 = tx.Get(key); // Gets committed value
+// ... another transaction commits ...
+var v2 = tx.Get(key); // May get different value (non-repeatable read)
+
+// RepeatableRead - consistent reads, detects conflicts
+using var tx = store.BeginTransaction(IsolationLevel.RepeatableRead);
+var v1 = tx.Get(key); // Adds to read set
+// ... another transaction modifies key and commits ...
+var v2 = tx.Get(key); // Same value as v1
+tx.Put(otherKey, value);
+tx.Commit(); // FAILS - read conflict detected (key was modified)
+
+// Serializable - same behavior as RepeatableRead
+using var tx = store.BeginTransaction(IsolationLevel.Serializable);
+// Read set is tracked, conflicts detected at commit
+
+// Snapshot - consistent reads, write-write conflict only
+using var tx = store.BeginTransaction(IsolationLevel.Snapshot);
+var v1 = tx.Get(key); // Does NOT add to read set
+tx.Put(key, newValue);
+tx.Commit(); // Only fails if another tx modified same key
+```
 
 ---
 

@@ -110,10 +110,14 @@ namespace OutWit.Database.Core.Transactions
 
             var keyArray = key.ToArray();
 
-            // Track read for conflict detection
-            m_readSet.Add(keyArray);
+            // Track read for conflict detection (RepeatableRead, Serializable)
+            if (IsolationLevel == IsolationLevel.RepeatableRead || 
+                IsolationLevel == IsolationLevel.Serializable)
+            {
+                m_readSet.Add(keyArray);
+            }
 
-            // Check local changes first
+            // Check local changes first (always see our own writes)
             if (m_changes.TryGetValue(keyArray, out var value))
             {
                 return value.NewValue;
@@ -124,7 +128,44 @@ namespace OutWit.Database.Core.Transactions
                 return null;
             }
 
-            // Read from MVCC store with our snapshot
+            // Read behavior depends on isolation level
+            return IsolationLevel switch
+            {
+                IsolationLevel.ReadUncommitted => GetReadUncommitted(key),
+                IsolationLevel.ReadCommitted => GetReadCommitted(key),
+                IsolationLevel.RepeatableRead => GetSnapshot(key),
+                IsolationLevel.Serializable => GetSnapshot(key),
+                IsolationLevel.Snapshot => GetSnapshot(key),
+                _ => GetSnapshot(key)
+            };
+        }
+
+        /// <summary>
+        /// Read Uncommitted: Can see uncommitted changes from other transactions.
+        /// </summary>
+        private byte[]? GetReadUncommitted(ReadOnlySpan<byte> key)
+        {
+            // Get the latest version regardless of commit status
+            var currentTimestamp = m_timestampManager.CurrentTimestamp;
+            return m_store.GetAsOf(key, currentTimestamp, TransactionId);
+        }
+
+        /// <summary>
+        /// Read Committed: Only sees committed data, but no snapshot (reads current committed state).
+        /// Each read sees the latest committed data at the time of the read.
+        /// </summary>
+        private byte[]? GetReadCommitted(ReadOnlySpan<byte> key)
+        {
+            // Get the latest committed version at current time
+            var currentTimestamp = m_timestampManager.CurrentTimestamp;
+            return m_store.GetAsOf(key, currentTimestamp, transactionId: 0);
+        }
+
+        /// <summary>
+        /// Snapshot/RepeatableRead/Serializable: Reads from a consistent snapshot.
+        /// </summary>
+        private byte[]? GetSnapshot(ReadOnlySpan<byte> key)
+        {
             return m_store.GetAsOf(key, SnapshotTimestamp, TransactionId);
         }
 
@@ -431,11 +472,52 @@ namespace OutWit.Database.Core.Transactions
         /// <inheritdoc/>
         public bool HasWriteConflict()
         {
-            if (m_writeSet.Count == 0)
+            if (m_writeSet.Count == 0 && 
+                (IsolationLevel != IsolationLevel.RepeatableRead && IsolationLevel != IsolationLevel.Serializable))
+            {
                 return false;
+            }
 
             // Check if any of our written keys have been modified since our snapshot
             foreach (var key in m_writeSet)
+            {
+                if (m_store.HasConflict(key, SnapshotTimestamp, TransactionId))
+                {
+                    return true;
+                }
+            }
+
+            // For RepeatableRead and Serializable: also check read set
+            // If any key we read has been modified since our snapshot, that's a conflict
+            if (IsolationLevel == IsolationLevel.RepeatableRead || 
+                IsolationLevel == IsolationLevel.Serializable)
+            {
+                foreach (var key in m_readSet)
+                {
+                    // Skip keys we've written (already checked)
+                    if (m_writeSet.Contains(key))
+                        continue;
+
+                    if (m_store.HasConflict(key, SnapshotTimestamp, TransactionId))
+                    {
+                        return true;
+                    }
+                }
+            }
+
+            return false;
+        }
+
+        /// <summary>
+        /// Checks if any key in the read set has been modified by another transaction.
+        /// Used for RepeatableRead and Serializable isolation levels.
+        /// </summary>
+        public bool HasReadConflict()
+        {
+            if (m_readSet.Count == 0)
+                return false;
+
+            foreach (var key in m_readSet)
             {
                 if (m_store.HasConflict(key, SnapshotTimestamp, TransactionId))
                 {
@@ -471,13 +553,8 @@ namespace OutWit.Database.Core.Transactions
 
             try
             {
-                // Check for write-write conflicts
-                if (HasWriteConflict())
-                {
-                    throw new InvalidOperationException(
-                        "Transaction cannot commit due to write-write conflict. " +
-                        "Another transaction has modified data that this transaction also modified.");
-                }
+                // Check for conflicts based on isolation level
+                ValidateNoConflicts();
 
                 // Get commit timestamp
                 var commitTimestamp = m_timestampManager.GetNextTimestamp();
@@ -516,11 +593,7 @@ namespace OutWit.Database.Core.Transactions
 
             try
             {
-                if (HasWriteConflict())
-                {
-                    throw new InvalidOperationException(
-                        "Transaction cannot commit due to write-write conflict.");
-                }
+                ValidateNoConflicts();
 
                 var commitTimestamp = m_timestampManager.GetNextTimestamp();
 
@@ -548,6 +621,45 @@ namespace OutWit.Database.Core.Transactions
                 m_savepoints.Clear();
                 await ReleaseLocksAsync().ConfigureAwait(false);
                 m_store.NotifyTransactionComplete(this);
+            }
+        }
+
+        private void ValidateNoConflicts()
+        {
+            // ReadUncommitted and ReadCommitted don't detect conflicts on read set
+            if (IsolationLevel == IsolationLevel.ReadUncommitted || 
+                IsolationLevel == IsolationLevel.ReadCommitted)
+            {
+                // Only check write-write conflicts
+                if (m_writeSet.Count > 0)
+                {
+                    foreach (var key in m_writeSet)
+                    {
+                        if (m_store.HasConflict(key, SnapshotTimestamp, TransactionId))
+                        {
+                            throw new InvalidOperationException(
+                                "Transaction cannot commit due to write-write conflict. " +
+                                "Another transaction has modified data that this transaction also modified.");
+                        }
+                    }
+                }
+                return;
+            }
+
+            // Snapshot, RepeatableRead, Serializable - check write conflicts
+            if (HasWriteConflict())
+            {
+                if (IsolationLevel == IsolationLevel.RepeatableRead || 
+                    IsolationLevel == IsolationLevel.Serializable)
+                {
+                    throw new InvalidOperationException(
+                        $"Transaction cannot commit due to serialization failure ({IsolationLevel}). " +
+                        "Data read or written by this transaction has been modified by another transaction.");
+                }
+                
+                throw new InvalidOperationException(
+                    "Transaction cannot commit due to write-write conflict. " +
+                    "Another transaction has modified data that this transaction also modified.");
             }
         }
 
