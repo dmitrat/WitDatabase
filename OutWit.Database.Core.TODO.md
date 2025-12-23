@@ -22,9 +22,9 @@ Analysis of the `OutWit.Database.Core` kernel for compliance with WitSql specifi
 ### Category 1: Transaction Isolation Levels
 
 - [x] **1.1** `IsolationLevel` enum (ReadUncommitted, ReadCommitted, RepeatableRead, Serializable, Snapshot)
-- [ ] **1.2** MVCC (Multi-Version Concurrency Control) for Snapshot isolation
+- [x] **1.2** MVCC (Multi-Version Concurrency Control) for Snapshot isolation
 - [x] **1.3** Extend `ITransaction` to specify isolation level
-- [ ] **1.4** Record versioning (transaction timestamp / row version)
+- [x] **1.4** Record versioning (transaction timestamp / row version)
 
 ### Category 2: Row-level Locks
 
@@ -89,8 +89,8 @@ Analysis of the `OutWit.Database.Core` kernel for compliance with WitSql specifi
 
 ### Category 11: Concurrent Transactions
 
-- [ ] **11.1** Multiple concurrent read transactions
-- [ ] **11.2** Read transactions during write transaction (MVCC)
+- [x] **11.1** Multiple concurrent read transactions
+- [x] **11.2** Read transactions during write transaction (MVCC)
 - [ ] **11.3** Transaction wait queue with priorities
 
 ### Category 12: ROWVERSION / Concurrency Tokens
@@ -116,11 +116,11 @@ Analysis of the `OutWit.Database.Core` kernel for compliance with WitSql specifi
 
 | # | Component | Priority | Status |
 |---|-----------|----------|--------|
-| 1.1-1.4 | Isolation levels + MVCC | P0 Critical | [~] Partial |
+| 1.1-1.4 | Isolation levels + MVCC | P0 Critical | [x] Done |
 | 2.1-2.4 | Row-level locks | P0 Critical | [ ] TODO |
 | 4.1-4.3 | Multiple result sets | P1 Important | [x] Done |
 | 8.1-8.3 | Bulk operations | P1 Important | [x] Done |
-| 11.1-11.3 | Concurrent transactions | P0 Critical | [ ] TODO |
+| 11.1-11.3 | Concurrent transactions | P0 Critical | [~] Partial |
 | 12.1-12.3 | ROWVERSION support | P1 Important | [x] Done |
 
 ### Nice to Have (v2)
@@ -137,10 +137,10 @@ Analysis of the `OutWit.Database.Core` kernel for compliance with WitSql specifi
 
 1. **Secondary indexes** - critical for any SQL engine. Without them, efficient filtering and JOIN operations are impossible.
 
-2. **MVCC** - required for Snapshot isolation and concurrent reads. Without it, EF Core cannot work in multi-user scenarios.
+2. **MVCC** - **IMPLEMENTED**. Required for Snapshot isolation and concurrent reads. Enables EF Core to work in multi-user scenarios.
 
 3. **Savepoints** - used by EF Core for nested transactions and SaveChanges with retry.
 
 4. **Query execution context** - ADO.NET requires information about affected rows count and last insert id.
 
-5. **Current state** is sufficient for MVP SQL engine with basic operations, but for a production-ready system, implementation of items from categories 1-4, 7, 11 is required.
+5. **Current state** - MVCC is implemented, enabling snapshot isolation and concurrent read transactions. Row-level locks and deadlock detection are still needed for complete EF Core support.

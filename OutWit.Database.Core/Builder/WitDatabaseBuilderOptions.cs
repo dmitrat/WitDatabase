@@ -108,5 +108,17 @@ public sealed class WitDatabaseBuilderOptions
     /// </summary>
     public string? IndexDirectory { get; set; }
 
+    /// <summary>
+    /// Whether to enable MVCC (Multi-Version Concurrency Control).
+    /// When enabled, the database supports snapshot isolation and concurrent transactions.
+    /// </summary>
+    public bool EnableMvcc { get; set; }
+
+    /// <summary>
+    /// Default isolation level for transactions.
+    /// Only applies when MVCC is enabled.
+    /// </summary>
+    public IsolationLevel DefaultIsolationLevel { get; set; } = IsolationLevel.ReadCommitted;
+
     #endregion
 }

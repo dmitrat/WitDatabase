@@ -266,6 +266,46 @@ public static class WitDatabaseBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Enable MVCC (Multi-Version Concurrency Control) for snapshot isolation.
+    /// This enables concurrent read transactions and read-during-write support.
+    /// </summary>
+    /// <param name="builder">The database builder.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static WitDatabaseBuilder WithMvcc(this WitDatabaseBuilder builder)
+    {
+        builder.Options.EnableMvcc = true;
+        builder.Options.EnableTransactions = true;
+        builder.Options.DefaultIsolationLevel = IsolationLevel.Snapshot;
+        return builder;
+    }
+
+    /// <summary>
+    /// Enable MVCC with a specific default isolation level.
+    /// </summary>
+    /// <param name="builder">The database builder.</param>
+    /// <param name="defaultIsolationLevel">The default isolation level for transactions.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static WitDatabaseBuilder WithMvcc(this WitDatabaseBuilder builder, IsolationLevel defaultIsolationLevel)
+    {
+        builder.Options.EnableMvcc = true;
+        builder.Options.EnableTransactions = true;
+        builder.Options.DefaultIsolationLevel = defaultIsolationLevel;
+        return builder;
+    }
+
+    /// <summary>
+    /// Set the default isolation level for transactions.
+    /// </summary>
+    /// <param name="builder">The database builder.</param>
+    /// <param name="isolationLevel">The default isolation level.</param>
+    /// <returns>The builder for chaining.</returns>
+    public static WitDatabaseBuilder WithDefaultIsolationLevel(this WitDatabaseBuilder builder, IsolationLevel isolationLevel)
+    {
+        builder.Options.DefaultIsolationLevel = isolationLevel;
+        return builder;
+    }
+
     #endregion
 
     #region Locking

@@ -1,6 +1,6 @@
 # OutWit.Database.Core - Roadmap
 
-**Version:** 1.2  
+**Version:** 1.3  
 **Based on:** OutWit.Database.Core.TODO.md  
 **Last Updated:** 2025-01-16
 
@@ -30,7 +30,7 @@
 | Encryption | 3 | 0 | 100% |
 | Crash Recovery | 3 | 0 | 100% |
 | Basic Concurrency | 4 | 0 | 100% |
-| Isolation Levels | 2 | 2 | 50% |
+| Isolation Levels + MVCC | 4 | 0 | 100% |
 | Row-level Locks | 0 | 4 | 0% |
 | Savepoints | 4 | 0 | 100% |
 | Multiple Result Sets | 3 | 0 | 100% |
@@ -41,9 +41,78 @@
 | Bulk Operations | 3 | 0 | 100% |
 | Statistics | 2 | 2 | 50% |
 | VACUUM/Compaction | 0 | 3 | 0% - v2 |
-| Concurrent Transactions | 0 | 3 | 0% |
+| Concurrent Transactions | 2 | 1 | 66% |
 | ROWVERSION | 3 | 0 | 100% |
-| **TOTAL** | **51** | **18** | **74%** |
+| **TOTAL** | **55** | **14** | **80%** |
+
+---
+
+## Recent Changes (v1.3)
+
+### MVCC (Multi-Version Concurrency Control) [x]
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| `ITransactionTimestampManager` | [x] | Manages transaction timestamps |
+| `TransactionTimestampManager` | [x] | Thread-safe implementation |
+| `MvccRecord` | [x] | Versioned record with visibility rules |
+| `IMvccStore` | [x] | MVCC key-value store interface |
+| `MvccKeyValueStore` | [x] | Multi-version storage wrapper |
+| `IMvccTransaction` | [x] | MVCC transaction interface |
+| `MvccTransaction` | [x] | Transaction with snapshot isolation |
+| `MvccTransactionalStore` | [x] | Transactional store with MVCC |
+| Snapshot isolation | [x] | Consistent point-in-time reads |
+| Write-write conflict detection | [x] | First-committer-wins semantics |
+| Read-only transactions | [x] | Lightweight concurrent reads |
+| Version garbage collection | [x] | Cleanup of old versions |
+
+```csharp
+// Create MVCC-enabled store
+var inner = new StoreInMemory();
+var store = new MvccTransactionalStore(inner);
+
+// Multiple concurrent read transactions
+var readTx1 = store.BeginReadOnlyTransaction();
+var readTx2 = store.BeginReadOnlyTransaction();
+
+// Both see consistent snapshots
+var v1 = readTx1.Get(key);
+var v2 = readTx2.Get(key);
+
+// Read during write (snapshot isolation)
+var writeTx = store.BeginTransaction();
+writeTx.Put(key, newValue);
+// readTx1 still sees old value
+var oldValue = readTx1.Get(key);
+
+writeTx.Commit();
+// readTx1 still sees old value (snapshot)
+// New transactions see new value
+```
+
+### Builder Integration [x]
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| `EnableMvcc` option | [x] | Enable MVCC in builder options |
+| `DefaultIsolationLevel` option | [x] | Set default isolation level |
+| `.WithMvcc()` extension | [x] | Enable MVCC with Snapshot isolation |
+| `.WithMvcc(IsolationLevel)` | [x] | Enable MVCC with custom default |
+| `.WithDefaultIsolationLevel()` | [x] | Set isolation level independently |
+
+```csharp
+// Enable MVCC via builder
+var db = new WitDatabaseBuilder()
+    .WithMemoryStorage()
+    .WithMvcc()  // Enables snapshot isolation
+    .Build();
+
+// With custom isolation level
+var db = new WitDatabaseBuilder()
+    .WithFilePath("data.db")
+    .WithMvcc(IsolationLevel.Serializable)
+    .Build();
+```
 
 ---
 
@@ -315,14 +384,14 @@ if (tx is ITransactionWithSavepoints txSp)
 
 ## 2. Missing Components [ ]
 
-### 2.1 Transaction Isolation Levels
+### 2.1 Transaction Isolation Levels [x]
 
 | Feature | Status | Priority | TODO Ref |
 |---------|--------|----------|----------|
 | `IsolationLevel` enum | [x] | P0 | SS1.1 |
-| MVCC (Multi-Version Concurrency Control) | [ ] | P0 | SS1.2 |
+| MVCC (Multi-Version Concurrency Control) | [x] | P0 | SS1.2 |
 | Extend `ITransaction` for isolation level | [x] | P0 | SS1.3 |
-| Record versioning (timestamp/row version) | [ ] | P0 | SS1.4 |
+| Record versioning (transaction timestamp) | [x] | P0 | SS1.4 |
 
 ### 2.2 Row-level Locks
 
@@ -333,7 +402,7 @@ if (tx is ITransactionWithSavepoints txSp)
 | `NOWAIT` / `SKIP LOCKED` modes | [ ] | P1 | SS2.3 |
 | Deadlock detection | [ ] | P0 | SS2.4 |
 
-### 2.3 Multiple Result Sets
+### 2.3 Multiple Result Sets [x]
 
 | Feature | Status | Priority | TODO Ref |
 |---------|--------|----------|----------|
@@ -350,7 +419,7 @@ if (tx is ITransactionWithSavepoints txSp)
 | Scrollable mode | [ ] | P2 - v2 | SS5.2 |
 | Fetch size (batching) | [ ] | P2 - v2 | SS5.3 |
 
-### 2.5 Bulk Operations
+### 2.5 Bulk Operations [x]
 
 | Feature | Status | Priority | TODO Ref |
 |---------|--------|----------|----------|
@@ -375,15 +444,15 @@ if (tx is ITransactionWithSavepoints txSp)
 | Incremental vacuum support | [ ] | P2 - v2 | SS10.2 |
 | Compaction progress/status API | [ ] | P2 - v2 | SS10.3 |
 
-### 2.8 Concurrent Transactions
+### 2.8 Concurrent Transactions [~]
 
 | Feature | Status | Priority | TODO Ref |
 |---------|--------|----------|----------|
-| Multiple concurrent read transactions | [ ] | P0 | SS11.1 |
-| Read transactions during write (MVCC) | [ ] | P0 | SS11.2 |
+| Multiple concurrent read transactions | [x] | P0 | SS11.1 |
+| Read transactions during write (MVCC) | [x] | P0 | SS11.2 |
 | Transaction wait queue with priorities | [ ] | P0 | SS11.3 |
 
-### 2.9 ROWVERSION / Concurrency Tokens
+### 2.9 ROWVERSION / Concurrency Tokens [x]
 
 | Feature | Status | Priority | TODO Ref |
 |---------|--------|----------|----------|
