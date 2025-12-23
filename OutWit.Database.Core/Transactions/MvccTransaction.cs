@@ -1,4 +1,6 @@
 using OutWit.Database.Core.Comparers;
+using OutWit.Database.Core.Concurrency;
+using OutWit.Database.Core.Exceptions;
 using OutWit.Database.Core.Interfaces;
 
 namespace OutWit.Database.Core.Transactions
@@ -26,6 +28,7 @@ namespace OutWit.Database.Core.Transactions
         private readonly HashSet<byte[]> m_deletedKeys;
         private readonly HashSet<byte[]> m_readSet;
         private readonly HashSet<byte[]> m_writeSet;
+        private readonly HashSet<byte[]> m_lockedKeys;
         private readonly ByteArrayComparer m_comparer;
         private readonly List<Savepoint> m_savepoints;
         private bool m_isReadOnly;
@@ -58,6 +61,7 @@ namespace OutWit.Database.Core.Transactions
             m_deletedKeys = new HashSet<byte[]>(m_comparer);
             m_readSet = new HashSet<byte[]>(m_comparer);
             m_writeSet = new HashSet<byte[]>(m_comparer);
+            m_lockedKeys = new HashSet<byte[]>(m_comparer);
             m_savepoints = new List<Savepoint>();
             m_isReadOnly = false;
 
@@ -88,6 +92,7 @@ namespace OutWit.Database.Core.Transactions
             m_deletedKeys = new HashSet<byte[]>(m_comparer);
             m_readSet = new HashSet<byte[]>(m_comparer);
             m_writeSet = new HashSet<byte[]>(m_comparer);
+            m_lockedKeys = new HashSet<byte[]>(m_comparer);
             m_savepoints = new List<Savepoint>();
             m_isReadOnly = false;
 
@@ -128,6 +133,128 @@ namespace OutWit.Database.Core.Transactions
         {
             cancellationToken.ThrowIfCancellationRequested();
             return ValueTask.FromResult(Get(key));
+        }
+
+        #endregion
+
+        #region Row-Level Locking (FOR UPDATE / FOR SHARE)
+
+        /// <inheritdoc/>
+        public byte[]? GetForUpdate(ReadOnlySpan<byte> key, RowLockWaitMode waitMode = RowLockWaitMode.Wait, TimeSpan? timeout = null)
+        {
+            return GetWithLock(key, RowLockMode.Exclusive, waitMode, timeout);
+        }
+
+        /// <inheritdoc/>
+        public byte[]? GetForShare(ReadOnlySpan<byte> key, RowLockWaitMode waitMode = RowLockWaitMode.Wait, TimeSpan? timeout = null)
+        {
+            return GetWithLock(key, RowLockMode.Shared, waitMode, timeout);
+        }
+
+        /// <inheritdoc/>
+        public async ValueTask<byte[]?> GetForUpdateAsync(
+            byte[] key, 
+            RowLockWaitMode waitMode = RowLockWaitMode.Wait, 
+            TimeSpan? timeout = null, 
+            CancellationToken cancellationToken = default)
+        {
+            return await GetWithLockAsync(key, RowLockMode.Exclusive, waitMode, timeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        /// <inheritdoc/>
+        public async ValueTask<byte[]?> GetForShareAsync(
+            byte[] key, 
+            RowLockWaitMode waitMode = RowLockWaitMode.Wait, 
+            TimeSpan? timeout = null, 
+            CancellationToken cancellationToken = default)
+        {
+            return await GetWithLockAsync(key, RowLockMode.Shared, waitMode, timeout, cancellationToken)
+                .ConfigureAwait(false);
+        }
+
+        private byte[]? GetWithLock(ReadOnlySpan<byte> key, RowLockMode lockMode, RowLockWaitMode waitMode, TimeSpan? timeout)
+        {
+            ThrowIfNotActive();
+
+            var keyArray = key.ToArray();
+
+            // Check if we already have a lock on this key
+            if (!m_lockedKeys.Contains(keyArray))
+            {
+                var lockManager = m_store.RowLockManager;
+                var deadlockDetector = m_store.DeadlockDetector;
+
+                // Check which transactions currently hold locks on this key
+                if (waitMode == RowLockWaitMode.Wait && lockManager.IsLocked(key))
+                {
+                    // Find holders and check for potential deadlock
+                    // This is a simplified check - full implementation would track all holders
+                }
+
+                var request = new RowLockRequest(keyArray, TransactionId, lockMode, waitMode, timeout);
+
+                try
+                {
+                    var handle = lockManager.AcquireLock(request);
+                    if (handle == null)
+                    {
+                        // SKIP LOCKED - return null to indicate row was skipped
+                        return null;
+                    }
+
+                    m_lockedKeys.Add(keyArray);
+                }
+                catch (RowLockException)
+                {
+                    // NOWAIT - lock could not be acquired
+                    throw;
+                }
+            }
+
+            // Now read the value
+            return Get(key);
+        }
+
+        private async ValueTask<byte[]?> GetWithLockAsync(
+            byte[] key, 
+            RowLockMode lockMode, 
+            RowLockWaitMode waitMode, 
+            TimeSpan? timeout,
+            CancellationToken cancellationToken)
+        {
+            ThrowIfNotActive();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            // Check if we already have a lock on this key
+            if (!m_lockedKeys.Contains(key))
+            {
+                var lockManager = m_store.RowLockManager;
+
+                var request = new RowLockRequest(key, TransactionId, lockMode, waitMode, timeout);
+
+                try
+                {
+                    var handle = await lockManager.AcquireLockAsync(request, cancellationToken)
+                        .ConfigureAwait(false);
+
+                    if (handle == null)
+                    {
+                        // SKIP LOCKED - return null to indicate row was skipped
+                        return null;
+                    }
+
+                    m_lockedKeys.Add(key);
+                }
+                catch (RowLockException)
+                {
+                    // NOWAIT - lock could not be acquired
+                    throw;
+                }
+            }
+
+            // Now read the value
+            return Get(key);
         }
 
         #endregion
@@ -516,6 +643,15 @@ namespace OutWit.Database.Core.Transactions
 
         private void ReleaseLocks()
         {
+            // Release row-level locks
+            if (m_lockedKeys.Count > 0)
+            {
+                m_store.RowLockManager.ReleaseAllLocks(TransactionId);
+                m_store.DeadlockDetector.TransactionCompleted(TransactionId);
+                m_lockedKeys.Clear();
+            }
+
+            // Release database-level locks
             m_syncLockHandle?.Dispose();
 
             if (m_asyncLockHandle != null)
@@ -536,6 +672,15 @@ namespace OutWit.Database.Core.Transactions
 
         private async ValueTask ReleaseLocksAsync()
         {
+            // Release row-level locks
+            if (m_lockedKeys.Count > 0)
+            {
+                m_store.RowLockManager.ReleaseAllLocks(TransactionId);
+                m_store.DeadlockDetector.TransactionCompleted(TransactionId);
+                m_lockedKeys.Clear();
+            }
+
+            // Release database-level locks
             m_syncLockHandle?.Dispose();
 
             if (m_asyncLockHandle != null)

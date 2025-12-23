@@ -1,3 +1,5 @@
+using OutWit.Database.Core.Concurrency;
+
 namespace OutWit.Database.Core.Interfaces
 {
     /// <summary>
@@ -49,5 +51,39 @@ namespace OutWit.Database.Core.Interfaces
         /// Read-only transactions can run without write locks.
         /// </summary>
         void SetReadOnly();
+
+        #region Row-Level Locking (FOR UPDATE / FOR SHARE)
+
+        /// <summary>
+        /// Gets a value with an exclusive lock (FOR UPDATE).
+        /// The lock is held until the transaction commits or rolls back.
+        /// </summary>
+        /// <param name="key">The key to read and lock.</param>
+        /// <param name="waitMode">Lock wait behavior (Wait, NoWait, SkipLocked).</param>
+        /// <param name="timeout">Optional timeout for waiting.</param>
+        /// <returns>The value, or null if not found or skipped.</returns>
+        byte[]? GetForUpdate(ReadOnlySpan<byte> key, RowLockWaitMode waitMode = RowLockWaitMode.Wait, TimeSpan? timeout = null);
+
+        /// <summary>
+        /// Gets a value with a shared lock (FOR SHARE).
+        /// The lock is held until the transaction commits or rolls back.
+        /// </summary>
+        /// <param name="key">The key to read and lock.</param>
+        /// <param name="waitMode">Lock wait behavior (Wait, NoWait, SkipLocked).</param>
+        /// <param name="timeout">Optional timeout for waiting.</param>
+        /// <returns>The value, or null if not found or skipped.</returns>
+        byte[]? GetForShare(ReadOnlySpan<byte> key, RowLockWaitMode waitMode = RowLockWaitMode.Wait, TimeSpan? timeout = null);
+
+        /// <summary>
+        /// Gets a value with an exclusive lock asynchronously (FOR UPDATE).
+        /// </summary>
+        ValueTask<byte[]?> GetForUpdateAsync(byte[] key, RowLockWaitMode waitMode = RowLockWaitMode.Wait, TimeSpan? timeout = null, CancellationToken cancellationToken = default);
+
+        /// <summary>
+        /// Gets a value with a shared lock asynchronously (FOR SHARE).
+        /// </summary>
+        ValueTask<byte[]?> GetForShareAsync(byte[] key, RowLockWaitMode waitMode = RowLockWaitMode.Wait, TimeSpan? timeout = null, CancellationToken cancellationToken = default);
+
+        #endregion
     }
 }

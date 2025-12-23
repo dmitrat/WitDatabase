@@ -324,8 +324,8 @@ Files modified:
 | Phase 5: Deadlock Detection | Complete | 100% |
 | Phase 6: Garbage Collection | Partial | 50% |
 | Phase 7: Integration | Complete | 100% |
-| Phase 8: Testing | Partial | 80% |
-| **TOTAL** | | **~87%** |
+| Phase 8: Testing | Partial | 85% |
+| **TOTAL** | | **~90%** |
 
 ---
 
@@ -351,11 +351,12 @@ Files modified:
 17. `OutWit.Database.Core/Exceptions/DeadlockException.cs`
 18. `OutWit.Database.Core.Tests/Transactions/TransactionTimestampManagerTests.cs`
 19. `OutWit.Database.Core.Tests/Transactions/MvccTransactionalStoreTests.cs`
-20. `OutWit.Database.Core.Tests/Mvcc/MvccRecordTests.cs`
-21. `OutWit.Database.Core.Tests/Stores/MvccKeyValueStoreTests.cs`
-22. `OutWit.Database.Core.Tests/Concurrency/RowLockManagerTests.cs`
-23. `OutWit.Database.Core.Tests/Concurrency/WaitForGraphTests.cs`
-24. `OutWit.Database.Core.Tests/Concurrency/DeadlockDetectorTests.cs`
+20. `OutWit.Database.Core.Tests/Transactions/MvccTransactionRowLockTests.cs`
+21. `OutWit.Database.Core.Tests/Mvcc/MvccRecordTests.cs`
+22. `OutWit.Database.Core.Tests/Stores/MvccKeyValueStoreTests.cs`
+23. `OutWit.Database.Core.Tests/Concurrency/RowLockManagerTests.cs`
+24. `OutWit.Database.Core.Tests/Concurrency/WaitForGraphTests.cs`
+25. `OutWit.Database.Core.Tests/Concurrency/DeadlockDetectorTests.cs`
 
 ### Modified Files
 1. `OutWit.Database.Core/Builder/WitDatabaseBuilderOptions.cs` - Added MVCC options
@@ -370,7 +371,7 @@ Files modified:
 
 1. **Background GC** - Implement background garbage collection thread
 2. **Multi-threaded Stress Tests** - Verify MVCC under high concurrency
-3. **Integration with MVCC Transaction** - Use RowLockManager in MvccTransaction for FOR UPDATE/FOR SHARE
+3. **Transaction Wait Queue** - Optional priority-based wait queue
 
 ---
 

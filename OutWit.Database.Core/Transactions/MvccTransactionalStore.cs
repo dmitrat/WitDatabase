@@ -37,6 +37,8 @@ namespace OutWit.Database.Core.Transactions
         private readonly MvccKeyValueStore m_mvccStore;
         private readonly TransactionTimestampManager m_timestampManager;
         private readonly LockManager? m_lockManager;
+        private readonly RowLockManager m_rowLockManager;
+        private readonly DeadlockDetector m_deadlockDetector;
         private readonly bool m_ownsStore;
         private readonly IsolationLevel m_defaultIsolationLevel;
         private readonly object m_txLock = new();
@@ -88,6 +90,8 @@ namespace OutWit.Database.Core.Transactions
             m_timestampManager = new TransactionTimestampManager();
             m_mvccStore = new MvccKeyValueStore(innerStore, m_timestampManager, ownsStore);
             m_lockManager = lockManager;
+            m_rowLockManager = new RowLockManager();
+            m_deadlockDetector = new DeadlockDetector(m_rowLockManager, DeadlockVictimStrategy.Youngest);
             m_ownsStore = ownsStore;
             m_defaultIsolationLevel = defaultIsolationLevel;
         }
@@ -126,6 +130,8 @@ namespace OutWit.Database.Core.Transactions
             m_mvccStore = mvccStore ?? throw new ArgumentNullException(nameof(mvccStore));
             m_timestampManager = timestampManager ?? throw new ArgumentNullException(nameof(timestampManager));
             m_lockManager = lockManager;
+            m_rowLockManager = new RowLockManager();
+            m_deadlockDetector = new DeadlockDetector(m_rowLockManager, DeadlockVictimStrategy.Youngest);
             m_ownsStore = ownsStore;
             m_defaultIsolationLevel = defaultIsolationLevel;
         }
@@ -476,6 +482,8 @@ namespace OutWit.Database.Core.Transactions
                 }
             }
 
+            m_deadlockDetector.Dispose();
+            m_rowLockManager.Dispose();
             m_mvccStore.Dispose();
             m_lockManager?.Dispose();
         }
@@ -505,6 +513,16 @@ namespace OutWit.Database.Core.Transactions
         /// Gets the transaction timestamp manager.
         /// </summary>
         public TransactionTimestampManager TimestampManager => m_timestampManager;
+
+        /// <summary>
+        /// Gets the row-level lock manager.
+        /// </summary>
+        public IRowLockManager RowLockManager => m_rowLockManager;
+
+        /// <summary>
+        /// Gets the deadlock detector.
+        /// </summary>
+        public DeadlockDetector DeadlockDetector => m_deadlockDetector;
 
         /// <inheritdoc/>
         public string ProviderKey => PROVIDER_KEY;
