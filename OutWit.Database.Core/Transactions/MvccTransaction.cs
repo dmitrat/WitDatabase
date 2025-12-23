@@ -431,8 +431,29 @@ namespace OutWit.Database.Core.Transactions
         /// <inheritdoc/>
         public void Rollback()
         {
-            ThrowIfNotActive();
+            if (State != TransactionState.Active)
+                return; // Already completed, nothing to do
 
+            RollbackInternal();
+        }
+
+        /// <inheritdoc/>
+        public async ValueTask RollbackAsync(CancellationToken cancellationToken = default)
+        {
+            if (State != TransactionState.Active)
+                return; // Already completed, nothing to do
+
+            await RollbackInternalAsync().ConfigureAwait(false);
+        }
+
+        /// <summary>
+        /// Internal rollback implementation.
+        /// </summary>
+        private void RollbackInternal()
+        {
+            // Set state first so even if cleanup fails, transaction is marked as rolled back
+            State = TransactionState.RolledBack;
+            
             try
             {
                 m_changes.Clear();
@@ -443,8 +464,6 @@ namespace OutWit.Database.Core.Transactions
 
                 m_store.RollbackTransaction(TransactionId);
                 m_timestampManager.UnregisterTransaction(TransactionId);
-
-                State = TransactionState.RolledBack;
             }
             finally
             {
@@ -453,11 +472,14 @@ namespace OutWit.Database.Core.Transactions
             }
         }
 
-        /// <inheritdoc/>
-        public async ValueTask RollbackAsync(CancellationToken cancellationToken = default)
+        /// <summary>
+        /// Internal async rollback implementation.
+        /// </summary>
+        private async ValueTask RollbackInternalAsync()
         {
-            ThrowIfNotActive();
-
+            // Set state first so even if cleanup fails, transaction is marked as rolled back
+            State = TransactionState.RolledBack;
+            
             try
             {
                 m_changes.Clear();
@@ -468,8 +490,6 @@ namespace OutWit.Database.Core.Transactions
 
                 m_store.RollbackTransaction(TransactionId);
                 m_timestampManager.UnregisterTransaction(TransactionId);
-
-                State = TransactionState.RolledBack;
             }
             finally
             {

@@ -11,7 +11,7 @@ namespace OutWit.Database.Core.Tests.Mvcc
         public void SerializeDeserializeRoundTripTest()
         {
             var value = new byte[] { 1, 2, 3, 4, 5 };
-            var record = new MvccRecord(value, createTimestamp: 100, transactionId: 5, deleteTimestamp: 200);
+            var record = new MvccRecord(value, createTimestamp: 100, transactionId: 5, deleteTimestamp: 200, commitTimestamp: 150);
 
             var serialized = record.Serialize();
             var deserialized = MvccRecord.Deserialize(serialized);
@@ -20,6 +20,7 @@ namespace OutWit.Database.Core.Tests.Mvcc
             Assert.That(deserialized.CreateTimestamp, Is.EqualTo(100));
             Assert.That(deserialized.TransactionId, Is.EqualTo(5));
             Assert.That(deserialized.DeleteTimestamp, Is.EqualTo(200));
+            Assert.That(deserialized.CommitTimestamp, Is.EqualTo(150));
         }
 
         [Test]
@@ -99,6 +100,42 @@ namespace OutWit.Database.Core.Tests.Mvcc
             Assert.That(record.IsCommitted, Is.True);
         }
 
+        [Test]
+        public void DefaultCommitTimestampIsNoCommitTimestampTest()
+        {
+            var record = new MvccRecord(new byte[] { 1 }, createTimestamp: 100);
+
+            Assert.That(record.CommitTimestamp, Is.EqualTo(MvccRecord.NO_COMMIT_TIMESTAMP));
+        }
+
+        #endregion
+
+        #region Effective Timestamp Tests
+
+        [Test]
+        public void EffectiveTimestampUsesCommitTimestampWhenAvailableTest()
+        {
+            var record = new MvccRecord(new byte[] { 1 }, createTimestamp: 100, commitTimestamp: 150);
+
+            Assert.That(record.EffectiveTimestamp, Is.EqualTo(150));
+        }
+
+        [Test]
+        public void EffectiveTimestampUsesCreateTimestampWhenNoCommitTimestampTest()
+        {
+            var record = new MvccRecord(new byte[] { 1 }, createTimestamp: 100);
+
+            Assert.That(record.EffectiveTimestamp, Is.EqualTo(100));
+        }
+
+        [Test]
+        public void EffectiveTimestampUsesCreateTimestampForUncommittedTest()
+        {
+            var record = new MvccRecord(new byte[] { 1 }, createTimestamp: 100, transactionId: 5);
+
+            Assert.That(record.EffectiveTimestamp, Is.EqualTo(100));
+        }
+
         #endregion
 
         #region Visibility Tests - Basic
@@ -121,6 +158,30 @@ namespace OutWit.Database.Core.Tests.Mvcc
             var visible = record.IsVisibleAsOf(50);
 
             Assert.That(visible, Is.False);
+        }
+
+        [Test]
+        public void CommittedRecordWithCommitTimestampNotVisibleBeforeCommitTest()
+        {
+            // Record created at 100, committed at 150
+            var record = new MvccRecord(new byte[] { 1 }, createTimestamp: 100, commitTimestamp: 150);
+
+            // Snapshot at 120 (after create, before commit) - should NOT be visible
+            var visible = record.IsVisibleAsOf(120);
+
+            Assert.That(visible, Is.False);
+        }
+
+        [Test]
+        public void CommittedRecordWithCommitTimestampVisibleAfterCommitTest()
+        {
+            // Record created at 100, committed at 150
+            var record = new MvccRecord(new byte[] { 1 }, createTimestamp: 100, commitTimestamp: 150);
+
+            // Snapshot at 200 (after commit) - should be visible
+            var visible = record.IsVisibleAsOf(200);
+
+            Assert.That(visible, Is.True);
         }
 
         [Test]
@@ -249,22 +310,35 @@ namespace OutWit.Database.Core.Tests.Mvcc
         public void WithDeleteTimestampPreservesOtherFieldsTest()
         {
             var value = new byte[] { 1, 2, 3 };
-            var original = new MvccRecord(value, createTimestamp: 100, transactionId: 5);
+            var original = new MvccRecord(value, createTimestamp: 100, transactionId: 5, commitTimestamp: 110);
             var deleted = original.WithDeleteTimestamp(200);
 
             Assert.That(deleted.Value, Is.EqualTo(value));
             Assert.That(deleted.CreateTimestamp, Is.EqualTo(100));
             Assert.That(deleted.TransactionId, Is.EqualTo(5));
+            Assert.That(deleted.CommitTimestamp, Is.EqualTo(110));
         }
 
         [Test]
-        public void AsCommittedSetsTransactionIdToZeroTest()
+        public void AsCommittedWithTimestampSetsCommitTimestampTest()
+        {
+            var original = new MvccRecord(new byte[] { 1 }, createTimestamp: 100, transactionId: 5);
+            var committed = original.AsCommitted(150);
+
+            Assert.That(committed.TransactionId, Is.EqualTo(MvccRecord.NO_TRANSACTION));
+            Assert.That(committed.IsCommitted, Is.True);
+            Assert.That(committed.CommitTimestamp, Is.EqualTo(150));
+        }
+
+        [Test]
+        public void AsCommittedWithoutTimestampUsesCreateTimestampTest()
         {
             var original = new MvccRecord(new byte[] { 1 }, createTimestamp: 100, transactionId: 5);
             var committed = original.AsCommitted();
 
             Assert.That(committed.TransactionId, Is.EqualTo(MvccRecord.NO_TRANSACTION));
             Assert.That(committed.IsCommitted, Is.True);
+            Assert.That(committed.CommitTimestamp, Is.EqualTo(100));
         }
 
         [Test]
@@ -272,7 +346,7 @@ namespace OutWit.Database.Core.Tests.Mvcc
         {
             var value = new byte[] { 1, 2, 3 };
             var original = new MvccRecord(value, createTimestamp: 100, transactionId: 5, deleteTimestamp: 200);
-            var committed = original.AsCommitted();
+            var committed = original.AsCommitted(150);
 
             Assert.That(committed.Value, Is.EqualTo(value));
             Assert.That(committed.CreateTimestamp, Is.EqualTo(100));

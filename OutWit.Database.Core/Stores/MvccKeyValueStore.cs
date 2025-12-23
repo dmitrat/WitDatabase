@@ -213,8 +213,8 @@ namespace OutWit.Database.Core.Stores
 
                 if (record.TransactionId == transactionId)
                 {
-                    // Mark as committed
-                    var committedRecord = record.AsCommitted();
+                    // Mark as committed with the commit timestamp
+                    var committedRecord = record.AsCommitted(commitTimestamp);
                     m_innerStore.Put(key, committedRecord.Serialize());
                 }
             }
@@ -367,37 +367,45 @@ namespace OutWit.Database.Core.Stores
             // For each key, determine which versions can be removed
             foreach (var (originalKey, versions) in keyVersions)
             {
-                // Sort by timestamp descending
-                versions.Sort((a, b) => b.Record.CreateTimestamp.CompareTo(a.Record.CreateTimestamp));
+                // Sort by effective timestamp descending (newest first)
+                versions.Sort((a, b) => b.Record.EffectiveTimestamp.CompareTo(a.Record.EffectiveTimestamp));
 
-                var hasVisibleVersion = false;
+                var keptVisibleVersion = false;
+                
                 foreach (var (versionedKey, record) in versions)
                 {
-                    // Keep all uncommitted versions
+                    // Keep all uncommitted versions - they belong to active transactions
                     if (!record.IsCommitted)
                         continue;
 
-                    // Keep the latest visible version
-                    if (!hasVisibleVersion)
+                    var effectiveTs = record.EffectiveTimestamp;
+
+                    // Keep the newest version that is visible to minActiveSnapshotTimestamp
+                    if (!keptVisibleVersion)
                     {
-                        if (record.CreateTimestamp <= minActiveSnapshotTimestamp && !record.IsDeleted)
+                        // This version is visible if it was created before minActiveSnapshot
+                        // and either not deleted or deleted after minActiveSnapshot
+                        if (effectiveTs <= minActiveSnapshotTimestamp)
                         {
-                            hasVisibleVersion = true;
-                            continue;
+                            if (!record.IsDeleted || record.DeleteTimestamp > minActiveSnapshotTimestamp)
+                            {
+                                // Keep this version - it's the latest visible one
+                                keptVisibleVersion = true;
+                                continue;
+                            }
                         }
-                        // Deleted records that are visible as of minActiveSnapshot should be kept
-                        if (record.IsDeleted && record.DeleteTimestamp > minActiveSnapshotTimestamp)
+                        
+                        // Version is newer than minActiveSnapshot - keep it, someone might need it
+                        if (effectiveTs > minActiveSnapshotTimestamp)
                         {
-                            hasVisibleVersion = true;
                             continue;
                         }
                     }
 
-                    // Remove versions that are:
-                    // 1. Older than minActiveSnapshotTimestamp
-                    // 2. Not the latest visible version
-                    // 3. Committed
-                    if (record.CreateTimestamp < minActiveSnapshotTimestamp && hasVisibleVersion)
+                    // Remove old versions that:
+                    // 1. Are older than the latest visible version
+                    // 2. Were created before minActiveSnapshotTimestamp
+                    if (keptVisibleVersion && effectiveTs < minActiveSnapshotTimestamp)
                     {
                         keysToDelete.Add(versionedKey);
                     }

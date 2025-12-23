@@ -13,9 +13,9 @@ namespace OutWit.Database.Core.Mvcc
 
         /// <summary>
         /// Size of the MVCC metadata header in bytes.
-        /// Layout: CreateTimestamp(8) + DeleteTimestamp(8) + TransactionId(8) = 24 bytes
+        /// Layout: CreateTimestamp(8) + DeleteTimestamp(8) + TransactionId(8) + CommitTimestamp(8) = 32 bytes
         /// </summary>
-        public const int HEADER_SIZE = 24;
+        public const int HEADER_SIZE = 32;
 
         /// <summary>
         /// Value indicating the record has not been deleted.
@@ -26,6 +26,11 @@ namespace OutWit.Database.Core.Mvcc
         /// Value indicating no transaction (committed data).
         /// </summary>
         public const long NO_TRANSACTION = 0;
+
+        /// <summary>
+        /// Value indicating no commit timestamp (not yet committed or created without transaction).
+        /// </summary>
+        public const long NO_COMMIT_TIMESTAMP = 0;
 
         #endregion
 
@@ -38,16 +43,19 @@ namespace OutWit.Database.Core.Mvcc
         /// <param name="createTimestamp">The timestamp when the record was created.</param>
         /// <param name="transactionId">The ID of the transaction that created this version (0 if committed).</param>
         /// <param name="deleteTimestamp">The timestamp when the record was deleted (MaxValue if not deleted).</param>
+        /// <param name="commitTimestamp">The timestamp when the transaction was committed (0 if not committed via transaction).</param>
         public MvccRecord(
             byte[] value, 
             long createTimestamp, 
             long transactionId = NO_TRANSACTION,
-            long deleteTimestamp = NOT_DELETED)
+            long deleteTimestamp = NOT_DELETED,
+            long commitTimestamp = NO_COMMIT_TIMESTAMP)
         {
             Value = value ?? throw new ArgumentNullException(nameof(value));
             CreateTimestamp = createTimestamp;
             DeleteTimestamp = deleteTimestamp;
             TransactionId = transactionId;
+            CommitTimestamp = commitTimestamp;
         }
 
         #endregion
@@ -56,7 +64,7 @@ namespace OutWit.Database.Core.Mvcc
 
         /// <summary>
         /// Serializes the record to a byte array.
-        /// Format: [CreateTimestamp:8][DeleteTimestamp:8][TransactionId:8][Value:N]
+        /// Format: [CreateTimestamp:8][DeleteTimestamp:8][TransactionId:8][CommitTimestamp:8][Value:N]
         /// </summary>
         public byte[] Serialize()
         {
@@ -65,6 +73,7 @@ namespace OutWit.Database.Core.Mvcc
             BinaryPrimitives.WriteInt64LittleEndian(result.AsSpan(0, 8), CreateTimestamp);
             BinaryPrimitives.WriteInt64LittleEndian(result.AsSpan(8, 8), DeleteTimestamp);
             BinaryPrimitives.WriteInt64LittleEndian(result.AsSpan(16, 8), TransactionId);
+            BinaryPrimitives.WriteInt64LittleEndian(result.AsSpan(24, 8), CommitTimestamp);
             Value.CopyTo(result.AsSpan(HEADER_SIZE));
             
             return result;
@@ -84,9 +93,10 @@ namespace OutWit.Database.Core.Mvcc
             var createTs = BinaryPrimitives.ReadInt64LittleEndian(data[..8]);
             var deleteTs = BinaryPrimitives.ReadInt64LittleEndian(data.Slice(8, 8));
             var txId = BinaryPrimitives.ReadInt64LittleEndian(data.Slice(16, 8));
+            var commitTs = BinaryPrimitives.ReadInt64LittleEndian(data.Slice(24, 8));
             var value = data[HEADER_SIZE..].ToArray();
 
-            return new MvccRecord(value, createTs, txId, deleteTs);
+            return new MvccRecord(value, createTs, txId, deleteTs, commitTs);
         }
 
         /// <summary>
@@ -120,6 +130,16 @@ namespace OutWit.Database.Core.Mvcc
         #region Visibility
 
         /// <summary>
+        /// Gets the effective timestamp for visibility checks.
+        /// For committed records, uses CommitTimestamp if available, otherwise CreateTimestamp.
+        /// For uncommitted records, uses CreateTimestamp.
+        /// </summary>
+        public long EffectiveTimestamp => 
+            IsCommitted && CommitTimestamp != NO_COMMIT_TIMESTAMP 
+                ? CommitTimestamp 
+                : CreateTimestamp;
+
+        /// <summary>
         /// Checks if this record is visible to a transaction with the given snapshot timestamp.
         /// </summary>
         /// <param name="snapshotTimestamp">The snapshot timestamp of the reading transaction.</param>
@@ -133,7 +153,7 @@ namespace OutWit.Database.Core.Mvcc
             Func<long, bool> isCommittedFunc,
             Func<long, long?> getCommitTimestampFunc)
         {
-            // Rule 1: If created by our own transaction, it's visible
+            // Rule 1: If created by our own transaction, it's visible (unless deleted)
             if (TransactionId == readingTransactionId && readingTransactionId != NO_TRANSACTION)
             {
                 return !IsDeleted;
@@ -145,11 +165,20 @@ namespace OutWit.Database.Core.Mvcc
                 return false;
             }
 
-            // Rule 3: If created after our snapshot, not visible
-            var effectiveCreateTs = TransactionId == NO_TRANSACTION 
-                ? CreateTimestamp 
-                : getCommitTimestampFunc(TransactionId) ?? CreateTimestamp;
+            // Rule 3: Determine effective creation timestamp
+            long effectiveCreateTs;
+            if (IsCommitted)
+            {
+                // For committed records, use stored CommitTimestamp or CreateTimestamp
+                effectiveCreateTs = EffectiveTimestamp;
+            }
+            else
+            {
+                // For records from other committed transactions, get commit time from manager
+                effectiveCreateTs = getCommitTimestampFunc(TransactionId) ?? CreateTimestamp;
+            }
             
+            // If created/committed after our snapshot, not visible
             if (effectiveCreateTs > snapshotTimestamp)
             {
                 return false;
@@ -176,8 +205,11 @@ namespace OutWit.Database.Core.Mvcc
             if (TransactionId != NO_TRANSACTION)
                 return false;
 
-            // Created before the check timestamp
-            if (CreateTimestamp > asOfTimestamp)
+            // Use effective timestamp (CommitTimestamp if available)
+            var effectiveTs = EffectiveTimestamp;
+            
+            // Created/committed before the check timestamp
+            if (effectiveTs > asOfTimestamp)
                 return false;
 
             // Not deleted, or deleted after the check timestamp
@@ -198,17 +230,28 @@ namespace OutWit.Database.Core.Mvcc
         /// <returns>A new record with the delete timestamp set.</returns>
         public MvccRecord WithDeleteTimestamp(long deleteTimestamp)
         {
-            return new MvccRecord(Value, CreateTimestamp, TransactionId, deleteTimestamp);
+            return new MvccRecord(Value, CreateTimestamp, TransactionId, deleteTimestamp, CommitTimestamp);
         }
 
         /// <summary>
         /// Creates a new record with the transaction marked as committed.
-        /// Sets TransactionId to 0 (committed).
+        /// Sets TransactionId to 0 (committed) and stores the commit timestamp.
+        /// </summary>
+        /// <param name="commitTimestamp">The commit timestamp.</param>
+        /// <returns>A new record marked as committed.</returns>
+        public MvccRecord AsCommitted(long commitTimestamp)
+        {
+            return new MvccRecord(Value, CreateTimestamp, NO_TRANSACTION, DeleteTimestamp, commitTimestamp);
+        }
+
+        /// <summary>
+        /// Creates a new record with the transaction marked as committed.
+        /// Sets TransactionId to 0 (committed). Uses CreateTimestamp as CommitTimestamp.
         /// </summary>
         /// <returns>A new record marked as committed.</returns>
         public MvccRecord AsCommitted()
         {
-            return new MvccRecord(Value, CreateTimestamp, NO_TRANSACTION, DeleteTimestamp);
+            return AsCommitted(CreateTimestamp);
         }
 
         #endregion
@@ -236,6 +279,12 @@ namespace OutWit.Database.Core.Mvcc
         /// 0 indicates the record has been committed.
         /// </summary>
         public long TransactionId { get; }
+
+        /// <summary>
+        /// Gets the timestamp when the transaction was committed.
+        /// 0 indicates the record was created without a transaction or not yet committed.
+        /// </summary>
+        public long CommitTimestamp { get; }
 
         /// <summary>
         /// Gets whether this record has been deleted.

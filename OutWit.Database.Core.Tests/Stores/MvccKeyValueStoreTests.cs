@@ -369,17 +369,26 @@ namespace OutWit.Database.Core.Tests.Stores
         {
             var key = ToBytes("key1");
 
-            m_store.PutVersion(key, ToBytes("v1"), timestamp: 1);
-            m_store.PutVersion(key, ToBytes("v2"), timestamp: 5);
-            m_store.PutVersion(key, ToBytes("v3"), timestamp: 10);
+            // Use Put (which auto-advances timestamps) to create multiple versions
+            m_store.Put(key, ToBytes("v1"));
+            m_store.Put(key, ToBytes("v2"));
+            m_store.Put(key, ToBytes("v3"));
 
             Assert.That(m_store.GetVersionCount(key), Is.EqualTo(3));
 
-            // GC with min snapshot at 15 should remove old versions
-            var removed = m_store.GarbageCollect(minActiveSnapshotTimestamp: 15);
+            // Get current timestamp for GC
+            var currentTs = m_timestampManager.CurrentTimestamp;
+
+            // GC with min snapshot at current + 1 should remove old versions
+            var removed = m_store.GarbageCollect(minActiveSnapshotTimestamp: currentTs + 1);
 
             Assert.That(removed, Is.GreaterThan(0));
             Assert.That(m_store.GetVersionCount(key), Is.LessThan(3));
+            
+            // Latest version should still be accessible
+            var result = m_store.Get(key);
+            Assert.That(result, Is.Not.Null);
+            Assert.That(FromBytes(result!), Is.EqualTo("v3"));
         }
 
         [Test]
@@ -387,11 +396,18 @@ namespace OutWit.Database.Core.Tests.Stores
         {
             var key = ToBytes("key1");
 
-            m_store.PutVersion(key, ToBytes("v1"), timestamp: 1);
-            m_store.PutVersion(key, ToBytes("v2"), timestamp: 5);
+            // Use m_store.Put which auto-assigns timestamps
+            m_store.Put(key, ToBytes("v1"));
+            m_store.Put(key, ToBytes("v2"));
+            
+            var versionsBefore = m_store.GetVersionCount(key);
+            Assert.That(versionsBefore, Is.EqualTo(2));
 
-            // GC with min snapshot at 10
-            m_store.GarbageCollect(minActiveSnapshotTimestamp: 10);
+            // Get current timestamp for GC
+            var currentTs = m_timestampManager.CurrentTimestamp;
+
+            // GC with min snapshot at current timestamp + 1
+            m_store.GarbageCollect(minActiveSnapshotTimestamp: currentTs + 1);
 
             // Latest version should still be visible
             var result = m_store.Get(key);
