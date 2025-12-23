@@ -22,275 +22,275 @@
 
 | Feature | Status |
 |---------|--------|
-| `NULL` type | [x] |
-| Integer types (`TINYINT`, `SMALLINT`, `INT`, `BIGINT`, signed/unsigned) | [x] |
-| Floating types (`FLOAT16`, `FLOAT`, `DOUBLE`, `DECIMAL`) | [x] |
-| `BOOLEAN` / `BOOL` | [x] |
-| Date/Time types (`DATE`, `TIME`, `DATETIME`, `DATETIMEOFFSET`, `INTERVAL`) | [x] |
-| `GUID` / `UUID` / `UNIQUEIDENTIFIER` | [x] |
-| String types (`CHAR`, `VARCHAR`, `TEXT`, `NCHAR`, `NVARCHAR`, `NTEXT`) | [x] |
-| Binary types (`BINARY`, `VARBINARY`, `BLOB`) | [x] |
-| `ROWVERSION` | [x] |
-| `JSON` / `JSONB` | [x] |
+| `NULL` type | Done |
+| Integer types (`TINYINT`, `SMALLINT`, `INT`, `BIGINT`, signed/unsigned) | Done |
+| Floating types (`FLOAT16`, `FLOAT`, `DOUBLE`, `DECIMAL`) | Done |
+| `BOOLEAN` / `BOOL` | Done |
+| Date/Time types (`DATE`, `TIME`, `DATETIME`, `DATETIMEOFFSET`, `INTERVAL`) | Done |
+| `GUID` / `UUID` / `UNIQUEIDENTIFIER` | Done |
+| String types (`CHAR`, `VARCHAR`, `TEXT`, `NCHAR`, `NVARCHAR`, `NTEXT`) | Done |
+| Binary types (`BINARY`, `VARBINARY`, `BLOB`) | Done |
+| `ROWVERSION` | Done |
+| `JSON` / `JSONB` | Done |
 
 ### DDL - CREATE TABLE (100%)
 
 | Feature | Status |
 |---------|--------|
-| `CREATE TABLE table_name (...)` | [x] |
-| `CREATE TABLE IF NOT EXISTS` | [x] |
-| `NOT NULL` / `NULL` constraints | [x] |
-| `PRIMARY KEY` / `PRIMARY KEY AUTOINCREMENT` | [x] |
-| `UNIQUE` constraint | [x] |
-| `DEFAULT literal_value` / `DEFAULT (expression)` | [x] |
-| `CHECK (expression)` | [x] |
-| `REFERENCES table(col)` with `ON DELETE/UPDATE` | [x] |
-| Table-level `PRIMARY KEY (cols)` | [x] |
-| Table-level `UNIQUE (cols)` | [x] |
-| Table-level `FOREIGN KEY (cols) REFERENCES ...` | [x] |
-| `CONSTRAINT name ...` (named constraints) | [x] |
-| Computed columns `AS (expr) STORED/VIRTUAL` | [x] |
+| `CREATE TABLE table_name (...)` | Done |
+| `CREATE TABLE IF NOT EXISTS` | Done |
+| `NOT NULL` / `NULL` constraints | Done |
+| `PRIMARY KEY` / `PRIMARY KEY AUTOINCREMENT` | Done |
+| `UNIQUE` constraint | Done |
+| `DEFAULT literal_value` / `DEFAULT (expression)` | Done |
+| `CHECK (expression)` | Done |
+| `REFERENCES table(col)` with `ON DELETE/UPDATE` | Done |
+| Table-level `PRIMARY KEY (cols)` | Done |
+| Table-level `UNIQUE (cols)` | Done |
+| Table-level `FOREIGN KEY (cols) REFERENCES ...` | Done |
+| `CONSTRAINT name ...` (named constraints) | Done |
+| Computed columns `AS (expr) STORED/VIRTUAL` | Done |
 
 ### DDL - DROP/ALTER TABLE (100%)
 
 | Feature | Status |
 |---------|--------|
-| `DROP TABLE table_name` | [x] |
-| `DROP TABLE IF EXISTS` | [x] |
-| `ALTER TABLE ... ADD [COLUMN]` | [x] |
-| `ALTER TABLE ... ADD CONSTRAINT` | [x] |
-| `ALTER TABLE ... DROP [COLUMN]` | [x] |
-| `ALTER TABLE ... DROP CONSTRAINT` | [x] |
-| `ALTER TABLE ... RENAME TO` | [x] |
-| `ALTER TABLE ... RENAME COLUMN` | [x] |
-| `ALTER TABLE ... SET/DROP DEFAULT` | [x] |
-| `ALTER TABLE ... SET/DROP NOT NULL` | [x] |
+| `DROP TABLE table_name` | Done |
+| `DROP TABLE IF EXISTS` | Done |
+| `ALTER TABLE ... ADD [COLUMN]` | Done |
+| `ALTER TABLE ... ADD CONSTRAINT` | Done |
+| `ALTER TABLE ... DROP [COLUMN]` | Done |
+| `ALTER TABLE ... DROP CONSTRAINT` | Done |
+| `ALTER TABLE ... RENAME TO` | Done |
+| `ALTER TABLE ... RENAME COLUMN` | Done |
+| `ALTER TABLE ... SET/DROP DEFAULT` | Done |
+| `ALTER TABLE ... SET/DROP NOT NULL` | Done |
 
 ### DDL - INDEX (100%)
 
 | Feature | Status |
 |---------|--------|
-| `CREATE INDEX name ON table (cols)` | [x] |
-| `CREATE UNIQUE INDEX` | [x] |
-| `CREATE INDEX IF NOT EXISTS` | [x] |
-| `ASC` / `DESC` column order | [x] |
-| `DROP INDEX [IF EXISTS]` | [x] |
-| `WHERE condition` (partial index) | [x] |
-| Expression indexes `(LOWER(col))` | [x] |
-| `INCLUDE (cols)` (covering index) | [x] |
+| `CREATE INDEX name ON table (cols)` | Done |
+| `CREATE UNIQUE INDEX` | Done |
+| `CREATE INDEX IF NOT EXISTS` | Done |
+| `ASC` / `DESC` column order | Done |
+| `DROP INDEX [IF EXISTS]` | Done |
+| `WHERE condition` (partial index) | Done |
+| Expression indexes `(LOWER(col))` | Done |
+| `INCLUDE (cols)` (covering index) | Done |
 
 ### DDL - VIEW (100%)
 
 | Feature | Status |
 |---------|--------|
-| `CREATE VIEW name AS SELECT` | [x] |
-| `CREATE VIEW IF NOT EXISTS` | [x] |
-| `CREATE VIEW name (cols) AS` | [x] |
-| `DROP VIEW [IF EXISTS]` | [x] |
+| `CREATE VIEW name AS SELECT` | Done |
+| `CREATE VIEW IF NOT EXISTS` | Done |
+| `CREATE VIEW name (cols) AS` | Done |
+| `DROP VIEW [IF EXISTS]` | Done |
 
 ### DDL - TRIGGER (100%)
 
 | Feature | Status |
 |---------|--------|
-| `CREATE TRIGGER BEFORE/AFTER/INSTEAD OF` | [x] |
-| `CREATE TRIGGER IF NOT EXISTS` | [x] |
-| `INSERT` / `UPDATE` / `DELETE` events | [x] |
-| `UPDATE OF col_list` | [x] |
-| `FOR EACH ROW` | [x] |
-| `WHEN (condition)` | [x] |
-| `BEGIN ... END` body | [x] |
-| `OLD.column` / `NEW.column` references | [x] |
-| `DROP TRIGGER [IF EXISTS]` | [x] |
-| `SIGNAL SQLSTATE` | [x] |
+| `CREATE TRIGGER BEFORE/AFTER/INSTEAD OF` | Done |
+| `CREATE TRIGGER IF NOT EXISTS` | Done |
+| `INSERT` / `UPDATE` / `DELETE` events | Done |
+| `UPDATE OF col_list` | Done |
+| `FOR EACH ROW` | Done |
+| `WHEN (condition)` | Done |
+| `BEGIN ... END` body | Done |
+| `OLD.column` / `NEW.column` references | Done |
+| `DROP TRIGGER [IF EXISTS]` | Done |
+| `SIGNAL SQLSTATE` | Done |
 
 ### DDL - SEQUENCE (100%)
 
 | Feature | Status |
 |---------|--------|
-| `CREATE SEQUENCE name START WITH n` | [x] |
-| `ALTER SEQUENCE name RESTART WITH n` | [x] |
-| `DROP SEQUENCE name` | [x] |
-| `INCREMENT(sequence)` function | [x] |
-| `LASTINCREMENT(sequence)` function | [x] |
+| `CREATE SEQUENCE name START WITH n` | Done |
+| `ALTER SEQUENCE name RESTART WITH n` | Done |
+| `DROP SEQUENCE name` | Done |
+| `INCREMENT(sequence)` function | Done |
+| `LASTINCREMENT(sequence)` function | Done |
 
 ### DML - SELECT (100%)
 
 | Feature | Status |
 |---------|--------|
-| `SELECT *` / `SELECT column_list` | [x] |
-| `SELECT expression AS alias` | [x] |
-| `SELECT DISTINCT` / `SELECT ALL` | [x] |
-| `FROM table_name [AS alias]` | [x] |
-| `FROM (subquery) AS alias` | [x] |
-| `INNER/LEFT/RIGHT/FULL JOIN ... ON` | [x] |
-| `CROSS JOIN` | [x] |
-| `WHERE condition` | [x] |
-| `GROUP BY` / `HAVING` | [x] |
-| `ORDER BY expr [ASC/DESC] [NULLS FIRST/LAST]` | [x] |
-| `LIMIT count [OFFSET offset]` | [x] |
-| `FOR UPDATE` / `FOR SHARE` | [x] |
-| `FOR UPDATE NOWAIT` / `SKIP LOCKED` | [x] |
+| `SELECT *` / `SELECT column_list` | Done |
+| `SELECT expression AS alias` | Done |
+| `SELECT DISTINCT` / `SELECT ALL` | Done |
+| `FROM table_name [AS alias]` | Done |
+| `FROM (subquery) AS alias` | Done |
+| `INNER/LEFT/RIGHT/FULL JOIN ... ON` | Done |
+| `CROSS JOIN` | Done |
+| `WHERE condition` | Done |
+| `GROUP BY` / `HAVING` | Done |
+| `ORDER BY expr [ASC/DESC] [NULLS FIRST/LAST]` | Done |
+| `LIMIT count [OFFSET offset]` | Done |
+| `FOR UPDATE` / `FOR SHARE` | Done |
+| `FOR UPDATE NOWAIT` / `SKIP LOCKED` | Done |
 
 ### DML - INSERT (100%)
 
 | Feature | Status |
 |---------|--------|
-| `INSERT INTO table (cols) VALUES (...)` | [x] |
-| Multi-row `VALUES (...), (...)` | [x] |
-| `INSERT INTO ... SELECT` | [x] |
-| `INSERT ... RETURNING` | [x] |
-| `INSERT OR REPLACE` | [x] |
-| `INSERT ... ON CONFLICT DO UPDATE` | [x] |
-| `INSERT ... ON CONFLICT DO NOTHING` | [x] |
-| `EXCLUDED.column` reference | [x] |
+| `INSERT INTO table (cols) VALUES (...)` | Done |
+| Multi-row `VALUES (...), (...)` | Done |
+| `INSERT INTO ... SELECT` | Done |
+| `INSERT ... RETURNING` | Done |
+| `INSERT OR REPLACE` | Done |
+| `INSERT ... ON CONFLICT DO UPDATE` | Done |
+| `INSERT ... ON CONFLICT DO NOTHING` | Done |
+| `EXCLUDED.column` reference | Done |
 
 ### DML - UPDATE (100%)
 
 | Feature | Status |
 |---------|--------|
-| `UPDATE table SET col = expr` | [x] |
-| `UPDATE ... WHERE condition` | [x] |
-| `UPDATE ... RETURNING` | [x] |
-| `UPDATE ... FROM other_table` | [x] |
-| `UPDATE table AS alias` | [x] |
+| `UPDATE table SET col = expr` | Done |
+| `UPDATE ... WHERE condition` | Done |
+| `UPDATE ... RETURNING` | Done |
+| `UPDATE ... FROM other_table` | Done |
+| `UPDATE table AS alias` | Done |
 
 ### DML - DELETE (100%)
 
 | Feature | Status |
 |---------|--------|
-| `DELETE FROM table` | [x] |
-| `DELETE FROM ... WHERE` | [x] |
-| `DELETE FROM ... RETURNING` | [x] |
-| `DELETE ... USING other_table` | [x] |
-| `DELETE FROM table AS alias` | [x] |
+| `DELETE FROM table` | Done |
+| `DELETE FROM ... WHERE` | Done |
+| `DELETE FROM ... RETURNING` | Done |
+| `DELETE ... USING other_table` | Done |
+| `DELETE FROM table AS alias` | Done |
 
 ### DML - TRUNCATE/MERGE (100%)
 
 | Feature | Status |
 |---------|--------|
-| `TRUNCATE TABLE table_name` | [x] |
-| `MERGE INTO target USING source ON` | [x] |
-| `WHEN MATCHED THEN UPDATE` | [x] |
-| `WHEN NOT MATCHED THEN INSERT` | [x] |
+| `TRUNCATE TABLE table_name` | Done |
+| `MERGE INTO target USING source ON` | Done |
+| `WHEN MATCHED THEN UPDATE` | Done |
+| `WHEN NOT MATCHED THEN INSERT` | Done |
 
 ### CTE / Set Operations (100%)
 
 | Feature | Status |
 |---------|--------|
-| `WITH cte_name AS (SELECT ...)` | [x] |
-| `WITH cte_name (cols) AS (...)` | [x] |
-| Multiple CTEs | [x] |
-| `WITH RECURSIVE ...` | [x] |
-| `UNION` / `UNION ALL` | [x] |
-| `INTERSECT` / `EXCEPT` | [x] |
+| `WITH cte_name AS (SELECT ...)` | Done |
+| `WITH cte_name (cols) AS (...)` | Done |
+| Multiple CTEs | Done |
+| `WITH RECURSIVE ...` | Done |
+| `UNION` / `UNION ALL` | Done |
+| `INTERSECT` / `EXCEPT` | Done |
 
 ### Subqueries (100%)
 
 | Feature | Status |
 |---------|--------|
-| Scalar subquery in SELECT | [x] |
-| Table subquery in FROM | [x] |
-| Subquery with `IN` | [x] |
-| `EXISTS` / `NOT EXISTS` | [x] |
-| `expression > ANY (subquery)` | [x] |
-| `expression > SOME (subquery)` | [x] |
-| `expression > ALL (subquery)` | [x] |
+| Scalar subquery in SELECT | Done |
+| Table subquery in FROM | Done |
+| Subquery with `IN` | Done |
+| `EXISTS` / `NOT EXISTS` | Done |
+| `expression > ANY (subquery)` | Done |
+| `expression > SOME (subquery)` | Done |
+| `expression > ALL (subquery)` | Done |
 
 ### Operators (100%)
 
 | Feature | Status |
 |---------|--------|
-| Comparison: `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=` | [x] |
-| `IS NULL` / `IS NOT NULL` | [x] |
-| `BETWEEN x AND y` | [x] |
-| `IN (...)` / `NOT IN (...)` | [x] |
-| `LIKE` / `NOT LIKE` / `ESCAPE` | [x] |
-| `GLOB pattern` | [x] |
-| Logical: `AND`, `OR`, `NOT` | [x] |
-| Arithmetic: `+`, `-`, `*`, `/`, `%` | [x] |
-| Unary: `-expr`, `+expr` | [x] |
-| String: `||` (concatenation) | [x] |
-| Bitwise: `&`, `|`, `~`, `<<`, `>>` | [x] |
+| Comparison: `=`, `<>`, `!=`, `<`, `<=`, `>`, `>=` | Done |
+| `IS NULL` / `IS NOT NULL` | Done |
+| `BETWEEN x AND y` | Done |
+| `IN (...)` / `NOT IN (...)` | Done |
+| `LIKE` / `NOT LIKE` / `ESCAPE` | Done |
+| `GLOB pattern` | Done |
+| Logical: `AND`, `OR`, `NOT` | Done |
+| Arithmetic: `+`, `-`, `*`, `/`, `%` | Done |
+| Unary: `-expr`, `+expr` | Done |
+| String: `\|\|` (concatenation) | Done |
+| Bitwise: `&`, `\|`, `~`, `<<`, `>>` | Done |
 
 ### Conditional Expressions (100%)
 
 | Feature | Status |
 |---------|--------|
-| `CASE expr WHEN val THEN result END` | [x] |
-| `CASE WHEN cond THEN result END` | [x] |
-| `COALESCE(...)` | [x] |
-| `NULLIF(a, b)` | [x] |
-| `IIF(cond, true_val, false_val)` | [x] |
-| `CAST(expr AS type)` | [x] |
+| `CASE expr WHEN val THEN result END` | Done |
+| `CASE WHEN cond THEN result END` | Done |
+| `COALESCE(...)` | Done |
+| `NULLIF(a, b)` | Done |
+| `IIF(cond, true_val, false_val)` | Done |
+| `CAST(expr AS type)` | Done |
 
 ### Literals & Parameters (100%)
 
 | Feature | Status |
 |---------|--------|
-| Integer / Float literals | [x] |
-| String literals `'text'` | [x] |
-| `TRUE` / `FALSE` / `NULL` | [x] |
-| Hex blob `X'...'` | [x] |
-| Named parameters `@param`, `:param` | [x] |
-| Positional `?`, `$1`, `$2` | [x] |
+| Integer / Float literals | Done |
+| String literals `'text'` | Done |
+| `TRUE` / `FALSE` / `NULL` | Done |
+| Hex blob `X'...'` | Done |
+| Named parameters `@param`, `:param` | Done |
+| Positional `?`, `$1`, `$2` | Done |
 
 ### Collation (100%)
 
 | Feature | Status |
 |---------|--------|
-| `COLLATE collation_name` in column | [x] |
-| `COLLATE` in expression | [x] |
-| `COLLATE` in ORDER BY | [x] |
-| `BINARY`, `NOCASE`, `UNICODE`, `UNICODE_CI` | [x] |
+| `COLLATE collation_name` in column | Done |
+| `COLLATE` in expression | Done |
+| `COLLATE` in ORDER BY | Done |
+| `BINARY`, `NOCASE`, `UNICODE`, `UNICODE_CI` | Done |
 
 ### Functions (100%)
 
 | Category | Status |
 |----------|--------|
-| Aggregate: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP_CONCAT` | [x] |
-| String: `LENGTH`, `UPPER`, `LOWER`, `SUBSTR`, `LEFT`, `RIGHT`, `TRIM`, etc. | [x] |
-| Numeric: `ABS`, `ROUND`, `FLOOR`, `CEIL`, `POWER`, `SQRT`, `MOD`, trig, etc. | [x] |
-| Date/Time: `NOW`, `YEAR`, `MONTH`, `DAY`, `DATEADD`, `DATEDIFF`, etc. | [x] |
-| ID Generation: `NEWGUID`, `INCREMENT`, `LASTINCREMENT` | [x] |
-| Conversion: `CAST`, `CONVERT`, `TOSTRING`, `TOINT`, `HEX`, `BASE64`, etc. | [x] |
-| Null: `COALESCE`, `NULLIF`, `IFNULL`, `NVL` | [x] |
-| System: `DATABASE`, `VERSION`, `TYPEOF`, `CHANGES`, `LAST_INSERT_ROWID` | [x] |
-| JSON: `JSON_VALUE`, `JSON_QUERY`, `JSON_EXTRACT`, `JSON_SET`, etc. | [x] |
+| Aggregate: `COUNT`, `SUM`, `AVG`, `MIN`, `MAX`, `GROUP_CONCAT` | Done |
+| String: `LENGTH`, `UPPER`, `LOWER`, `SUBSTR`, `LEFT`, `RIGHT`, `TRIM`, etc. | Done |
+| Numeric: `ABS`, `ROUND`, `FLOOR`, `CEIL`, `POWER`, `SQRT`, `MOD`, trig, etc. | Done |
+| Date/Time: `NOW`, `YEAR`, `MONTH`, `DAY`, `DATEADD`, `DATEDIFF`, etc. | Done |
+| ID Generation: `NEWGUID`, `INCREMENT`, `LASTINCREMENT` | Done |
+| Conversion: `CAST`, `CONVERT`, `TOSTRING`, `TOINT`, `HEX`, `BASE64`, etc. | Done |
+| Null: `COALESCE`, `NULLIF`, `IFNULL`, `NVL` | Done |
+| System: `DATABASE`, `VERSION`, `TYPEOF`, `CHANGES`, `LAST_INSERT_ROWID` | Done |
+| JSON: `JSON_VALUE`, `JSON_QUERY`, `JSON_EXTRACT`, `JSON_SET`, etc. | Done |
 
 ### Window Functions (100%)
 
 | Feature | Status |
 |---------|--------|
-| `OVER ()` | [x] |
-| `OVER (PARTITION BY ...)` | [x] |
-| `OVER (ORDER BY ...)` | [x] |
-| `ROWS/RANGE frame_clause` | [x] |
-| `UNBOUNDED PRECEDING/FOLLOWING` | [x] |
-| `n PRECEDING/FOLLOWING`, `CURRENT ROW` | [x] |
-| `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()` | [x] |
-| `NTILE(n)`, `PERCENT_RANK()`, `CUME_DIST()` | [x] |
-| `FIRST_VALUE`, `LAST_VALUE`, `NTH_VALUE` | [x] |
-| `LAG`, `LEAD` | [x] |
+| `OVER ()` | Done |
+| `OVER (PARTITION BY ...)` | Done |
+| `OVER (ORDER BY ...)` | Done |
+| `ROWS/RANGE frame_clause` | Done |
+| `UNBOUNDED PRECEDING/FOLLOWING` | Done |
+| `n PRECEDING/FOLLOWING`, `CURRENT ROW` | Done |
+| `ROW_NUMBER()`, `RANK()`, `DENSE_RANK()` | Done |
+| `NTILE(n)`, `PERCENT_RANK()`, `CUME_DIST()` | Done |
+| `FIRST_VALUE`, `LAST_VALUE`, `NTH_VALUE` | Done |
+| `LAG`, `LEAD` | Done |
 
 ### Transactions (100%)
 
 | Feature | Status |
 |---------|--------|
-| `BEGIN [TRANSACTION]` | [x] |
-| `COMMIT` | [x] |
-| `ROLLBACK` | [x] |
-| `SAVEPOINT name` | [x] |
-| `RELEASE SAVEPOINT name` | [x] |
-| `ROLLBACK TO SAVEPOINT name` | [x] |
-| `SET TRANSACTION ISOLATION LEVEL` | [x] |
-| Isolation level keywords | [x] |
+| `BEGIN [TRANSACTION]` | Done |
+| `COMMIT` | Done |
+| `ROLLBACK` | Done |
+| `SAVEPOINT name` | Done |
+| `RELEASE SAVEPOINT name` | Done |
+| `ROLLBACK TO SAVEPOINT name` | Done |
+| `SET TRANSACTION ISOLATION LEVEL` | Done |
+| Isolation level keywords | Done |
 
 ### Comments (100%)
 
 | Feature | Status |
 |---------|--------|
-| `-- single line comment` | [x] |
-| `/* multi-line comment */` | [x] |
+| `-- single line comment` | Done |
+| `/* multi-line comment */` | Done |
 
 ---
 
@@ -302,39 +302,39 @@ The following features are planned for v2:
 
 | Feature | Status | Priority |
 |---------|--------|----------|
-| `CREATE FUNCTION ... RETURNS ... AS BEGIN END` | [ ] | P2 |
-| `RETURNS TABLE (...)` | [ ] | P2 |
-| `DETERMINISTIC` modifier | [ ] | P2 |
-| `DROP FUNCTION [IF EXISTS]` | [ ] | P2 |
+| `CREATE FUNCTION ... RETURNS ... AS BEGIN END` | Planned | P2 |
+| `RETURNS TABLE (...)` | Planned | P2 |
+| `DETERMINISTIC` modifier | Planned | P2 |
+| `DROP FUNCTION [IF EXISTS]` | Planned | P2 |
 
 ### Stored Procedures (0%)
 
 | Feature | Status | Priority |
 |---------|--------|----------|
-| `CREATE PROCEDURE ... AS BEGIN END` | [ ] | P2 |
-| `DROP PROCEDURE [IF EXISTS]` | [ ] | P2 |
-| `CALL procedure(args)` | [ ] | P2 |
-| `EXECUTE procedure(args)` | [ ] | P2 |
+| `CREATE PROCEDURE ... AS BEGIN END` | Planned | P2 |
+| `DROP PROCEDURE [IF EXISTS]` | Planned | P2 |
+| `CALL procedure(args)` | Planned | P2 |
+| `EXECUTE procedure(args)` | Planned | P2 |
 
 ### EXPLAIN / Query Analysis (0%)
 
 | Feature | Status | Priority |
 |---------|--------|----------|
-| `EXPLAIN select_statement` | [ ] | P2 |
-| `EXPLAIN ANALYZE` | [ ] | P2 |
-| `EXPLAIN (FORMAT JSON/TEXT)` | [ ] | P2 |
+| `EXPLAIN select_statement` | Planned | P2 |
+| `EXPLAIN ANALYZE` | Planned | P2 |
+| `EXPLAIN (FORMAT JSON/TEXT)` | Planned | P2 |
 
 ### Database Administration (0%)
 
 | Feature | Status | Priority |
 |---------|--------|----------|
-| `CREATE DATABASE` | [ ] | P2 |
-| `DROP DATABASE [IF EXISTS]` | [ ] | P2 |
-| `ATTACH DATABASE 'path' AS alias` | [ ] | P2 |
-| `DETACH DATABASE alias` | [ ] | P2 |
-| `VACUUM [table_name]` | [ ] | P2 |
-| `ANALYZE [table_name]` | [ ] | P2 |
-| `PRAGMA name [= value]` | [ ] | P2 |
+| `CREATE DATABASE` | Planned | P2 |
+| `DROP DATABASE [IF EXISTS]` | Planned | P2 |
+| `ATTACH DATABASE 'path' AS alias` | Planned | P2 |
+| `DETACH DATABASE alias` | Planned | P2 |
+| `VACUUM [table_name]` | Planned | P2 |
+| `ANALYZE [table_name]` | Planned | P2 |
+| `PRAGMA name [= value]` | Planned | P2 |
 
 ---
 
@@ -363,7 +363,7 @@ The following features are planned for v2:
 | File | Description |
 |------|-------------|
 | `README.md` | Project documentation |
-| `Status.md` | This status file |
+| `STATUS.md` | This status file |
 | `Grammars/WitSqlLexer.g4` | ANTLR4 lexer grammar |
 | `Grammars/WitSqlParser.g4` | ANTLR4 parser grammar |
 

@@ -209,123 +209,124 @@ var db = new WitDatabaseBuilder()
 
 ```
 OutWit.Database.Core/
-??? Builder/                    # Fluent builder API
-?   ??? WitDatabase.cs         # Main database class
-?   ??? WitDatabaseBuilder.cs  # Configuration builder
-?   ??? WitDatabaseBuilderExtensions.cs
-??? Interfaces/                 # Extensibility contracts
-?   ??? IKeyValueStore.cs      # Key-value store interface
-?   ??? IStorage.cs            # Storage backend interface
-?   ??? ICryptoProvider.cs     # Encryption provider interface
-?   ??? IPageCache.cs          # Cache provider interface
-?   ??? ITransactionJournal.cs # Journal provider interface
-?   ??? ITransaction.cs        # Transaction interface
-?   ??? IMvccTransaction.cs    # MVCC transaction interface
-?   ??? ISecondaryIndex.cs     # Secondary index interface
-?   ??? IProvider.cs           # Base provider interface
-??? Stores/                     # Storage engine implementations
-?   ??? StoreBTree.cs          # B+Tree implementation
-?   ??? StoreLsm.cs            # LSM-Tree implementation
-?   ??? StoreInMemory.cs       # In-memory store
-??? Tree/                       # B+Tree internals
-?   ??? BTree.cs               # B+Tree operations
-?   ??? BTreeNode.*.cs         # Node operations (split files)
-??? LSM/                        # LSM-Tree internals
-?   ??? MemTable.cs            # In-memory sorted table
-?   ??? SSTableBuilder.cs      # SSTable writer
-?   ??? SSTableReader.cs       # SSTable reader
-?   ??? WriteAheadLog.cs       # LSM WAL
-?   ??? Compactor.cs           # Background compaction
-?   ??? BloomFilter.cs         # Probabilistic lookup
-??? Storage/                    # Storage backends
-?   ??? StorageFile.cs         # File-based storage
-?   ??? StorageMemory.cs       # In-memory storage
-?   ??? StorageEncrypted.cs    # Encrypted wrapper
-??? Encryption/                 # Encryption components
-?   ??? EncryptorProviderAesGcm.cs # AES-GCM provider
-?   ??? EncryptorPage.cs       # Page-level encryption
-?   ??? EncryptorBlock.cs      # Block-level encryption
-??? Transactions/               # Transaction support
-?   ??? Transaction.cs         # Basic transaction
-?   ??? MvccTransaction.cs     # MVCC transaction
-?   ??? TransactionalStore.cs  # Transaction wrapper
-?   ??? MvccTransactionalStore.cs
-?   ??? Savepoint.cs           # Savepoint support
-??? Mvcc/                       # MVCC components
-?   ??? MvccRecord.cs          # Versioned record
-?   ??? MvccKeyValueStore.cs   # MVCC store
-?   ??? MvccGarbageCollector.cs
-??? Concurrency/                # Concurrency control
-?   ??? LockManager.cs         # Database-level locks
-?   ??? RowLockManager.cs      # Row-level locks
-?   ??? DeadlockDetector.cs    # Deadlock detection
-?   ??? WaitForGraph.cs        # Wait-for graph
-?   ??? TransactionWaitQueue.cs
-??? Indexes/                    # Secondary indexes
-?   ??? IndexManager.cs        # Index management
-?   ??? SecondaryIndexKeyValueStore.cs
-?   ??? IndexMetadataStore.cs
-??? Cache/                      # Page caching
-?   ??? PageCacheLru.cs        # LRU cache
-?   ??? PageCacheShardedClock.cs # Sharded clock cache
-??? Managers/                   # Page management
-?   ??? PageManager.cs         # Page allocation
-?   ??? PageManagerOverflow.cs # Overflow pages
-??? Wal/                        # Write-ahead logging
-?   ??? WriteAheadLog.cs       # WAL implementation
-?   ??? WalReplayVisitor*.cs   # Recovery visitors
-??? Providers/                  # Provider system
-?   ??? ProviderRegistry.cs    # Global registry
-?   ??? ProviderFactory.cs     # Factory pattern
-?   ??? StorageDetector.cs     # Auto-detection
-??? Query/                      # Query support
-?   ??? QueryContext.cs        # Execution context
-?   ??? BatchExecutor.cs       # Batch operations
-?   ??? MultiResultReader.cs   # Multiple result sets
-??? Exceptions/                 # Exception types
-?   ??? DeadlockException.cs
-?   ??? RowLockException.cs
-?   ??? ConfigurationMismatchException.cs
-??? Utils/                      # Utilities
-    ??? CryptoUtils.cs         # Key derivation
-    ??? Crc32.cs               # Checksums
+|-- Builder/                    # Fluent builder API
+|   |-- WitDatabase.cs         # Main database class
+|   |-- WitDatabaseBuilder.cs  # Configuration builder
+|   +-- WitDatabaseBuilderExtensions.cs
+|-- Interfaces/                 # Extensibility contracts
+|   |-- IKeyValueStore.cs      # Key-value store interface
+|   |-- IStorage.cs            # Storage backend interface
+|   |-- ICryptoProvider.cs     # Encryption provider interface
+|   |-- IPageCache.cs          # Cache provider interface
+|   |-- ITransactionJournal.cs # Journal provider interface
+|   |-- ITransaction.cs        # Transaction interface
+|   |-- IMvccTransaction.cs    # MVCC transaction interface
+|   |-- ISecondaryIndex.cs     # Secondary index interface
+|   +-- IProvider.cs           # Base provider interface
+|-- Stores/                     # Storage engine implementations
+|   |-- StoreBTree.cs          # B+Tree implementation
+|   |-- StoreLsm.cs            # LSM-Tree implementation
+|   +-- StoreInMemory.cs       # In-memory store
+|-- Tree/                       # B+Tree internals
+|   |-- BTree.cs               # B+Tree operations
+|   +-- BTreeNode.*.cs         # Node operations (split files)
+|-- LSM/                        # LSM-Tree internals
+|   |-- MemTable.cs            # In-memory sorted table
+|   |-- SSTableBuilder.cs      # SSTable writer
+|   |-- SSTableReader.cs       # SSTable reader
+|   |-- WriteAheadLog.cs       # LSM WAL
+|   |-- Compactor.cs           # Background compaction
+|   +-- BloomFilter.cs         # Probabilistic lookup
+|-- Storage/                    # Storage backends
+|   |-- StorageFile.cs         # File-based storage
+|   |-- StorageMemory.cs       # In-memory storage
+|   +-- StorageEncrypted.cs    # Encrypted wrapper
+|-- Encryption/                 # Encryption components
+|   |-- EncryptorProviderAesGcm.cs # AES-GCM provider
+|   |-- EncryptorPage.cs       # Page-level encryption
+|   +-- EncryptorBlock.cs      # Block-level encryption
+|-- Transactions/               # Transaction support
+|   |-- Transaction.cs         # Basic transaction
+|   |-- MvccTransaction.cs     # MVCC transaction
+|   |-- TransactionalStore.cs  # Transaction wrapper
+|   |-- MvccTransactionalStore.cs
+|   +-- Savepoint.cs           # Savepoint support
+|-- Mvcc/                       # MVCC components
+|   |-- MvccRecord.cs          # Versioned record
+|   |-- MvccKeyValueStore.cs   # MVCC store
+|   +-- MvccGarbageCollector.cs
+|-- Concurrency/                # Concurrency control
+|   |-- LockManager.cs         # Database-level locks
+|   |-- RowLockManager.cs      # Row-level locks
+|   |-- DeadlockDetector.cs    # Deadlock detection
+|   |-- WaitForGraph.cs        # Wait-for graph
+|   +-- TransactionWaitQueue.cs
+|-- Indexes/                    # Secondary indexes
+|   |-- IndexManager.cs        # Index management
+|   |-- SecondaryIndexKeyValueStore.cs
+|   +-- IndexMetadataStore.cs
+|-- Cache/                      # Page caching
+|   |-- PageCacheLru.cs        # LRU cache
+|   +-- PageCacheShardedClock.cs # Sharded clock cache
+|-- Managers/                   # Page management
+|   |-- PageManager.cs         # Page allocation
+|   +-- PageManagerOverflow.cs # Overflow pages
+|-- Wal/                        # Write-ahead logging
+|   |-- WriteAheadLog.cs       # WAL implementation
+|   +-- WalReplayVisitor*.cs   # Recovery visitors
+|-- Providers/                  # Provider system
+|   |-- ProviderRegistry.cs    # Global registry
+|   |-- ProviderFactory.cs     # Factory pattern
+|   +-- StorageDetector.cs     # Auto-detection
+|-- Query/                      # Query support
+|   |-- QueryContext.cs        # Execution context
+|   |-- BatchExecutor.cs       # Batch operations
+|   +-- MultiResultReader.cs   # Multiple result sets
+|-- Exceptions/                 # Exception types
+|   |-- DeadlockException.cs
+|   |-- RowLockException.cs
+|   +-- ConfigurationMismatchException.cs
++-- Utils/                      # Utilities
+    |-- CryptoUtils.cs         # Key derivation
+    +-- Crc32.cs               # Checksums
 ```
 
 ### Component Diagram
 
 ```
-???????????????????????????????????????????????????????????????????
-?                        WitDatabase                               ?
-?  ???????????????????????????????????????????????????????????   ?
-?  ?                   WitDatabaseBuilder                     ?   ?
-?  ???????????????????????????????????????????????????????????   ?
-?                              ?                                   ?
-?              ?????????????????????????????????                  ?
-?              ?               ?               ?                  ?
-?  ?????????????????  ?????????????????  ?????????????????       ?
-?  ? IKeyValueStore?  ? ITransaction  ?  ? IIndexManager ?       ?
-?  ?    (Store)    ?  ?   al Store    ?  ?               ?       ?
-?  ?????????????????  ?????????????????  ?????????????????       ?
-?          ?                  ?                                   ?
-?  ?????????????????  ?????????????????                          ?
-?  ?   StoreBTree  ?  ?  Mvcc         ?                          ?
-?  ?   StoreLsm    ?  ?  Transactional?                          ?
-?  ? StoreInMemory ?  ?  Store        ?                          ?
-?  ?????????????????  ?????????????????                          ?
-?          ?                                                      ?
-?  ?????????????????????????????????????????????????????         ?
-?  ?                    IStorage                        ?         ?
-?  ?  ???????????????  ???????????????  ?????????????? ?         ?
-?  ?  ?StorageFile  ?  ?StorageMemory?  ?StorageEncr.? ?         ?
-?  ?  ???????????????  ???????????????  ?????????????? ?         ?
-?  ?????????????????????????????????????????????????????         ?
-?                                             ?                   ?
-?                                     ?????????????????          ?
-?                                     ?ICryptoProvider?          ?
-?                                     ?  AES-GCM      ?          ?
-?                                     ?  ChaCha20     ?          ?
-?                                     ?????????????????          ?
-???????????????????????????????????????????????????????????????????
++------------------------------------------------------------------+
+|                        WitDatabase                                |
+|  +------------------------------------------------------------+  |
+|  |                   WitDatabaseBuilder                        |  |
+|  +------------------------------------------------------------+  |
+|                              |                                    |
+|              +---------------+---------------+                    |
+|              |               |               |                    |
+|              v               v               v                    |
+|  +--------------+  +---------------+  +---------------+          |
+|  | IKeyValueStore|  | ITransactional|  | IIndexManager |          |
+|  |    (Store)    |  |    Store      |  |               |          |
+|  +--------------+  +---------------+  +---------------+          |
+|          |                  |                                     |
+|  +--------------+  +---------------+                              |
+|  |   StoreBTree  |  |  Mvcc         |                              |
+|  |   StoreLsm    |  |  Transactional|                              |
+|  | StoreInMemory |  |  Store        |                              |
+|  +--------------+  +---------------+                              |
+|          |                                                        |
+|  +--------------------------------------------------------------+ |
+|  |                    IStorage                                   | |
+|  |  +------------+  +-------------+  +---------------------+    | |
+|  |  |StorageFile |  |StorageMemory|  |  StorageEncrypted   |    | |
+|  |  +------------+  +-------------+  |         |           |    | |
+|  |                                   |  +--------------+   |    | |
+|  |                                   |  |ICryptoProvider|   |    | |
+|  |                                   |  |  AES-GCM      |   |    | |
+|  |                                   |  |  ChaCha20     |   |    | |
+|  |                                   |  +--------------+   |    | |
+|  |                                   +---------------------+    | |
+|  +--------------------------------------------------------------+ |
++-------------------------------------------------------------------+
 ```
 
 ---
@@ -440,11 +441,11 @@ var db = new WitDatabaseBuilder()
 
 | Level | Dirty Read | Non-Repeatable Read | Phantom Read | Description |
 |-------|------------|---------------------|--------------|-------------|
-| ReadUncommitted | ? | ? | ? | No isolation, highest concurrency |
-| ReadCommitted | ? | ? | ? | Only see committed data |
-| RepeatableRead | ? | ? | ? | Locks held for duration |
-| Serializable | ? | ? | ? | Full isolation |
-| Snapshot | ? | ? | ? | MVCC-based, no locks for reads |
+| ReadUncommitted | Yes | Yes | Yes | No isolation, highest concurrency |
+| ReadCommitted | No | Yes | Yes | Only see committed data |
+| RepeatableRead | No | No | Yes | Locks held for duration |
+| Serializable | No | No | No | Full isolation |
+| Snapshot | No | No | No | MVCC-based, no locks for reads |
 
 ---
 
@@ -477,7 +478,7 @@ MIT License - see LICENSE file for details.
 
 ## See Also
 
-- [Status.md](Status.md) - Implementation status
+- [STATUS.md](STATUS.md) - Implementation status
 - [EXTENSIBILITY.md](EXTENSIBILITY.md) - Extension guide
 - [../Roadmap.Core.md](../Roadmap.Core.md) - Full roadmap
 - [../WitSql.md](../WitSql.md) - SQL specification
