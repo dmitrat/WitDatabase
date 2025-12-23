@@ -425,7 +425,7 @@ public sealed class WitDatabase : IDisposable
     #region Transactions
 
     /// <summary>
-    /// Begins a new transaction.
+    /// Begins a new transaction with default isolation level.
     /// </summary>
     /// <exception cref="InvalidOperationException">Thrown if transactions are not enabled.</exception>
     public ITransaction BeginTransaction()
@@ -438,7 +438,21 @@ public sealed class WitDatabase : IDisposable
     }
 
     /// <summary>
-    /// Begins a new transaction asynchronously.
+    /// Begins a new transaction with specified isolation level.
+    /// </summary>
+    /// <param name="isolationLevel">The isolation level for the transaction.</param>
+    /// <exception cref="InvalidOperationException">Thrown if transactions are not enabled.</exception>
+    public ITransaction BeginTransaction(IsolationLevel isolationLevel)
+    {
+        ThrowIfDisposed();
+        if (m_transactionalStore == null)
+            throw new InvalidOperationException("Transactions are not enabled. Use WithTransactions() when building the database.");
+        
+        return m_transactionalStore.BeginTransaction(isolationLevel);
+    }
+
+    /// <summary>
+    /// Begins a new transaction asynchronously with default isolation level.
     /// </summary>
     public ValueTask<ITransaction> BeginTransactionAsync(CancellationToken cancellationToken = default)
     {
@@ -447,6 +461,20 @@ public sealed class WitDatabase : IDisposable
             throw new InvalidOperationException("Transactions are not enabled. Use WithTransactions() when building the database.");
         
         return m_transactionalStore.BeginTransactionAsync(cancellationToken);
+    }
+
+    /// <summary>
+    /// Begins a new transaction asynchronously with specified isolation level.
+    /// </summary>
+    /// <param name="isolationLevel">The isolation level for the transaction.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    public ValueTask<ITransaction> BeginTransactionAsync(IsolationLevel isolationLevel, CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+        if (m_transactionalStore == null)
+            throw new InvalidOperationException("Transactions are not enabled. Use WithTransactions() when building the database.");
+        
+        return m_transactionalStore.BeginTransactionAsync(isolationLevel, cancellationToken);
     }
 
     #endregion

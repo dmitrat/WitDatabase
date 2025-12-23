@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using OutWit.Database.Core.Builder;
+using OutWit.Database.Core.Interfaces;
 
 namespace OutWit.Database.Core.Tests.Builder;
 
@@ -158,6 +159,95 @@ public class WitDatabaseFactoryMethodsTests
         Assert.That(db.SupportsTransactions, Is.True);
         db.Put("secret"u8, "data"u8);
         Assert.That(db.Get("secret"u8), Is.EqualTo("data"u8.ToArray()));
+    }
+
+    #endregion
+
+    #region BeginTransaction with IsolationLevel Tests
+
+    [Test]
+    public void BeginTransactionWithDefaultIsolationLevelTest()
+    {
+        using var db = WitDatabase.CreateInMemory();
+        
+        using var tx = db.BeginTransaction();
+        
+        Assert.That(tx.IsolationLevel, Is.EqualTo(IsolationLevel.ReadCommitted));
+        tx.Put("key"u8, "value"u8);
+        tx.Commit();
+    }
+
+    [Test]
+    public void BeginTransactionWithSerializableIsolationLevelTest()
+    {
+        using var db = WitDatabase.CreateInMemory();
+        
+        using var tx = db.BeginTransaction(IsolationLevel.Serializable);
+        
+        Assert.That(tx.IsolationLevel, Is.EqualTo(IsolationLevel.Serializable));
+        tx.Put("key"u8, "value"u8);
+        tx.Commit();
+        
+        Assert.That(db.Get("key"u8), Is.EqualTo("value"u8.ToArray()));
+    }
+
+    [Test]
+    public void BeginTransactionWithSnapshotIsolationLevelTest()
+    {
+        using var db = WitDatabase.CreateInMemory();
+        
+        using var tx = db.BeginTransaction(IsolationLevel.Snapshot);
+        
+        Assert.That(tx.IsolationLevel, Is.EqualTo(IsolationLevel.Snapshot));
+        tx.Rollback();
+    }
+
+    [Test]
+    public void BeginTransactionWithReadUncommittedIsolationLevelTest()
+    {
+        using var db = WitDatabase.CreateInMemory();
+        
+        using var tx = db.BeginTransaction(IsolationLevel.ReadUncommitted);
+        
+        Assert.That(tx.IsolationLevel, Is.EqualTo(IsolationLevel.ReadUncommitted));
+        tx.Rollback();
+    }
+
+    [Test]
+    public async Task BeginTransactionAsyncWithIsolationLevelTest()
+    {
+        using var db = WitDatabase.CreateInMemory();
+        
+        using var tx = await db.BeginTransactionAsync(IsolationLevel.RepeatableRead);
+        
+        Assert.That(tx.IsolationLevel, Is.EqualTo(IsolationLevel.RepeatableRead));
+        await tx.RollbackAsync();
+    }
+
+    [Test]
+    public void BeginTransactionWithIsolationLevelWhenDisabledThrowsTest()
+    {
+        using var db = new WitDatabaseBuilder()
+            .WithMemoryStorage()
+            .WithBTree()
+            .WithoutTransactions()
+            .Build();
+        
+        Assert.Throws<InvalidOperationException>(() => 
+            db.BeginTransaction(IsolationLevel.Serializable));
+    }
+
+    [Test]
+    public async Task BeginTransactionAsyncWithIsolationLevelWhenDisabledThrowsTest()
+    {
+        using var db = new WitDatabaseBuilder()
+            .WithMemoryStorage()
+            .WithBTree()
+            .WithoutTransactions()
+            .Build();
+        
+        Assert.ThrowsAsync<InvalidOperationException>(async () => 
+            await db.BeginTransactionAsync(IsolationLevel.Serializable));
     }
 
     #endregion
