@@ -66,6 +66,21 @@
         /// <param name="pageCount">New total page count</param>
         void SetSize(long pageCount);
 
+        /// <summary>
+        /// Extends the storage to accommodate the specified number of pages asynchronously.
+        /// </summary>
+        /// <param name="pageCount">New total page count</param>
+        /// <param name="cancellationToken">Cancellation token</param>
+        /// <remarks>
+        /// Default implementation calls sync <see cref="SetSize"/>.
+        /// Override for async-only environments like Blazor WASM with IndexedDB.
+        /// </remarks>
+        ValueTask SetSizeAsync(long pageCount, CancellationToken cancellationToken = default)
+        {
+            SetSize(pageCount);
+            return ValueTask.CompletedTask;
+        }
+
         #endregion
 
         #region Properties

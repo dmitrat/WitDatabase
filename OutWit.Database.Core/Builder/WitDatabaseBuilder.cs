@@ -300,6 +300,13 @@ public sealed class WitDatabaseBuilder
 
         // Build BTree store with async initialization
         var storage = BuildStorage();
+        
+        // Initialize storage if it supports async initialization (e.g., IndexedDB)
+        if (storage is IAsyncInitializable asyncInitializable)
+        {
+            await asyncInitializable.InitializeAsync(cancellationToken).ConfigureAwait(false);
+        }
+        
         return await StoreBTree.CreateAsync(storage, Options.CacheSize, ownsStorage: true, metadata, cancellationToken)
             .ConfigureAwait(false);
     }

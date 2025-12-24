@@ -12,12 +12,16 @@ namespace OutWit.Database.Core.IndexedDb;
 /// with data persisted to IndexedDB. It implements the standard IStorage interface,
 /// allowing it to work with StoreBTree and all existing database functionality.
 /// 
+/// IMPORTANT: This storage requires async initialization before use.
+/// Call <see cref="InitializeAsync"/> before any operations, or use
+/// <see cref="WitDatabaseBuilder.BuildAsync"/> which handles this automatically.
+/// 
 /// Limitations:
 /// - Not compatible with LSM-Tree (use BTree instead)
 /// - File locking not applicable (single-tab access recommended)
-/// - Sync methods use async bridge (acceptable in WASM single-threaded environment)
+/// - Sync methods throw in uninitialized state (use async methods)
 /// </remarks>
-public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
+public sealed class StorageIndexedDb : IStorage, IAsyncInitializable, IAsyncDisposable
 {
     #region Constants
 
@@ -46,6 +50,7 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
 
     /// <summary>
     /// Creates a new IndexedDB storage with the specified database name.
+    /// Call <see cref="InitializeAsync"/> before use, or use <see cref="WitDatabaseBuilder.BuildAsync"/>.
     /// </summary>
     /// <param name="databaseName">Name of the IndexedDB database.</param>
     /// <param name="jsRuntime">Blazor JS runtime.</param>
@@ -57,6 +62,7 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
 
     /// <summary>
     /// Creates a new IndexedDB storage with an existing interop instance.
+    /// Call <see cref="InitializeAsync"/> before use, or use <see cref="WitDatabaseBuilder.BuildAsync"/>.
     /// </summary>
     /// <param name="interop">IndexedDB interop wrapper.</param>
     /// <param name="pageSize">Page size in bytes.</param>
@@ -78,19 +84,22 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
 
     /// <summary>
     /// Initializes the storage by opening the IndexedDB database and loading metadata.
-    /// This is called automatically on first operation, but can be called explicitly
-    /// for early initialization.
+    /// Must be called before any read/write operations in WASM environment.
     /// </summary>
+    /// <remarks>
+    /// This method is idempotent - calling it multiple times is safe.
+    /// Use <see cref="WitDatabaseBuilder.BuildAsync"/> for automatic initialization.
+    /// </remarks>
     public async ValueTask InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (m_initialized) return;
         
         ThrowIfDisposed();
 
-        await m_interop.OpenAsync(cancellationToken);
+        await m_interop.OpenAsync(cancellationToken).ConfigureAwait(false);
         
         // Check if database was previously created with a different page size
-        var storedPageSize = await m_interop.GetPageSizeAsync(cancellationToken);
+        var storedPageSize = await m_interop.GetPageSizeAsync(cancellationToken).ConfigureAwait(false);
         if (storedPageSize > 0 && storedPageSize != m_pageSize)
         {
             throw new InvalidOperationException(
@@ -101,31 +110,33 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
         // Store page size for new databases
         if (storedPageSize == 0)
         {
-            await m_interop.SetPageSizeAsync(m_pageSize, cancellationToken);
+            await m_interop.SetPageSizeAsync(m_pageSize, cancellationToken).ConfigureAwait(false);
         }
         
         // Load current page count
-        m_pageCount = await m_interop.GetPageCountAsync(cancellationToken);
+        m_pageCount = await m_interop.GetPageCountAsync(cancellationToken).ConfigureAwait(false);
         
         // Ensure at least one page exists (for header)
         if (m_pageCount == 0)
         {
             m_pageCount = DEFAULT_INITIAL_PAGES;
-            await m_interop.SetPageCountAsync(m_pageCount, cancellationToken);
+            await m_interop.SetPageCountAsync(m_pageCount, cancellationToken).ConfigureAwait(false);
             
             // Initialize first page with zeros
-            await m_interop.WritePageAsync(0, new byte[m_pageSize], cancellationToken);
+            await m_interop.WritePageAsync(0, new byte[m_pageSize], cancellationToken).ConfigureAwait(false);
         }
         
         m_initialized = true;
     }
 
-    private void EnsureInitialized()
+    private void ThrowIfNotInitialized()
     {
         if (!m_initialized)
         {
-            // Sync initialization - acceptable in WASM single-threaded environment
-            InitializeAsync().AsTask().GetAwaiter().GetResult();
+            throw new InvalidOperationException(
+                "StorageIndexedDb is not initialized. " +
+                "Call InitializeAsync() before use, or use WitDatabaseBuilder.BuildAsync() for automatic initialization. " +
+                "Note: Synchronous operations require prior async initialization in WASM environment.");
         }
     }
 
@@ -134,14 +145,18 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     #region Read
 
     /// <inheritdoc/>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if storage is not initialized. Call <see cref="InitializeAsync"/> first.
+    /// </exception>
     public void ReadPage(long pageNumber, Span<byte> buffer)
     {
         ThrowIfDisposed();
-        EnsureInitialized();
+        ThrowIfNotInitialized();
         ValidatePageNumber(pageNumber);
         ValidateBuffer(buffer);
 
-        // Sync bridge for async operation
+        // After initialization, sync operations use async bridge
+        // This works because page data is cached in JS after InitializeAsync
         var data = m_interop.ReadPageAsync(pageNumber).AsTask().GetAwaiter().GetResult();
         
         if (data != null)
@@ -159,11 +174,11 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     public async ValueTask ReadPageAsync(long pageNumber, Memory<byte> buffer, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await InitializeAsync(cancellationToken);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
         ValidatePageNumber(pageNumber);
         ValidateBuffer(buffer.Span);
 
-        var data = await m_interop.ReadPageAsync(pageNumber, cancellationToken);
+        var data = await m_interop.ReadPageAsync(pageNumber, cancellationToken).ConfigureAwait(false);
         
         if (data != null)
         {
@@ -181,10 +196,13 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     #region Write
 
     /// <inheritdoc/>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if storage is not initialized. Call <see cref="InitializeAsync"/> first.
+    /// </exception>
     public void WritePage(long pageNumber, ReadOnlySpan<byte> buffer)
     {
         ThrowIfDisposed();
-        EnsureInitialized();
+        ThrowIfNotInitialized();
         ValidatePageNumberForWrite(pageNumber);
         ValidateBuffer(buffer);
 
@@ -194,7 +212,7 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
             SetSize(pageNumber + 1);
         }
 
-        // Sync bridge for async operation
+        // Sync bridge for async operation (works after initialization)
         m_interop.WritePageAsync(pageNumber, buffer[..m_pageSize].ToArray()).AsTask().GetAwaiter().GetResult();
     }
 
@@ -202,17 +220,17 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     public async ValueTask WritePageAsync(long pageNumber, ReadOnlyMemory<byte> buffer, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await InitializeAsync(cancellationToken);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
         ValidatePageNumberForWrite(pageNumber);
         ValidateBuffer(buffer.Span);
 
         // Auto-extend if needed
         if (pageNumber >= m_pageCount)
         {
-            await SetSizeAsync(pageNumber + 1, cancellationToken);
+            await SetSizeAsync(pageNumber + 1, cancellationToken).ConfigureAwait(false);
         }
 
-        await m_interop.WritePageAsync(pageNumber, buffer[..m_pageSize].ToArray(), cancellationToken);
+        await m_interop.WritePageAsync(pageNumber, buffer[..m_pageSize].ToArray(), cancellationToken).ConfigureAwait(false);
     }
 
     #endregion
@@ -240,15 +258,18 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     #region SetSize
 
     /// <inheritdoc/>
+    /// <exception cref="InvalidOperationException">
+    /// Thrown if storage is not initialized. Call <see cref="InitializeAsync"/> first.
+    /// </exception>
     public void SetSize(long pageCount)
     {
         ThrowIfDisposed();
-        EnsureInitialized();
+        ThrowIfNotInitialized();
 
         if (pageCount < 0)
             throw new ArgumentOutOfRangeException(nameof(pageCount));
 
-        // Sync bridge
+        // Sync bridge (works after initialization)
         SetSizeAsync(pageCount).AsTask().GetAwaiter().GetResult();
     }
 
@@ -258,7 +279,7 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     public async ValueTask SetSizeAsync(long pageCount, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        await InitializeAsync(cancellationToken);
+        await InitializeAsync(cancellationToken).ConfigureAwait(false);
 
         if (pageCount < 0)
             throw new ArgumentOutOfRangeException(nameof(pageCount));
@@ -266,12 +287,12 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
         if (pageCount < m_pageCount)
         {
             // Truncate
-            await m_interop.TruncatePagesAsync(pageCount, cancellationToken);
+            await m_interop.TruncatePagesAsync(pageCount, cancellationToken).ConfigureAwait(false);
         }
         else
         {
             // Extend - just update count, pages will be created on write
-            await m_interop.SetPageCountAsync(pageCount, cancellationToken);
+            await m_interop.SetPageCountAsync(pageCount, cancellationToken).ConfigureAwait(false);
         }
         
         m_pageCount = pageCount;
@@ -342,7 +363,7 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
 
         if (m_ownsInterop)
         {
-            await m_interop.DisposeAsync();
+            await m_interop.DisposeAsync().ConfigureAwait(false);
         }
     }
 
@@ -358,7 +379,7 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     {
         get
         {
-            EnsureInitialized();
+            ThrowIfNotInitialized();
             return m_pageCount;
         }
     }
@@ -374,9 +395,7 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     /// </summary>
     public string DatabaseName => m_interop.DatabaseName;
 
-    /// <summary>
-    /// Gets whether the storage has been initialized.
-    /// </summary>
+    /// <inheritdoc/>
     public bool IsInitialized => m_initialized;
 
     #endregion

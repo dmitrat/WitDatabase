@@ -10,7 +10,7 @@ namespace OutWit.Database.Core.Builder;
 /// High-level database wrapper that provides a unified API 
 /// regardless of the underlying storage engine.
 /// </summary>
-public sealed class WitDatabase : IDisposable
+public sealed class WitDatabase : IDisposable, IAsyncDisposable
 {
     #region Fields
 
@@ -617,6 +617,31 @@ public sealed class WitDatabase : IDisposable
         if (m_disposeStore)
         {
             m_store.Dispose();
+        }
+    }
+
+    #endregion
+
+    #region IAsyncDisposable
+
+    /// <inheritdoc/>
+    public async ValueTask DisposeAsync()
+    {
+        if (m_disposed) return;
+        m_disposed = true;
+
+        m_indexManager?.Dispose();
+
+        if (m_disposeStore)
+        {
+            if (m_store is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                m_store.Dispose();
+            }
         }
     }
 

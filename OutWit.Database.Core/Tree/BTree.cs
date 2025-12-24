@@ -62,6 +62,7 @@ public sealed partial class BTree : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Creates a new B+Tree using the specified page manager.
+    /// For async environments (e.g., WASM), use <see cref="CreateAsync"/> instead.
     /// </summary>
     public BTree(PageManager pageManager, uint rootPageNumber = 0)
     {
@@ -88,6 +89,80 @@ public sealed partial class BTree : IDisposable, IAsyncDisposable
             m_entryCount = LoadEntryCount();
             m_entryCountDirty = false;
         }
+    }
+
+    /// <summary>
+    /// Private constructor for async factory pattern.
+    /// </summary>
+    private BTree(PageManager pageManager, uint rootPageNumber, long entryCount, bool entryCountDirty, int maxInlineValueSize)
+    {
+        m_pageManager = pageManager;
+        m_rootPageNumber = rootPageNumber;
+        m_entryCount = entryCount;
+        m_entryCountDirty = entryCountDirty;
+        m_maxInlineValueSize = maxInlineValueSize;
+        m_pageManagerOverflowManager = new PageManagerOverflow(pageManager, maxInlineValueSize);
+    }
+
+    #endregion
+
+    #region Static Factory Methods
+
+    /// <summary>
+    /// Creates a new B+Tree asynchronously.
+    /// Use this in environments where synchronous I/O is not available (e.g., Blazor WASM).
+    /// </summary>
+    /// <param name="pageManager">The page manager to use.</param>
+    /// <param name="rootPageNumber">Root page number, or 0 to create new tree.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An initialized BTree.</returns>
+    public static async ValueTask<BTree> CreateAsync(
+        PageManager pageManager, 
+        uint rootPageNumber = 0,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(pageManager);
+        cancellationToken.ThrowIfCancellationRequested();
+        
+        // Calculate max inline value size - ensure at least 4 entries per leaf
+        int availablePerEntry = (pageManager.PageSize - BTreeNode.CELL_DIR_OFFSET) / 4;
+        int overheadPerEntry = 4 + 50 + 2; // varints + typical key + dir entry
+        int maxInlineValueSize = Math.Max(64, Math.Min(availablePerEntry - overheadPerEntry, pageManager.PageSize / 4));
+
+        if (rootPageNumber == 0)
+        {
+            // Create new tree with async page allocation
+            uint newRootPageNumber = await CreateLeafNodeAsync(pageManager, cancellationToken).ConfigureAwait(false);
+            
+            var tree = new BTree(pageManager, newRootPageNumber, entryCount: 0, entryCountDirty: true, maxInlineValueSize);
+            tree.SaveEntryCountIfDirty();
+            tree.UpdateSchemaRootPage();
+            
+            return tree;
+        }
+        else
+        {
+            // Load existing tree
+            long entryCount = LoadEntryCountStatic(pageManager, rootPageNumber);
+            return new BTree(pageManager, rootPageNumber, entryCount, entryCountDirty: false, maxInlineValueSize);
+        }
+    }
+
+    private static async ValueTask<uint> CreateLeafNodeAsync(PageManager pageManager, CancellationToken cancellationToken)
+    {
+        var (pageNumber, page) = await pageManager.AllocatePageAsync(PageType.Leaf, cancellationToken).ConfigureAwait(false);
+        BTreeNode.Initialize(page.Data, pageManager.PageSize, isLeaf: true, pageNumber);
+        page.MarkDirty();
+        pageManager.ReleasePage(pageNumber);
+        return pageNumber;
+    }
+
+    private static long LoadEntryCountStatic(PageManager pageManager, uint rootPageNumber)
+    {
+        var page = pageManager.GetPage(rootPageNumber);
+        uint count = BinaryPrimitives.ReadUInt32LittleEndian(page.ReadOnlyData[ENTRY_COUNT_OFFSET..]);
+        pageManager.ReleasePage(rootPageNumber);
+        return count;
     }
 
     #endregion

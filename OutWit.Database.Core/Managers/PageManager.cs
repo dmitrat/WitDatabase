@@ -188,7 +188,7 @@ public sealed class PageManager : IDisposable
         // Ensure file is large enough for at least the header page
         if (m_storage.PageCount < 1)
         {
-            m_storage.SetSize(1);
+            await m_storage.SetSizeAsync(1, cancellationToken).ConfigureAwait(false);
         }
 
         await SaveHeaderImmediateAsync(cancellationToken).ConfigureAwait(false);
@@ -249,6 +249,74 @@ public sealed class PageManager : IDisposable
 
             return (pageNumber, page);
         }
+    }
+
+    /// <summary>
+    /// Allocates a new page asynchronously.
+    /// Use this in environments where synchronous I/O is not available (e.g., Blazor WASM).
+    /// </summary>
+    /// <param name="pageType">Type of the new page</param>
+    /// <param name="cancellationToken">Cancellation token</param>
+    /// <returns>Page number and cached page</returns>
+    public async ValueTask<(uint PageNumber, CachedPage Page)> AllocatePageAsync(PageType pageType, CancellationToken cancellationToken = default)
+    {
+        uint pageNumber;
+        bool needsExtend = false;
+        uint newTotalPageCount = 0;
+
+        lock (m_lock)
+        {
+            ThrowIfDisposed();
+            ThrowIfNotInitialized();
+            cancellationToken.ThrowIfCancellationRequested();
+
+            if (m_header.FirstFreePage != DatabaseConstants.NULL_PAGE_NUMBER)
+            {
+                // Reuse a free page
+                pageNumber = m_header.FirstFreePage;
+
+                // Get the free page to read its next pointer
+                var freePage = m_cache.GetPage(pageNumber);
+                var freeHeader = PageHeader.ReadFrom(freePage.ReadOnlyData);
+
+                // Update the free list head
+                m_header.FirstFreePage = freeHeader.RightChild;
+                m_header.FreePageCount--;
+
+                m_cache.ReleasePage(pageNumber);
+                
+                // Evict from cache so we can create fresh
+                m_cache.Evict(pageNumber);
+            }
+            else
+            {
+                // Need to extend the file
+                pageNumber = m_header.TotalPageCount;
+                m_header.TotalPageCount++;
+                newTotalPageCount = m_header.TotalPageCount;
+                needsExtend = true;
+            }
+
+            m_headerDirty = true;
+        }
+
+        // Extend storage outside of lock (async)
+        if (needsExtend)
+        {
+            await m_storage.SetSizeAsync(newTotalPageCount, cancellationToken).ConfigureAwait(false);
+        }
+
+        // Create and initialize the new page
+        CachedPage page;
+        lock (m_lock)
+        {
+            page = m_cache.CreatePage(pageNumber);
+            var header = PageHeader.CreateEmpty(pageType, m_storage.PageSize);
+            header.WriteTo(page.Data);
+            page.MarkDirty();
+        }
+
+        return (pageNumber, page);
     }
 
     /// <summary>

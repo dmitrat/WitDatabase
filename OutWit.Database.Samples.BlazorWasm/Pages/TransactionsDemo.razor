@@ -1,13 +1,13 @@
 @page "/transactions"
 @using System.Text
 @inject IJSRuntime JSRuntime
-@implements IDisposable
+@implements IAsyncDisposable
 
 <PageTitle>Transactions Demo - WitDatabase</PageTitle>
 
 <div class="card">
     <h1>&#128188; Transactions Demo</h1>
-    <p>Demonstrates transaction support with commit and rollback operations.</p>
+    <p>Demonstrates transaction support with commit and rollback operations using IndexedDB storage.</p>
 </div>
 
 <!-- Database Status -->
@@ -22,6 +22,10 @@
         <div class="stat-card">
             <div class="stat-value">@(_activeTransaction != null ? "&#128260;" : "&#8212;")</div>
             <div class="stat-label">@(_activeTransaction != null ? "Transaction Active" : "No Transaction")</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">&#128190;</div>
+            <div class="stat-label">IndexedDB</div>
         </div>
     </div>
     
@@ -138,6 +142,19 @@
             </button>
         </div>
     </div>
+    
+    <!-- Persistence Info -->
+    <div class="card">
+        <h3>&#128161; Persistence Info</h3>
+        <p>
+            Data is stored in browser's IndexedDB. Committed transactions persist across browser sessions!
+        </p>
+        <ul>
+            <li>Add records and commit - they will survive page refresh.</li>
+            <li>Add records and rollback - they will be discarded.</li>
+            <li>Use DevTools (F12) &#8594; Application &#8594; IndexedDB to inspect stored data.</li>
+        </ul>
+    </div>
 }
 
 <!-- Activity Log -->
@@ -167,19 +184,21 @@
     private List<(string Key, string Value)> _committedRecords = new();
     private List<string> _activityLog = new();
     
+    private const string DatabaseName = "WitDbTransactionsDemo";
+    
     private async Task InitializeDatabaseAsync()
     {
         try
         {
-            // Use BuildAsync for proper async initialization
+            // Use IndexedDB for persistent storage with BuildAsync
             _db = await new WitDatabaseBuilder()
-                .WithMemoryStorage()
+                .WithIndexedDbStorage(DatabaseName, JSRuntime)
                 .WithBTree()
                 .WithTransactions()
                 .BuildAsync();
             
             _isConnected = true;
-            Log("Database initialized");
+            Log("Database initialized with IndexedDB storage");
             await RefreshRecordsAsync();
         }
         catch (Exception ex)
@@ -205,7 +224,7 @@
         try
         {
             _activeTransaction.Commit();
-            Log("Transaction committed");
+            Log("Transaction committed - changes persisted to IndexedDB");
             
             _activeTransaction = null;
             await RefreshRecordsAsync();
@@ -291,7 +310,7 @@
         Log("Added record 3 to transaction");
         
         await CommitTransactionAsync();
-        Log("--- Demo Complete: Records are now persisted ---");
+        Log("--- Demo Complete: Records are now persisted in IndexedDB ---");
     }
     
     private async Task DemoRollbackScenarioAsync()
@@ -371,9 +390,12 @@
         }
     }
     
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
         _activeTransaction?.Dispose();
-        _db?.Dispose();
+        if (_db != null)
+        {
+            await _db.DisposeAsync();
+        }
     }
 }

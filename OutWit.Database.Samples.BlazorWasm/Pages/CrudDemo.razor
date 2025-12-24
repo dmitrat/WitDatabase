@@ -1,13 +1,13 @@
 @page "/crud"
 @using System.Text
 @inject IJSRuntime JSRuntime
-@implements IDisposable
+@implements IAsyncDisposable
 
 <PageTitle>CRUD Demo - WitDatabase</PageTitle>
 
 <div class="card">
     <h1>&#128221; CRUD Operations Demo</h1>
-    <p>Demonstrates basic Create, Read, Update, Delete operations using WitDatabase with in-memory storage.</p>
+    <p>Demonstrates basic Create, Read, Update, Delete operations using WitDatabase with IndexedDB storage.</p>
 </div>
 
 <!-- Database Status -->
@@ -23,12 +23,30 @@
             <div class="stat-value">@_recordCount</div>
             <div class="stat-label">Records</div>
         </div>
+        <div class="stat-card">
+            <div class="stat-value">@(_isPersistent ? "&#128190;" : "&#128203;")</div>
+            <div class="stat-label">@(_isPersistent ? "IndexedDB" : "Memory")</div>
+        </div>
     </div>
     
     @if (!_isConnected)
     {
-        <button class="btn btn-primary" @onclick="InitializeDatabaseAsync">
-            Initialize Database
+        <div class="form-group">
+            <label>
+                <input type="checkbox" @bind="_usePersistentStorage" disabled="@_isInitializing" /> 
+                Use IndexedDB (data persists across browser sessions)
+            </label>
+        </div>
+        
+        <button class="btn btn-primary" @onclick="InitializeDatabaseAsync" disabled="@_isInitializing">
+            @if (_isInitializing)
+            {
+                <span>Initializing...</span>
+            }
+            else
+            {
+                <span>Initialize Database</span>
+            }
         </button>
     }
     else
@@ -127,10 +145,28 @@
     </div>
 }
 
+@if (_isPersistent && _isConnected)
+{
+    <div class="card">
+        <h3>&#128161; Persistence Info</h3>
+        <p>
+            Data is stored in browser's IndexedDB. Try these experiments:
+        </p>
+        <ul>
+            <li>Add some records, then <strong>refresh the page</strong> - data should still be there!</li>
+            <li>Close the browser and reopen - data persists across sessions.</li>
+            <li>Use DevTools (F12) &#8594; Application &#8594; IndexedDB to inspect stored data.</li>
+        </ul>
+    </div>
+}
+
 @code {
     private WitDatabase? _db;
     private bool _isConnected;
+    private bool _isPersistent;
+    private bool _usePersistentStorage = true;
     private int _recordCount;
+    private bool _isInitializing;
     
     private string _inputKey = "";
     private string _inputValue = "";
@@ -139,26 +175,63 @@
     
     private List<(string Key, string Value)> _records = new();
     
+    private const string DatabaseName = "WitDbCrudDemo";
+    
     private async Task InitializeDatabaseAsync()
     {
+        if (_isInitializing) return;
+        _isInitializing = true;
+        _message = "";
+        
         try
         {
-            // Use BuildAsync for proper async initialization
-            _db = await new WitDatabaseBuilder()
-                .WithMemoryStorage()
+            ShowMessage("Initializing database...");
+            StateHasChanged();
+            
+            var builder = new WitDatabaseBuilder()
                 .WithBTree()
-                .WithTransactions()
-                .BuildAsync();
+                .WithTransactions();
+            
+            if (_usePersistentStorage)
+            {
+                // Use IndexedDB for persistent storage
+                builder.WithIndexedDbStorage(DatabaseName, JSRuntime);
+                _isPersistent = true;
+                ShowMessage("Configuring IndexedDB storage...");
+                StateHasChanged();
+            }
+            else
+            {
+                // Use in-memory storage (no persistence)
+                builder.WithMemoryStorage();
+                _isPersistent = false;
+            }
+            
+            ShowMessage("Building database (async)...");
+            StateHasChanged();
+            
+            // Use BuildAsync for proper async initialization (required for IndexedDB)
+            _db = await builder.BuildAsync();
             
             _isConnected = true;
+            
+            ShowMessage("Loading records...");
+            StateHasChanged();
+            
             await RefreshStatsAsync();
             await LoadAllRecordsAsync();
             
-            ShowMessage("Database initialized successfully!");
+            ShowMessage(_isPersistent 
+                ? "Database initialized with IndexedDB storage!" 
+                : "Database initialized with in-memory storage.");
         }
         catch (Exception ex)
         {
-            ShowError($"Failed to initialize database: {ex.Message}");
+            ShowError($"Failed to initialize database: {ex.GetType().Name}: {ex.Message}\n\nStack: {ex.StackTrace}");
+        }
+        finally
+        {
+            _isInitializing = false;
         }
     }
     
@@ -319,8 +392,11 @@
         return value.Length > 50 ? value[..47] + "..." : value;
     }
     
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _db?.Dispose();
+        if (_db != null)
+        {
+            await _db.DisposeAsync();
+        }
     }
 }

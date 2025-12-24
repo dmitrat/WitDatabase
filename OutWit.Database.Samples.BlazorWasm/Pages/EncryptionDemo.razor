@@ -1,13 +1,13 @@
 @page "/encryption"
 @using System.Text
 @inject IJSRuntime JSRuntime
-@implements IDisposable
+@implements IAsyncDisposable
 
 <PageTitle>Encryption Demo - WitDatabase</PageTitle>
 
 <div class="card">
     <h1>&#128274; Encryption Demo</h1>
-    <p>Demonstrates AES-GCM encryption at rest for secure data storage.</p>
+    <p>Demonstrates AES-GCM encryption at rest for secure data storage with IndexedDB.</p>
 </div>
 
 <!-- Setup -->
@@ -22,6 +22,10 @@
         <div class="stat-card">
             <div class="stat-value">@(_isEncrypted ? "&#128274;" : "&#128275;")</div>
             <div class="stat-label">@(_isEncrypted ? "Encrypted" : "Not Encrypted")</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">&#128190;</div>
+            <div class="stat-label">IndexedDB</div>
         </div>
     </div>
     
@@ -55,12 +59,12 @@
             @if (_isEncrypted)
             {
                 <strong>&#128274; Encryption Enabled</strong>
-                <p style="margin: 5px 0 0 0;">All data is encrypted using AES-GCM (in-memory demo).</p>
+                <p style="margin: 5px 0 0 0;">All data is encrypted using AES-GCM before storing in IndexedDB.</p>
             }
             else
             {
                 <strong>&#128275; No Encryption</strong>
-                <p style="margin: 5px 0 0 0;">Data is stored in plain text (in-memory demo).</p>
+                <p style="margin: 5px 0 0 0;">Data is stored in plain text in IndexedDB.</p>
             }
         </div>
         
@@ -192,13 +196,20 @@
         <ul>
             <li><strong>AES-GCM Encryption:</strong> Data is encrypted using AES-256 in GCM mode with a 96-bit nonce.</li>
             <li><strong>Key Derivation:</strong> The encryption key is derived from your password using PBKDF2.</li>
-            <li><strong>In-Memory Demo:</strong> This demo uses in-memory storage. Data is not persisted.</li>
+            <li><strong>IndexedDB Storage:</strong> Encrypted data persists in browser's IndexedDB across sessions.</li>
             <li><strong>Password Required:</strong> You'll need the same password to decrypt data.</li>
         </ul>
         
         <div class="alert alert-danger">
             <strong>&#9888; Important:</strong> If you forget your password, encrypted data cannot be recovered!
         </div>
+        
+        @if (_isEncrypted)
+        {
+            <div class="alert alert-info">
+                <strong>&#128161; Try this:</strong> Store some secrets, close the database, and reopen with the same password - your data will still be there and decryptable!
+            </div>
+        }
     </div>
 }
 
@@ -228,13 +239,18 @@
     private List<(string Key, string Value)> _secrets = new();
     private HashSet<string> _revealedKeys = new();
     
+    private const string DatabaseName = "WitDbEncryptionDemo";
+    private const string DatabaseNameEncrypted = "WitDbEncryptionDemo_Encrypted";
+    
     private async Task InitializeDatabaseAsync()
     {
         try
         {
-            // Use BuildAsync for proper async initialization
+            var dbName = _enableEncryption ? DatabaseNameEncrypted : DatabaseName;
+            
+            // Use BuildAsync for proper async initialization (required for IndexedDB)
             var builder = new WitDatabaseBuilder()
-                .WithMemoryStorage()
+                .WithIndexedDbStorage(dbName, JSRuntime)
                 .WithBTree()
                 .WithTransactions();
             
@@ -250,7 +266,7 @@
             await RefreshSecretsAsync();
             
             ShowMessage(_isEncrypted 
-                ? "Encrypted database initialized!" 
+                ? "Encrypted database initialized with IndexedDB!" 
                 : "Database initialized without encryption");
         }
         catch (Exception ex)
@@ -259,10 +275,13 @@
         }
     }
     
-    private void CloseDatabaseAsync()
+    private async Task CloseDatabaseAsync()
     {
-        _db?.Dispose();
-        _db = null;
+        if (_db != null)
+        {
+            await _db.DisposeAsync();
+            _db = null;
+        }
         
         _isConnected = false;
         _isEncrypted = false;
@@ -416,7 +435,7 @@
         }
         
         await _db.FlushAsync();
-        ShowMessage("Sample user data stored (encrypted)!");
+        ShowMessage("Sample user data stored (encrypted in IndexedDB)!");
         await RefreshSecretsAsync();
     }
     
@@ -432,8 +451,11 @@
         _isError = true;
     }
     
-    public void Dispose()
+    public async ValueTask DisposeAsync()
     {
-        _db?.Dispose();
+        if (_db != null)
+        {
+            await _db.DisposeAsync();
+        }
     }
 }

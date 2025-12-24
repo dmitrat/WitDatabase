@@ -183,7 +183,9 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyn
         var header = pageManager.GetHeader();
         uint rootPage = header.SchemaRootPage;
         
-        var tree = new BTree(pageManager, rootPage);
+        // Use async BTree creation
+        var tree = await BTree.CreateAsync(pageManager, rootPage, cancellationToken)
+            .ConfigureAwait(false);
         
         return new StoreBTree(storage, pageManager, tree, ownsStorage, ownsPageManager: true);
     }
