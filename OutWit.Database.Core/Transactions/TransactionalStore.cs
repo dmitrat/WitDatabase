@@ -8,7 +8,7 @@ namespace OutWit.Database.Core.Transactions;
 /// Wraps an IKeyValueStore with transaction support.
 /// Provides ACID guarantees through journaling and coordinated locking.
 /// </summary>
-public sealed class TransactionalStore : ITransactionalStore
+public sealed class TransactionalStore : ITransactionalStore, IAsyncDisposable
 {
     #region Constants
 
@@ -426,6 +426,41 @@ public sealed class TransactionalStore : ITransactionalStore
         if (m_ownsStore)
         {
             m_store.Dispose();
+        }
+    }
+
+    #endregion
+
+    #region IAsyncDisposable
+
+    /// <inheritdoc/>
+    public async ValueTask DisposeAsync()
+    {
+        if (m_disposed) return;
+        m_disposed = true;
+
+        // Rollback any active transactions
+        lock (m_txLock)
+        {
+            foreach (var tx in m_activeTransactions.ToList())
+            {
+                try { tx.Rollback(); } catch { }
+            }
+        }
+
+        m_journal?.Dispose();
+        m_lockManager?.Dispose();
+
+        if (m_ownsStore)
+        {
+            if (m_store is IAsyncDisposable asyncDisposable)
+            {
+                await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                m_store.Dispose();
+            }
         }
     }
 

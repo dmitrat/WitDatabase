@@ -10,9 +10,16 @@ public static class CryptoUtils
     #region Constants
 
     /// <summary>
-    /// Default number of PBKDF2 iterations.
+    /// Default number of PBKDF2 iterations for native environments.
     /// </summary>
     public const int DEFAULT_PBKDF2_ITERATIONS = 100_000;
+
+    /// <summary>
+    /// Reduced number of PBKDF2 iterations for WASM/browser environments.
+    /// WASM crypto is slower, so we use fewer iterations to maintain responsiveness.
+    /// Still provides reasonable security for browser-based encryption.
+    /// </summary>
+    public const int WASM_PBKDF2_ITERATIONS = 10_000;
 
     #endregion
 

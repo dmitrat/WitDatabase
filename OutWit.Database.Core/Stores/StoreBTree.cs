@@ -183,6 +183,13 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyn
         var header = pageManager.GetHeader();
         uint rootPage = header.SchemaRootPage;
         
+        // Validate root page - if it's beyond total pages or 0, create new tree
+        // This handles case where database was partially created but not flushed
+        if (rootPage == 0 || rootPage >= header.TotalPageCount)
+        {
+            rootPage = 0; // Force creation of new tree
+        }
+        
         // Use async BTree creation
         var tree = await BTree.CreateAsync(pageManager, rootPage, cancellationToken)
             .ConfigureAwait(false);
@@ -411,12 +418,21 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyn
         
         if (m_ownsPageManager)
         {
+            // PageManager doesn't have IAsyncDisposable, use sync dispose
+            // This is OK because it just flushes cache which uses async internally
             m_pageManager.Dispose();
         }
         
         if (m_ownsStorage)
         {
-            m_storage?.Dispose();
+            if (m_storage is IAsyncDisposable asyncStorage)
+            {
+                await asyncStorage.DisposeAsync().ConfigureAwait(false);
+            }
+            else
+            {
+                m_storage?.Dispose();
+            }
         }
     }
 

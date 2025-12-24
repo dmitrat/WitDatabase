@@ -294,7 +294,8 @@
             
             if (_enableEncryption && !string.IsNullOrEmpty(_password))
             {
-                builder.WithEncryption(_password);
+                // Use fast encryption for WASM (reduced PBKDF2 iterations)
+                builder.WithEncryptionFast(_password);
                 _isEncrypted = true;
             }
             

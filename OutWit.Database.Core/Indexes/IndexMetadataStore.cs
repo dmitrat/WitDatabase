@@ -44,7 +44,7 @@ namespace OutWit.Database.Core.Indexes
 
         #endregion
 
-        #region Save/Load
+        #region Save/Load (Sync)
 
         /// <summary>
         /// Saves metadata for an index.
@@ -138,7 +138,102 @@ namespace OutWit.Database.Core.Indexes
 
         #endregion
 
-        #region Catalog Management
+        #region Save/Load (Async)
+
+        /// <summary>
+        /// Saves metadata for an index asynchronously.
+        /// </summary>
+        public async ValueTask SaveIndexAsync(string name, bool isUnique, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrEmpty(name))
+                throw new ArgumentNullException(nameof(name));
+
+            var metadata = new IndexMetadata { Name = name, IsUnique = isUnique };
+            var key = CreateKey(name);
+            var value = JsonSerializer.SerializeToUtf8Bytes(metadata);
+            
+            await m_store.PutAsync(key, value, cancellationToken).ConfigureAwait(false);
+            
+            // Update catalog
+            var catalog = await LoadCatalogAsync(cancellationToken).ConfigureAwait(false);
+            if (!catalog.Contains(name, StringComparer.OrdinalIgnoreCase))
+            {
+                catalog.Add(name);
+                await SaveCatalogAsync(catalog, cancellationToken).ConfigureAwait(false);
+            }
+        }
+
+        /// <summary>
+        /// Loads metadata for an index asynchronously.
+        /// </summary>
+        public async ValueTask<IndexMetadata?> LoadIndexAsync(string name, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrEmpty(name))
+                return null;
+
+            var key = CreateKey(name);
+            var value = await m_store.GetAsync(key, cancellationToken).ConfigureAwait(false);
+            
+            if (value == null)
+                return null;
+
+            return JsonSerializer.Deserialize<IndexMetadata>(value);
+        }
+
+        /// <summary>
+        /// Removes metadata for an index asynchronously.
+        /// </summary>
+        public async ValueTask<bool> RemoveIndexAsync(string name, CancellationToken cancellationToken = default)
+        {
+            if (string.IsNullOrEmpty(name))
+                return false;
+
+            var key = CreateKey(name);
+            var removed = await m_store.DeleteAsync(key, cancellationToken).ConfigureAwait(false);
+            
+            if (removed)
+            {
+                var catalog = await LoadCatalogAsync(cancellationToken).ConfigureAwait(false);
+                catalog.RemoveAll(n => string.Equals(n, name, StringComparison.OrdinalIgnoreCase));
+                await SaveCatalogAsync(catalog, cancellationToken).ConfigureAwait(false);
+            }
+            
+            return removed;
+        }
+
+        /// <summary>
+        /// Loads all index metadata asynchronously.
+        /// </summary>
+        public async ValueTask<IReadOnlyList<IndexMetadata>> LoadAllIndexesAsync(CancellationToken cancellationToken = default)
+        {
+            var catalog = await LoadCatalogAsync(cancellationToken).ConfigureAwait(false);
+            var result = new List<IndexMetadata>();
+            
+            foreach (var name in catalog)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                var metadata = await LoadIndexAsync(name, cancellationToken).ConfigureAwait(false);
+                if (metadata != null)
+                {
+                    result.Add(metadata);
+                }
+            }
+            
+            return result;
+        }
+
+        /// <summary>
+        /// Gets all index names from the catalog asynchronously.
+        /// </summary>
+        public async ValueTask<IReadOnlyList<string>> GetIndexNamesAsync(CancellationToken cancellationToken = default)
+        {
+            var catalog = await LoadCatalogAsync(cancellationToken).ConfigureAwait(false);
+            return catalog.AsReadOnly();
+        }
+
+        #endregion
+
+        #region Catalog Management (Sync)
 
         private List<string> LoadCatalog()
         {
@@ -161,6 +256,33 @@ namespace OutWit.Database.Core.Indexes
         {
             var value = JsonSerializer.SerializeToUtf8Bytes(catalog);
             m_store.Put(CATALOG_KEY, value);
+        }
+
+        #endregion
+
+        #region Catalog Management (Async)
+
+        private async ValueTask<List<string>> LoadCatalogAsync(CancellationToken cancellationToken = default)
+        {
+            var value = await m_store.GetAsync(CATALOG_KEY, cancellationToken).ConfigureAwait(false);
+            
+            if (value == null || value.Length == 0)
+                return [];
+
+            try
+            {
+                return JsonSerializer.Deserialize<List<string>>(value) ?? [];
+            }
+            catch
+            {
+                return [];
+            }
+        }
+
+        private async ValueTask SaveCatalogAsync(List<string> catalog, CancellationToken cancellationToken = default)
+        {
+            var value = JsonSerializer.SerializeToUtf8Bytes(catalog);
+            await m_store.PutAsync(CATALOG_KEY, value, cancellationToken).ConfigureAwait(false);
         }
 
         #endregion

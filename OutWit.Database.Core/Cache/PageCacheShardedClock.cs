@@ -427,6 +427,10 @@ public sealed class PageCacheShardedClock : IPageCache
             int slot = await FindSlotForNewPageAsync(cancellationToken).ConfigureAwait(false);
 
             var page = new CachedPage(pageNumber, m_storage.PageSize);
+            
+            // Yield before JS interop to allow browser event loop to process
+            await Task.Yield();
+            
             await m_storage.ReadPageAsync(pageNumber, page.Memory, cancellationToken).ConfigureAwait(false);
             page.ReferenceCount = 1;
             page.Referenced = true;
@@ -494,6 +498,9 @@ public sealed class PageCacheShardedClock : IPageCache
             {
                 if (page.IsDirty)
                 {
+                    // Yield before JS interop to allow browser event loop to process
+                    await Task.Yield();
+                    
                     await m_storage.WritePageAsync(page.PageNumber, page.Memory, cancellationToken)
                         .ConfigureAwait(false);
                 }

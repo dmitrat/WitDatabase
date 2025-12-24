@@ -263,6 +263,8 @@ public sealed class PageManager : IDisposable
         uint pageNumber;
         bool needsExtend = false;
         uint newTotalPageCount = 0;
+        bool needsFreePageRead = false;
+        uint freePageToRead = 0;
 
         lock (m_lock)
         {
@@ -272,21 +274,10 @@ public sealed class PageManager : IDisposable
 
             if (m_header.FirstFreePage != DatabaseConstants.NULL_PAGE_NUMBER)
             {
-                // Reuse a free page
-                pageNumber = m_header.FirstFreePage;
-
-                // Get the free page to read its next pointer
-                var freePage = m_cache.GetPage(pageNumber);
-                var freeHeader = PageHeader.ReadFrom(freePage.ReadOnlyData);
-
-                // Update the free list head
-                m_header.FirstFreePage = freeHeader.RightChild;
-                m_header.FreePageCount--;
-
-                m_cache.ReleasePage(pageNumber);
-                
-                // Evict from cache so we can create fresh
-                m_cache.Evict(pageNumber);
+                // Need to read free page asynchronously
+                freePageToRead = m_header.FirstFreePage;
+                needsFreePageRead = true;
+                pageNumber = freePageToRead;
             }
             else
             {
@@ -296,25 +287,45 @@ public sealed class PageManager : IDisposable
                 newTotalPageCount = m_header.TotalPageCount;
                 needsExtend = true;
             }
+        }
 
-            m_headerDirty = true;
+        // Handle free page reuse outside of lock (async)
+        if (needsFreePageRead)
+        {
+            // Read the free page to get its next pointer
+            var freePage = await m_cache.GetPageAsync(freePageToRead, cancellationToken).ConfigureAwait(false);
+            var freeHeader = PageHeader.ReadFrom(freePage.ReadOnlyData);
+            
+            lock (m_lock)
+            {
+                // Update the free list head
+                m_header.FirstFreePage = freeHeader.RightChild;
+                m_header.FreePageCount--;
+                m_headerDirty = true;
+            }
+            
+            m_cache.ReleasePage(freePageToRead);
+            
+            // Evict from cache so we can create fresh
+            await m_cache.EvictAsync(freePageToRead, cancellationToken).ConfigureAwait(false);
         }
 
         // Extend storage outside of lock (async)
         if (needsExtend)
         {
             await m_storage.SetSizeAsync(newTotalPageCount, cancellationToken).ConfigureAwait(false);
+            
+            lock (m_lock)
+            {
+                m_headerDirty = true;
+            }
         }
 
-        // Create and initialize the new page
-        CachedPage page;
-        lock (m_lock)
-        {
-            page = m_cache.CreatePage(pageNumber);
-            var header = PageHeader.CreateEmpty(pageType, m_storage.PageSize);
-            header.WriteTo(page.Data);
-            page.MarkDirty();
-        }
+        // Create and initialize the new page (async)
+        var page = await m_cache.CreatePageAsync(pageNumber, cancellationToken).ConfigureAwait(false);
+        var header = PageHeader.CreateEmpty(pageType, m_storage.PageSize);
+        header.WriteTo(page.Data);
+        page.MarkDirty();
 
         return (pageNumber, page);
     }
@@ -619,15 +630,23 @@ public sealed class PageManager : IDisposable
     /// </summary>
     public async ValueTask FlushAsync(CancellationToken cancellationToken = default)
     {
+        bool needsSaveHeader;
+        
         lock (m_lock)
         {
             ThrowIfDisposed();
             
             if (!m_initialized) return;
             
-            if (m_headerDirty)
+            needsSaveHeader = m_headerDirty;
+        }
+        
+        if (needsSaveHeader)
+        {
+            await SaveHeaderImmediateAsync(cancellationToken).ConfigureAwait(false);
+            
+            lock (m_lock)
             {
-                SaveHeaderImmediate();
                 m_headerDirty = false;
             }
         }

@@ -135,16 +135,76 @@ public sealed partial class BTree : IDisposable, IAsyncDisposable
             uint newRootPageNumber = await CreateLeafNodeAsync(pageManager, cancellationToken).ConfigureAwait(false);
             
             var tree = new BTree(pageManager, newRootPageNumber, entryCount: 0, entryCountDirty: true, maxInlineValueSize);
-            tree.SaveEntryCountIfDirty();
+            
+            await tree.SaveEntryCountIfDirtyAsync(cancellationToken).ConfigureAwait(false);
             tree.UpdateSchemaRootPage();
             
             return tree;
         }
         else
         {
-            // Load existing tree
-            long entryCount = LoadEntryCountStatic(pageManager, rootPageNumber);
+            // Try to load existing tree - validate the page first
+            bool isValidRoot = await IsValidRootPageAsync(pageManager, rootPageNumber, cancellationToken).ConfigureAwait(false);
+            
+            if (!isValidRoot)
+            {
+                // Root page is invalid (empty, corrupted, or wrong type) - create new tree
+                uint newRootPageNumber = await CreateLeafNodeAsync(pageManager, cancellationToken).ConfigureAwait(false);
+                
+                var newTree = new BTree(pageManager, newRootPageNumber, entryCount: 0, entryCountDirty: true, maxInlineValueSize);
+                
+                await newTree.SaveEntryCountIfDirtyAsync(cancellationToken).ConfigureAwait(false);
+                newTree.UpdateSchemaRootPage();
+                
+                return newTree;
+            }
+            
+            // Load existing tree with async page access
+            long entryCount = await LoadEntryCountStaticAsync(pageManager, rootPageNumber, cancellationToken).ConfigureAwait(false);
             return new BTree(pageManager, rootPageNumber, entryCount, entryCountDirty: false, maxInlineValueSize);
+        }
+    }
+
+    /// <summary>
+    /// Checks if a page is a valid BTree root page.
+    /// </summary>
+    private static async ValueTask<bool> IsValidRootPageAsync(PageManager pageManager, uint pageNumber, CancellationToken cancellationToken)
+    {
+        try
+        {
+            var page = await pageManager.GetPageAsync(pageNumber, cancellationToken).ConfigureAwait(false);
+            try
+            {
+                // Check if page has valid BTree structure
+                // A valid root page should have a valid page type (Leaf or Internal)
+                var data = page.ReadOnlyData;
+                
+                // Check if data is all zeros (uninitialized page)
+                bool allZeros = true;
+                for (int i = 0; i < Math.Min(16, data.Length); i++)
+                {
+                    if (data[i] != 0)
+                    {
+                        allZeros = false;
+                        break;
+                    }
+                }
+                
+                if (allZeros)
+                    return false;
+                
+                // Check page type from header
+                var pageType = (PageType)data[0];
+                return pageType == PageType.Leaf || pageType == PageType.Internal;
+            }
+            finally
+            {
+                pageManager.ReleasePage(pageNumber);
+            }
+        }
+        catch
+        {
+            return false;
         }
     }
 
@@ -160,6 +220,14 @@ public sealed partial class BTree : IDisposable, IAsyncDisposable
     private static long LoadEntryCountStatic(PageManager pageManager, uint rootPageNumber)
     {
         var page = pageManager.GetPage(rootPageNumber);
+        uint count = BinaryPrimitives.ReadUInt32LittleEndian(page.ReadOnlyData[ENTRY_COUNT_OFFSET..]);
+        pageManager.ReleasePage(rootPageNumber);
+        return count;
+    }
+
+    private static async ValueTask<long> LoadEntryCountStaticAsync(PageManager pageManager, uint rootPageNumber, CancellationToken cancellationToken)
+    {
+        var page = await pageManager.GetPageAsync(rootPageNumber, cancellationToken).ConfigureAwait(false);
         uint count = BinaryPrimitives.ReadUInt32LittleEndian(page.ReadOnlyData[ENTRY_COUNT_OFFSET..]);
         pageManager.ReleasePage(rootPageNumber);
         return count;
@@ -197,6 +265,18 @@ public sealed partial class BTree : IDisposable, IAsyncDisposable
             return;
         
         var page = m_pageManager.GetPage(m_rootPageNumber);
+        BinaryPrimitives.WriteUInt32LittleEndian(page.Data[ENTRY_COUNT_OFFSET..], (uint)m_entryCount);
+        page.MarkDirty();
+        m_pageManager.ReleasePage(m_rootPageNumber);
+        m_entryCountDirty = false;
+    }
+
+    private async ValueTask SaveEntryCountIfDirtyAsync(CancellationToken cancellationToken = default)
+    {
+        if (!m_entryCountDirty)
+            return;
+        
+        var page = await m_pageManager.GetPageAsync(m_rootPageNumber, cancellationToken).ConfigureAwait(false);
         BinaryPrimitives.WriteUInt32LittleEndian(page.Data[ENTRY_COUNT_OFFSET..], (uint)m_entryCount);
         page.MarkDirty();
         m_pageManager.ReleasePage(m_rootPageNumber);
@@ -308,7 +388,8 @@ public sealed partial class BTree : IDisposable, IAsyncDisposable
     {
         if (!m_disposed)
         {
-            SaveEntryCountIfDirty();
+            // Use async version to avoid deadlock in WASM
+            await SaveEntryCountIfDirtyAsync().ConfigureAwait(false);
             await m_pageManager.FlushAsync().ConfigureAwait(false);
             m_pageManagerOverflowManager.Dispose();
             m_disposed = true;

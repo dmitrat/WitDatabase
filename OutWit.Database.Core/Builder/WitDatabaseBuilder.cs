@@ -92,10 +92,12 @@ public sealed class WitDatabaseBuilder
         if (Options.EnableTransactions)
         {
             var transactionalStore = BuildTransactionalStoreInternal(store);
-            return new WitDatabase(transactionalStore, indexManager, disposeStore: true);
+            return await WitDatabase.CreateAsync(transactionalStore, indexManager, disposeStore: true, cancellationToken)
+                .ConfigureAwait(false);
         }
         
-        return new WitDatabase(store, indexManager, disposeStore: true);
+        return await WitDatabase.CreateAsync(store, indexManager, disposeStore: true, cancellationToken)
+            .ConfigureAwait(false);
     }
 
     /// <summary>

@@ -7,7 +7,7 @@ namespace OutWit.Database.Core.Indexes
     /// Manages secondary indexes for a table.
     /// Uses a factory to create storage-appropriate index implementations.
     /// </summary>
-    public sealed class IndexManager : IIndexManager
+    public sealed class IndexManager : IIndexManager, IAsyncDisposable
     {
         #region Fields
 
@@ -249,6 +249,38 @@ namespace OutWit.Database.Core.Indexes
         private void ThrowIfDisposed()
         {
             ObjectDisposedException.ThrowIf(m_disposed, this);
+        }
+
+        #endregion
+
+        #region IAsyncDisposable
+
+        /// <inheritdoc/>
+        public async ValueTask DisposeAsync()
+        {
+            if (!m_disposed)
+            {
+                List<ISecondaryIndex> indexes;
+                lock (m_lock)
+                {
+                    indexes = m_indexes.Values.ToList();
+                    m_indexes.Clear();
+                }
+                
+                foreach (var index in indexes)
+                {
+                    if (index is IAsyncDisposable asyncDisposable)
+                    {
+                        await asyncDisposable.DisposeAsync().ConfigureAwait(false);
+                    }
+                    else
+                    {
+                        index.Dispose();
+                    }
+                }
+                
+                m_disposed = true;
+            }
         }
 
         #endregion

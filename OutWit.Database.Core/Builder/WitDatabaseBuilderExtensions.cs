@@ -190,15 +190,42 @@ public static class WitDatabaseBuilderExtensions
     /// <param name="password">Password to derive encryption key from.</param>
     public static WitDatabaseBuilder WithEncryption(this WitDatabaseBuilder builder, string password)
     {
+        return builder.WithEncryption(password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS);
+    }
+
+    /// <summary>
+    /// Enable AES-GCM encryption with password-based key derivation and custom iterations.
+    /// Uses PBKDF2 with SHA-256 for key derivation.
+    /// </summary>
+    /// <param name="builder">The database builder.</param>
+    /// <param name="password">Password to derive encryption key from.</param>
+    /// <param name="iterations">Number of PBKDF2 iterations. Use <see cref="CryptoUtils.WASM_PBKDF2_ITERATIONS"/> for WASM.</param>
+    public static WitDatabaseBuilder WithEncryption(this WitDatabaseBuilder builder, string password, int iterations)
+    {
         if (string.IsNullOrEmpty(password))
             throw new ArgumentException("Password cannot be empty", nameof(password));
 
         var salt = CryptoUtils.DerivePasswordSalt(password);
-        var key = CryptoUtils.DeriveKey(password, salt);
+        var key = CryptoUtils.DeriveKey(password, salt, iterations);
         
         builder.Options.CryptoProvider = new EncryptorProviderAesGcm(key);
         builder.Options.EncryptionSalt = salt;
         return builder;
+    }
+
+    /// <summary>
+    /// Enable AES-GCM encryption optimized for WASM/browser environments.
+    /// Uses reduced PBKDF2 iterations (10,000) for faster key derivation.
+    /// </summary>
+    /// <param name="builder">The database builder.</param>
+    /// <param name="password">Password to derive encryption key from.</param>
+    /// <remarks>
+    /// Use this method in Blazor WASM applications for faster initialization.
+    /// For native applications where security is paramount, use <see cref="WithEncryption(WitDatabaseBuilder, string)"/>.
+    /// </remarks>
+    public static WitDatabaseBuilder WithEncryptionFast(this WitDatabaseBuilder builder, string password)
+    {
+        return builder.WithEncryption(password, CryptoUtils.WASM_PBKDF2_ITERATIONS);
     }
 
     /// <summary>
@@ -210,17 +237,46 @@ public static class WitDatabaseBuilderExtensions
     /// <param name="password">Password to derive encryption key from.</param>
     public static WitDatabaseBuilder WithEncryption(this WitDatabaseBuilder builder, string user, string password)
     {
+        return builder.WithEncryption(user, password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS);
+    }
+
+    /// <summary>
+    /// Enable AES-GCM encryption with user and password-based key derivation and custom iterations.
+    /// Uses user as salt basis and password for key derivation via PBKDF2.
+    /// </summary>
+    /// <param name="builder">The database builder.</param>
+    /// <param name="user">Username (used as salt basis).</param>
+    /// <param name="password">Password to derive encryption key from.</param>
+    /// <param name="iterations">Number of PBKDF2 iterations. Use <see cref="CryptoUtils.WASM_PBKDF2_ITERATIONS"/> for WASM.</param>
+    public static WitDatabaseBuilder WithEncryption(this WitDatabaseBuilder builder, string user, string password, int iterations)
+    {
         if (string.IsNullOrEmpty(user))
             throw new ArgumentException("User cannot be empty", nameof(user));
         if (string.IsNullOrEmpty(password))
             throw new ArgumentException("Password cannot be empty", nameof(password));
 
         var salt = CryptoUtils.DeriveUserSalt(user);
-        var key = CryptoUtils.DeriveKey(password, salt);
+        var key = CryptoUtils.DeriveKey(password, salt, iterations);
         
         builder.Options.CryptoProvider = new EncryptorProviderAesGcm(key);
         builder.Options.EncryptionSalt = salt;
         return builder;
+    }
+
+    /// <summary>
+    /// Enable AES-GCM encryption with user/password optimized for WASM/browser environments.
+    /// Uses reduced PBKDF2 iterations (10,000) for faster key derivation.
+    /// </summary>
+    /// <param name="builder">The database builder.</param>
+    /// <param name="user">Username (used as salt basis).</param>
+    /// <param name="password">Password to derive encryption key from.</param>
+    /// <remarks>
+    /// Use this method in Blazor WASM applications for faster initialization.
+    /// For native applications where security is paramount, use <see cref="WithEncryption(WitDatabaseBuilder, string, string)"/>
+    /// </remarks>
+    public static WitDatabaseBuilder WithEncryptionFast(this WitDatabaseBuilder builder, string user, string password)
+    {
+        return builder.WithEncryption(user, password, CryptoUtils.WASM_PBKDF2_ITERATIONS);
     }
 
     /// <summary>

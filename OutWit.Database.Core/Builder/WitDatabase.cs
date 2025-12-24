@@ -19,6 +19,7 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
     private readonly IIndexManager? m_indexManager;
     private readonly IndexMetadataStore? m_indexMetadataStore;
     private readonly bool m_disposeStore;
+    private bool m_indexesRestored;
     private bool m_disposed;
 
     #endregion
@@ -27,8 +28,27 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
 
     /// <summary>
     /// Creates a new WitDatabase wrapping a key-value store.
+    /// For async initialization, use <see cref="CreateAsync"/> instead.
     /// </summary>
     internal WitDatabase(IKeyValueStore store, IIndexManager? indexManager = null, bool disposeStore = true)
+        : this(store, indexManager, disposeStore, restoreIndexes: true)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new WitDatabase wrapping a transactional store.
+    /// For async initialization, use <see cref="CreateAsync"/> instead.
+    /// </summary>
+    internal WitDatabase(ITransactionalStore store, IIndexManager? indexManager = null, bool disposeStore = true)
+        : this((IKeyValueStore)store, indexManager, disposeStore, restoreIndexes: true)
+    {
+        m_transactionalStore = store;
+    }
+
+    /// <summary>
+    /// Private constructor with option to skip index restoration (for async path).
+    /// </summary>
+    private WitDatabase(IKeyValueStore store, IIndexManager? indexManager, bool disposeStore, bool restoreIndexes)
     {
         m_store = store ?? throw new ArgumentNullException(nameof(store));
         m_transactionalStore = store as ITransactionalStore;
@@ -39,26 +59,47 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
         var underlyingStore = GetUnderlyingStore(store);
         m_indexMetadataStore = new IndexMetadataStore(underlyingStore);
         
-        // Restore indexes from metadata
-        RestoreIndexesFromMetadata();
+        // Restore indexes from metadata (sync path)
+        if (restoreIndexes)
+        {
+            RestoreIndexesFromMetadata();
+            m_indexesRestored = true;
+        }
+    }
+
+    #endregion
+
+    #region Static Async Factory
+
+    /// <summary>
+    /// Creates a new WitDatabase asynchronously.
+    /// Use this for WASM/IndexedDB scenarios where sync I/O is not available.
+    /// </summary>
+    internal static async ValueTask<WitDatabase> CreateAsync(
+        IKeyValueStore store, 
+        IIndexManager? indexManager = null, 
+        bool disposeStore = true,
+        CancellationToken cancellationToken = default)
+    {
+        var db = new WitDatabase(store, indexManager, disposeStore, restoreIndexes: false);
+        await db.RestoreIndexesFromMetadataAsync(cancellationToken).ConfigureAwait(false);
+        db.m_indexesRestored = true;
+        return db;
     }
 
     /// <summary>
-    /// Creates a new WitDatabase wrapping a transactional store.
+    /// Creates a new WitDatabase from a transactional store asynchronously.
     /// </summary>
-    internal WitDatabase(ITransactionalStore store, IIndexManager? indexManager = null, bool disposeStore = true)
+    internal static async ValueTask<WitDatabase> CreateAsync(
+        ITransactionalStore store,
+        IIndexManager? indexManager = null,
+        bool disposeStore = true,
+        CancellationToken cancellationToken = default)
     {
-        m_store = store ?? throw new ArgumentNullException(nameof(store));
-        m_transactionalStore = store;
-        m_indexManager = indexManager;
-        m_disposeStore = disposeStore;
-        
-        // Create metadata store using the underlying store
-        var underlyingStore = GetUnderlyingStore(store);
-        m_indexMetadataStore = new IndexMetadataStore(underlyingStore);
-        
-        // Restore indexes from metadata
-        RestoreIndexesFromMetadata();
+        var db = new WitDatabase((IKeyValueStore)store, indexManager, disposeStore, restoreIndexes: false);
+        await db.RestoreIndexesFromMetadataAsync(cancellationToken).ConfigureAwait(false);
+        db.m_indexesRestored = true;
+        return db;
     }
 
     #endregion
@@ -100,6 +141,38 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
                 // Recreate the index
                 m_indexManager.CreateIndex(metadata.Name, metadata.IsUnique);
             }
+        }
+        catch
+        {
+            // Ignore errors during restoration - index data might still be on disk
+            // but metadata might be corrupted. User can recreate indexes manually.
+        }
+    }
+
+    private async ValueTask RestoreIndexesFromMetadataAsync(CancellationToken cancellationToken = default)
+    {
+        if (m_indexManager == null || m_indexMetadataStore == null)
+            return;
+
+        try
+        {
+            var savedIndexes = await m_indexMetadataStore.LoadAllIndexesAsync(cancellationToken).ConfigureAwait(false);
+            
+            foreach (var metadata in savedIndexes)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+                
+                // Skip if index already exists (shouldn't happen normally)
+                if (m_indexManager.HasIndex(metadata.Name))
+                    continue;
+
+                // Recreate the index
+                m_indexManager.CreateIndex(metadata.Name, metadata.IsUnique);
+            }
+        }
+        catch (OperationCanceledException)
+        {
+            throw;
         }
         catch
         {
@@ -630,7 +703,15 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
         if (m_disposed) return;
         m_disposed = true;
 
-        m_indexManager?.Dispose();
+        // Dispose index manager asynchronously if possible
+        if (m_indexManager is IAsyncDisposable asyncIndexManager)
+        {
+            await asyncIndexManager.DisposeAsync().ConfigureAwait(false);
+        }
+        else
+        {
+            m_indexManager?.Dispose();
+        }
 
         if (m_disposeStore)
         {
