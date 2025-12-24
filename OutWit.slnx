@@ -14,6 +14,8 @@
     <Project Path="OutWit.Database.Core.Tests.Benchmarks/OutWit.Database.Core.Tests.Benchmarks.csproj" Id="218fe20c-91ee-4980-98ce-332906c1db1a" />
     <Project Path="OutWit.Database.Core.Tests/OutWit.Database.Core.Tests.csproj" Id="91a232f7-c5e4-4083-8127-20070e0d8b03" />
     <Project Path="OutWit.Database.Core/OutWit.Database.Core.csproj" Id="91042611-a01d-4293-9594-25ee9d3a0a67" />
+	<Project Path="OutWit.Database.Core.IndexedDb/OutWit.Database.Core.IndexedDb.csproj" Id="0B08187A-589F-4B18-9840-F4F3940F9DA8" />
+	<Project Path="OutWit.Database.Core.IndexedDb.Tests/OutWit.Database.Core.IndexedDb.Tests.csproj" Id="6CB5FC26-DE05-488F-90AC-A6B7AA4955BC" />
   </Folder>
   <Folder Name="/Parser/">
     <Project Path="OutWit.Database.Parser.Tests/OutWit.Database.Parser.Tests.csproj" Id="198cc914-dec7-4660-b8f2-e8069cd68a17" />
