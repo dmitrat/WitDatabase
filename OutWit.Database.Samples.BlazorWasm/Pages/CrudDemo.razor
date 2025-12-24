@@ -148,28 +148,10 @@
 <!-- Messages -->
 @if (!string.IsNullOrEmpty(_message))
 {
-    <div class="alert @(_isError ? "alert-danger" : "alert-success")" style="white-space: pre-wrap;">
+    <div class="alert @(_isError ? "alert-danger" : "alert-success")">
         @_message
     </div>
 }
-
-<!-- Debug Log -->
-<div class="card">
-    <h3>Debug Log (@_debugLog.Count entries)</h3>
-    <div style="max-height: 400px; overflow-y: auto; background: #1e1e1e; color: #d4d4d4; padding: 10px; border-radius: 4px; font-family: 'Consolas', monospace; font-size: 11px;">
-        @foreach (var log in _debugLog.TakeLast(100))
-        {
-            <div style="@(log.Contains("ERROR") || log.Contains("DEADLOCK") ? "color: #f44336;" : log.Contains("SYNC") ? "color: #ff9800;" : "")">@log</div>
-        }
-        @if (_debugLog.Count == 0)
-        {
-            <div style="color: #666;">No logs yet...</div>
-        }
-    </div>
-    <button class="btn btn-secondary" style="margin-top: 10px;" @onclick="() => { _debugLog.Clear(); StateHasChanged(); }">
-        Clear Log
-    </button>
-</div>
 
 @code {
     private WitDatabase? _db;
@@ -185,58 +167,25 @@
     private bool _isError;
     
     private List<(string Key, string Value)> _records = new();
-    private List<string> _debugLog = new();
-    private int _logCounter = 0;
     
     private const string DatabaseName = "WitDbCrudDemo";
-    
-    protected override void OnInitialized()
-    {
-        // Hook up IndexedDB debug logging
-        StorageIndexedDb.DebugLog = Log;
-    }
-    
-    private void Log(string message)
-    {
-        _logCounter++;
-        var timestamp = DateTime.Now.ToString("HH:mm:ss.fff");
-        _debugLog.Add($"[{timestamp}] #{_logCounter} {message}");
-        
-        // Keep last 500 entries
-        while (_debugLog.Count > 500)
-        {
-            _debugLog.RemoveAt(0);
-        }
-        
-        // Only update UI every 10 messages to avoid overwhelming
-        if (_logCounter % 10 == 0)
-        {
-            InvokeAsync(StateHasChanged);
-        }
-    }
     
     private async Task DeleteIndexedDbAsync()
     {
         try
         {
-            Log("=== Deleting IndexedDB database for clean start ===");
-            
-            // Use IndexedDbInterop to delete the database
             var interop = new IndexedDbInterop(JSRuntime, DatabaseName);
             await interop.DeleteDatabaseAsync();
             await interop.DisposeAsync();
             
-            // Also delete the indexes database
             var indexInterop = new IndexedDbInterop(JSRuntime, DatabaseName + "_indexes");
             await indexInterop.DeleteDatabaseAsync();
             await indexInterop.DisposeAsync();
             
-            Log("IndexedDB databases deleted successfully");
             ShowMessage("IndexedDB databases deleted. You can now initialize with a fresh database.");
         }
         catch (Exception ex)
         {
-            Log($"Delete IndexedDB ERROR: {ex.Message}");
             ShowError($"Failed to delete IndexedDB: {ex.Message}");
         }
     }
@@ -245,7 +194,6 @@
     {
         if (_db != null)
         {
-            Log("Disconnecting from database...");
             await _db.DisposeAsync();
             _db = null;
         }
@@ -253,7 +201,6 @@
         _isConnected = false;
         _records.Clear();
         _recordCount = 0;
-        Log("Disconnected");
         ShowMessage("Disconnected from database.");
         StateHasChanged();
     }
@@ -263,63 +210,38 @@
         if (_isInitializing) return;
         _isInitializing = true;
         _message = "";
-        _debugLog.Clear();
-        _logCounter = 0;
         
         try
         {
-            Log("=== Starting database initialization ===");
-            
-            // Use simple builder without transactions first to test
             var builder = new WitDatabaseBuilder()
                 .WithBTree();
             
-            Log("Builder created with BTree (no transactions for testing)");
-            
             if (_usePersistentStorage)
             {
-                Log($"Configuring IndexedDB storage: {DatabaseName}");
                 builder.WithIndexedDbStorage(DatabaseName, JSRuntime);
                 _isPersistent = true;
             }
             else
             {
-                Log("Configuring in-memory storage");
                 builder.WithMemoryStorage();
                 _isPersistent = false;
             }
             
-            Log("Calling BuildAsync()...");
             StateHasChanged();
             await Task.Yield();
             
             _db = await builder.BuildAsync();
             
-            Log("BuildAsync() completed!");
             _isConnected = true;
-            
-            // Load records
-            Log("Loading existing records...");
             await LoadAllRecordsAsync();
             
-            Log("=== Initialization complete! ===");
             ShowMessage(_isPersistent 
                 ? "Database initialized with IndexedDB storage!" 
                 : "Database initialized with in-memory storage.");
-            
-            StateHasChanged();
         }
         catch (Exception ex)
         {
-            Log($"ERROR: {ex.GetType().Name}: {ex.Message}");
-            if (ex.StackTrace != null)
-            {
-                foreach (var line in ex.StackTrace.Split('\n').Take(10))
-                {
-                    Log($"  {line.Trim()}");
-                }
-            }
-            ShowError($"Failed to initialize: {ex.GetType().Name}: {ex.Message}");
+            ShowError($"Failed to initialize: {ex.Message}");
         }
         finally
         {
@@ -334,15 +256,11 @@
         
         try
         {
-            Log($"Saving record: {_inputKey}");
             var key = Encoding.UTF8.GetBytes(_inputKey);
             var value = Encoding.UTF8.GetBytes(_inputValue ?? "");
             
             await _db.PutAsync(key, value);
-            Log("PutAsync completed");
-            
             await _db.FlushAsync();
-            Log("FlushAsync completed");
             
             ShowMessage($"Record '{_inputKey}' saved!");
             await LoadAllRecordsAsync();
@@ -352,7 +270,6 @@
         }
         catch (Exception ex)
         {
-            Log($"Save ERROR: {ex.Message}");
             ShowError($"Failed to save: {ex.Message}");
         }
     }
@@ -363,25 +280,21 @@
         
         try
         {
-            Log($"Loading record: {_inputKey}");
             var key = Encoding.UTF8.GetBytes(_inputKey);
             var value = await _db.GetAsync(key);
             
             if (value != null)
             {
                 _inputValue = Encoding.UTF8.GetString(value);
-                Log($"Record loaded, {value.Length} bytes");
                 ShowMessage($"Record '{_inputKey}' loaded.");
             }
             else
             {
-                Log("Record not found");
                 ShowError($"Record '{_inputKey}' not found.");
             }
         }
         catch (Exception ex)
         {
-            Log($"Load ERROR: {ex.Message}");
             ShowError($"Failed to load: {ex.Message}");
         }
     }
@@ -400,18 +313,15 @@
         
         try
         {
-            Log($"Deleting record: {key}");
             var keyBytes = Encoding.UTF8.GetBytes(key);
             await _db.DeleteAsync(keyBytes);
             await _db.FlushAsync();
             
-            Log("Delete completed");
             ShowMessage($"Record '{key}' deleted.");
             await LoadAllRecordsAsync();
         }
         catch (Exception ex)
         {
-            Log($"Delete ERROR: {ex.Message}");
             ShowError($"Failed to delete: {ex.Message}");
         }
     }
@@ -429,7 +339,6 @@
         
         try
         {
-            Log("Loading all records via ScanAsync...");
             _records.Clear();
             int count = 0;
             
@@ -440,20 +349,14 @@
                 _records.Add((keyStr, valueStr));
                 count++;
                 
-                if (count >= 100) 
-                {
-                    Log("Reached 100 records limit");
-                    break;
-                }
+                if (count >= 100) break;
             }
             
             _recordCount = _records.Count;
-            Log($"Loaded {_recordCount} records");
             StateHasChanged();
         }
         catch (Exception ex)
         {
-            Log($"LoadAll ERROR: {ex.Message}");
             ShowError($"Failed to load records: {ex.Message}");
         }
     }
@@ -469,7 +372,6 @@
         
         try
         {
-            Log("Clearing all records...");
             var keysToDelete = _records.Select(r => Encoding.UTF8.GetBytes(r.Key)).ToList();
             foreach (var key in keysToDelete)
             {
@@ -477,13 +379,11 @@
             }
             await _db.FlushAsync();
             
-            Log("All records cleared");
             ShowMessage("All records deleted.");
             await LoadAllRecordsAsync();
         }
         catch (Exception ex)
         {
-            Log($"Clear ERROR: {ex.Message}");
             ShowError($"Failed to clear: {ex.Message}");
         }
     }
@@ -507,7 +407,6 @@
     
     public async ValueTask DisposeAsync()
     {
-        StorageIndexedDb.DebugLog = null;
         if (_db != null)
         {
             await _db.DisposeAsync();

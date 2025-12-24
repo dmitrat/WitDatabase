@@ -30,7 +30,10 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
     private bool m_initialized;
     private bool m_disposed;
     
-    // Debug logging action (set externally for debugging)
+    /// <summary>
+    /// Debug logging action. Set externally for debugging purposes.
+    /// When null (default), no logging occurs.
+    /// </summary>
     public static Action<string>? DebugLog { get; set; }
 
     #endregion
@@ -65,8 +68,6 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         m_interop = interop ?? throw new ArgumentNullException(nameof(interop));
         m_pageSize = pageSize;
         m_ownsInterop = ownsInterop;
-        
-        Log($"StorageIndexedDb created: db={interop.DatabaseName}, pageSize={pageSize}");
     }
 
     #endregion
@@ -93,26 +94,18 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
     public async ValueTask InitializeAsync(CancellationToken cancellationToken = default)
     {
         if (m_initialized)
-        {
-            Log("Already initialized, skipping");
             return;
-        }
         
         ThrowIfDisposed();
         
         // Critical: yield to browser event loop before any JS interop
         await Task.Yield();
         
-        Log("InitializeAsync: Opening database...");
         await m_interop.OpenAsync(cancellationToken).ConfigureAwait(false);
-        Log("InitializeAsync: Database opened");
         
-        // Yield again between JS calls
         await Task.Yield();
         
-        Log("InitializeAsync: Getting page size...");
         var storedPageSize = await m_interop.GetPageSizeAsync(cancellationToken).ConfigureAwait(false);
-        Log($"InitializeAsync: Stored page size = {storedPageSize}");
         
         if (storedPageSize > 0 && storedPageSize != m_pageSize)
         {
@@ -123,31 +116,24 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         if (storedPageSize == 0)
         {
             await Task.Yield();
-            Log($"InitializeAsync: Setting page size to {m_pageSize}...");
             await m_interop.SetPageSizeAsync(m_pageSize, cancellationToken).ConfigureAwait(false);
-            Log("InitializeAsync: Page size set");
         }
         
         await Task.Yield();
-        Log("InitializeAsync: Getting page count...");
         m_pageCount = await m_interop.GetPageCountAsync(cancellationToken).ConfigureAwait(false);
-        Log($"InitializeAsync: Page count = {m_pageCount}");
         
         if (m_pageCount == 0)
         {
             m_pageCount = DEFAULT_INITIAL_PAGES;
             await Task.Yield();
-            Log($"InitializeAsync: Setting initial page count to {m_pageCount}...");
             await m_interop.SetPageCountAsync(m_pageCount, cancellationToken).ConfigureAwait(false);
             
             await Task.Yield();
-            Log("InitializeAsync: Writing initial page...");
             await m_interop.WritePageAsync(0, new byte[m_pageSize], cancellationToken).ConfigureAwait(false);
-            Log("InitializeAsync: Initial page written");
         }
         
         m_initialized = true;
-        Log("InitializeAsync: Complete!");
+        Log($"Initialized: db={m_interop.DatabaseName}, pageSize={m_pageSize}, pageCount={m_pageCount}");
     }
 
     private void ThrowIfNotInitialized()
@@ -174,7 +160,7 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         ValidatePageNumber(pageNumber);
         ValidateBuffer(buffer);
 
-        Log($"ReadPage (SYNC): page={pageNumber} - THIS WILL DEADLOCK IN WASM!");
+        // Warning: This will deadlock in WASM - use ReadPageAsync instead
         var data = m_interop.ReadPageAsync(pageNumber).AsTask().GetAwaiter().GetResult();
         
         if (data != null)
@@ -183,7 +169,6 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         }
         else
         {
-            // Page doesn't exist yet - return zeros
             buffer[..m_pageSize].Clear();
         }
     }
@@ -195,19 +180,16 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         
         if (!m_initialized)
         {
-            Log($"ReadPageAsync: Not initialized, initializing first...");
             await InitializeAsync(cancellationToken).ConfigureAwait(false);
         }
         
         ValidatePageNumber(pageNumber);
         ValidateBuffer(buffer.Span);
 
-        // Yield to allow browser event loop to process (critical for WASM)
+        // Yield to allow browser event loop to process
         await Task.Yield();
 
-        Log($"ReadPageAsync: page={pageNumber}");
         var data = await m_interop.ReadPageAsync(pageNumber, cancellationToken).ConfigureAwait(false);
-        Log($"ReadPageAsync: page={pageNumber} returned {data?.Length ?? 0} bytes");
         
         if (data != null)
         {
@@ -215,7 +197,6 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         }
         else
         {
-            // Page doesn't exist yet - return zeros
             buffer.Span[..m_pageSize].Clear();
         }
     }
@@ -235,15 +216,12 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         ValidatePageNumberForWrite(pageNumber);
         ValidateBuffer(buffer);
 
-        Log($"WritePage (SYNC): page={pageNumber} - THIS WILL DEADLOCK IN WASM!");
-        
-        // Auto-extend if needed
+        // Warning: This will deadlock in WASM - use WritePageAsync instead
         if (pageNumber >= m_pageCount)
         {
             SetSize(pageNumber + 1);
         }
 
-        // Sync bridge for async operation (works after initialization)
         m_interop.WritePageAsync(pageNumber, buffer[..m_pageSize].ToArray()).AsTask().GetAwaiter().GetResult();
     }
 
@@ -254,26 +232,21 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         
         if (!m_initialized)
         {
-            Log($"WritePageAsync: Not initialized, initializing first...");
             await InitializeAsync(cancellationToken).ConfigureAwait(false);
         }
         
         ValidatePageNumberForWrite(pageNumber);
         ValidateBuffer(buffer.Span);
 
-        // Yield to allow browser event loop to process (critical for WASM)
+        // Yield to allow browser event loop to process
         await Task.Yield();
 
-        // Auto-extend if needed
         if (pageNumber >= m_pageCount)
         {
-            Log($"WritePageAsync: Extending from {m_pageCount} to {pageNumber + 1}");
             await SetSizeAsync(pageNumber + 1, cancellationToken).ConfigureAwait(false);
         }
 
-        Log($"WritePageAsync: page={pageNumber}, size={buffer.Length}");
         await m_interop.WritePageAsync(pageNumber, buffer[..m_pageSize].ToArray(), cancellationToken).ConfigureAwait(false);
-        Log($"WritePageAsync: page={pageNumber} complete");
     }
 
     #endregion
@@ -284,14 +257,14 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
     public void Flush()
     {
         ThrowIfDisposed();
-        Log("Flush (sync) - no-op for IndexedDB");
+        // IndexedDB transactions are auto-committed, no explicit flush needed
     }
 
     /// <inheritdoc/>
     public ValueTask FlushAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
-        Log("FlushAsync - no-op for IndexedDB");
+        // IndexedDB transactions are auto-committed, no explicit flush needed
         return ValueTask.CompletedTask;
     }
 
@@ -311,7 +284,7 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         if (pageCount < 0)
             throw new ArgumentOutOfRangeException(nameof(pageCount));
 
-        Log($"SetSize (SYNC): {pageCount} - THIS WILL DEADLOCK IN WASM!");
+        // Warning: This will deadlock in WASM - use SetSizeAsync instead
         SetSizeAsync(pageCount).AsTask().GetAwaiter().GetResult();
     }
 
@@ -324,31 +297,25 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         
         if (!m_initialized)
         {
-            Log($"SetSizeAsync: Not initialized, initializing first...");
             await InitializeAsync(cancellationToken).ConfigureAwait(false);
         }
 
         if (pageCount < 0)
             throw new ArgumentOutOfRangeException(nameof(pageCount));
 
-        // Yield to allow browser event loop to process (critical for WASM)
+        // Yield to allow browser event loop to process
         await Task.Yield();
 
-        Log($"SetSizeAsync: {m_pageCount} -> {pageCount}");
-        
         if (pageCount < m_pageCount)
         {
-            // Truncate
             await m_interop.TruncatePagesAsync(pageCount, cancellationToken).ConfigureAwait(false);
         }
         else
         {
-            // Extend - just update count, pages will be created on write
             await m_interop.SetPageCountAsync(pageCount, cancellationToken).ConfigureAwait(false);
         }
         
         m_pageCount = pageCount;
-        Log($"SetSizeAsync: complete, pageCount={m_pageCount}");
     }
 
     #endregion
@@ -390,17 +357,15 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         if (m_disposed) return;
         m_disposed = true;
 
-        Log("Dispose (sync)");
         if (m_ownsInterop)
         {
-            // Sync dispose - best effort
             try
             {
                 m_interop.DisposeAsync().AsTask().GetAwaiter().GetResult();
             }
-            catch (Exception ex)
+            catch
             {
-                Log($"Dispose error: {ex.Message}");
+                // Best effort disposal
             }
         }
     }
@@ -415,7 +380,6 @@ public sealed class StorageIndexedDb : IStorage, IAsyncOnlyStorage, IAsyncInitia
         if (m_disposed) return;
         m_disposed = true;
 
-        Log("DisposeAsync");
         if (m_ownsInterop)
         {
             await m_interop.DisposeAsync().ConfigureAwait(false);

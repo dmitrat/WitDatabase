@@ -162,9 +162,12 @@ public class StorageIndexedDbTests
     }
 
     [Test]
-    public void WriteSyncAndReadSyncRoundTripTest()
+    public async Task WriteSyncAndReadSyncRoundTripTest()
     {
         using var storage = new StorageIndexedDb("TestDb", m_jsRuntime);
+        
+        // Must initialize first (required for sync operations)
+        await storage.InitializeAsync();
         
         // Extend storage
         storage.SetSize(2);
@@ -313,9 +316,12 @@ public class StorageIndexedDbTests
     }
 
     [Test]
-    public void SetSizeSyncWorksTest()
+    public async Task SetSizeSyncWorksTest()
     {
         using var storage = new StorageIndexedDb("TestDb", m_jsRuntime);
+        
+        // Must initialize first (required for sync operations)
+        await storage.InitializeAsync();
         
         storage.SetSize(5);
         
