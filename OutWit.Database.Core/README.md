@@ -15,6 +15,7 @@ OutWit.Database.Core is a production-ready embedded database engine designed for
 - **Security** - Built-in AES-GCM encryption with pluggable crypto providers
 - **Extensibility** - Modular provider architecture for custom components
 - **Concurrency** - MVCC, row-level locking, deadlock detection
+- **Cross-Platform** - Works on Windows, Linux, macOS, and **Blazor WebAssembly**
 
 ### Key Features
 
@@ -26,6 +27,7 @@ OutWit.Database.Core is a production-ready embedded database engine designed for
 - **Encryption**: AES-GCM (built-in), ChaCha20-Poly1305 (via BouncyCastle)
 - **Secondary Indexes**: Unique and non-unique, with auto-persistence
 - **WAL & Recovery**: Write-ahead logging, crash recovery
+- **Blazor WASM**: IndexedDB storage provider for browser-based apps
 - **.NET 9/10**: Targets latest .NET versions
 
 ---
@@ -39,6 +41,11 @@ OutWit.Database.Core is a production-ready embedded database engine designed for
 For ChaCha20-Poly1305 encryption:
 ```xml
 <PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="1.0.0" />
+```
+
+For Blazor WebAssembly (IndexedDB storage):
+```xml
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="1.0.0" />
 ```
 
 ---
@@ -460,6 +467,80 @@ var db = new WitDatabaseBuilder()
 
 ---
 
+## Blazor WebAssembly Support
+
+WitDatabase can run entirely in the browser using IndexedDB as the storage backend.
+
+### Installation
+
+```xml
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="1.0.0" />
+```
+
+Add JavaScript files to `index.html`:
+```html
+<script src="_content/OutWit.Database.Core.IndexedDb/witdb-indexeddb.js"></script>
+<script src="_content/OutWit.Database.Core.IndexedDb/witdb-indexeddb-index.js"></script>
+```
+
+### Usage in Blazor
+
+```razor
+@inject IJSRuntime JSRuntime
+@using OutWit.Database.Core.Builder
+@using OutWit.Database.Core.IndexedDb
+
+@code {
+    private WitDatabase? _db;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        _db = new WitDatabaseBuilder()
+            .WithIndexedDbStorage("MyAppDatabase", JSRuntime)
+            .WithBTree()
+            .WithTransactions()
+            .Build();
+        
+        // Initialize storage (opens IndexedDB)
+        await (_db.Store as StorageIndexedDb)?.InitializeAsync()!;
+    }
+    
+    private async Task SaveData()
+    {
+        var key = Encoding.UTF8.GetBytes("user:1");
+        var value = Encoding.UTF8.GetBytes("{\"name\":\"John\"}");
+        
+        await _db!.PutAsync(key, value);
+    }
+}
+```
+
+### With Encryption in Browser
+
+```csharp
+var db = new WitDatabaseBuilder()
+    .WithIndexedDbStorage("SecureDatabase", JSRuntime)
+    .WithBTree()
+    .WithEncryption("user-password")  // AES-GCM works in browser
+    .WithTransactions()
+    .Build();
+```
+
+### Browser Compatibility
+
+| Feature | Compatible | Notes |
+|---------|-----------|-------|
+| B+Tree | ? Yes | Full support |
+| LSM-Tree | ? No | Requires file system |
+| MVCC | ? Yes | All isolation levels |
+| Encryption | ? Yes | AES-GCM, BouncyCastle |
+| Secondary Indexes | ? Yes | Via IndexedDB |
+| Transactions | ? Yes | Full support |
+
+See [OutWit.Database.Core.IndexedDb](../OutWit.Database.Core.IndexedDb/) for full documentation.
+
+---
+
 ## Related Projects
 
 | Project | Description |
@@ -467,6 +548,7 @@ var db = new WitDatabaseBuilder()
 | OutWit.Database | SQL execution engine |
 | OutWit.Database.Parser | SQL parser |
 | OutWit.Database.Core.BouncyCastle | ChaCha20-Poly1305 encryption |
+| **OutWit.Database.Core.IndexedDb** | **IndexedDB storage for Blazor WASM** |
 
 ---
 

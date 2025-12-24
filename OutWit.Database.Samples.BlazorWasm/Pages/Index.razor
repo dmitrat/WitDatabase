@@ -1,0 +1,72 @@
+@page "/"
+
+<PageTitle>WitDatabase Blazor WASM Sample</PageTitle>
+
+<div class="card">
+    <h1>??? WitDatabase Blazor WASM Sample</h1>
+    <p>
+        This sample demonstrates using <strong>WitDatabase</strong> with <strong>IndexedDB</strong> storage 
+        in a Blazor WebAssembly application.
+    </p>
+</div>
+
+<div class="card">
+    <h3>Features Demonstrated</h3>
+    
+    <ul>
+        <li><strong><a href="crud">CRUD Operations</a></strong> - Basic Create, Read, Update, Delete operations</li>
+        <li><strong><a href="transactions">Transactions</a></strong> - Transaction support with commit/rollback</li>
+        <li><strong><a href="encryption">Encryption</a></strong> - AES-GCM encryption at rest</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h3>About IndexedDB Storage</h3>
+    
+    <p>
+        IndexedDB is the only persistent storage option available in browsers for large amounts of data.
+        WitDatabase's IndexedDB provider allows you to use the full B+Tree database engine with data 
+        persisted in the browser's IndexedDB.
+    </p>
+    
+    <h4>Supported Features</h4>
+    <ul>
+        <li>? B+Tree storage engine</li>
+        <li>? ACID transactions</li>
+        <li>? MVCC (Multi-Version Concurrency Control)</li>
+        <li>? AES-GCM encryption</li>
+        <li>? Secondary indexes</li>
+        <li>? LSM-Tree (requires file system)</li>
+    </ul>
+    
+    <h4>Browser Support</h4>
+    <ul>
+        <li>Chrome 80+</li>
+        <li>Firefox 75+</li>
+        <li>Edge 80+</li>
+        <li>Safari 14+</li>
+    </ul>
+</div>
+
+<div class="card">
+    <h3>Quick Start</h3>
+    
+    <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">
+@@inject IJSRuntime JSRuntime
+
+@@code {
+    private WitDatabase? _db;
+    
+    protected override async Task OnInitializedAsync()
+    {
+        _db = new WitDatabaseBuilder()
+            .WithIndexedDbStorage("MyDatabase", JSRuntime)
+            .WithBTree()
+            .WithTransactions()
+            .Build();
+        
+        await (_db.Store as StorageIndexedDb)?.InitializeAsync()!;
+    }
+}
+    </pre>
+</div>

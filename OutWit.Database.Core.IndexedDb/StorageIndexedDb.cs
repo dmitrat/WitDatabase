@@ -185,8 +185,14 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     {
         ThrowIfDisposed();
         EnsureInitialized();
-        ValidatePageNumber(pageNumber);
+        ValidatePageNumberForWrite(pageNumber);
         ValidateBuffer(buffer);
+
+        // Auto-extend if needed
+        if (pageNumber >= m_pageCount)
+        {
+            SetSize(pageNumber + 1);
+        }
 
         // Sync bridge for async operation
         m_interop.WritePageAsync(pageNumber, buffer[..m_pageSize].ToArray()).AsTask().GetAwaiter().GetResult();
@@ -197,8 +203,14 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
     {
         ThrowIfDisposed();
         await InitializeAsync(cancellationToken);
-        ValidatePageNumber(pageNumber);
+        ValidatePageNumberForWrite(pageNumber);
         ValidateBuffer(buffer.Span);
+
+        // Auto-extend if needed
+        if (pageNumber >= m_pageCount)
+        {
+            await SetSizeAsync(pageNumber + 1, cancellationToken);
+        }
 
         await m_interop.WritePageAsync(pageNumber, buffer[..m_pageSize].ToArray(), cancellationToken);
     }
@@ -279,6 +291,13 @@ public sealed class StorageIndexedDb : IStorage, IAsyncDisposable
         if (pageNumber < 0 || pageNumber >= m_pageCount)
             throw new ArgumentOutOfRangeException(nameof(pageNumber), 
                 $"Page number must be between 0 and {m_pageCount - 1}");
+    }
+
+    private void ValidatePageNumberForWrite(long pageNumber)
+    {
+        if (pageNumber < 0)
+            throw new ArgumentOutOfRangeException(nameof(pageNumber), 
+                "Page number cannot be negative");
     }
 
     private void ValidateBuffer(ReadOnlySpan<byte> buffer)

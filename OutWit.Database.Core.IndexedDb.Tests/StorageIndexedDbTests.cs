@@ -209,24 +209,54 @@ public class StorageIndexedDbTests
         
         var buffer = new byte[storage.PageSize];
         
+        // Reading beyond current size should throw
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
         {
             await storage.ReadPageAsync(999, buffer);
         });
+        
+        // Reading with negative page number should throw
+        Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
+        {
+            await storage.ReadPageAsync(-1, buffer);
+        });
     }
 
     [Test]
-    public async Task WritePageWithInvalidPageNumberThrowsTest()
+    public async Task WritePageWithNegativePageNumberThrowsTest()
     {
         using var storage = new StorageIndexedDb("TestDb", m_jsRuntime);
         await storage.InitializeAsync();
         
         var buffer = new byte[storage.PageSize];
         
+        // Negative page number should throw
         Assert.ThrowsAsync<ArgumentOutOfRangeException>(async () =>
         {
-            await storage.WritePageAsync(999, buffer);
+            await storage.WritePageAsync(-1, buffer);
         });
+    }
+
+    [Test]
+    public async Task WritePageBeyondCurrentSizeAutoExtendsTest()
+    {
+        using var storage = new StorageIndexedDb("TestDb", m_jsRuntime);
+        await storage.InitializeAsync();
+        
+        Assert.That(storage.PageCount, Is.EqualTo(1)); // Initial page
+        
+        // Write to page 5 (beyond current size)
+        var buffer = new byte[storage.PageSize];
+        buffer[0] = 0x42;
+        await storage.WritePageAsync(5, buffer);
+        
+        // Storage should have auto-extended
+        Assert.That(storage.PageCount, Is.EqualTo(6)); // 0-5 = 6 pages
+        
+        // Read it back
+        var readBuffer = new byte[storage.PageSize];
+        await storage.ReadPageAsync(5, readBuffer);
+        Assert.That(readBuffer[0], Is.EqualTo(0x42));
     }
 
     [Test]

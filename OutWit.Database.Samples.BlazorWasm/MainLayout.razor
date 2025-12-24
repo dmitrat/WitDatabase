@@ -1,0 +1,20 @@
+@inherits LayoutComponentBase
+
+<div class="page">
+    <header>
+        <nav>
+            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Home</NavLink>
+            <NavLink class="nav-link" href="crud">CRUD Demo</NavLink>
+            <NavLink class="nav-link" href="transactions">Transactions</NavLink>
+            <NavLink class="nav-link" href="encryption">Encryption</NavLink>
+        </nav>
+    </header>
+
+    <main>
+        @Body
+    </main>
+
+    <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px;">
+        <p>WitDatabase Blazor WASM Sample - IndexedDB Storage Provider</p>
+    </footer>
+</div>

@@ -1,0 +1,454 @@
+@page "/encryption"
+@using System.Text
+@using OutWit.Database.Core.Builder
+@using OutWit.Database.Core
+@inject IJSRuntime JSRuntime
+@implements IAsyncDisposable
+
+<PageTitle>Encryption Demo - WitDatabase</PageTitle>
+
+<div class="card">
+    <h1>?? Encryption Demo</h1>
+    <p>Demonstrates AES-GCM encryption at rest for secure data storage in the browser.</p>
+</div>
+
+<!-- Setup -->
+<div class="card">
+    <h3>Encrypted Database Setup</h3>
+    
+    <div class="stats-grid">
+        <div class="stat-card">
+            <div class="stat-value">@(_isConnected ? "??" : "??")</div>
+            <div class="stat-label">@(_isConnected ? "Connected" : "Disconnected")</div>
+        </div>
+        <div class="stat-card">
+            <div class="stat-value">@(_isEncrypted ? "??" : "??")</div>
+            <div class="stat-label">@(_isEncrypted ? "Encrypted" : "Not Encrypted")</div>
+        </div>
+    </div>
+    
+    @if (!_isConnected)
+    {
+        <div class="form-group">
+            <label>Encryption Password:</label>
+            <input type="password" class="form-control" @bind="_password" placeholder="Enter encryption password" />
+        </div>
+        
+        <div class="form-group">
+            <label>
+                <input type="checkbox" @bind="_enableEncryption" /> Enable Encryption (AES-GCM)
+            </label>
+        </div>
+        
+        <button class="btn btn-primary" @onclick="InitializeDatabaseAsync" disabled="@(_enableEncryption && string.IsNullOrEmpty(_password))">
+            Initialize Database
+        </button>
+        
+        @if (_enableEncryption && string.IsNullOrEmpty(_password))
+        {
+            <div class="alert alert-info" style="margin-top: 10px;">
+                Please enter a password to enable encryption.
+            </div>
+        }
+    }
+    else
+    {
+        <div class="alert @(_isEncrypted ? "alert-success" : "alert-info")">
+            @if (_isEncrypted)
+            {
+                <strong>?? Encryption Enabled</strong>
+                <p style="margin: 5px 0 0 0;">All data is encrypted using AES-GCM before storing in IndexedDB.</p>
+            }
+            else
+            {
+                <strong>?? No Encryption</strong>
+                <p style="margin: 5px 0 0 0;">Data is stored in plain text in IndexedDB.</p>
+            }
+        </div>
+        
+        <button class="btn btn-danger" @onclick="CloseDatabaseAsync">
+            Close Database
+        </button>
+    }
+</div>
+
+@if (_isConnected)
+{
+    <!-- Secure Data Storage -->
+    <div class="card">
+        <h3>Store Sensitive Data</h3>
+        
+        <div class="form-group">
+            <label>Key:</label>
+            <input type="text" class="form-control" @bind="_inputKey" placeholder="e.g., secret:api-key" />
+        </div>
+        
+        <div class="form-group">
+            <label>Sensitive Value:</label>
+            <input type="password" class="form-control" @bind="_inputValue" placeholder="e.g., sk-xxx-secret-key" />
+            <label style="margin-top: 5px;">
+                <input type="checkbox" @bind="_showValue" /> Show value
+            </label>
+        </div>
+        
+        @if (_showValue && !string.IsNullOrEmpty(_inputValue))
+        {
+            <div class="alert alert-info">
+                <code>@_inputValue</code>
+            </div>
+        }
+        
+        <button class="btn btn-success" @onclick="SaveSecretAsync" disabled="@string.IsNullOrEmpty(_inputKey)">
+            ?? Store Securely
+        </button>
+        <button class="btn btn-primary" @onclick="LoadSecretAsync" disabled="@string.IsNullOrEmpty(_inputKey)">
+            ?? Retrieve
+        </button>
+    </div>
+    
+    <!-- Demo Scenarios -->
+    <div class="card">
+        <h3>Demo Scenarios</h3>
+        
+        <div style="margin-bottom: 15px;">
+            <button class="btn btn-primary" @onclick="DemoStoreCredentialsAsync">
+                ?? Store Sample Credentials
+            </button>
+            <p style="margin-top: 5px; color: #666; font-size: 12px;">
+                Stores sample API keys, tokens, and passwords.
+            </p>
+        </div>
+        
+        <div style="margin-bottom: 15px;">
+            <button class="btn btn-primary" @onclick="DemoStoreUserDataAsync">
+                ?? Store Sample User Data
+            </button>
+            <p style="margin-top: 5px; color: #666; font-size: 12px;">
+                Stores sample personal information (encrypted at rest).
+            </p>
+        </div>
+    </div>
+    
+    <!-- Stored Secrets -->
+    <div class="card">
+        <h3>Stored Data</h3>
+        
+        @if (_secrets.Count == 0)
+        {
+            <div class="alert alert-info">
+                No data stored yet. Add some sensitive data above!
+            </div>
+        }
+        else
+        {
+            <table class="data-table">
+                <thead>
+                    <tr>
+                        <th>Key</th>
+                        <th>Value (Decrypted)</th>
+                        <th>Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var secret in _secrets)
+                    {
+                        <tr>
+                            <td><code>@secret.Key</code></td>
+                            <td>
+                                @if (_revealedKeys.Contains(secret.Key))
+                                {
+                                    <code>@secret.Value</code>
+                                }
+                                else
+                                {
+                                    <code>••••••••</code>
+                                }
+                            </td>
+                            <td>
+                                <button class="btn btn-secondary" style="padding: 5px 10px;" 
+                                        @onclick="() => ToggleReveal(secret.Key)">
+                                    @(_revealedKeys.Contains(secret.Key) ? "Hide" : "Reveal")
+                                </button>
+                                <button class="btn btn-danger" style="padding: 5px 10px;" 
+                                        @onclick="() => DeleteSecretAsync(secret.Key)">
+                                    Delete
+                                </button>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        }
+        
+        <div style="margin-top: 15px;">
+            <button class="btn btn-secondary" @onclick="RefreshSecretsAsync">
+                ?? Refresh
+            </button>
+        </div>
+    </div>
+    
+    <!-- Security Notes -->
+    <div class="card">
+        <h3>Security Notes</h3>
+        
+        <ul>
+            <li><strong>AES-GCM Encryption:</strong> Data is encrypted using AES-256 in GCM mode with a 96-bit nonce.</li>
+            <li><strong>Key Derivation:</strong> The encryption key is derived from your password using PBKDF2.</li>
+            <li><strong>At-Rest Encryption:</strong> Data is encrypted before being stored in IndexedDB.</li>
+            <li><strong>Browser Security:</strong> IndexedDB is sandboxed per origin, but encryption adds an additional layer.</li>
+            <li><strong>Password Required:</strong> You'll need the same password to decrypt data in future sessions.</li>
+        </ul>
+        
+        <div class="alert alert-danger">
+            <strong>?? Important:</strong> If you forget your password, encrypted data cannot be recovered!
+        </div>
+    </div>
+}
+
+<!-- Messages -->
+@if (!string.IsNullOrEmpty(_message))
+{
+    <div class="alert @(_isError ? "alert-danger" : "alert-success")">
+        @_message
+    </div>
+}
+
+@code {
+    private WitDatabase? _db;
+    private bool _isConnected;
+    private bool _isEncrypted;
+    
+    private string _password = "";
+    private bool _enableEncryption = true;
+    
+    private string _inputKey = "";
+    private string _inputValue = "";
+    private bool _showValue;
+    
+    private string _message = "";
+    private bool _isError;
+    
+    private List<(string Key, string Value)> _secrets = new();
+    private HashSet<string> _revealedKeys = new();
+    
+    private const string DatabaseName = "WitDbEncryptionDemo";
+    
+    private async Task InitializeDatabaseAsync()
+    {
+        try
+        {
+            var builder = new WitDatabaseBuilder()
+                .WithIndexedDbStorage(DatabaseName, JSRuntime)
+                .WithBTree()
+                .WithTransactions();
+            
+            if (_enableEncryption && !string.IsNullOrEmpty(_password))
+            {
+                builder.WithEncryption(_password);
+                _isEncrypted = true;
+            }
+            
+            _db = builder.Build();
+            
+            if (_db.Store is StorageIndexedDb storage)
+            {
+                await storage.InitializeAsync();
+            }
+            
+            _isConnected = true;
+            await RefreshSecretsAsync();
+            
+            ShowMessage(_isEncrypted 
+                ? "Encrypted database initialized successfully!" 
+                : "Database initialized (no encryption)");
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Failed to initialize: {ex.Message}");
+        }
+    }
+    
+    private async Task CloseDatabaseAsync()
+    {
+        if (_db != null)
+        {
+            await _db.DisposeAsync();
+            _db = null;
+        }
+        
+        _isConnected = false;
+        _isEncrypted = false;
+        _password = "";
+        _secrets.Clear();
+        _revealedKeys.Clear();
+        
+        ShowMessage("Database closed");
+    }
+    
+    private async Task SaveSecretAsync()
+    {
+        if (_db == null || string.IsNullOrEmpty(_inputKey)) return;
+        
+        try
+        {
+            var key = Encoding.UTF8.GetBytes(_inputKey);
+            var value = Encoding.UTF8.GetBytes(_inputValue ?? "");
+            
+            await _db.PutAsync(key, value);
+            await _db.FlushAsync();
+            
+            ShowMessage($"Secret '{_inputKey}' stored securely!");
+            
+            _inputKey = "";
+            _inputValue = "";
+            
+            await RefreshSecretsAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Failed to store: {ex.Message}");
+        }
+    }
+    
+    private async Task LoadSecretAsync()
+    {
+        if (_db == null || string.IsNullOrEmpty(_inputKey)) return;
+        
+        try
+        {
+            var key = Encoding.UTF8.GetBytes(_inputKey);
+            var value = await _db.GetAsync(key);
+            
+            if (value != null)
+            {
+                _inputValue = Encoding.UTF8.GetString(value);
+                _showValue = true;
+                ShowMessage($"Secret '{_inputKey}' retrieved and decrypted.");
+            }
+            else
+            {
+                ShowError($"Secret '{_inputKey}' not found.");
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Failed to retrieve (wrong password?): {ex.Message}");
+        }
+    }
+    
+    private async Task DeleteSecretAsync(string key)
+    {
+        if (_db == null) return;
+        
+        try
+        {
+            await _db.DeleteAsync(Encoding.UTF8.GetBytes(key));
+            await _db.FlushAsync();
+            
+            ShowMessage($"Secret '{key}' deleted.");
+            _revealedKeys.Remove(key);
+            await RefreshSecretsAsync();
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Failed to delete: {ex.Message}");
+        }
+    }
+    
+    private async Task RefreshSecretsAsync()
+    {
+        if (_db == null) return;
+        
+        _secrets.Clear();
+        
+        try
+        {
+            await foreach (var (key, value) in _db.GetRangeAsync(null, null))
+            {
+                var keyStr = Encoding.UTF8.GetString(key);
+                var valueStr = Encoding.UTF8.GetString(value);
+                _secrets.Add((keyStr, valueStr));
+                
+                if (_secrets.Count >= 50) break;
+            }
+        }
+        catch (Exception ex)
+        {
+            ShowError($"Failed to load secrets: {ex.Message}");
+        }
+    }
+    
+    private void ToggleReveal(string key)
+    {
+        if (_revealedKeys.Contains(key))
+            _revealedKeys.Remove(key);
+        else
+            _revealedKeys.Add(key);
+    }
+    
+    private async Task DemoStoreCredentialsAsync()
+    {
+        if (_db == null) return;
+        
+        var credentials = new[]
+        {
+            ("credential:api-key", "sk-prod-abc123xyz789"),
+            ("credential:jwt-secret", "super-secret-jwt-signing-key-2024"),
+            ("credential:database-password", "P@ssw0rd!Secure2024")
+        };
+        
+        foreach (var (key, value) in credentials)
+        {
+            await _db.PutAsync(
+                Encoding.UTF8.GetBytes(key),
+                Encoding.UTF8.GetBytes(value));
+        }
+        
+        await _db.FlushAsync();
+        ShowMessage("Sample credentials stored!");
+        await RefreshSecretsAsync();
+    }
+    
+    private async Task DemoStoreUserDataAsync()
+    {
+        if (_db == null) return;
+        
+        var userData = new[]
+        {
+            ("user:profile", "{\"name\":\"John Doe\",\"email\":\"john@example.com\",\"ssn\":\"123-45-6789\"}"),
+            ("user:payment", "{\"cardNumber\":\"4111-1111-1111-1111\",\"expiry\":\"12/25\",\"cvv\":\"123\"}"),
+            ("user:medical", "{\"bloodType\":\"O+\",\"allergies\":[\"peanuts\"],\"medications\":[\"aspirin\"]}")
+        };
+        
+        foreach (var (key, value) in userData)
+        {
+            await _db.PutAsync(
+                Encoding.UTF8.GetBytes(key),
+                Encoding.UTF8.GetBytes(value));
+        }
+        
+        await _db.FlushAsync();
+        ShowMessage("Sample user data stored (encrypted)!");
+        await RefreshSecretsAsync();
+    }
+    
+    private void ShowMessage(string message)
+    {
+        _message = message;
+        _isError = false;
+    }
+    
+    private void ShowError(string message)
+    {
+        _message = message;
+        _isError = true;
+    }
+    
+    public async ValueTask DisposeAsync()
+    {
+        if (_db != null)
+        {
+            await _db.DisposeAsync();
+        }
+    }
+}
