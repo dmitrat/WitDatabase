@@ -7,7 +7,7 @@
 
 <div class="card">
     <h1>&#128188; Transactions Demo</h1>
-    <p>Demonstrates transaction support with commit and rollback operations.</p>
+    <p>Demonstrates transaction support with async commit and rollback operations.</p>
 </div>
 
 <!-- Database Status -->
@@ -24,19 +24,30 @@
             <div class="stat-label">@(_activeTransaction != null ? "Transaction Active" : "No Transaction")</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value">&#128203;</div>
-            <div class="stat-label">In-Memory</div>
+            <div class="stat-value">@(_isPersistent ? "&#128190;" : "&#128203;")</div>
+            <div class="stat-label">@(_isPersistent ? "IndexedDB" : "In-Memory")</div>
         </div>
     </div>
     
     @if (!_isConnected)
     {
-        <button class="btn btn-primary" @onclick="InitializeDatabaseAsync">
-            Initialize Database
+        <div class="form-group">
+            <label>
+                <input type="checkbox" @bind="_usePersistentStorage" disabled="@_isInitializing" /> 
+                Use IndexedDB (data persists across browser sessions)
+            </label>
+        </div>
+        
+        <button class="btn btn-primary" @onclick="InitializeDatabaseAsync" disabled="@_isInitializing">
+            @if (_isInitializing)
+            {
+                <span>Initializing...</span>
+            }
+            else
+            {
+                <span>Initialize Database</span>
+            }
         </button>
-        <p style="margin-top: 10px; font-size: 12px; color: #666;">
-            ?? Using in-memory storage. IndexedDB support requires async BTree refactoring (in progress).
-        </p>
     }
 </div>
 
@@ -55,10 +66,10 @@
         else
         {
             <button class="btn btn-success" @onclick="CommitTransactionAsync">
-                Commit
+                Commit (Async)
             </button>
             <button class="btn btn-danger" @onclick="RollbackTransactionAsync">
-                Rollback
+                Rollback (Async)
             </button>
         }
     </div>
@@ -91,7 +102,7 @@
                 Demo: Add Records &amp; Commit
             </button>
             <p style="margin-top: 5px; color: #666; font-size: 12px;">
-                Adds 3 records in a transaction and commits them.
+                Adds 3 records in a transaction and commits them asynchronously.
             </p>
         </div>
         
@@ -167,6 +178,9 @@
     private WitDatabase? _db;
     private ITransaction? _activeTransaction;
     private bool _isConnected;
+    private bool _isPersistent;
+    private bool _usePersistentStorage = true;
+    private bool _isInitializing;
     
     private string _inputKey = "";
     private string _inputValue = "";
@@ -174,35 +188,55 @@
     private List<(string Key, string Value)> _committedRecords = new();
     private List<string> _activityLog = new();
     
+    private const string DatabaseName = "WitDbTransactionsDemo";
+    
     private async Task InitializeDatabaseAsync()
     {
+        if (_isInitializing) return;
+        _isInitializing = true;
+        
         try
         {
-            // Use in-memory storage for now (IndexedDB requires async BTree refactoring)
-            _db = await new WitDatabaseBuilder()
-                .WithMemoryStorage()
+            var builder = new WitDatabaseBuilder()
                 .WithBTree()
-                .WithTransactions()
-                .BuildAsync();
+                .WithTransactions();
+            
+            if (_usePersistentStorage)
+            {
+                builder.WithIndexedDbStorage(DatabaseName, JSRuntime);
+                _isPersistent = true;
+                Log("Configuring IndexedDB storage...");
+            }
+            else
+            {
+                builder.WithMemoryStorage();
+                _isPersistent = false;
+            }
+            
+            _db = await builder.BuildAsync();
             
             _isConnected = true;
-            Log("Database initialized with in-memory storage");
+            Log(_isPersistent 
+                ? "Database initialized with IndexedDB storage" 
+                : "Database initialized with in-memory storage");
             await RefreshRecordsAsync();
         }
         catch (Exception ex)
         {
             Log($"ERROR: {ex.Message}");
         }
+        finally
+        {
+            _isInitializing = false;
+        }
     }
     
-    private Task BeginTransactionAsync()
+    private async Task BeginTransactionAsync()
     {
-        if (_db == null) return Task.CompletedTask;
+        if (_db == null) return;
         
-        _activeTransaction = _db.BeginTransaction();
-        Log("Transaction started");
-        
-        return Task.CompletedTask;
+        _activeTransaction = await _db.BeginTransactionAsync();
+        Log("Transaction started (async)");
     }
     
     private async Task CommitTransactionAsync()
@@ -211,8 +245,8 @@
         
         try
         {
-            _activeTransaction.Commit();
-            Log("Transaction committed - changes saved");
+            await _activeTransaction.CommitAsync();
+            Log("Transaction committed asynchronously - changes saved");
             
             _activeTransaction = null;
             await RefreshRecordsAsync();
@@ -229,8 +263,8 @@
         
         try
         {
-            _activeTransaction.Rollback();
-            Log("Transaction rolled back - all changes discarded");
+            await _activeTransaction.RollbackAsync();
+            Log("Transaction rolled back asynchronously - all changes discarded");
             
             _activeTransaction = null;
             await RefreshRecordsAsync();
@@ -252,7 +286,7 @@
             
             if (_activeTransaction != null)
             {
-                _activeTransaction.Put(key, value);
+                await _activeTransaction.PutAsync(key, value);
                 Log($"Added '{_inputKey}' (in transaction - not committed yet)");
             }
             else
@@ -282,17 +316,17 @@
         
         var timestamp = DateTime.Now.ToString("HHmmss");
         
-        _activeTransaction!.Put(
+        await _activeTransaction!.PutAsync(
             Encoding.UTF8.GetBytes($"demo:commit:{timestamp}:1"),
             Encoding.UTF8.GetBytes($"{{\"item\":1,\"demo\":\"commit\"}}"));
         Log("Added record 1 to transaction");
         
-        _activeTransaction.Put(
+        await _activeTransaction.PutAsync(
             Encoding.UTF8.GetBytes($"demo:commit:{timestamp}:2"),
             Encoding.UTF8.GetBytes($"{{\"item\":2,\"demo\":\"commit\"}}"));
         Log("Added record 2 to transaction");
         
-        _activeTransaction.Put(
+        await _activeTransaction.PutAsync(
             Encoding.UTF8.GetBytes($"demo:commit:{timestamp}:3"),
             Encoding.UTF8.GetBytes($"{{\"item\":3,\"demo\":\"commit\"}}"));
         Log("Added record 3 to transaction");
@@ -311,17 +345,17 @@
         
         var timestamp = DateTime.Now.ToString("HHmmss");
         
-        _activeTransaction!.Put(
+        await _activeTransaction!.PutAsync(
             Encoding.UTF8.GetBytes($"demo:rollback:{timestamp}:1"),
             Encoding.UTF8.GetBytes($"{{\"item\":1,\"demo\":\"rollback\"}}"));
         Log("Added record 1 to transaction");
         
-        _activeTransaction.Put(
+        await _activeTransaction.PutAsync(
             Encoding.UTF8.GetBytes($"demo:rollback:{timestamp}:2"),
             Encoding.UTF8.GetBytes($"{{\"item\":2,\"demo\":\"rollback\"}}"));
         Log("Added record 2 to transaction");
         
-        _activeTransaction.Put(
+        await _activeTransaction.PutAsync(
             Encoding.UTF8.GetBytes($"demo:rollback:{timestamp}:3"),
             Encoding.UTF8.GetBytes($"{{\"item\":3,\"demo\":\"rollback\"}}"));
         Log("Added record 3 to transaction");
@@ -380,7 +414,10 @@
     
     public async ValueTask DisposeAsync()
     {
-        _activeTransaction?.Dispose();
+        if (_activeTransaction != null)
+        {
+            await _activeTransaction.DisposeAsync();
+        }
         if (_db != null)
         {
             await _db.DisposeAsync();

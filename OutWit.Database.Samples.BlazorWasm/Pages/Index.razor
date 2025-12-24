@@ -5,38 +5,36 @@
 <div class="card">
     <h1>&#128190; WitDatabase Blazor WASM Sample</h1>
     <p>
-        This sample demonstrates using <strong>WitDatabase</strong> in a Blazor WebAssembly application.
-        Uses async initialization via <code>BuildAsync()</code> for WASM compatibility.
+        This sample demonstrates using <strong>WitDatabase</strong> in a Blazor WebAssembly application
+        with full IndexedDB persistence support.
     </p>
 </div>
 
-<div class="card" style="background: #fff3cd; border-color: #ffc107;">
-    <h3>?? Work in Progress: IndexedDB Support</h3>
+<div class="card" style="background: #d4edda; border-color: #28a745;">
+    <h3>? Full Async Support Complete!</h3>
     <p>
-        <strong>Current Status:</strong> In-memory storage works fully. IndexedDB storage initialization works,
-        but data operations (Put/Get/Delete) require full async BTree refactoring which is in progress.
+        <strong>IndexedDB storage is now fully functional!</strong> All BTree operations have been refactored 
+        to support async I/O, enabling seamless persistence in Blazor WebAssembly.
     </p>
     <p>
-        <strong>What works now:</strong>
+        <strong>What works:</strong>
     </p>
     <ul>
         <li>? In-memory storage (full functionality)</li>
-        <li>? BTree async initialization</li>
-        <li>? Transactions</li>
+        <li>? IndexedDB persistence (full functionality)</li>
+        <li>? BTree async operations (Search, Insert, Update, Delete, Range Scan)</li>
+        <li>? Transactions with async commit/rollback</li>
         <li>? Encryption (AES-GCM)</li>
-        <li>? IndexedDB persistence (initialization only, data ops in progress)</li>
+        <li>? Automatic async-only storage detection</li>
     </ul>
-    <p>
-        See <a href="https://github.com/dmitrat/WitDatabase/blob/main/Docs/TODO-BTree-Async-Refactoring.md" target="_blank">TODO-BTree-Async-Refactoring.md</a> for the full refactoring plan.
-    </p>
 </div>
 
 <div class="card">
     <h3>Features Demonstrated</h3>
     
     <ul>
-        <li><strong><a href="crud">CRUD Operations</a></strong> - Basic Create, Read, Update, Delete operations</li>
-        <li><strong><a href="transactions">Transactions</a></strong> - Transaction support with commit/rollback</li>
+        <li><strong><a href="crud">CRUD Operations</a></strong> - Basic Create, Read, Update, Delete operations with IndexedDB</li>
+        <li><strong><a href="transactions">Transactions</a></strong> - Transaction support with async commit/rollback</li>
         <li><strong><a href="encryption">Encryption</a></strong> - AES-GCM encryption at rest</li>
     </ul>
 </div>
@@ -58,13 +56,13 @@
                 <td><code>WithMemoryStorage()</code></td>
                 <td>? Full Support</td>
                 <td>No (lost on refresh)</td>
-                <td>Recommended for testing</td>
+                <td>Good for testing</td>
             </tr>
             <tr>
                 <td><code>WithIndexedDbStorage()</code></td>
-                <td>? In Progress</td>
+                <td>? Full Support</td>
                 <td>Yes (browser storage)</td>
-                <td>Requires async BTree (WIP)</td>
+                <td>Recommended for production</td>
             </tr>
         </tbody>
     </table>
@@ -82,24 +80,33 @@
     
     protected override async Task OnInitializedAsync()
     {
-        // Use in-memory storage (fully functional)
+        // IndexedDB storage (persistent, recommended)
         _db = await new WitDatabaseBuilder()
-            .WithMemoryStorage()
+            .WithIndexedDbStorage("MyDatabase", JSRuntime)
             .WithBTree()
             .WithTransactions()
-            .BuildAsync();
+            .BuildAsync();  // Required for WASM
             
-        // IndexedDB (experimental - init only)
+        // Or use in-memory storage (not persistent)
         // _db = await new WitDatabaseBuilder()
-        //     .WithIndexedDbStorage("MyDatabase", JSRuntime)
-        //     .WithBTree()
+        //     .WithMemoryStorage()
         //     .BuildAsync();
     }
     
-    private async Task SaveData(byte[] key, byte[] value)
+    private async Task SaveData(string key, string value)
     {
-        await _db!.PutAsync(key, value);
+        var keyBytes = Encoding.UTF8.GetBytes(key);
+        var valueBytes = Encoding.UTF8.GetBytes(value);
+        
+        await _db!.PutAsync(keyBytes, valueBytes);
         await _db.FlushAsync();
+    }
+    
+    private async Task&lt;string?&gt; LoadData(string key)
+    {
+        var keyBytes = Encoding.UTF8.GetBytes(key);
+        var value = await _db!.GetAsync(keyBytes);
+        return value != null ? Encoding.UTF8.GetString(value) : null;
     }
     
     public async ValueTask DisposeAsync()
@@ -117,21 +124,27 @@
     <p>All database operations support async patterns for WASM compatibility:</p>
     
     <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">
-// Async initialization (required for WASM)
+// Async initialization (required for WASM with IndexedDB)
 var db = await builder.BuildAsync();
 
 // Async CRUD operations
 await db.PutAsync(key, value);
 var value = await db.GetAsync(key);
-await db.DeleteAsync(key);
+var deleted = await db.DeleteAsync(key);
 
-// Async iteration
+// Async iteration over all records
 await foreach (var (k, v) in db.ScanAsync(null, null))
 {
-    // Process records
+    Console.WriteLine($"Key: {Encoding.UTF8.GetString(k)}");
 }
 
-// Async flush & dispose
+// Transactions with async operations
+await using var tx = await db.BeginTransactionAsync();
+await tx.PutAsync(key1, value1);
+await tx.PutAsync(key2, value2);
+await tx.CommitAsync();
+
+// Async flush &amp; dispose
 await db.FlushAsync();
 await db.DisposeAsync();
     </pre>
@@ -141,11 +154,13 @@ await db.DisposeAsync();
     <h3>Supported Features</h3>
     
     <ul>
-        <li>? B+Tree storage engine (async init via <code>BuildAsync()</code>)</li>
-        <li>? ACID transactions</li>
+        <li>? B+Tree storage engine with full async support</li>
+        <li>? IndexedDB persistence (browser storage)</li>
+        <li>? ACID transactions with async commit/rollback</li>
         <li>? MVCC (Multi-Version Concurrency Control)</li>
         <li>? AES-GCM encryption</li>
         <li>? Secondary indexes</li>
+        <li>? Range queries with IAsyncEnumerable</li>
         <li>? LSM-Tree (requires file system, not available in browser)</li>
     </ul>
 </div>

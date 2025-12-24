@@ -7,7 +7,7 @@
 
 <div class="card">
     <h1>&#128221; CRUD Operations Demo</h1>
-    <p>Demonstrates basic Create, Read, Update, Delete operations using WitDatabase.</p>
+    <p>Demonstrates basic Create, Read, Update, Delete operations using WitDatabase with IndexedDB persistence.</p>
 </div>
 
 <!-- Database Status -->
@@ -36,13 +36,6 @@
                 <input type="checkbox" @bind="_usePersistentStorage" disabled="@_isInitializing" /> 
                 Use IndexedDB (data persists across browser sessions)
             </label>
-            @if (_usePersistentStorage)
-            {
-                <div class="alert alert-warning" style="margin-top: 10px; font-size: 12px;">
-                    <strong>?? Experimental:</strong> IndexedDB support requires full async BTree (work in progress).
-                    Currently only database creation works. Use in-memory storage for full functionality.
-                </div>
-            }
         </div>
         
         <button class="btn btn-primary" @onclick="InitializeDatabaseAsync" disabled="@_isInitializing">
@@ -166,7 +159,7 @@
 @if (_isPersistent && _isConnected)
 {
     <div class="card">
-        <h3>&#128161; Persistence Info</h3>
+        <h3>&#128161; IndexedDB Persistence</h3>
         <p>
             Data is stored in browser's IndexedDB. Try these experiments:
         </p>
@@ -182,7 +175,7 @@
     private WitDatabase? _db;
     private bool _isConnected;
     private bool _isPersistent;
-    private bool _usePersistentStorage = false; // Default to in-memory for now
+    private bool _usePersistentStorage = true; // Default to IndexedDB now that it's fully supported
     private int _recordCount;
     private bool _isInitializing;
     
@@ -213,15 +206,14 @@
             if (_usePersistentStorage)
             {
                 // Use IndexedDB for persistent storage
-                // NOTE: Currently experimental - full async BTree refactoring in progress
                 builder.WithIndexedDbStorage(DatabaseName, JSRuntime);
                 _isPersistent = true;
-                ShowMessage("Configuring IndexedDB storage (experimental)...");
+                ShowMessage("Configuring IndexedDB storage...");
                 StateHasChanged();
             }
             else
             {
-                // Use in-memory storage (no persistence, but fully functional)
+                // Use in-memory storage (no persistence)
                 builder.WithMemoryStorage();
                 _isPersistent = false;
             }
@@ -229,7 +221,7 @@
             ShowMessage("Building database...");
             StateHasChanged();
             
-            // Use BuildAsync for proper async initialization
+            // Use BuildAsync for proper async initialization (required for IndexedDB)
             _db = await builder.BuildAsync();
             
             _isConnected = true;
@@ -241,21 +233,12 @@
             await LoadAllRecordsAsync();
             
             ShowMessage(_isPersistent 
-                ? "Database initialized with IndexedDB storage (experimental)!" 
+                ? "Database initialized with IndexedDB storage!" 
                 : "Database initialized with in-memory storage.");
         }
         catch (Exception ex)
         {
-            var errorMsg = $"Failed to initialize database: {ex.GetType().Name}: {ex.Message}";
-            
-            if (ex.Message.Contains("Cannot wait on monitors"))
-            {
-                errorMsg += "\n\n?? This error occurs because IndexedDB requires full async operations. " +
-                           "The BTree async refactoring is in progress. " +
-                           "For now, please use in-memory storage (uncheck the IndexedDB option).";
-            }
-            
-            ShowError(errorMsg);
+            ShowError($"Failed to initialize database: {ex.GetType().Name}: {ex.Message}");
         }
         finally
         {
@@ -284,13 +267,7 @@
         }
         catch (Exception ex)
         {
-            var errorMsg = $"Failed to save record: {ex.Message}";
-            if (_isPersistent && ex.Message.Contains("Cannot wait on monitors"))
-            {
-                errorMsg += "\n\n?? IndexedDB storage requires full async BTree (work in progress). " +
-                           "Please restart with in-memory storage for now.";
-            }
-            ShowError(errorMsg);
+            ShowError($"Failed to save record: {ex.Message}");
         }
     }
     

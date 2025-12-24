@@ -24,8 +24,8 @@
             <div class="stat-label">@(_isEncrypted ? "Encrypted" : "Not Encrypted")</div>
         </div>
         <div class="stat-card">
-            <div class="stat-value">&#128203;</div>
-            <div class="stat-label">In-Memory</div>
+            <div class="stat-value">@(_isPersistent ? "&#128190;" : "&#128203;")</div>
+            <div class="stat-label">@(_isPersistent ? "IndexedDB" : "In-Memory")</div>
         </div>
     </div>
     
@@ -42,8 +42,22 @@
             </label>
         </div>
         
-        <button class="btn btn-primary" @onclick="InitializeDatabaseAsync" disabled="@(_enableEncryption && string.IsNullOrEmpty(_password))">
-            Initialize Database
+        <div class="form-group">
+            <label>
+                <input type="checkbox" @bind="_usePersistentStorage" disabled="@_isInitializing" /> 
+                Use IndexedDB (data persists across browser sessions)
+            </label>
+        </div>
+        
+        <button class="btn btn-primary" @onclick="InitializeDatabaseAsync" disabled="@((_enableEncryption && string.IsNullOrEmpty(_password)) || _isInitializing)">
+            @if (_isInitializing)
+            {
+                <span>Initializing...</span>
+            }
+            else
+            {
+                <span>Initialize Database</span>
+            }
         </button>
         
         @if (_enableEncryption && string.IsNullOrEmpty(_password))
@@ -52,10 +66,6 @@
                 Please enter a password to enable encryption.
             </div>
         }
-        
-        <p style="margin-top: 10px; font-size: 12px; color: #666;">
-            ?? Using in-memory storage. IndexedDB support requires async BTree refactoring (in progress).
-        </p>
     }
     else
     {
@@ -200,7 +210,7 @@
         <ul>
             <li><strong>AES-GCM Encryption:</strong> Data is encrypted using AES-256 in GCM mode with a 96-bit nonce.</li>
             <li><strong>Key Derivation:</strong> The encryption key is derived from your password using PBKDF2.</li>
-            <li><strong>In-Memory Storage:</strong> Data is stored in memory (lost on page refresh).</li>
+            <li><strong>Storage:</strong> @(_isPersistent ? "Data persists in IndexedDB (encrypted)" : "Data is in memory (lost on refresh)").</li>
             <li><strong>Password Required:</strong> You'll need the same password to decrypt data.</li>
         </ul>
         
@@ -211,6 +221,21 @@
                 they would only see encrypted bytes without your password.
             </div>
         }
+    </div>
+}
+
+@if (_isPersistent && _isConnected)
+{
+    <div class="card">
+        <h3>&#128161; Encrypted IndexedDB Persistence</h3>
+        <p>
+            Your encrypted data is stored in the browser's IndexedDB:
+        </p>
+        <ul>
+            <li>Refresh the page - data remains encrypted and accessible with your password.</li>
+            <li>Close and reopen the browser - data persists.</li>
+            <li>Open DevTools ? Application ? IndexedDB - you'll see encrypted (unreadable) data.</li>
+        </ul>
     </div>
 }
 
@@ -226,6 +251,9 @@
     private WitDatabase? _db;
     private bool _isConnected;
     private bool _isEncrypted;
+    private bool _isPersistent;
+    private bool _usePersistentStorage = true;
+    private bool _isInitializing;
     
     private string _password = "";
     private bool _enableEncryption = true;
@@ -240,15 +268,29 @@
     private List<(string Key, string Value)> _secrets = new();
     private HashSet<string> _revealedKeys = new();
     
+    private const string DatabaseName = "WitDbEncryptionDemo";
+    
     private async Task InitializeDatabaseAsync()
     {
+        if (_isInitializing) return;
+        _isInitializing = true;
+        
         try
         {
-            // Use in-memory storage (IndexedDB requires async BTree refactoring)
             var builder = new WitDatabaseBuilder()
-                .WithMemoryStorage()
                 .WithBTree()
                 .WithTransactions();
+            
+            if (_usePersistentStorage)
+            {
+                builder.WithIndexedDbStorage(DatabaseName, JSRuntime);
+                _isPersistent = true;
+            }
+            else
+            {
+                builder.WithMemoryStorage();
+                _isPersistent = false;
+            }
             
             if (_enableEncryption && !string.IsNullOrEmpty(_password))
             {
@@ -261,13 +303,17 @@
             _isConnected = true;
             await RefreshSecretsAsync();
             
-            ShowMessage(_isEncrypted 
-                ? "Encrypted database initialized!" 
-                : "Database initialized without encryption");
+            var storage = _isPersistent ? "IndexedDB" : "memory";
+            var encryption = _isEncrypted ? "with encryption" : "without encryption";
+            ShowMessage($"Database initialized ({storage}, {encryption})!");
         }
         catch (Exception ex)
         {
             ShowError($"Failed to initialize: {ex.Message}");
+        }
+        finally
+        {
+            _isInitializing = false;
         }
     }
     
@@ -281,6 +327,7 @@
         
         _isConnected = false;
         _isEncrypted = false;
+        _isPersistent = false;
         _password = "";
         _secrets.Clear();
         _revealedKeys.Clear();
