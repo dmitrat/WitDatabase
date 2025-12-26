@@ -48,9 +48,9 @@ public sealed partial class ExpressionEvaluator
             WitSqlExpressionIif iif => EvaluateIif(iif, row),
             WitSqlExpressionGlob glob => EvaluateGlob(glob, row),
             WitSqlExpressionCollate collate => EvaluateCollate(collate, row),
-            WitSqlExpressionExists exists => EvaluateExists(exists),
+            WitSqlExpressionExists exists => EvaluateExists(exists, row),
             WitSqlExpressionQuantified quantified => EvaluateQuantified(quantified, row),
-            WitSqlExpressionSubquery _ => throw new NotImplementedException("Subqueries not yet implemented"),
+            WitSqlExpressionSubquery subquery => EvaluateSubquery(subquery, row),
             _ => throw new NotSupportedException($"Expression type not supported: {expression.GetType().Name}")
         };
     }

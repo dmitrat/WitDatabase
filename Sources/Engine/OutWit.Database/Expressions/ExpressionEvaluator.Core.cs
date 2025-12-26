@@ -62,11 +62,31 @@ public sealed partial class ExpressionEvaluator
             var fullName = $"{col.TableName}.{col.ColumnName}";
             if (row.TryGetValue(fullName, out var value))
                 return value;
+            
+            // For correlated subqueries, also check the outer row with qualified name
+            if (m_context.OuterRow != null && m_context.OuterRow.Value.TryGetValue(fullName, out var outerValue))
+                return outerValue;
         }
 
-        // Try to get by simple column name
+        // Try to get by simple column name from current row
         if (row.TryGetValue(col.ColumnName, out var simpleValue))
             return simpleValue;
+
+        // For correlated subqueries, check the outer row
+        if (m_context.OuterRow != null)
+        {
+            // Try with table alias if specified
+            if (col.TableName != null)
+            {
+                var fullName = $"{col.TableName}.{col.ColumnName}";
+                if (m_context.OuterRow.Value.TryGetValue(fullName, out var outerQualified))
+                    return outerQualified;
+            }
+            
+            // Try simple column name from outer row
+            if (m_context.OuterRow.Value.TryGetValue(col.ColumnName, out var outerSimple))
+                return outerSimple;
+        }
 
         // Check parameters
         var paramName = $"@{col.ColumnName}";

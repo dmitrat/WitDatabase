@@ -88,6 +88,12 @@ public sealed partial class ExpressionEvaluator
 
     private WitSqlValue EvaluateIn(WitSqlExpressionIn inExpr, WitSqlRow row)
     {
+        // IN with subquery - delegate to subquery evaluator
+        if (inExpr.Subquery != null)
+        {
+            return EvaluateInSubquery(inExpr, row);
+        }
+
         var value = Evaluate(inExpr.Expression, row);
 
         if (value.IsNull)
@@ -109,16 +115,9 @@ public sealed partial class ExpressionEvaluator
                     return WitSqlValue.FromBool(!inExpr.IsNot);
             }
             // If we didn't find a match but had nulls, result is NULL
-            // (unless it's NOT IN and no match means true)
             if (hasNull)
-                return inExpr.IsNot ? WitSqlValue.Null : WitSqlValue.Null;
+                return WitSqlValue.Null;
             return WitSqlValue.FromBool(inExpr.IsNot);
-        }
-
-        // IN with subquery - not yet implemented
-        if (inExpr.Subquery != null)
-        {
-            throw new NotImplementedException("IN with subquery not yet implemented");
         }
 
         return WitSqlValue.FromBool(inExpr.IsNot);
@@ -284,26 +283,6 @@ public sealed partial class ExpressionEvaluator
             return WitSqlValue.Null;
 
         return Evaluate(collate.Operand, row);
-    }
-
-    #endregion
-
-    #region EXISTS
-
-    private WitSqlValue EvaluateExists(WitSqlExpressionExists exists)
-    {
-        // EXISTS requires subquery execution - not yet implemented
-        throw new NotImplementedException("EXISTS evaluation requires subquery execution which is not yet implemented");
-    }
-
-    #endregion
-
-    #region Quantified (ANY/SOME/ALL)
-
-    private WitSqlValue EvaluateQuantified(WitSqlExpressionQuantified quantified, WitSqlRow row)
-    {
-        // ANY/SOME/ALL requires subquery execution - not yet implemented
-        throw new NotImplementedException("ANY/SOME/ALL evaluation requires subquery execution which is not yet implemented");
     }
 
     #endregion

@@ -1,4 +1,5 @@
 using OutWit.Database.Interfaces;
+using OutWit.Database.Values;
 
 namespace OutWit.Database.Iterators
 {
@@ -12,6 +13,7 @@ namespace OutWit.Database.Iterators
 
         private readonly IResultIterator m_source;
         private readonly string m_alias;
+        private WitSqlRow m_current;
 
         #endregion
 
@@ -49,6 +51,37 @@ namespace OutWit.Database.Iterators
             return schema;
         }
 
+        /// <summary>
+        /// Creates a new row with aliased column names (e.g., "Id" -> "A.Id").
+        /// Also keeps the original column names for unqualified access.
+        /// </summary>
+        private WitSqlRow CreateAliasedRow(WitSqlRow sourceRow)
+        {
+            var sourceNames = sourceRow.ColumnNames;
+            var sourceValues = sourceRow.Values;
+            
+            // Create array with both aliased and original column names
+            // This allows both "A.Id" and "Id" to work
+            var count = sourceNames.Count;
+            var names = new string[count * 2];
+            var values = new WitSqlValue[count * 2];
+            
+            for (int i = 0; i < count; i++)
+            {
+                var originalName = sourceNames[i];
+                
+                // Aliased name (e.g., "A.Id")
+                names[i] = $"{m_alias}.{originalName}";
+                values[i] = sourceValues[i];
+                
+                // Original name (e.g., "Id") for unqualified access
+                names[count + i] = originalName;
+                values[count + i] = sourceValues[i];
+            }
+            
+            return new WitSqlRow(values, names);
+        }
+
         #endregion
 
         #region IResultIterator
@@ -63,7 +96,11 @@ namespace OutWit.Database.Iterators
         /// <inheritdoc/>
         public override bool MoveNext()
         {
-            return m_source.MoveNext();
+            if (!m_source.MoveNext())
+                return false;
+            
+            m_current = CreateAliasedRow(m_source.Current);
+            return true;
         }
 
         /// <inheritdoc/>
@@ -71,6 +108,7 @@ namespace OutWit.Database.Iterators
         {
             base.Reset();
             m_source.Reset();
+            m_current = default;
         }
 
         #endregion
@@ -87,12 +125,11 @@ namespace OutWit.Database.Iterators
 
         #region Properties
 
-
         /// <inheritdoc/>
         public override IReadOnlyList<WitSqlColumnInfo> Schema { get; }
 
         /// <inheritdoc/>
-        public override WitSqlRow Current => m_source.Current;
+        public override WitSqlRow Current => m_current;
 
         #endregion
     }
