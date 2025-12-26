@@ -16,5 +16,9 @@
     <ProjectReference Include="..\OutWit.Database.Parser\OutWit.Database.Parser.csproj" />
   </ItemGroup>
 
+  <ItemGroup>
+    <Folder Include="Statements\" />
+  </ItemGroup>
+
 </Project>
 
