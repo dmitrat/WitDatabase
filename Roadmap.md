@@ -1,8 +1,8 @@
 # WitDatabase - Complete Roadmap
 
-**Version:** 2.0  
+**Version:** 2.1  
 **Based on:** WitSql.md specification v1.2  
-**Last Updated:** 2025-01-20
+**Last Updated:** 2025-01-26
 
 ---
 
@@ -42,9 +42,9 @@ For detailed version-specific information, see:
 
 | Component | v1 Features | Implemented | Progress |
 |-----------|-------------|-------------|----------|
-| **OutWit.Database.Core** | 70 | 70 | 100% |
-| **OutWit.Database.Parser** | 290 | 290 | 100% |
-| **OutWit.Database** (Engine) | 200+ | ~30 | ~15% |
+| **OutWit.Database.Core** | 70 | 70 | 100% ? |
+| **OutWit.Database.Parser** | 290 | 290 | 100% ? |
+| **OutWit.Database** (Engine) | 200+ | ~130 | ~65% ?? |
 
 ### v2 Features (Deferred)
 
@@ -58,7 +58,7 @@ For detailed version-specific information, see:
 
 ## Core Component Status
 
-### v1 Complete
+### v1 Complete ?
 
 | Category | Status | Features |
 |----------|--------|----------|
@@ -93,7 +93,7 @@ For detailed version-specific information, see:
 
 ## Parser Component Status
 
-### v1 Complete
+### v1 Complete ?
 
 | Category | Status |
 |----------|--------|
@@ -135,21 +135,31 @@ For detailed version-specific information, see:
 
 ### v1 Required Features
 
-| Category | Status |
-|----------|--------|
-| Query Execution Infrastructure | ~30% |
-| Data Type Implementation | 100% |
-| DDL Execution | 0% |
-| DML Execution | 0% |
-| Expression Evaluation | 100% |
-| Built-in Functions (scalar) | 100% |
-| Built-in Functions (aggregate) | 0% |
-| Window Functions | 0% |
-| CTE and Set Operations | 0% |
-| Transaction Support | 0% |
-| Schema Information | 0% |
-| ADO.NET Provider | 0% |
-| Query Optimization | 0% |
+| Category | Status | Details |
+|----------|--------|---------|
+| Query Execution Infrastructure | 90% | All core components complete |
+| Data Type Implementation | 100% | All types supported |
+| DDL Execution | 90% | Tables, Views, Triggers, Sequences ? |
+| DML Execution (SELECT) | 95% | JOINs, Subqueries, Set Ops ? |
+| DML Execution (INSERT/UPDATE/DELETE) | 85% | Core operations, triggers ? |
+| Expression Evaluation | 100% | Including subqueries ? |
+| Built-in Functions (scalar) | 100% | 60+ functions ? |
+| Built-in Functions (aggregate) | 100% | COUNT, SUM, AVG, MIN, MAX, GROUP_CONCAT ? |
+| Subquery Support | 100% | Scalar, EXISTS, IN, ANY/ALL, Correlated ? |
+| Window Functions | 0% | Not started |
+| CTE Execution | 0% | Not started |
+| Transaction Support | 0% | Not started |
+| Schema Information | 0% | INFORMATION_SCHEMA not started |
+| ADO.NET Provider | 0% | Not started |
+| Query Optimization | 10% | Basic plan building only |
+
+### Recently Completed (2025-01-26)
+
+- ? Full subquery support (scalar, EXISTS, IN, ANY/SOME/ALL)
+- ? Correlated subqueries
+- ? IteratorAlias fix for proper column name aliasing
+- ? ExpressionEvaluator.Subquery.cs - new partial class
+- ? OuterRow support in column reference evaluation
 
 ### v2 Deferred
 
@@ -168,32 +178,38 @@ For detailed version-specific information, see:
 
 ### v1 Phases
 
-#### Phase 1: MVP (4-6 weeks)
+#### Phase 1: MVP - ? COMPLETE
 - [x] Expression evaluator ?
 - [x] All scalar functions ?
 - [x] Parameter binding ?
-- [ ] Query executor infrastructure
-- [ ] Basic SELECT, INSERT, UPDATE, DELETE
-- [ ] CREATE/DROP TABLE
+- [x] Query executor infrastructure ?
+- [x] Basic SELECT, INSERT, UPDATE, DELETE ?
+- [x] CREATE/DROP TABLE ?
+- [x] Constraint validation ?
 - [ ] ADO.NET provider basics
 
-#### Phase 2: JOINs and Indexes (3-4 weeks)
-- [ ] JOIN operations
-- [ ] Index creation and usage
-- [ ] GROUP BY, HAVING
-- [ ] Subqueries, CTE
+#### Phase 2: JOINs and Advanced Queries - ? MOSTLY COMPLETE
+- [x] JOIN operations (INNER, LEFT, RIGHT, FULL, CROSS) ?
+- [x] Index creation (metadata) ?
+- [x] GROUP BY, HAVING ?
+- [x] Subqueries (scalar, IN, EXISTS, ANY/ALL) ?
+- [x] Correlated subqueries ?
+- [x] Set operations (UNION, INTERSECT, EXCEPT) ?
+- [ ] CTE (WITH clause)
+- [ ] Index usage in queries
 
-#### Phase 3: Transactions and Concurrency (3-4 weeks)
+#### Phase 3: Transactions and Concurrency (Planned)
 - [ ] Isolation levels
 - [ ] Savepoints
 - [ ] FOR UPDATE / FOR SHARE
 - [ ] MERGE statement
 
-#### Phase 4: Production Ready (4-6 weeks)
+#### Phase 4: Production Ready (Planned)
 - [ ] Window functions
-- [ ] Views and triggers
-- [ ] All v1 functions
+- [ ] Recursive CTE
+- [x] Views and triggers ?
 - [ ] INFORMATION_SCHEMA
+- [ ] Basic query optimization
 
 ### v2 Phases (Future)
 
@@ -211,7 +227,21 @@ For detailed version-specific information, see:
 |-----------|-------|--------|
 | OutWit.Database.Core | 1811+ | ? Passing |
 | OutWit.Database.Parser | 1000+ | ? Passing |
-| OutWit.Database (Engine) | 151 | ? Passing |
+| OutWit.Database (Engine) | 893 | ? Passing |
+| **Total** | **3700+** | ? Passing |
+
+### Engine Test Breakdown
+
+| Category | Tests |
+|----------|-------|
+| ExpressionEvaluator | 194 |
+| StatementExecutor | 145 |
+| Iterators | 119 |
+| QueryPlanner | 50 |
+| WitSqlValue | 130 |
+| Definitions | 90 |
+| Schema | 50 |
+| WitSqlEngine Integration | 115 |
 
 ---
 
@@ -231,4 +261,19 @@ For detailed version-specific information, see:
 
 ---
 
-**Last Updated:** 2025-01-20
+## Recent Changes
+
+### 2025-01-26
+- Engine: Added full subquery support
+  - Scalar subqueries
+  - EXISTS / NOT EXISTS
+  - IN (subquery) / NOT IN (subquery)
+  - ANY / SOME / ALL
+  - Correlated subqueries
+- Engine: Fixed IteratorAlias for proper column name aliasing
+- Engine: 893 tests passing (up from 151)
+- Updated roadmaps with current progress
+
+---
+
+**Last Updated:** 2025-01-26

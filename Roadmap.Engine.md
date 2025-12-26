@@ -1,8 +1,8 @@
 # OutWit.Database (Engine) - Roadmap
 
-**Version:** 2.0  
+**Version:** 2.1  
 **Based on:** WitSql.md specification v1.2  
-**Last Updated:** 2025-01-21
+**Last Updated:** 2025-01-26
 
 ---
 
@@ -26,7 +26,7 @@
 
 ## Progress Summary
 
-**Current Status: ~35% - Query Execution Infrastructure Complete**
+**Current Status: ~65% - Core SQL Execution Complete**
 
 The Engine component (`OutWit.Database`) is responsible for:
 - SQL execution against the Core storage layer
@@ -42,11 +42,16 @@ The Engine component (`OutWit.Database`) is responsible for:
 - ? `WitSqlResult` - Query result container
 - ? `WitSqlColumnInfo` - Column schema information
 - ? `WitDataType` - Storage type enumeration
-- ? `ExpressionEvaluator` - Full expression evaluation (except subqueries)
+- ? `ExpressionEvaluator` - Full expression evaluation including subqueries
 - ? `AggregateExpressionEvaluator` - Aggregate function evaluation in GROUP BY context
 - ? `StatementExecutor` - DDL/DML execution with triggers and validation
 - ? `QueryPlanner` - Query plan building with iterator model
-- ? All iterator types (Filter, Project, Sort, Limit, Distinct, Join, GroupBy, Union, Intersect, Except)
+- ? All iterator types (Filter, Project, Sort, Limit, Distinct, Join, GroupBy, Union, Intersect, Except, Alias)
+- ? Subquery support (Scalar, EXISTS, IN, ANY/SOME/ALL, Correlated)
+- ? All scalar functions (60+)
+- ? All aggregate functions
+- ? Constraint validation (NOT NULL, UNIQUE, CHECK, FOREIGN KEY)
+- ? Trigger execution (BEFORE/AFTER/INSTEAD OF)
 
 ---
 
@@ -62,7 +67,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 | Result set builder | [x] | P0 | v1 | - |
 | Query context with AffectedRows, LastInsertId | [x] | P0 | v1 | SS5.8 |
 | Parameter binding | [x] | P0 | v1 | SS11 |
-| Query timeout support | [ ] | P0 | v1 | - |
+| Query timeout support | [ ] | P1 | v1 | - |
 | CancellationToken support | [x] | P0 | v1 | - |
 
 ---
@@ -187,9 +192,10 @@ The Engine component (`OutWit.Database`) is responsible for:
 | GROUP BY aggregation | [x] | P0 | v1 | SS3.1 |
 | HAVING filtering | [x] | P0 | v1 | SS3.1 |
 | Table aliases | [x] | P0 | v1 | SS3.1 |
-| Subqueries in SELECT | [ ] | P0 | v1 | SS3.1 |
-| Subqueries in FROM | [ ] | P0 | v1 | SS3.1 |
-| Subqueries in WHERE | [ ] | P0 | v1 | SS3.1 |
+| Subqueries in SELECT (scalar) | [x] | P0 | v1 | SS3.1 |
+| Subqueries in FROM | [x] | P0 | v1 | SS3.1 |
+| Subqueries in WHERE | [x] | P0 | v1 | SS3.1 |
+| Correlated subqueries | [x] | P0 | v1 | SS3.1 |
 
 ### 4.2 JOIN Execution
 
@@ -211,12 +217,12 @@ The Engine component (`OutWit.Database`) is responsible for:
 | INSERT with column list | [x] | P0 | v1 | SS3.2 |
 | Multi-row INSERT | [x] | P0 | v1 | SS3.2 |
 | INSERT ... SELECT | [x] | P0 | v1 | SS3.2 |
-| INSERT ... RETURNING | [ ] | P0 | v1 | SS3.2 |
+| INSERT ... RETURNING | [ ] | P1 | v1 | SS3.2 |
 | DEFAULT value handling | [x] | P0 | v1 | SS3.2 |
 | AUTOINCREMENT handling | [x] | P0 | v1 | SS3.2 |
 | Constraint validation | [x] | P0 | v1 | SS3.2 |
-| INSERT OR REPLACE | [ ] | P0 | v1 | SS16.1 |
-| INSERT ... ON CONFLICT | [ ] | P0 | v1 | SS16.2 |
+| INSERT OR REPLACE | [ ] | P1 | v1 | SS16.1 |
+| INSERT ... ON CONFLICT | [ ] | P1 | v1 | SS16.2 |
 
 ### 4.4 UPDATE Execution
 
@@ -224,10 +230,10 @@ The Engine component (`OutWit.Database`) is responsible for:
 |---------|--------|----------|---------|------|
 | Basic UPDATE | [x] | P0 | v1 | SS3.3 |
 | UPDATE with WHERE | [x] | P0 | v1 | SS3.3 |
-| UPDATE ... RETURNING | [ ] | P0 | v1 | SS3.3 |
+| UPDATE ... RETURNING | [ ] | P1 | v1 | SS3.3 |
 | Multi-column UPDATE | [x] | P0 | v1 | SS3.3 |
 | UPDATE with expressions | [x] | P0 | v1 | SS3.3 |
-| Index update on modification | [ ] | P0 | v1 | SS3.3 |
+| Index update on modification | [ ] | P1 | v1 | SS3.3 |
 | NOT NULL validation on UPDATE | [x] | P0 | v1 | SS3.3 |
 | UPDATE ... FROM | [ ] | P1 | v1 | SS17.2 |
 
@@ -237,8 +243,8 @@ The Engine component (`OutWit.Database`) is responsible for:
 |---------|--------|----------|---------|------|
 | Basic DELETE | [x] | P0 | v1 | SS3.4 |
 | DELETE with WHERE | [x] | P0 | v1 | SS3.4 |
-| DELETE ... RETURNING | [ ] | P0 | v1 | SS3.4 |
-| Index cleanup on delete | [ ] | P0 | v1 | SS3.4 |
+| DELETE ... RETURNING | [ ] | P1 | v1 | SS3.4 |
+| Index cleanup on delete | [ ] | P1 | v1 | SS3.4 |
 | Cascading deletes | [ ] | P1 | v1 | SS2.1 |
 | DELETE ... USING | [ ] | P1 | v1 | SS17.3 |
 
@@ -246,7 +252,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 | Feature | Status | Priority | Version | Spec |
 |---------|--------|----------|---------|------|
-| TRUNCATE TABLE | [ ] | P0 | v1 | SS17.1 |
+| TRUNCATE TABLE | [ ] | P1 | v1 | SS17.1 |
 | MERGE execution | [ ] | P1 | v1 | SS16.3 |
 
 ---
@@ -264,7 +270,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 | Bitwise operators | [x] | P1 | v1 | SS4.5 |
 | BETWEEN evaluation | [x] | P0 | v1 | SS4.1 |
 | IN list evaluation | [x] | P0 | v1 | SS4.1 |
-| IN subquery evaluation | [ ] | P0 | v1 | SS4.1 |
+| IN subquery evaluation | [x] | P0 | v1 | SS4.1 |
 | LIKE pattern matching | [x] | P0 | v1 | SS4.1 |
 | GLOB pattern matching | [x] | P1 | v1 | SS4.1 |
 | IS NULL / IS NOT NULL | [x] | P0 | v1 | SS4.1 |
@@ -283,10 +289,14 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 | Feature | Status | Priority | Version | Spec |
 |---------|--------|----------|---------|------|
+| Scalar subquery evaluation | [x] | P0 | v1 | SS18.1 |
 | EXISTS evaluation | [x] | P0 | v1 | SS18.1 |
 | NOT EXISTS evaluation | [x] | P0 | v1 | SS18.1 |
+| IN (subquery) evaluation | [x] | P0 | v1 | SS18.1 |
+| NOT IN (subquery) evaluation | [x] | P0 | v1 | SS18.1 |
 | ANY / SOME evaluation | [x] | P0 | v1 | SS18.2 |
 | ALL evaluation | [x] | P0 | v1 | SS18.2 |
+| Correlated subquery support | [x] | P0 | v1 | SS18.3 |
 
 ---
 
@@ -419,13 +429,13 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 | Feature | Status | Priority | Version | Spec |
 |---------|--------|----------|---------|------|
-| WITH clause execution | [ ] | P0 | v1 | SS6 |
-| Multiple CTEs | [ ] | P0 | v1 | SS6 |
+| WITH clause execution | [ ] | P1 | v1 | SS6 |
+| Multiple CTEs | [ ] | P1 | v1 | SS6 |
 | Recursive CTE | [ ] | P1 | v1 | SS6 |
-| UNION | [ ] | P0 | v1 | SS8 |
-| UNION ALL | [ ] | P0 | v1 | SS8 |
-| INTERSECT | [ ] | P1 | v1 | SS8 |
-| EXCEPT | [ ] | P1 | v1 | SS8 |
+| UNION | [x] | P0 | v1 | SS8 |
+| UNION ALL | [x] | P0 | v1 | SS8 |
+| INTERSECT | [x] | P1 | v1 | SS8 |
+| EXCEPT | [x] | P1 | v1 | SS8 |
 
 ---
 
@@ -440,7 +450,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 | RELEASE SAVEPOINT | [ ] | P1 | v1 | SS9 |
 | ROLLBACK TO SAVEPOINT | [ ] | P1 | v1 | SS9 |
 | Isolation level support | [ ] | P0 | v1 | SS14.1 |
-| FOR UPDATE / FOR SHARE | [ ] | P0 | v1 | SS14.2 |
+| FOR UPDATE / FOR SHARE | [ ] | P1 | v1 | SS14.2 |
 
 ---
 
@@ -448,8 +458,8 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 | Feature | Status | Priority | Version | Spec |
 |---------|--------|----------|---------|------|
-| INFORMATION_SCHEMA.TABLES | [ ] | P0 | v1 | SS13.1 |
-| INFORMATION_SCHEMA.COLUMNS | [ ] | P0 | v1 | SS13.1 |
+| INFORMATION_SCHEMA.TABLES | [ ] | P1 | v1 | SS13.1 |
+| INFORMATION_SCHEMA.COLUMNS | [ ] | P1 | v1 | SS13.1 |
 | INFORMATION_SCHEMA.KEY_COLUMN_USAGE | [ ] | P1 | v1 | SS13.1 |
 | INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS | [ ] | P1 | v1 | SS13.1 |
 | INFORMATION_SCHEMA.INDEXES | [ ] | P1 | v1 | SS13.1 |
@@ -478,7 +488,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 | Feature | Status | Priority | Version |
 |---------|--------|----------|---------|
-| Index selection | [ ] | P0 | v1 |
+| Index selection | [ ] | P1 | v1 |
 | Join ordering | [ ] | P1 | v1 |
 | Predicate pushdown | [ ] | P1 | v1 |
 | Query plan caching | [ ] | P1 | v1 |
@@ -546,7 +556,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 ## Implementation Phases
 
-### Phase 1: MVP (4-6 weeks) - v1
+### Phase 1: MVP - ? COMPLETE
 
 **Goal:** Basic SQL execution for simple queries
 
@@ -554,27 +564,29 @@ The Engine component (`OutWit.Database`) is responsible for:
 - [x] Type system for all basic types ?
 - [x] Parameter binding ?
 - [x] All scalar functions ?
-- [ ] Query executor infrastructure
-- [ ] Basic SELECT with WHERE, ORDER BY, LIMIT
-- [ ] INSERT, UPDATE, DELETE
-- [ ] CREATE/DROP TABLE
-- [ ] Primary key and basic constraints
-- [ ] Core aggregate functions (COUNT, SUM, AVG, MIN, MAX)
+- [x] Query executor infrastructure ?
+- [x] Basic SELECT with WHERE, ORDER BY, LIMIT ?
+- [x] INSERT, UPDATE, DELETE ?
+- [x] CREATE/DROP TABLE ?
+- [x] Primary key and basic constraints ?
+- [x] Core aggregate functions ?
 - [ ] ADO.NET provider basics
 
-### Phase 2: JOINs and Indexes (3-4 weeks) - v1
+### Phase 2: JOINs and Advanced Queries - ? MOSTLY COMPLETE
 
-**Goal:** Multi-table queries and performance
+**Goal:** Multi-table queries and subqueries
 
-- [ ] INNER JOIN, LEFT JOIN
-- [ ] CREATE/DROP INDEX
+- [x] INNER JOIN, LEFT JOIN, RIGHT JOIN, FULL JOIN ?
+- [x] CROSS JOIN ?
+- [x] CREATE/DROP INDEX (metadata) ?
 - [ ] Index usage in WHERE clauses
-- [ ] GROUP BY, HAVING
-- [ ] Subqueries (scalar, IN, EXISTS)
+- [x] GROUP BY, HAVING ?
+- [x] Subqueries (scalar, IN, EXISTS, ANY/ALL) ?
+- [x] Correlated subqueries ?
 - [ ] CTE (WITH clause)
-- [ ] UNION / UNION ALL
+- [x] UNION / UNION ALL / INTERSECT / EXCEPT ?
 
-### Phase 3: Transactions and Concurrency (3-4 weeks) - v1
+### Phase 3: Transactions and Concurrency (Planned)
 
 **Goal:** Full transaction support
 
@@ -585,20 +597,18 @@ The Engine component (`OutWit.Database`) is responsible for:
 - [ ] INSERT ... ON CONFLICT
 - [ ] MERGE statement
 
-### Phase 4: Production Ready (4-6 weeks) - v1
+### Phase 4: Production Ready (Planned)
 
 **Goal:** Production-ready engine
 
 - [ ] Window functions
 - [ ] Recursive CTE
-- [ ] Views and triggers
+- [x] Views and triggers ?
 - [ ] All remaining v1 functions
 - [ ] INFORMATION_SCHEMA
 - [ ] Basic query optimization
-- [ ] JSON functions
-- [ ] Collation support
 
-### Phase 5: Advanced Features (Future) - v2
+### Phase 5: Advanced Features (v2)
 
 **Goal:** Advanced enterprise features
 
@@ -615,8 +625,32 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 | Component | Tests | Status |
 |-----------|-------|--------|
-| ExpressionEvaluator | 151 | ? Passing |
+| ExpressionEvaluator (all) | 194 | ? Passing |
+| StatementExecutor | 145 | ? Passing |
+| Iterators | 119 | ? Passing |
+| QueryPlanner | 50 | ? Passing |
+| WitSqlValue | 130 | ? Passing |
+| Definitions | 90 | ? Passing |
+| Schema | 50 | ? Passing |
+| WitSqlEngine (integration) | 115 | ? Passing |
+| **Total** | **893** | ? Passing |
 
 ---
 
-**Last Updated:** 2025-01-21
+## Recent Changes
+
+### 2025-01-26
+- ? Added full subquery support:
+  - Scalar subqueries in SELECT list
+  - EXISTS / NOT EXISTS
+  - IN (subquery) / NOT IN (subquery)
+  - ANY / SOME / ALL quantified comparisons
+  - Correlated subqueries
+- ? Fixed IteratorAlias to properly expose aliased column names
+- ? Added ExpressionEvaluator.Subquery.cs (new partial class)
+- ? Updated EvaluateColumnRef to support OuterRow for correlation
+- ? Added 22 new subquery tests
+
+---
+
+**Last Updated:** 2025-01-26
