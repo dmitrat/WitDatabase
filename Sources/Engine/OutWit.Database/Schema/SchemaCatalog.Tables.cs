@@ -1,3 +1,4 @@
+using OutWit.Common.Utils;
 using OutWit.Database.Definitions;
 
 namespace OutWit.Database.Schema;
@@ -99,30 +100,16 @@ public sealed partial class SchemaCatalog
                 throw new InvalidOperationException($"Table '{newName}' already exists");
 
             m_tables.Remove(oldName);
-            m_tables[newName] = new DefinitionTable
-            {
-                Name = newName,
-                Columns = table.Columns,
-                PrimaryKey = table.PrimaryKey,
-                RowIdColumn = table.RowIdColumn,
-                AutoIncrementRowId = table.AutoIncrementRowId,
-                CheckExpressions = table.CheckExpressions,
-                ForeignKeys = table.ForeignKeys,
-                UniqueConstraints = table.UniqueConstraints
-            };
+            m_tables[newName] = table.With(x => x.Name, newName);
 
             // Update index references
-            var tableIndexes = m_indexes.Values.Where(i => i.TableName.Equals(oldName, StringComparison.OrdinalIgnoreCase)).ToList();
+            var tableIndexes = m_indexes.Values
+                .Where(i => i.TableName.Equals(oldName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+            
             foreach (var index in tableIndexes)
             {
-                m_indexes[index.Name] = new DefinitionIndex
-                {
-                    Name = index.Name,
-                    TableName = newName,
-                    Columns = index.Columns,
-                    IsUnique = index.IsUnique,
-                    IsPrimaryKey = index.IsPrimaryKey
-                };
+                m_indexes[index.Name] = index.With(x => x.TableName, newName);
             }
 
             SaveSchema();

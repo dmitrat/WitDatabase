@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OutWit.Database.Types;
 
 namespace OutWit.Database.Tests.Types;
@@ -70,6 +71,13 @@ public class WitDataTypeRegistryTest
     }
 
     [Test]
+    public void GetWitDataTypeForJsonTypesTest()
+    {
+        Assert.That(WitDataTypeRegistry.GetWitDataType<JsonDocument>(), Is.EqualTo(WitDataType.Json));
+        Assert.That(WitDataTypeRegistry.GetWitDataType<JsonElement>(), Is.EqualTo(WitDataType.Json));
+    }
+
+    [Test]
     public void GetWitDataTypeForNullablesTest()
     {
         Assert.That(WitDataTypeRegistry.GetWitDataType<int?>(), Is.EqualTo(WitDataType.Int32));
@@ -110,6 +118,8 @@ public class WitDataTypeRegistryTest
         Assert.That(WitDataTypeRegistry.GetClrType(WitDataType.BinaryVariable), Is.EqualTo(typeof(byte[])));
         Assert.That(WitDataTypeRegistry.GetClrType(WitDataType.BinaryFixed), Is.EqualTo(typeof(byte[])));
         Assert.That(WitDataTypeRegistry.GetClrType(WitDataType.Null), Is.EqualTo(typeof(DBNull)));
+        Assert.That(WitDataTypeRegistry.GetClrType(WitDataType.RowVersion), Is.EqualTo(typeof(byte[])));
+        Assert.That(WitDataTypeRegistry.GetClrType(WitDataType.Json), Is.EqualTo(typeof(JsonDocument)));
     }
 
     #endregion
@@ -254,6 +264,7 @@ public class WitDataTypeRegistryTest
         Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.Guid), Is.True);
         Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.StringFixed), Is.True);
         Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.BinaryFixed), Is.True);
+        Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.RowVersion), Is.True);
 
         Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.Int32), Is.False); // VarInt
         Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.UInt32), Is.False);
@@ -261,6 +272,7 @@ public class WitDataTypeRegistryTest
         Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.UInt64), Is.False);
         Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.StringVariable), Is.False);
         Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.BinaryVariable), Is.False);
+        Assert.That(WitDataTypeRegistry.IsFixedSize(WitDataType.Json), Is.False);
     }
 
     [Test]
@@ -272,12 +284,14 @@ public class WitDataTypeRegistryTest
         Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.UInt64), Is.True);
         Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.StringVariable), Is.True);
         Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.BinaryVariable), Is.True);
+        Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.Json), Is.True);
 
         Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.Int8), Is.False);
         Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.DateTime), Is.False);
         Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.Guid), Is.False);
         Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.StringFixed), Is.False);
         Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.BinaryFixed), Is.False);
+        Assert.That(WitDataTypeRegistry.IsVariableSize(WitDataType.RowVersion), Is.False);
     }
 
     #endregion
@@ -295,6 +309,52 @@ public class WitDataTypeRegistryTest
         Assert.That(WitDataTypeRegistry.IsNullable(typeof(int)), Is.False);
         Assert.That(WitDataTypeRegistry.IsNullable(typeof(DateTime)), Is.False);
         Assert.That(WitDataTypeRegistry.IsNullable(typeof(Guid)), Is.False);
+    }
+
+    #endregion
+
+    #region RequiresPrecisionScale Tests
+
+    [Test]
+    public void RequiresPrecisionScaleTest()
+    {
+        Assert.That(WitDataTypeRegistry.RequiresPrecisionScale(WitDataType.Decimal), Is.True);
+
+        Assert.That(WitDataTypeRegistry.RequiresPrecisionScale(WitDataType.Int32), Is.False);
+        Assert.That(WitDataTypeRegistry.RequiresPrecisionScale(WitDataType.Float64), Is.False);
+        Assert.That(WitDataTypeRegistry.RequiresPrecisionScale(WitDataType.StringVariable), Is.False);
+    }
+
+    #endregion
+
+    #region RequiresMaxLength Tests
+
+    [Test]
+    public void RequiresMaxLengthTest()
+    {
+        Assert.That(WitDataTypeRegistry.RequiresMaxLength(WitDataType.StringFixed), Is.True);
+        Assert.That(WitDataTypeRegistry.RequiresMaxLength(WitDataType.StringVariable), Is.True);
+        Assert.That(WitDataTypeRegistry.RequiresMaxLength(WitDataType.BinaryFixed), Is.True);
+        Assert.That(WitDataTypeRegistry.RequiresMaxLength(WitDataType.BinaryVariable), Is.True);
+
+        Assert.That(WitDataTypeRegistry.RequiresMaxLength(WitDataType.Int32), Is.False);
+        Assert.That(WitDataTypeRegistry.RequiresMaxLength(WitDataType.Decimal), Is.False);
+        Assert.That(WitDataTypeRegistry.RequiresMaxLength(WitDataType.Json), Is.False);
+    }
+
+    #endregion
+
+    #region SupportsCollation Tests
+
+    [Test]
+    public void SupportsCollationTest()
+    {
+        Assert.That(WitDataTypeRegistry.SupportsCollation(WitDataType.StringFixed), Is.True);
+        Assert.That(WitDataTypeRegistry.SupportsCollation(WitDataType.StringVariable), Is.True);
+
+        Assert.That(WitDataTypeRegistry.SupportsCollation(WitDataType.Int32), Is.False);
+        Assert.That(WitDataTypeRegistry.SupportsCollation(WitDataType.BinaryVariable), Is.False);
+        Assert.That(WitDataTypeRegistry.SupportsCollation(WitDataType.Json), Is.False);
     }
 
     #endregion
@@ -319,6 +379,8 @@ public class WitDataTypeRegistryTest
         Assert.That(WitDataTypeRegistry.IsSupported(typeof(decimal)), Is.True);
         Assert.That(WitDataTypeRegistry.IsSupported(typeof(bool)), Is.True);
         Assert.That(WitDataTypeRegistry.IsSupported(typeof(byte[])), Is.True);
+        Assert.That(WitDataTypeRegistry.IsSupported(typeof(JsonDocument)), Is.True);
+        Assert.That(WitDataTypeRegistry.IsSupported(typeof(JsonElement)), Is.True);
 
         Assert.That(WitDataTypeRegistry.IsSupported(typeof(UnsupportedType)), Is.False);
         Assert.That(WitDataTypeRegistry.IsSupported(typeof(object)), Is.False);

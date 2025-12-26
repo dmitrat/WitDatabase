@@ -27,7 +27,14 @@ public sealed partial class DefinitionColumn : ModelBase
             && DefaultValue.Is(other.DefaultValue)
             && Ordinal.Is(other.Ordinal)
             && CheckExpression.Is(other.CheckExpression)
-            && ForeignKey.Check(other.ForeignKey);
+            && ForeignKey.Check(other.ForeignKey)
+            && MaxLength.Is(other.MaxLength)
+            && Precision.Is(other.Precision)
+            && Scale.Is(other.Scale)
+            && ComputedExpression.Is(other.ComputedExpression)
+            && IsStored.Is(other.IsStored)
+            && Collation.Is(other.Collation)
+            && ConstraintName.Is(other.ConstraintName);
     }
 
     public override DefinitionColumn Clone()
@@ -43,7 +50,14 @@ public sealed partial class DefinitionColumn : ModelBase
             DefaultValue = DefaultValue,
             Ordinal = Ordinal,
             CheckExpression = CheckExpression,
-            ForeignKey = ForeignKey?.Clone()
+            ForeignKey = ForeignKey?.Clone(),
+            MaxLength = MaxLength,
+            Precision = Precision,
+            Scale = Scale,
+            ComputedExpression = ComputedExpression,
+            IsStored = IsStored,
+            Collation = Collation,
+            ConstraintName = ConstraintName
         };
     }
 
@@ -53,7 +67,13 @@ public sealed partial class DefinitionColumn : ModelBase
 
     public override string ToString()
     {
-        return $"{Name} {Type}{(Nullable ? "" : " NOT NULL")}{(IsPrimaryKey ? " PRIMARY KEY" : "")}";
+        var type = Type.ToString();
+        if (MaxLength.HasValue)
+            type += $"({MaxLength.Value})";
+        else if (Precision.HasValue)
+            type += Scale.HasValue ? $"({Precision.Value},{Scale.Value})" : $"({Precision.Value})";
+
+        return $"{Name} {type}{(Nullable ? "" : " NOT NULL")}{(IsPrimaryKey ? " PRIMARY KEY" : "")}";
     }
 
     #endregion
@@ -119,6 +139,61 @@ public sealed partial class DefinitionColumn : ModelBase
     /// </summary>
     [MemoryPackOrder(9)]
     public DefinitionForeignKey? ForeignKey { get; init; }
+
+    /// <summary>
+    /// Gets the maximum length for CHAR(n), VARCHAR(n), BINARY(n), VARBINARY(n) types.
+    /// Null for types without length specification.
+    /// </summary>
+    [MemoryPackOrder(10)]
+    public int? MaxLength { get; init; }
+
+    /// <summary>
+    /// Gets the precision for DECIMAL(p,s) type (total number of digits).
+    /// Null for types without precision specification.
+    /// </summary>
+    [MemoryPackOrder(11)]
+    public int? Precision { get; init; }
+
+    /// <summary>
+    /// Gets the scale for DECIMAL(p,s) type (digits after decimal point).
+    /// Null for types without scale specification.
+    /// </summary>
+    [MemoryPackOrder(12)]
+    public int? Scale { get; init; }
+
+    /// <summary>
+    /// Gets the computed column expression (for columns defined as "AS (expression)").
+    /// Null for regular columns.
+    /// </summary>
+    [MemoryPackOrder(13)]
+    public string? ComputedExpression { get; init; }
+
+    /// <summary>
+    /// Gets whether a computed column is STORED (persisted) or VIRTUAL (calculated on access).
+    /// Only meaningful when ComputedExpression is not null.
+    /// </summary>
+    [MemoryPackOrder(14)]
+    public bool IsStored { get; init; }
+
+    /// <summary>
+    /// Gets the collation for string columns (BINARY, NOCASE, UNICODE, UNICODE_CI).
+    /// Null means default collation.
+    /// </summary>
+    [MemoryPackOrder(15)]
+    public string? Collation { get; init; }
+
+    /// <summary>
+    /// Gets the name of the constraint (for EF Core migrations).
+    /// Used for PRIMARY KEY, UNIQUE, CHECK, and FOREIGN KEY constraints.
+    /// </summary>
+    [MemoryPackOrder(16)]
+    public string? ConstraintName { get; init; }
+
+    /// <summary>
+    /// Gets whether this is a computed column.
+    /// </summary>
+    [MemoryPackIgnore]
+    public bool IsComputed => ComputedExpression != null;
 
     #endregion
 }

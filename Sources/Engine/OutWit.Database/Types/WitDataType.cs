@@ -139,5 +139,19 @@
         /// Variable-length binary data - VarInt length prefix + bytes
         /// </summary>
         BinaryVariable = 61,
+
+        // ========== Special Types ==========
+
+        /// <summary>
+        /// Row version for optimistic concurrency control - 8 bytes (auto-incrementing)
+        /// Used with EF Core concurrency tokens.
+        /// </summary>
+        RowVersion = 70,
+
+        /// <summary>
+        /// JSON document - VarInt length prefix + UTF-8 bytes
+        /// Stored as validated JSON text, can be queried with JSON functions.
+        /// </summary>
+        Json = 80,
     }
 }

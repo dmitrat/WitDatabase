@@ -1,3 +1,5 @@
+using System.Text.Json;
+
 namespace OutWit.Database.Types;
 
 /// <summary>
@@ -41,6 +43,10 @@ public static class WitDataTypeRegistry
         // Strings and Binary
         [typeof(string)] = WitDataType.StringVariable,
         [typeof(byte[])] = WitDataType.BinaryVariable,
+        
+        // JSON
+        [typeof(JsonDocument)] = WitDataType.Json,
+        [typeof(JsonElement)] = WitDataType.Json,
     };
 
     private static readonly Dictionary<WitDataType, Type> WIT_TO_CLR_MAP;
@@ -56,9 +62,14 @@ public static class WitDataTypeRegistry
         {
             WIT_TO_CLR_MAP.TryAdd(witDataType, clrType);
         }
+
+        // Add RowVersion explicitly (maps to byte[] but is distinct type)
+        WIT_TO_CLR_MAP[WitDataType.RowVersion] = typeof(byte[]);
     }
 
     #endregion
+
+    #region Functions
 
     /// <summary>
     /// Gets the WitDB data type for a .NET type.
@@ -109,6 +120,8 @@ public static class WitDataTypeRegistry
             WitDataType.Null => typeof(DBNull),
             WitDataType.StringFixed => typeof(string),
             WitDataType.BinaryFixed => typeof(byte[]),
+            WitDataType.RowVersion => typeof(byte[]),
+            WitDataType.Json => typeof(JsonDocument),
             _ => throw new NotSupportedException($"WitDataType {witDataType} is not supported")
         };
     }
@@ -168,16 +181,20 @@ public static class WitDataTypeRegistry
         return witDataType switch
         {
             WitDataType.Null => true,
-            WitDataType.Int8 or WitDataType.UInt8 => true,
-            WitDataType.Int16 or WitDataType.UInt16 => true,
-            WitDataType.Float16 or WitDataType.Float32 or WitDataType.Float64 => true,
-            WitDataType.Decimal => true,
-            WitDataType.Boolean => true,
-            WitDataType.DateOnly or WitDataType.TimeOnly or WitDataType.DateTime or WitDataType.DateTimeOffset
-                or WitDataType.TimeSpan => true,
-            WitDataType.Guid => true,
+            WitDataType.Int8 or WitDataType.UInt8 or WitDataType.Boolean => true,
+            WitDataType.Int16 or WitDataType.UInt16 or WitDataType.Float16 => true,
+            WitDataType.Float32 => true,
+            WitDataType.Int32 or WitDataType.UInt32 => false, // VarInt
+            WitDataType.Int64 or WitDataType.UInt64 => false, // VarInt
+            WitDataType.Float64 or WitDataType.DateTime or WitDataType.TimeOnly or WitDataType.TimeSpan => true,
+            WitDataType.DateOnly => true,
+            WitDataType.DateTimeOffset => true,
+            WitDataType.Decimal or WitDataType.Guid => true,
             WitDataType.StringFixed or WitDataType.BinaryFixed => true,
-            _ => false
+            WitDataType.StringVariable or WitDataType.BinaryVariable => false,
+            WitDataType.RowVersion => true, // 8 bytes fixed
+            WitDataType.Json => false, // Variable length
+            _ => throw new ArgumentOutOfRangeException(nameof(witDataType))
         };
     }
 
@@ -190,6 +207,7 @@ public static class WitDataTypeRegistry
         {
             WitDataType.Int32 or WitDataType.UInt32 or WitDataType.Int64 or WitDataType.UInt64 => true,
             WitDataType.StringVariable or WitDataType.BinaryVariable => true,
+            WitDataType.Json => true,
             _ => false
         };
     }
@@ -201,4 +219,31 @@ public static class WitDataTypeRegistry
     {
         return Nullable.GetUnderlyingType(clrType) != null || !clrType.IsValueType;
     }
+
+    /// <summary>
+    /// Checks if a data type requires precision/scale specification.
+    /// </summary>
+    public static bool RequiresPrecisionScale(WitDataType witDataType)
+    {
+        return witDataType == WitDataType.Decimal;
+    }
+
+    /// <summary>
+    /// Checks if a data type requires max length specification.
+    /// </summary>
+    public static bool RequiresMaxLength(WitDataType witDataType)
+    {
+        return witDataType is WitDataType.StringFixed or WitDataType.StringVariable 
+            or WitDataType.BinaryFixed or WitDataType.BinaryVariable;
+    }
+
+    /// <summary>
+    /// Checks if a data type supports collation.
+    /// </summary>
+    public static bool SupportsCollation(WitDataType witDataType)
+    {
+        return witDataType is WitDataType.StringFixed or WitDataType.StringVariable;
+    }
+
+    #endregion
 }

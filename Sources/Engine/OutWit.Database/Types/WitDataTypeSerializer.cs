@@ -1,6 +1,7 @@
 using System.Buffers.Binary;
 using System.Runtime.InteropServices;
 using System.Text;
+using System.Text.Json;
 using OutWit.Database.Core.Encoding;
 
 namespace OutWit.Database.Types;
@@ -491,6 +492,124 @@ public static class WitDataTypeSerializer
 
     #endregion
 
+    // ========== Special Types ==========
+
+    #region RowVersion 70
+
+    /// <summary>
+    /// Reads a row version (8-byte auto-incrementing value).
+    /// </summary>
+    public static ulong ReadRowVersion(ReadOnlySpan<byte> buffer)
+    {
+        return BinaryPrimitives.ReadUInt64LittleEndian(buffer);
+    }
+
+    /// <summary>
+    /// Writes a row version (8-byte value).
+    /// </summary>
+    public static int WriteRowVersion(Span<byte> buffer, ulong value)
+    {
+        BinaryPrimitives.WriteUInt64LittleEndian(buffer, value);
+        return 8;
+    }
+
+    /// <summary>
+    /// Reads a row version as byte array.
+    /// </summary>
+    public static byte[] ReadRowVersionBytes(ReadOnlySpan<byte> buffer)
+    {
+        return buffer[..8].ToArray();
+    }
+
+    /// <summary>
+    /// Writes a row version from byte array.
+    /// </summary>
+    public static int WriteRowVersionBytes(Span<byte> buffer, ReadOnlySpan<byte> value)
+    {
+        if (value.Length != 8)
+            throw new ArgumentException("RowVersion must be exactly 8 bytes", nameof(value));
+        
+        value.CopyTo(buffer);
+        return 8;
+    }
+
+    #endregion
+
+    #region Json 80
+
+    /// <summary>
+    /// Reads a JSON document (stored as variable-length UTF-8 string).
+    /// </summary>
+    public static (JsonDocument Value, int BytesRead) ReadJson(ReadOnlySpan<byte> buffer)
+    {
+        var (length, lengthBytes) = VarInt.DecodeUnsigned(buffer);
+        if (length == 0)
+        {
+            // Empty JSON - return null document represented as empty object
+            return (JsonDocument.Parse("{}"), lengthBytes);
+        }
+
+        var jsonBytes = buffer.Slice(lengthBytes, (int)length).ToArray();
+        var document = JsonDocument.Parse(jsonBytes);
+        return (document, lengthBytes + (int)length);
+    }
+
+    /// <summary>
+    /// Reads a JSON document as raw string.
+    /// </summary>
+    public static (string Value, int BytesRead) ReadJsonAsString(ReadOnlySpan<byte> buffer)
+    {
+        return ReadString(buffer);
+    }
+
+    /// <summary>
+    /// Writes a JSON document.
+    /// </summary>
+    public static int WriteJson(Span<byte> buffer, JsonDocument value)
+    {
+        using var stream = new System.IO.MemoryStream();
+        using var writer = new Utf8JsonWriter(stream);
+        value.WriteTo(writer);
+        writer.Flush();
+        
+        var jsonBytes = stream.ToArray();
+        return WriteBinary(buffer, jsonBytes);
+    }
+
+    /// <summary>
+    /// Writes a JSON string (validates and stores).
+    /// </summary>
+    public static int WriteJsonString(Span<byte> buffer, string jsonString)
+    {
+        // Validate JSON
+        using var _ = JsonDocument.Parse(jsonString);
+        
+        return WriteString(buffer, jsonString);
+    }
+
+    /// <summary>
+    /// Gets the encoded size of a JSON document.
+    /// </summary>
+    public static int GetEncodedSize(JsonDocument value)
+    {
+        using var stream = new System.IO.MemoryStream();
+        using var writer = new Utf8JsonWriter(stream);
+        value.WriteTo(writer);
+        writer.Flush();
+        
+        return VarInt.GetEncodedLengthUnsigned((ulong)stream.Length) + (int)stream.Length;
+    }
+
+    /// <summary>
+    /// Gets the encoded size of a JSON string.
+    /// </summary>
+    public static int GetJsonStringEncodedSize(string jsonString)
+    {
+        return GetEncodedSize(jsonString);
+    }
+
+    #endregion
+
     // ========== Common ==========
 
     #region GetFixedSize
@@ -512,6 +631,8 @@ public static class WitDataTypeSerializer
         WitDataType.Decimal or WitDataType.Guid => 16,
         WitDataType.StringFixed or WitDataType.BinaryFixed => -1, // Need schema info
         WitDataType.StringVariable or WitDataType.BinaryVariable => -1,
+        WitDataType.RowVersion => 8, // Fixed 8 bytes
+        WitDataType.Json => -1, // Variable length
         _ => throw new ArgumentOutOfRangeException(nameof(type))
     };
 

@@ -44,7 +44,7 @@ namespace OutWit.Database.Definitions
 
         #endregion
 
-        #region Properies
+        #region Properties
 
         /// <summary>
         /// Gets the view name.

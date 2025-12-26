@@ -1,3 +1,4 @@
+using OutWit.Common.Utils;
 using OutWit.Database.Definitions;
 using OutWit.Database.Types;
 
@@ -21,33 +22,11 @@ public sealed partial class SchemaCatalog
             if (!m_tables.TryGetValue(tableName, out var table))
                 throw new InvalidOperationException($"Table '{tableName}' not found");
 
-            var newColumns = table.Columns.ToList();
-            var newColumn = new DefinitionColumn
-            {
-                Name = column.Name,
-                Type = column.Type,
-                Nullable = column.Nullable,
-                IsPrimaryKey = column.IsPrimaryKey,
-                IsAutoIncrement = column.IsAutoIncrement,
-                IsUnique = column.IsUnique,
-                DefaultValue = column.DefaultValue,
-                Ordinal = newColumns.Count,
-                CheckExpression = column.CheckExpression,
-                ForeignKey = column.ForeignKey
-            };
+            List<DefinitionColumn> newColumns = table.Columns.ToList();
+            var newColumn = column.With(x => x.Ordinal, newColumns.Count);
             newColumns.Add(newColumn);
 
-            m_tables[tableName] = new DefinitionTable
-            {
-                Name = table.Name,
-                Columns = newColumns,
-                PrimaryKey = table.PrimaryKey,
-                RowIdColumn = table.RowIdColumn,
-                AutoIncrementRowId = table.AutoIncrementRowId,
-                CheckExpressions = table.CheckExpressions,
-                ForeignKeys = table.ForeignKeys,
-                UniqueConstraints = table.UniqueConstraints
-            };
+            m_tables[tableName] = table.With(x => x.Columns, newColumns);
             SaveSchema();
         }
         finally
@@ -69,37 +48,15 @@ public sealed partial class SchemaCatalog
 
             var newColumns = new List<DefinitionColumn>();
             int ordinal = 0;
-            foreach (var c in table.Columns)
+            foreach (var column in table.Columns)
             {
-                if (!c.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase))
+                if (!column.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase))
                 {
-                    newColumns.Add(new DefinitionColumn
-                    {
-                        Name = c.Name,
-                        Type = c.Type,
-                        Nullable = c.Nullable,
-                        IsPrimaryKey = c.IsPrimaryKey,
-                        IsAutoIncrement = c.IsAutoIncrement,
-                        IsUnique = c.IsUnique,
-                        DefaultValue = c.DefaultValue,
-                        Ordinal = ordinal++,
-                        CheckExpression = c.CheckExpression,
-                        ForeignKey = c.ForeignKey
-                    });
+                    newColumns.Add(column.With(x => x.Ordinal, ordinal++));
                 }
             }
 
-            m_tables[tableName] = new DefinitionTable
-            {
-                Name = table.Name,
-                Columns = newColumns,
-                PrimaryKey = table.PrimaryKey,
-                RowIdColumn = table.RowIdColumn,
-                AutoIncrementRowId = table.AutoIncrementRowId,
-                CheckExpressions = table.CheckExpressions,
-                ForeignKeys = table.ForeignKeys,
-                UniqueConstraints = table.UniqueConstraints
-            };
+            m_tables[tableName] = table.With(x => x.Columns, newColumns);
             SaveSchema();
         }
         finally
@@ -119,34 +76,13 @@ public sealed partial class SchemaCatalog
             if (!m_tables.TryGetValue(tableName, out var table))
                 throw new InvalidOperationException($"Table '{tableName}' not found");
 
-            var newColumns = table.Columns.Select(c =>
-                c.Name.Equals(oldColumnName, StringComparison.OrdinalIgnoreCase)
-                    ? new DefinitionColumn
-                    {
-                        Name = newColumnName,
-                        Type = c.Type,
-                        Nullable = c.Nullable,
-                        IsPrimaryKey = c.IsPrimaryKey,
-                        IsAutoIncrement = c.IsAutoIncrement,
-                        IsUnique = c.IsUnique,
-                        DefaultValue = c.DefaultValue,
-                        Ordinal = c.Ordinal,
-                        CheckExpression = c.CheckExpression,
-                        ForeignKey = c.ForeignKey
-                    }
-                    : c).ToList();
+            var newColumns = table.Columns
+                .Select(column => column.Name.Equals(oldColumnName, StringComparison.OrdinalIgnoreCase)
+                    ? column.With(x => x.Name, newColumnName)
+                    : column)
+                .ToList();
 
-            m_tables[tableName] = new DefinitionTable
-            {
-                Name = table.Name,
-                Columns = newColumns,
-                PrimaryKey = table.PrimaryKey,
-                RowIdColumn = table.RowIdColumn,
-                AutoIncrementRowId = table.AutoIncrementRowId,
-                CheckExpressions = table.CheckExpressions,
-                ForeignKeys = table.ForeignKeys,
-                UniqueConstraints = table.UniqueConstraints
-            };
+            m_tables[tableName] = table.With(x => x.Columns, newColumns);
             SaveSchema();
         }
         finally
@@ -158,7 +94,7 @@ public sealed partial class SchemaCatalog
     /// <summary>
     /// Changes a column's data type.
     /// </summary>
-    public void AlterColumnType(string tableName, string columnName, WitDataType newType)
+    public void AlterColumnType(string tableName, string columnName, WitDataType newType, int? maxLength = null, int? precision = null, int? scale = null)
     {
         m_lock.EnterWriteLock();
         try
@@ -166,34 +102,16 @@ public sealed partial class SchemaCatalog
             if (!m_tables.TryGetValue(tableName, out var table))
                 throw new InvalidOperationException($"Table '{tableName}' not found");
 
-            var newColumns = table.Columns.Select(c =>
-                c.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase)
-                    ? new DefinitionColumn
-                    {
-                        Name = c.Name,
-                        Type = newType,
-                        Nullable = c.Nullable,
-                        IsPrimaryKey = c.IsPrimaryKey,
-                        IsAutoIncrement = c.IsAutoIncrement,
-                        IsUnique = c.IsUnique,
-                        DefaultValue = c.DefaultValue,
-                        Ordinal = c.Ordinal,
-                        CheckExpression = c.CheckExpression,
-                        ForeignKey = c.ForeignKey
-                    }
-                    : c).ToList();
+            var newColumns = table.Columns
+                .Select(column => column.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase)
+                    ? column.With(x => x.Type, newType)
+                        .With(x => x.MaxLength, maxLength ?? column.MaxLength)
+                        .With(x => x.Precision, precision ?? column.Precision)
+                        .With(x => x.Scale, scale ?? column.Scale)
+                    : column)
+                .ToList();
 
-            m_tables[tableName] = new DefinitionTable
-            {
-                Name = table.Name,
-                Columns = newColumns,
-                PrimaryKey = table.PrimaryKey,
-                RowIdColumn = table.RowIdColumn,
-                AutoIncrementRowId = table.AutoIncrementRowId,
-                CheckExpressions = table.CheckExpressions,
-                ForeignKeys = table.ForeignKeys,
-                UniqueConstraints = table.UniqueConstraints
-            };
+            m_tables[tableName] = table.With(x => x.Columns, newColumns);
             SaveSchema();
         }
         finally
@@ -213,34 +131,13 @@ public sealed partial class SchemaCatalog
             if (!m_tables.TryGetValue(tableName, out var table))
                 throw new InvalidOperationException($"Table '{tableName}' not found");
 
-            var newColumns = table.Columns.Select(c =>
-                c.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase)
-                    ? new DefinitionColumn
-                    {
-                        Name = c.Name,
-                        Type = c.Type,
-                        Nullable = c.Nullable,
-                        IsPrimaryKey = c.IsPrimaryKey,
-                        IsAutoIncrement = c.IsAutoIncrement,
-                        IsUnique = c.IsUnique,
-                        DefaultValue = defaultValue,
-                        Ordinal = c.Ordinal,
-                        CheckExpression = c.CheckExpression,
-                        ForeignKey = c.ForeignKey
-                    }
-                    : c).ToList();
+            var newColumns = table.Columns
+                .Select(column => column.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase)
+                    ? column.With(x => x.DefaultValue, defaultValue)
+                    : column)
+                .ToList();
 
-            m_tables[tableName] = new DefinitionTable
-            {
-                Name = table.Name,
-                Columns = newColumns,
-                PrimaryKey = table.PrimaryKey,
-                RowIdColumn = table.RowIdColumn,
-                AutoIncrementRowId = table.AutoIncrementRowId,
-                CheckExpressions = table.CheckExpressions,
-                ForeignKeys = table.ForeignKeys,
-                UniqueConstraints = table.UniqueConstraints
-            };
+            m_tables[tableName] = table.With(x => x.Columns, newColumns);
             SaveSchema();
         }
         finally
@@ -260,34 +157,39 @@ public sealed partial class SchemaCatalog
             if (!m_tables.TryGetValue(tableName, out var table))
                 throw new InvalidOperationException($"Table '{tableName}' not found");
 
-            var newColumns = table.Columns.Select(c =>
-                c.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase)
-                    ? new DefinitionColumn
-                    {
-                        Name = c.Name,
-                        Type = c.Type,
-                        Nullable = !notNull,
-                        IsPrimaryKey = c.IsPrimaryKey,
-                        IsAutoIncrement = c.IsAutoIncrement,
-                        IsUnique = c.IsUnique,
-                        DefaultValue = c.DefaultValue,
-                        Ordinal = c.Ordinal,
-                        CheckExpression = c.CheckExpression,
-                        ForeignKey = c.ForeignKey
-                    }
-                    : c).ToList();
+            var newColumns = table.Columns
+                .Select(column => column.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase)
+                    ? column.With(x => x.Nullable, !notNull)
+                    : column)
+                .ToList();
 
-            m_tables[tableName] = new DefinitionTable
-            {
-                Name = table.Name,
-                Columns = newColumns,
-                PrimaryKey = table.PrimaryKey,
-                RowIdColumn = table.RowIdColumn,
-                AutoIncrementRowId = table.AutoIncrementRowId,
-                CheckExpressions = table.CheckExpressions,
-                ForeignKeys = table.ForeignKeys,
-                UniqueConstraints = table.UniqueConstraints
-            };
+            m_tables[tableName] = table.With(x => x.Columns, newColumns);
+            SaveSchema();
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Sets or clears a column's collation.
+    /// </summary>
+    public void SetColumnCollation(string tableName, string columnName, string? collation)
+    {
+        m_lock.EnterWriteLock();
+        try
+        {
+            if (!m_tables.TryGetValue(tableName, out var table))
+                throw new InvalidOperationException($"Table '{tableName}' not found");
+
+            var newColumns = table.Columns
+                .Select(column => column.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase)
+                    ? column.With(x => x.Collation, collation)
+                    : column)
+                .ToList();
+
+            m_tables[tableName] = table.With(x => x.Columns, newColumns);
             SaveSchema();
         }
         finally

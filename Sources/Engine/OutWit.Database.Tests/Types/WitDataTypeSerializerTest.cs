@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OutWit.Database.Types;
 
 namespace OutWit.Database.Tests.Types;
@@ -10,7 +11,7 @@ public class WitDataTypeSerializerTest
     [SetUp]
     public void SetUp()
     {
-        m_buffer = new byte[1024];
+        m_buffer = new byte[4096];
     }
 
     #region Integer Tests
@@ -406,6 +407,166 @@ public class WitDataTypeSerializerTest
 
     #endregion
 
+    #region RowVersion Tests
+
+    [Test]
+    public void RowVersionRoundtripTest()
+    {
+        ulong[] values = [0, 1, 12345678901234567890UL, ulong.MaxValue];
+
+        foreach (var value in values)
+        {
+            int written = WitDataTypeSerializer.WriteRowVersion(m_buffer, value);
+            var result = WitDataTypeSerializer.ReadRowVersion(m_buffer);
+
+            Assert.That(written, Is.EqualTo(8));
+            Assert.That(result, Is.EqualTo(value));
+        }
+    }
+
+    [Test]
+    public void RowVersionBytesRoundtripTest()
+    {
+        byte[] value = [1, 2, 3, 4, 5, 6, 7, 8];
+
+        int written = WitDataTypeSerializer.WriteRowVersionBytes(m_buffer, value);
+        var result = WitDataTypeSerializer.ReadRowVersionBytes(m_buffer);
+
+        Assert.That(written, Is.EqualTo(8));
+        Assert.That(result, Is.EqualTo(value));
+    }
+
+    [Test]
+    public void RowVersionBytesThrowsOnInvalidLengthTest()
+    {
+        byte[] invalidValue = [1, 2, 3, 4, 5]; // Not 8 bytes
+
+        Assert.Throws<ArgumentException>(() => WitDataTypeSerializer.WriteRowVersionBytes(m_buffer, invalidValue));
+    }
+
+    #endregion
+
+    #region Json Tests
+
+    [Test]
+    public void JsonDocumentRoundtripTest()
+    {
+        string jsonString = """{"name":"John","age":30,"active":true}""";
+        using var document = JsonDocument.Parse(jsonString);
+
+        int written = WitDataTypeSerializer.WriteJson(m_buffer, document);
+        var (result, bytesRead) = WitDataTypeSerializer.ReadJson(m_buffer);
+
+        Assert.That(bytesRead, Is.EqualTo(written));
+        Assert.That(result.RootElement.GetProperty("name").GetString(), Is.EqualTo("John"));
+        Assert.That(result.RootElement.GetProperty("age").GetInt32(), Is.EqualTo(30));
+        Assert.That(result.RootElement.GetProperty("active").GetBoolean(), Is.True);
+
+        result.Dispose();
+    }
+
+    [Test]
+    public void JsonStringRoundtripTest()
+    {
+        string jsonString = """{"items":[1,2,3],"nested":{"key":"value"}}""";
+
+        int written = WitDataTypeSerializer.WriteJsonString(m_buffer, jsonString);
+        var (result, bytesRead) = WitDataTypeSerializer.ReadJsonAsString(m_buffer);
+
+        Assert.That(bytesRead, Is.EqualTo(written));
+        Assert.That(result, Is.EqualTo(jsonString));
+    }
+
+    [Test]
+    public void JsonEmptyObjectRoundtripTest()
+    {
+        using var document = JsonDocument.Parse("{}");
+
+        int written = WitDataTypeSerializer.WriteJson(m_buffer, document);
+        var (result, bytesRead) = WitDataTypeSerializer.ReadJson(m_buffer);
+
+        Assert.That(bytesRead, Is.EqualTo(written));
+        Assert.That(result.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Object));
+
+        result.Dispose();
+    }
+
+    [Test]
+    public void JsonArrayRoundtripTest()
+    {
+        string jsonString = """[1,"two",true,null]""";
+        using var document = JsonDocument.Parse(jsonString);
+
+        int written = WitDataTypeSerializer.WriteJson(m_buffer, document);
+        var (result, bytesRead) = WitDataTypeSerializer.ReadJson(m_buffer);
+
+        Assert.That(bytesRead, Is.EqualTo(written));
+        Assert.That(result.RootElement.ValueKind, Is.EqualTo(JsonValueKind.Array));
+        Assert.That(result.RootElement.GetArrayLength(), Is.EqualTo(4));
+
+        result.Dispose();
+    }
+
+    [Test]
+    public void JsonComplexRoundtripTest()
+    {
+        string jsonString = """
+            {
+                "users": [
+                    {"id": 1, "name": "Alice"},
+                    {"id": 2, "name": "Bob"}
+                ],
+                "metadata": {
+                    "version": "1.0",
+                    "tags": ["test", "demo"]
+                }
+            }
+            """;
+        using var document = JsonDocument.Parse(jsonString);
+
+        int written = WitDataTypeSerializer.WriteJson(m_buffer, document);
+        var (result, bytesRead) = WitDataTypeSerializer.ReadJson(m_buffer);
+
+        Assert.That(bytesRead, Is.EqualTo(written));
+        Assert.That(result.RootElement.GetProperty("users").GetArrayLength(), Is.EqualTo(2));
+        Assert.That(result.RootElement.GetProperty("metadata").GetProperty("version").GetString(), Is.EqualTo("1.0"));
+
+        result.Dispose();
+    }
+
+    [Test]
+    public void JsonStringThrowsOnInvalidJsonTest()
+    {
+        string invalidJson = "not valid json {";
+
+        Assert.That(() => WitDataTypeSerializer.WriteJsonString(m_buffer, invalidJson), Throws.InstanceOf<JsonException>());
+    }
+
+    [Test]
+    public void JsonEncodedSizeTest()
+    {
+        string jsonString = """{"key":"value"}""";
+        using var document = JsonDocument.Parse(jsonString);
+
+        int size = WitDataTypeSerializer.GetEncodedSize(document);
+        int written = WitDataTypeSerializer.WriteJson(m_buffer, document);
+
+        Assert.That(size, Is.EqualTo(written));
+    }
+
+    [Test]
+    public void JsonStringEncodedSizeTest()
+    {
+        string jsonString = """{"key":"value"}""";
+
+        int size = WitDataTypeSerializer.GetJsonStringEncodedSize(jsonString);
+        int written = WitDataTypeSerializer.WriteJsonString(m_buffer, jsonString);
+
+        Assert.That(size, Is.EqualTo(written));
+    }
+
+    #endregion
+
     #region Size Calculation Tests
 
     [Test]
@@ -509,6 +670,7 @@ public class WitDataTypeSerializerTest
         Assert.That(WitDataTypeSerializer.GetFixedSize(WitDataType.DateTimeOffset), Is.EqualTo(10));
         Assert.That(WitDataTypeSerializer.GetFixedSize(WitDataType.Decimal), Is.EqualTo(16));
         Assert.That(WitDataTypeSerializer.GetFixedSize(WitDataType.Guid), Is.EqualTo(16));
+        Assert.That(WitDataTypeSerializer.GetFixedSize(WitDataType.RowVersion), Is.EqualTo(8));
         
         // Variable types return -1
         Assert.That(WitDataTypeSerializer.GetFixedSize(WitDataType.Int32), Is.EqualTo(-1));
@@ -519,6 +681,7 @@ public class WitDataTypeSerializerTest
         Assert.That(WitDataTypeSerializer.GetFixedSize(WitDataType.StringVariable), Is.EqualTo(-1));
         Assert.That(WitDataTypeSerializer.GetFixedSize(WitDataType.BinaryFixed), Is.EqualTo(-1));
         Assert.That(WitDataTypeSerializer.GetFixedSize(WitDataType.BinaryVariable), Is.EqualTo(-1));
+        Assert.That(WitDataTypeSerializer.GetFixedSize(WitDataType.Json), Is.EqualTo(-1));
     }
 
     #endregion
