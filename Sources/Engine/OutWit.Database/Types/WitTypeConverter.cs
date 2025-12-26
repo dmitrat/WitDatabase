@@ -1,5 +1,7 @@
 using OutWit.Database.Model;
 using OutWit.Database.Values;
+using System.ComponentModel.DataAnnotations;
+using System.Text;
 
 namespace OutWit.Database.Types;
 
@@ -14,11 +16,11 @@ public static class WitTypeConverter
     /// <summary>
     /// Converts a storage data type to a runtime SQL type.
     /// </summary>
-    /// <param name="dataType">The storage data type.</param>
+    /// <param name="me">The storage data type.</param>
     /// <returns>The corresponding runtime SQL type.</returns>
-    public static WitSqlType ToSqlType(WitDataType dataType)
+    public static WitSqlType ToSqlType(this WitDataType me)
     {
-        return dataType switch
+        return me switch
         {
             WitDataType.Null => WitSqlType.Null,
 
@@ -56,6 +58,26 @@ public static class WitTypeConverter
 
             // Default fallback
             _ => WitSqlType.Text
+        };
+    }
+
+    public static WitDataType ToDataType(this WitSqlType me)
+    {
+        return me switch
+        {
+            WitSqlType.Integer => WitDataType.Int64,
+            WitSqlType.Real => WitDataType.Float64,
+            WitSqlType.Text => WitDataType.StringVariable,
+            WitSqlType.Blob => WitDataType.BinaryVariable,
+            WitSqlType.Boolean => WitDataType.Boolean,
+            WitSqlType.Decimal => WitDataType.Decimal,
+            WitSqlType.DateTime => WitDataType.DateTime,
+            WitSqlType.DateOnly => WitDataType.DateOnly,
+            WitSqlType.TimeOnly => WitDataType.TimeOnly,
+            WitSqlType.TimeSpan => WitDataType.TimeSpan,
+            WitSqlType.Guid => WitDataType.Guid,
+            WitSqlType.Json => WitDataType.Json,
+            _ => WitDataType.StringVariable
         };
     }
 
@@ -124,6 +146,70 @@ public static class WitTypeConverter
         var ticks = reader.ReadInt64();
         var offsetMinutes = reader.ReadInt16();
         return WitSqlValue.FromDateTimeOffset(new DateTimeOffset(ticks, TimeSpan.FromMinutes(offsetMinutes)));
+    }
+
+    #endregion
+
+
+    #region Write Value
+
+    public static void WriteValue(BinaryWriter writer, WitDataType type, WitSqlValue value)
+    {
+        switch (type)
+        {
+            case WitDataType.Int32:
+                writer.Write((int)value.AsInt64());
+                break;
+            case WitDataType.Int64:
+                writer.Write(value.AsInt64());
+                break;
+            case WitDataType.Float64:
+                writer.Write(value.AsDouble());
+                break;
+            case WitDataType.Boolean:
+                writer.Write(value.AsBool());
+                break;
+            case WitDataType.StringVariable:
+            case WitDataType.StringFixed:
+                var str = value.AsString();
+                var strBytes = Encoding.UTF8.GetBytes(str);
+                writer.Write(strBytes.Length);
+                writer.Write(strBytes);
+                break;
+            case WitDataType.BinaryVariable:
+            case WitDataType.BinaryFixed:
+                var blob = value.AsBlob();
+                writer.Write(blob.Length);
+                writer.Write(blob);
+                break;
+            case WitDataType.Guid:
+                writer.Write(value.AsGuid().ToByteArray());
+                break;
+            case WitDataType.DateTime:
+                writer.Write(value.AsDateTime().Ticks);
+                break;
+            case WitDataType.DateOnly:
+                writer.Write((int)value.AsInt64());
+                break;
+            case WitDataType.TimeOnly:
+                writer.Write(value.AsInt64());
+                break;
+            case WitDataType.TimeSpan:
+                writer.Write(value.AsInt64());
+                break;
+            case WitDataType.Decimal:
+                var bits = decimal.GetBits(value.AsDecimal());
+                foreach (var b in bits)
+                    writer.Write(b);
+                break;
+            default:
+                // Default to string
+                var s = value.AsString();
+                var sBytes = Encoding.UTF8.GetBytes(s);
+                writer.Write(sBytes.Length);
+                writer.Write(sBytes);
+                break;
+        }
     }
 
     #endregion

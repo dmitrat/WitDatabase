@@ -68,6 +68,8 @@ public sealed partial class StatementExecutor
         iterator.Open();
 
         int rowsAffected = 0;
+        var evaluator = new ExpressionEvaluator(m_context);
+        var dummyRow = new WitSqlRow([], []);
 
         try
         {
@@ -75,10 +77,48 @@ public sealed partial class StatementExecutor
             {
                 var values = new WitSqlValue[table.Columns.Count];
                 var columnNames = table.Columns.Select(c => c.Name).ToArray();
+                long rowId = 0;
 
-                for (int i = 0; i < table.Columns.Count && i < iterator.Current.ColumnCount; i++)
+                // Initialize with defaults and auto-increment
+                for (int i = 0; i < table.Columns.Count; i++)
                 {
-                    values[i] = iterator.Current[i];
+                    var col = table.Columns[i];
+                    if (col.IsAutoIncrement)
+                    {
+                        rowId = m_context.Database.GetNextAutoIncrement(table.Name);
+                        values[i] = WitSqlValue.FromInt(rowId);
+                    }
+                    else if (col.DefaultValue != null)
+                    {
+                        var defaultExpr = Parser.WitSql.ParseExpression(col.DefaultValue);
+                        values[i] = evaluator.Evaluate(defaultExpr, dummyRow);
+                    }
+                    else
+                    {
+                        values[i] = WitSqlValue.Null;
+                    }
+                }
+
+                // Map SELECT columns to INSERT columns
+                if (insert.ColumnNames != null && insert.ColumnNames.Count > 0)
+                {
+                    // Named columns: INSERT INTO table (col1, col2) SELECT ...
+                    for (int i = 0; i < insert.ColumnNames.Count && i < iterator.Current.ColumnCount; i++)
+                    {
+                        var colIndex = table.GetOrdinal(insert.ColumnNames[i]);
+                        if (colIndex >= 0)
+                        {
+                            values[colIndex] = iterator.Current[i];
+                        }
+                    }
+                }
+                else
+                {
+                    // Positional: INSERT INTO table SELECT ...
+                    for (int i = 0; i < iterator.Current.ColumnCount && i < table.Columns.Count; i++)
+                    {
+                        values[i] = iterator.Current[i];
+                    }
                 }
 
                 var row = new WitSqlRow(values, columnNames);
