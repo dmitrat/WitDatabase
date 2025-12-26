@@ -13,6 +13,7 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Core\OutWit.Database.Core\OutWit.Database.Core.csproj" />
+    <ProjectReference Include="..\OutWit.Database.Parser\OutWit.Database.Parser.csproj" />
   </ItemGroup>
 
 </Project>

@@ -2,7 +2,7 @@
 
 **Version:** 2.0  
 **Based on:** WitSql.md specification v1.2  
-**Last Updated:** 2025-01-17
+**Last Updated:** 2025-01-20
 
 ---
 
@@ -26,7 +26,7 @@
 
 ## Progress Summary
 
-**Current Status: ~5% - Foundation Started**
+**Current Status: ~15% - Expression Evaluator Complete**
 
 The Engine component (`OutWit.Database`) is responsible for:
 - SQL execution against the Core storage layer
@@ -42,6 +42,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 - ? `WitSqlResult` - Query result container
 - ? `WitSqlColumnInfo` - Column schema information
 - ? `WitDataType` - Storage type enumeration
+- ? `ExpressionEvaluator` - Full expression evaluation (except subqueries)
 
 ---
 
@@ -51,13 +52,13 @@ The Engine component (`OutWit.Database`) is responsible for:
 |---------|--------|----------|---------|------|
 | Query executor interface | [ ] | P0 | v1 | - |
 | AST to execution plan converter | [ ] | P0 | v1 | - |
-| Expression evaluator | [ ] | P0 | v1 | SS4 |
+| Expression evaluator | [x] | P0 | v1 | SS4 |
 | Type coercion system | [x] | P0 | v1 | SS1 |
 | Result set builder | [x] | P0 | v1 | - |
-| Query context with AffectedRows, LastInsertId | [ ] | P0 | v1 | SS5.8 |
-| Parameter binding | [ ] | P0 | v1 | SS11 |
+| Query context with AffectedRows, LastInsertId | [x] | P0 | v1 | SS5.8 |
+| Parameter binding | [x] | P0 | v1 | SS11 |
 | Query timeout support | [ ] | P0 | v1 | - |
-| CancellationToken support | [ ] | P0 | v1 | - |
+| CancellationToken support | [x] | P0 | v1 | - |
 
 ---
 
@@ -148,7 +149,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 |---------|--------|----------|---------|------|
 | `CREATE TRIGGER` execution | [ ] | P1 | v1 | SS2.8 |
 | BEFORE/AFTER/INSTEAD OF timing | [ ] | P1 | v1 | SS2.8 |
-| OLD/NEW pseudo-tables | [ ] | P1 | v1 | SS2.8 |
+| OLD/NEW pseudo-tables | [x] | P1 | v1 | SS2.8 |
 | Trigger firing on DML | [ ] | P1 | v1 | SS2.8 |
 | `DROP TRIGGER` execution | [ ] | P1 | v1 | SS2.9 |
 
@@ -159,8 +160,8 @@ The Engine component (`OutWit.Database`) is responsible for:
 | `CREATE SEQUENCE` execution | [ ] | P0 | v1 | SS5.5 |
 | `ALTER SEQUENCE` execution | [ ] | P0 | v1 | SS5.5 |
 | `DROP SEQUENCE` execution | [ ] | P0 | v1 | SS5.5 |
-| `INCREMENT()` function | [ ] | P0 | v1 | SS5.5 |
-| `LASTINCREMENT()` function | [ ] | P0 | v1 | SS5.5 |
+| `INCREMENT()` function | [x] | P0 | v1 | SS5.5 |
+| `LASTINCREMENT()` function | [x] | P0 | v1 | SS5.5 |
 
 ---
 
@@ -253,23 +254,23 @@ The Engine component (`OutWit.Database`) is responsible for:
 | Logical operators (AND, OR, NOT) | [x] | P0 | v1 | SS4.2 |
 | Arithmetic operators | [x] | P0 | v1 | SS4.3 |
 | String concatenation | [x] | P0 | v1 | SS4.4 |
-| Bitwise operators | [ ] | P1 | v1 | SS4.5 |
-| BETWEEN evaluation | [ ] | P0 | v1 | SS4.1 |
-| IN list evaluation | [ ] | P0 | v1 | SS4.1 |
+| Bitwise operators | [x] | P1 | v1 | SS4.5 |
+| BETWEEN evaluation | [x] | P0 | v1 | SS4.1 |
+| IN list evaluation | [x] | P0 | v1 | SS4.1 |
 | IN subquery evaluation | [ ] | P0 | v1 | SS4.1 |
-| LIKE pattern matching | [ ] | P0 | v1 | SS4.1 |
-| GLOB pattern matching | [ ] | P1 | v1 | SS4.1 |
+| LIKE pattern matching | [x] | P0 | v1 | SS4.1 |
+| GLOB pattern matching | [x] | P1 | v1 | SS4.1 |
 | IS NULL / IS NOT NULL | [x] | P0 | v1 | SS4.1 |
 
 ### 5.2 Conditional Expressions
 
 | Feature | Status | Priority | Version | Spec |
 |---------|--------|----------|---------|------|
-| CASE expression | [ ] | P0 | v1 | SS4.6 |
-| COALESCE | [ ] | P0 | v1 | SS4.6 |
-| NULLIF | [ ] | P0 | v1 | SS4.6 |
-| IIF | [ ] | P0 | v1 | SS4.6 |
-| CAST / type conversion | [ ] | P0 | v1 | SS4.6 |
+| CASE expression | [x] | P0 | v1 | SS4.6 |
+| COALESCE | [x] | P0 | v1 | SS4.6 |
+| NULLIF | [x] | P0 | v1 | SS4.6 |
+| IIF | [x] | P0 | v1 | SS4.6 |
+| CAST / type conversion | [x] | P0 | v1 | SS4.6 |
 
 ### 5.3 Subquery Operators
 
@@ -301,72 +302,82 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 | Function | Status | Priority | Version | Spec |
 |----------|--------|----------|---------|------|
-| LENGTH / CHAR_LENGTH | [ ] | P0 | v1 | SS5.2 |
-| UPPER / LOWER | [ ] | P0 | v1 | SS5.2 |
-| SUBSTR / SUBSTRING | [ ] | P0 | v1 | SS5.2 |
-| LEFT / RIGHT | [ ] | P0 | v1 | SS5.2 |
-| TRIM / LTRIM / RTRIM | [ ] | P0 | v1 | SS5.2 |
-| REPLACE | [ ] | P0 | v1 | SS5.2 |
-| INSTR / POSITION | [ ] | P0 | v1 | SS5.2 |
-| CONCAT / CONCAT_WS | [ ] | P0 | v1 | SS5.2 |
-| Other string functions | [ ] | P1 | v1 | SS5.2 |
+| LENGTH / CHAR_LENGTH | [x] | P0 | v1 | SS5.2 |
+| OCTET_LENGTH | [x] | P0 | v1 | SS5.2 |
+| UPPER / LOWER | [x] | P0 | v1 | SS5.2 |
+| SUBSTR / SUBSTRING | [x] | P0 | v1 | SS5.2 |
+| LEFT / RIGHT | [x] | P0 | v1 | SS5.2 |
+| TRIM / LTRIM / RTRIM | [x] | P0 | v1 | SS5.2 |
+| REPLACE | [x] | P0 | v1 | SS5.2 |
+| INSTR / POSITION | [x] | P0 | v1 | SS5.2 |
+| CONCAT / CONCAT_WS | [x] | P0 | v1 | SS5.2 |
+| REVERSE | [x] | P1 | v1 | SS5.2 |
+| REPEAT | [x] | P1 | v1 | SS5.2 |
+| SPACE | [x] | P1 | v1 | SS5.2 |
+| LPAD / RPAD | [x] | P1 | v1 | SS5.2 |
 
 ### 6.3 Numeric Functions
 
 | Function | Status | Priority | Version | Spec |
 |----------|--------|----------|---------|------|
-| ABS | [ ] | P0 | v1 | SS5.3 |
-| ROUND / FLOOR / CEIL | [ ] | P0 | v1 | SS5.3 |
-| MOD | [ ] | P0 | v1 | SS5.3 |
-| POWER / SQRT | [ ] | P1 | v1 | SS5.3 |
-| Trigonometric functions | [ ] | P2 | v1 | SS5.3 |
-| RANDOM | [ ] | P1 | v1 | SS5.3 |
+| ABS | [x] | P0 | v1 | SS5.3 |
+| ROUND / FLOOR / CEIL / TRUNC | [x] | P0 | v1 | SS5.3 |
+| MOD | [x] | P0 | v1 | SS5.3 |
+| POWER / SQRT | [x] | P1 | v1 | SS5.3 |
+| SIGN | [x] | P1 | v1 | SS5.3 |
+| EXP / LOG / LOG10 / LOG2 | [x] | P1 | v1 | SS5.3 |
+| PI / DEGREES / RADIANS | [x] | P2 | v1 | SS5.3 |
+| SIN / COS / TAN / ASIN / ACOS / ATAN / ATAN2 | [x] | P2 | v1 | SS5.3 |
+| RANDOM | [x] | P1 | v1 | SS5.3 |
 
 ### 6.4 Date/Time Functions
 
 | Function | Status | Priority | Version | Spec |
 |----------|--------|----------|---------|------|
-| NOW / CURRENT_TIMESTAMP | [ ] | P0 | v1 | SS5.4 |
-| CURRENT_DATE / CURRENT_TIME | [ ] | P0 | v1 | SS5.4 |
-| DATE / TIME extraction | [ ] | P0 | v1 | SS5.4 |
-| YEAR / MONTH / DAY / HOUR / etc. | [ ] | P0 | v1 | SS5.4 |
-| DATEADD / DATEDIFF | [ ] | P0 | v1 | SS5.4 |
-| STRFTIME | [ ] | P1 | v1 | SS5.4 |
+| NOW / CURRENT_TIMESTAMP | [x] | P0 | v1 | SS5.4 |
+| CURRENT_DATE / CURRENT_TIME | [x] | P0 | v1 | SS5.4 |
+| DATE / TIME extraction | [x] | P0 | v1 | SS5.4 |
+| YEAR / MONTH / DAY / HOUR / MINUTE / SECOND | [x] | P0 | v1 | SS5.4 |
+| DAYOFWEEK / DAYOFYEAR / WEEKOFYEAR / QUARTER | [x] | P1 | v1 | SS5.4 |
+| DATEADD / DATEDIFF | [x] | P0 | v1 | SS5.4 |
+| STRFTIME | [x] | P1 | v1 | SS5.4 |
+| MAKEDATE / MAKETIME | [x] | P1 | v1 | SS5.4 |
 
 ### 6.5 ID Generation Functions
 
 | Function | Status | Priority | Version | Spec |
 |----------|--------|----------|---------|------|
-| NEWGUID / NEWUUID | [ ] | P0 | v1 | SS5.5 |
-| INCREMENT | [ ] | P0 | v1 | SS5.5 |
-| LASTINCREMENT | [ ] | P0 | v1 | SS5.5 |
+| NEWGUID / NEWUUID | [x] | P0 | v1 | SS5.5 |
+| INCREMENT / NEXTVAL | [x] | P0 | v1 | SS5.5 |
+| LASTINCREMENT / CURRVAL | [x] | P0 | v1 | SS5.5 |
 
 ### 6.6 Conversion Functions
 
 | Function | Status | Priority | Version | Spec |
 |----------|--------|----------|---------|------|
-| CAST / CONVERT | [ ] | P0 | v1 | SS5.6 |
-| TOSTRING / TOINT / etc. | [ ] | P1 | v1 | SS5.6 |
-| HEX / UNHEX | [ ] | P1 | v1 | SS5.6 |
-| BASE64 / UNBASE64 | [ ] | P1 | v1 | SS5.6 |
+| CAST / CONVERT | [x] | P0 | v1 | SS5.6 |
+| TOSTRING / TOINT / TOREAL / TOBOOL / TODECIMAL / TODATETIME / TOGUID | [x] | P1 | v1 | SS5.6 |
+| HEX / UNHEX | [x] | P1 | v1 | SS5.6 |
+| BASE64 / UNBASE64 | [x] | P1 | v1 | SS5.6 |
+| FORMAT | [x] | P1 | v1 | SS5.6 |
 
 ### 6.7 Null Handling Functions
 
 | Function | Status | Priority | Version | Spec |
 |----------|--------|----------|---------|------|
-| COALESCE | [ ] | P0 | v1 | SS5.7 |
-| NULLIF | [ ] | P0 | v1 | SS5.7 |
-| IFNULL / NVL | [ ] | P0 | v1 | SS5.7 |
+| COALESCE | [x] | P0 | v1 | SS5.7 |
+| NULLIF | [x] | P0 | v1 | SS5.7 |
+| IFNULL / NVL | [x] | P0 | v1 | SS5.7 |
 
 ### 6.8 System Functions
 
 | Function | Status | Priority | Version | Spec |
 |----------|--------|----------|---------|------|
-| DATABASE | [ ] | P1 | v1 | SS5.8 |
-| VERSION | [ ] | P1 | v1 | SS5.8 |
-| TYPEOF | [ ] | P1 | v1 | SS5.8 |
-| CHANGES | [ ] | P0 | v1 | SS5.8 |
-| LAST_INSERT_ROWID | [ ] | P0 | v1 | SS5.8 |
+| DATABASE | [x] | P1 | v1 | SS5.8 |
+| VERSION | [x] | P1 | v1 | SS5.8 |
+| TYPEOF | [x] | P1 | v1 | SS5.8 |
+| CHANGES | [x] | P0 | v1 | SS5.8 |
+| LAST_INSERT_ROWID | [x] | P0 | v1 | SS5.8 |
 
 ### 6.9 JSON Functions
 
@@ -532,15 +543,16 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 **Goal:** Basic SQL execution for simple queries
 
+- [x] Expression evaluator ?
+- [x] Type system for all basic types ?
+- [x] Parameter binding ?
+- [x] All scalar functions ?
 - [ ] Query executor infrastructure
-- [ ] Type system for all basic types
 - [ ] Basic SELECT with WHERE, ORDER BY, LIMIT
 - [ ] INSERT, UPDATE, DELETE
 - [ ] CREATE/DROP TABLE
 - [ ] Primary key and basic constraints
-- [ ] Basic expression evaluation
 - [ ] Core aggregate functions (COUNT, SUM, AVG, MIN, MAX)
-- [ ] Essential string/date functions
 - [ ] ADO.NET provider basics
 
 ### Phase 2: JOINs and Indexes (3-4 weeks) - v1
@@ -592,4 +604,12 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 ---
 
-**Last Updated:** 2025-01-17
+## Test Coverage
+
+| Component | Tests | Status |
+|-----------|-------|--------|
+| ExpressionEvaluator | 151 | ? Passing |
+
+---
+
+**Last Updated:** 2025-01-20

@@ -2,7 +2,7 @@
 
 **Version:** 2.0  
 **Based on:** WitSql.md specification v1.2  
-**Last Updated:** 2025-01-17
+**Last Updated:** 2025-01-20
 
 ---
 
@@ -44,7 +44,7 @@ For detailed version-specific information, see:
 |-----------|-------------|-------------|----------|
 | **OutWit.Database.Core** | 70 | 70 | 100% |
 | **OutWit.Database.Parser** | 290 | 290 | 100% |
-| **OutWit.Database** (Engine) | 200+ | 0 | 0% |
+| **OutWit.Database** (Engine) | 200+ | ~30 | ~15% |
 
 ### v2 Features (Deferred)
 
@@ -137,12 +137,13 @@ For detailed version-specific information, see:
 
 | Category | Status |
 |----------|--------|
-| Query Execution Infrastructure | 0% |
-| Data Type Implementation | 0% |
+| Query Execution Infrastructure | ~30% |
+| Data Type Implementation | 100% |
 | DDL Execution | 0% |
 | DML Execution | 0% |
-| Expression Evaluation | 0% |
-| Built-in Functions | 0% |
+| Expression Evaluation | 100% |
+| Built-in Functions (scalar) | 100% |
+| Built-in Functions (aggregate) | 0% |
 | Window Functions | 0% |
 | CTE and Set Operations | 0% |
 | Transaction Support | 0% |
@@ -168,36 +169,39 @@ For detailed version-specific information, see:
 ### v1 Phases
 
 #### Phase 1: MVP (4-6 weeks)
-- Query executor infrastructure
-- Basic SELECT, INSERT, UPDATE, DELETE
-- CREATE/DROP TABLE
-- ADO.NET provider basics
+- [x] Expression evaluator ?
+- [x] All scalar functions ?
+- [x] Parameter binding ?
+- [ ] Query executor infrastructure
+- [ ] Basic SELECT, INSERT, UPDATE, DELETE
+- [ ] CREATE/DROP TABLE
+- [ ] ADO.NET provider basics
 
 #### Phase 2: JOINs and Indexes (3-4 weeks)
-- JOIN operations
-- Index creation and usage
-- GROUP BY, HAVING
-- Subqueries, CTE
+- [ ] JOIN operations
+- [ ] Index creation and usage
+- [ ] GROUP BY, HAVING
+- [ ] Subqueries, CTE
 
 #### Phase 3: Transactions and Concurrency (3-4 weeks)
-- Isolation levels
-- Savepoints
-- FOR UPDATE / FOR SHARE
-- MERGE statement
+- [ ] Isolation levels
+- [ ] Savepoints
+- [ ] FOR UPDATE / FOR SHARE
+- [ ] MERGE statement
 
 #### Phase 4: Production Ready (4-6 weeks)
-- Window functions
-- Views and triggers
-- All v1 functions
-- INFORMATION_SCHEMA
+- [ ] Window functions
+- [ ] Views and triggers
+- [ ] All v1 functions
+- [ ] INFORMATION_SCHEMA
 
 ### v2 Phases (Future)
 
 #### Phase 5: Advanced Features
-- User-defined functions
-- Stored procedures
-- EXPLAIN / EXPLAIN ANALYZE
-- Database administration
+- [ ] User-defined functions
+- [ ] Stored procedures
+- [ ] EXPLAIN / EXPLAIN ANALYZE
+- [ ] Database administration
 
 ---
 
@@ -205,9 +209,9 @@ For detailed version-specific information, see:
 
 | Component | Tests | Status |
 |-----------|-------|--------|
-| OutWit.Database.Core | 1811+ | Passing |
-| OutWit.Database.Parser | 1000+ | Passing |
-| OutWit.Database (Engine) | 0 | Not started |
+| OutWit.Database.Core | 1811+ | ? Passing |
+| OutWit.Database.Parser | 1000+ | ? Passing |
+| OutWit.Database (Engine) | 151 | ? Passing |
 
 ---
 
@@ -227,4 +231,4 @@ For detailed version-specific information, see:
 
 ---
 
-**Last Updated:** 2025-01-17
+**Last Updated:** 2025-01-20
