@@ -112,8 +112,19 @@ namespace OutWit.Database.Definitions
     /// </summary>
     public enum TriggerEvent
     {
+        /// <summary>
+        /// Trigger fires on INSERT operations.
+        /// </summary>
         Insert,
+
+        /// <summary>
+        /// Trigger fires on UPDATE operations.
+        /// </summary>
         Update,
+
+        /// <summary>
+        /// Trigger fires on DELETE operations.
+        /// </summary>
         Delete
     }
 
@@ -122,8 +133,19 @@ namespace OutWit.Database.Definitions
     /// </summary>
     public enum TriggerTime
     {
+        /// <summary>
+        /// Trigger fires before the operation (can modify or cancel).
+        /// </summary>
         Before,
+
+        /// <summary>
+        /// Trigger fires after the operation completes.
+        /// </summary>
         After,
+
+        /// <summary>
+        /// Trigger replaces the operation entirely.
+        /// </summary>
         InsteadOf
     }
 }
