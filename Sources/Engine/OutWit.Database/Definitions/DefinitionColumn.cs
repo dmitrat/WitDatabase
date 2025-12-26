@@ -96,49 +96,49 @@ public sealed partial class DefinitionColumn : ModelBase
     /// Gets whether this column allows NULL values.
     /// </summary>
     [MemoryPackOrder(2)]
-    public bool Nullable { get; init; } = true;
+    public bool Nullable { get; set; } = true;
 
     /// <summary>
     /// Gets whether this column is part of the primary key.
     /// </summary>
     [MemoryPackOrder(3)]
-    public bool IsPrimaryKey { get; init; }
+    public bool IsPrimaryKey { get; set; }
 
     /// <summary>
     /// Gets whether this column auto-increments.
     /// </summary>
     [MemoryPackOrder(4)]
-    public bool IsAutoIncrement { get; init; }
+    public bool IsAutoIncrement { get; set; }
 
     /// <summary>
     /// Gets whether this column has a UNIQUE constraint.
     /// </summary>
     [MemoryPackOrder(5)]
-    public bool IsUnique { get; init; }
+    public bool IsUnique { get; set; }
 
     /// <summary>
     /// Gets the default value expression (if any).
     /// </summary>
     [MemoryPackOrder(6)]
-    public string? DefaultValue { get; init; }
+    public string? DefaultValue { get; set; }
 
     /// <summary>
     /// Gets the column ordinal (0-based position).
     /// </summary>
     [MemoryPackOrder(7)]
-    public int Ordinal { get; init; }
+    public int Ordinal { get; set; }
 
     /// <summary>
     /// Gets the CHECK constraint expression as SQL text (if any).
     /// </summary>
     [MemoryPackOrder(8)]
-    public string? CheckExpression { get; init; }
+    public string? CheckExpression { get; set; }
 
     /// <summary>
     /// Gets the foreign key definition (if this column references another table).
     /// </summary>
     [MemoryPackOrder(9)]
-    public DefinitionForeignKey? ForeignKey { get; init; }
+    public DefinitionForeignKey? ForeignKey { get; set; }
 
     /// <summary>
     /// Gets the maximum length for CHAR(n), VARCHAR(n), BINARY(n), VARBINARY(n) types.

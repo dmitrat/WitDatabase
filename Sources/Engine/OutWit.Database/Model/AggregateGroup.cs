@@ -20,16 +20,18 @@ public sealed class AggregateGroup : ModelBase
     {
         FirstRow = firstRow;
         Accumulators = new Accumulator[selectCount];
+        AllRows = new();
         for (int i = 0; i < selectCount; i++)
         {
             Accumulators[i] = new Accumulator();
         }
     }
 
-    private AggregateGroup(WitSqlRow? firstRow, Accumulator[] accumulators, int rowCount)
+    private AggregateGroup(WitSqlRow? firstRow, Accumulator[] accumulators, List<WitSqlRow> allRows, int rowCount)
     {
         FirstRow = firstRow;
         Accumulators = accumulators;
+        AllRows = allRows;
         RowCount = rowCount;
     }
 
@@ -54,6 +56,7 @@ public sealed class AggregateGroup : ModelBase
         return new AggregateGroup(
             FirstRow,
             Accumulators.Select(acc => acc.Clone()).ToArray(),
+            new(AllRows),
             RowCount);
     }
 
@@ -70,6 +73,11 @@ public sealed class AggregateGroup : ModelBase
     /// Gets the accumulators for each item in the SELECT list.
     /// </summary>
     public Accumulator[] Accumulators { get; }
+
+    /// <summary>
+    /// Gets all rows in this group. Used for HAVING clause evaluation.
+    /// </summary>
+    public List<WitSqlRow> AllRows { get; }
 
     /// <summary>
     /// Gets or sets the total count of rows in this group.

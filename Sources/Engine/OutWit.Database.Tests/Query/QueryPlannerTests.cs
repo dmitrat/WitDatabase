@@ -443,7 +443,7 @@ public class QueryPlannerTests
     }
 
     [Test]
-    public void SelectWithHavingCreatesHavingIteratorTest()
+    public void SelectWithHavingCreatesGroupByWithHavingTest()
     {
         var mockIterator = CreateMockIterator(
             CreateRow(("Category", WitSqlValue.FromText("A")), ("Value", WitSqlValue.FromInt(10)))
@@ -476,7 +476,8 @@ public class QueryPlannerTests
         var planner = new QueryPlanner(m_context);
         var iterator = planner.Plan(select);
 
-        Assert.That(iterator, Is.InstanceOf<IteratorHaving>());
+        // HAVING is now integrated into IteratorGroupBy
+        Assert.That(iterator, Is.InstanceOf<IteratorGroupBy>());
     }
 
     #endregion

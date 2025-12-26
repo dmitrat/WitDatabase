@@ -82,11 +82,13 @@ public sealed class QueryPlanner
 
     private IResultIterator PlanAggregateQuery(IResultIterator iterator, WitSqlStatementSelect select)
     {
-        // GROUP BY aggregation
-        iterator = new IteratorGroupBy(iterator, select.GroupByClause, select.SelectList, m_context);
-
-        // HAVING filter (after aggregation)
-        iterator = ApplyHavingClause(iterator, select.HavingClause);
+        // GROUP BY aggregation with integrated HAVING clause
+        iterator = new IteratorGroupBy(
+            iterator, 
+            select.GroupByClause, 
+            select.SelectList, 
+            m_context,
+            select.HavingClause);
 
         // ORDER BY (after aggregation)
         iterator = ApplyOrderByClause(iterator, select.OrderByClause);
@@ -127,14 +129,6 @@ public sealed class QueryPlanner
             return iterator;
 
         return new IteratorFilter(iterator, whereClause, m_context);
-    }
-
-    private IResultIterator ApplyHavingClause(IResultIterator iterator, WitSqlExpression? havingClause)
-    {
-        if (havingClause == null)
-            return iterator;
-
-        return new IteratorHaving(iterator, havingClause, m_context);
     }
 
     private IResultIterator ApplyOrderByClause(IResultIterator iterator, IReadOnlyList<ClauseOrderByItem>? orderByClause)

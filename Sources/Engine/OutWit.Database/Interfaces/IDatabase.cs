@@ -78,7 +78,7 @@ public interface IDatabase
     /// <summary>
     /// Change a column's data type.
     /// </summary>
-    void AlterColumnType(string tableName, string columnName, WitSqlType newType);
+    void AlterColumnType(string tableName, string columnName, WitDataType newType);
 
     /// <summary>
     /// Set a column's default value.

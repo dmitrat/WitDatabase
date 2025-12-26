@@ -30,7 +30,9 @@ public sealed class IteratorGroupBy : IteratorBase
     private readonly IResultIterator m_source;
     private readonly IReadOnlyList<WitSqlExpression>? m_groupByExpressions;
     private readonly IReadOnlyList<ClauseSelectItem> m_selectList;
+    private readonly WitSqlExpression? m_havingClause;
     private readonly ExpressionEvaluator m_evaluator;
+    private readonly AggregateExpressionEvaluator? m_aggregateEvaluator;
     private readonly IReadOnlyList<WitSqlColumnInfo> m_schema;
 
     private Dictionary<string, AggregateGroup>? m_groups;
@@ -48,16 +50,20 @@ public sealed class IteratorGroupBy : IteratorBase
     /// <param name="groupByExpressions">The GROUP BY expressions (null for aggregate without grouping).</param>
     /// <param name="selectList">The SELECT list containing aggregate and non-aggregate expressions.</param>
     /// <param name="context">The execution context.</param>
+    /// <param name="havingClause">Optional HAVING clause for filtering groups.</param>
     public IteratorGroupBy(
         IResultIterator source,
         IReadOnlyList<WitSqlExpression>? groupByExpressions,
         IReadOnlyList<ClauseSelectItem> selectList,
-        ContextExecution context)
+        ContextExecution context,
+        WitSqlExpression? havingClause = null)
     {
         m_source = source;
         m_groupByExpressions = groupByExpressions;
         m_selectList = selectList;
+        m_havingClause = havingClause;
         m_evaluator = new ExpressionEvaluator(context);
+        m_aggregateEvaluator = havingClause != null ? new AggregateExpressionEvaluator(context) : null;
         m_schema = BuildSchema(selectList);
     }
 
@@ -215,6 +221,42 @@ public sealed class IteratorGroupBy : IteratorBase
         };
     }
 
+    private WitSqlRow BuildResultRow(AggregateGroup group)
+    {
+        var values = new WitSqlValue[m_selectList.Count];
+        var names = new string[m_selectList.Count];
+
+        for (int i = 0; i < m_selectList.Count; i++)
+        {
+            var item = m_selectList[i];
+            names[i] = m_schema[i].Name;
+
+            if (item.Expression is WitSqlExpressionFunctionCall func && IsAggregateFunction(func))
+            {
+                values[i] = GetAggregateResult(group.Accumulators[i], func);
+            }
+            else if (item.Expression != null && group.FirstRow.HasValue)
+            {
+                values[i] = m_evaluator.Evaluate(item.Expression, group.FirstRow.Value);
+            }
+            else
+            {
+                values[i] = WitSqlValue.Null;
+            }
+        }
+
+        return new WitSqlRow(values, names);
+    }
+
+    private bool PassesHavingFilter(AggregateGroup group, WitSqlRow resultRow)
+    {
+        if (m_havingClause == null || m_aggregateEvaluator == null)
+            return true;
+
+        var result = m_aggregateEvaluator.Evaluate(m_havingClause, group.AllRows, resultRow);
+        return !result.IsNull && result.AsBool();
+    }
+
     #endregion
 
     #region IResultIterator
@@ -238,6 +280,9 @@ public sealed class IteratorGroupBy : IteratorBase
                 group = new AggregateGroup(row, m_selectList.Count);
                 m_groups[groupKey] = group;
             }
+
+            // Store the row for HAVING clause evaluation
+            group.AllRows.Add(row);
 
             // Update aggregates
             for (int i = 0; i < m_selectList.Count; i++)
@@ -264,34 +309,23 @@ public sealed class IteratorGroupBy : IteratorBase
     /// <inheritdoc/>
     public override bool MoveNext()
     {
-        if (m_groupEnumerator == null || !m_groupEnumerator.MoveNext())
+        if (m_groupEnumerator == null)
             return false;
 
-        var group = m_groupEnumerator.Current.Value;
-        var values = new WitSqlValue[m_selectList.Count];
-        var names = new string[m_selectList.Count];
-
-        for (int i = 0; i < m_selectList.Count; i++)
+        while (m_groupEnumerator.MoveNext())
         {
-            var item = m_selectList[i];
-            names[i] = m_schema[i].Name;
+            var group = m_groupEnumerator.Current.Value;
+            var resultRow = BuildResultRow(group);
 
-            if (item.Expression is WitSqlExpressionFunctionCall func && IsAggregateFunction(func))
+            // Apply HAVING filter
+            if (PassesHavingFilter(group, resultRow))
             {
-                values[i] = GetAggregateResult(group.Accumulators[i], func);
-            }
-            else if (item.Expression != null && group.FirstRow.HasValue)
-            {
-                values[i] = m_evaluator.Evaluate(item.Expression, group.FirstRow.Value);
-            }
-            else
-            {
-                values[i] = WitSqlValue.Null;
+                m_current = resultRow;
+                return true;
             }
         }
 
-        m_current = new WitSqlRow(values, names);
-        return true;
+        return false;
     }
 
     /// <inheritdoc/>
