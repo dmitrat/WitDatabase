@@ -34,6 +34,16 @@ public sealed partial class ExpressionEvaluator
 
     private WitSqlValue EvaluateColumnRef(WitSqlExpressionColumnRef col, WitSqlRow row)
     {
+        // Handle EXCLUDED pseudo-table for ON CONFLICT DO UPDATE
+        if (col.IsExcluded)
+        {
+            if (m_context.ExcludedRow == null)
+                throw new InvalidOperationException("EXCLUDED pseudo-table not available outside ON CONFLICT DO UPDATE");
+            if (m_context.ExcludedRow.Value.TryGetValue(col.ColumnName, out var excludedValue))
+                return excludedValue;
+            throw new KeyNotFoundException($"Column '{col.ColumnName}' not found in EXCLUDED row");
+        }
+
         // Handle OLD/NEW pseudo-tables for trigger context
         if (col.TableName != null && m_context.TriggerContext != null)
         {

@@ -3,6 +3,7 @@ using OutWit.Database.Expressions;
 using OutWit.Database.Iterators;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Clauses;
+using OutWit.Database.Parser.Schema.Types;
 using OutWit.Database.Parser.Statements;
 using OutWit.Database.Types;
 using OutWit.Database.Values;
@@ -32,6 +33,22 @@ public sealed partial class StatementExecutor
             foreach (var valueRow in insert.Values)
             {
                 var (row, rowId) = BuildInsertRow(table, insert.ColumnNames, valueRow);
+
+                // Handle conflict resolution
+                var conflictResult = HandleConflictResolution(insert, table, ref row, ref rowId);
+                if (conflictResult == ConflictResult.Skip)
+                    continue;
+                if (conflictResult == ConflictResult.Updated)
+                {
+                    rowsAffected++;
+                    // Collect RETURNING row for upsert
+                    if (returningRows != null)
+                    {
+                        var returningRow = BuildReturningRow(row, insert.ReturningClause!, table);
+                        returningRows.Add(returningRow);
+                    }
+                    continue;
+                }
 
                 // Fire BEFORE INSERT triggers
                 WitSqlRow? newRow = row;
@@ -82,6 +99,268 @@ public sealed partial class StatementExecutor
         }
 
         return new WitSqlResult(rowsAffected);
+    }
+
+    /// <summary>
+    /// Result of conflict resolution check.
+    /// </summary>
+    private enum ConflictResult
+    {
+        /// <summary>No conflict, proceed with insert.</summary>
+        NoConflict,
+        /// <summary>Conflict detected, skip this row.</summary>
+        Skip,
+        /// <summary>Conflict detected, row was updated.</summary>
+        Updated
+    }
+
+    /// <summary>
+    /// Handles INSERT OR REPLACE, INSERT OR IGNORE, and ON CONFLICT clauses.
+    /// </summary>
+    private ConflictResult HandleConflictResolution(WitSqlStatementInsert insert, DefinitionTable table, ref WitSqlRow row, ref long rowId)
+    {
+        // Find conflicting row based on primary key or unique constraints
+        var (existingRowId, existingRow) = FindConflictingRow(table, row, insert.OnConflict?.ConflictColumns);
+
+        if (existingRowId == null)
+            return ConflictResult.NoConflict;
+
+        // Handle INSERT OR REPLACE
+        if (insert.ConflictResolution == ConflictResolutionType.Replace)
+        {
+            // Delete existing row and proceed with insert
+            m_context.Database.DeleteRow(table.Name, existingRowId.Value);
+            return ConflictResult.NoConflict;
+        }
+
+        // Handle INSERT OR IGNORE
+        if (insert.ConflictResolution == ConflictResolutionType.Ignore)
+        {
+            return ConflictResult.Skip;
+        }
+
+        // Handle ON CONFLICT clause
+        if (insert.OnConflict != null)
+        {
+            if (insert.OnConflict.ActionType == ConflictActionType.Nothing)
+            {
+                return ConflictResult.Skip;
+            }
+
+            if (insert.OnConflict.ActionType == ConflictActionType.Update)
+            {
+                // Set EXCLUDED pseudo-table before evaluating WHERE clause
+                // (it may reference EXCLUDED.column)
+                m_context.ExcludedRow = row;
+
+                try
+                {
+                    // Check WHERE clause if present
+                    if (insert.OnConflict.WhereClause != null)
+                    {
+                        var evaluator = new ExpressionEvaluator(m_context);
+                        var whereResult = evaluator.Evaluate(insert.OnConflict.WhereClause, existingRow!.Value);
+                        if (!whereResult.IsTrue)
+                        {
+                            return ConflictResult.Skip;
+                        }
+                    }
+
+                    // Execute UPDATE with SET clauses
+                    row = ExecuteUpsertUpdate(table, existingRowId.Value, existingRow!.Value, row, insert.OnConflict.UpdateClauses!);
+                    rowId = existingRowId.Value;
+                    return ConflictResult.Updated;
+                }
+                finally
+                {
+                    m_context.ExcludedRow = null;
+                }
+            }
+        }
+
+        return ConflictResult.NoConflict;
+    }
+
+    /// <summary>
+    /// Finds a row that conflicts with the given row based on primary key or unique constraints.
+    /// Also checks unique indexes for conflict detection.
+    /// </summary>
+    private (long? RowId, WitSqlRow? Row) FindConflictingRow(DefinitionTable table, WitSqlRow newRow, IReadOnlyList<string>? conflictColumns)
+    {
+        // If specific conflict columns are specified (ON CONFLICT (columns)), use only those
+        if (conflictColumns != null && conflictColumns.Count > 0)
+        {
+            return FindConflictingRowByColumns(table, newRow, conflictColumns);
+        }
+
+        // Check primary key columns first
+        if (table.PrimaryKey != null && table.PrimaryKey.Count > 0)
+        {
+            // Only check if all PK columns have non-null values in newRow
+            bool allPkColumnsHaveValues = table.PrimaryKey.All(pkCol =>
+            {
+                if (!newRow.TryGetValue(pkCol, out var value))
+                    return false;
+                return !value.IsNull;
+            });
+
+            if (allPkColumnsHaveValues)
+            {
+                var result = FindConflictingRowByColumns(table, newRow, table.PrimaryKey);
+                if (result.RowId != null)
+                    return result;
+            }
+        }
+
+        // Check unique columns on the table
+        var uniqueColumns = table.Columns.Where(c => c.IsUnique).Select(c => c.Name).ToList();
+        foreach (var uniqueCol in uniqueColumns)
+        {
+            if (newRow.TryGetValue(uniqueCol, out var value) && !value.IsNull)
+            {
+                var result = FindConflictingRowByColumns(table, newRow, [uniqueCol]);
+                if (result.RowId != null)
+                    return result;
+            }
+        }
+
+        // Check unique indexes
+        var uniqueIndexes = m_context.Database.GetTableIndexes(table.Name).Where(i => i.IsUnique && !i.IsPrimaryKey);
+        foreach (var index in uniqueIndexes)
+        {
+            // Only check if all index columns have non-null values in newRow
+            bool allIndexColumnsHaveValues = index.Columns.All(col =>
+            {
+                if (!newRow.TryGetValue(col, out var value))
+                    return false;
+                return !value.IsNull;
+            });
+
+            if (allIndexColumnsHaveValues)
+            {
+                var result = FindConflictingRowByColumns(table, newRow, index.Columns);
+                if (result.RowId != null)
+                    return result;
+            }
+        }
+
+        return (null, null);
+    }
+
+    /// <summary>
+    /// Finds a row that conflicts by checking specific columns.
+    /// </summary>
+    private (long? RowId, WitSqlRow? Row) FindConflictingRowByColumns(DefinitionTable table, WitSqlRow newRow, IReadOnlyList<string> columnsToCheck)
+    {
+        if (columnsToCheck.Count == 0)
+            return (null, null);
+
+        var iterator = m_context.Database.CreateTableScan(table.Name);
+        iterator.Open();
+
+        try
+        {
+            while (iterator.MoveNext())
+            {
+                var existingRow = iterator.Current;
+                bool allMatch = true;
+
+                foreach (var colName in columnsToCheck)
+                {
+                    if (!newRow.TryGetValue(colName, out var newValue))
+                    {
+                        allMatch = false;
+                        break;
+                    }
+
+                    if (!existingRow.TryGetValue(colName, out var existingValue))
+                    {
+                        allMatch = false;
+                        break;
+                    }
+
+                    // Skip NULL values - NULL does not equal NULL for conflict detection
+                    if (newValue.IsNull || existingValue.IsNull)
+                    {
+                        allMatch = false;
+                        break;
+                    }
+
+                    if (!newValue.Equals(existingValue))
+                    {
+                        allMatch = false;
+                        break;
+                    }
+                }
+
+                if (allMatch)
+                {
+                    var rowId = existingRow["_rowid"].AsInt64();
+                    return (rowId, existingRow);
+                }
+            }
+        }
+        finally
+        {
+            iterator.Dispose();
+        }
+
+        return (null, null);
+    }
+
+    /// <summary>
+    /// Executes the UPDATE part of an upsert operation.
+    /// Note: ExcludedRow must be set in context before calling this method.
+    /// </summary>
+    private WitSqlRow ExecuteUpsertUpdate(DefinitionTable table, long rowId, WitSqlRow existingRow, WitSqlRow newRow, IReadOnlyList<ClauseSet> updateClauses)
+    {
+        var evaluator = new ExpressionEvaluator(m_context);
+        var newValues = existingRow.Values.ToArray();
+        var columnNames = existingRow.ColumnNames.ToArray();
+
+        // EXCLUDED pseudo-table is already set in context by HandleConflictResolution
+        foreach (var setClause in updateClauses)
+        {
+            for (int i = 0; i < columnNames.Length; i++)
+            {
+                if (columnNames[i].Equals(setClause.ColumnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    newValues[i] = evaluator.Evaluate(setClause.Value, existingRow);
+                    break;
+                }
+            }
+        }
+
+        // Recalculate STORED computed columns
+        var storedComputedColumns = table.Columns.Where(c => c.IsComputed && c.IsStored).ToList();
+        var intermediateRow = new WitSqlRow(newValues, columnNames);
+        
+        foreach (var computedCol in storedComputedColumns)
+        {
+            for (int i = 0; i < columnNames.Length; i++)
+            {
+                if (columnNames[i].Equals(computedCol.Name, StringComparison.OrdinalIgnoreCase))
+                {
+                    if (!string.IsNullOrEmpty(computedCol.ComputedExpression))
+                    {
+                        var expr = Parser.WitSql.ParseExpression(computedCol.ComputedExpression);
+                        newValues[i] = evaluator.Evaluate(expr, intermediateRow);
+                    }
+                    break;
+                }
+            }
+        }
+
+        var updatedRow = new WitSqlRow(newValues, columnNames);
+
+        // Validate constraints
+        ValidateNotNullConstraints(table, updatedRow);
+        ValidateConstraints(table, updatedRow, table.Name, rowId);
+
+        // Perform update
+        m_context.Database.UpdateRow(table.Name, rowId, updatedRow);
+
+        return updatedRow;
     }
 
     private int ExecuteInsertFromSelect(WitSqlStatementInsert insert, DefinitionTable table, List<WitSqlRow>? returningRows)

@@ -72,6 +72,12 @@ public sealed class ContextExecution
     /// </summary>
     public Dictionary<string, CteCacheEntry> CteCache { get; } =
         new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets or sets the EXCLUDED pseudo-row for ON CONFLICT DO UPDATE.
+    /// Contains the values that would have been inserted if there was no conflict.
+    /// </summary>
+    public WitSqlRow? ExcludedRow { get; set; }
 }
 
 /// <summary>

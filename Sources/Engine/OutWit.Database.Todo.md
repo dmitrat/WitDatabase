@@ -41,7 +41,7 @@
 | ALTER TABLE | 0 | 0 | 0 | ? DONE |
 | CTE Execution | 0 | 0 | 0 | ? DONE |
 | Window Functions | 0 | 0 | 1 | ? DONE (frame clause P2) |
-| DML Enhancements | 0 | 5 | 0 | ? RETURNING done, 5 remaining |
+| DML Enhancements | 0 | 0 | 0 | ? DONE (RETURNING + UPSERT) |
 | JSON Functions | 0 | 3 | 3 | Required |
 | Query Optimization | 0 | 2 | 2 | Optional |
 | INFORMATION_SCHEMA | 0 | 6 | 0 | Required |
@@ -216,12 +216,15 @@
 
 ## 6. DML Enhancements (P1)
 
-**Current State:** RETURNING clause implemented
+**Current State:** UPSERT and RETURNING clause implemented
 
 ### Completed Tasks:
 - [x] **P1** `INSERT ... RETURNING` - critical for EF Core identity
 - [x] **P1** `UPDATE ... RETURNING`
 - [x] **P1** `DELETE ... RETURNING`
+- [x] **P1** `INSERT OR REPLACE`
+- [x] **P1** `INSERT ... ON CONFLICT DO UPDATE` (UPSERT)
+- [x] **P1** `INSERT ... ON CONFLICT DO NOTHING`
 
 ### Implementation Summary:
 - **WitSqlResult** - New constructor for DML with RETURNING (returns both RowsAffected and rows)
@@ -229,24 +232,31 @@
 - **BuildReturningSchema** - Builds column schema for RETURNING clause
 - **RETURNING *** - Returns all columns from the table
 - **RETURNING with expressions** - Supports computed expressions and aliases
+- **EXCLUDED pseudo-table** - Supports EXCLUDED.column references in ON CONFLICT DO UPDATE
+- **Conflict detection** - Checks primary key, unique columns, and unique indexes
+- **WHERE clause in ON CONFLICT** - Supports conditional updates with EXCLUDED references
 
-### Test Coverage: 20 tests passing
+### Test Coverage: 39 tests passing
 - INSERT RETURNING (Id, *, multiple columns, alias, multiple rows, defaults)
 - UPDATE RETURNING (single row, all columns, multiple rows, no match)
 - DELETE RETURNING (single row, all columns, multiple rows)
 - RETURNING with expressions
 - Schema type verification
-- Integration tests
+- INSERT OR REPLACE (new row, existing row, multiple rows, with unique index)
+- INSERT OR IGNORE (new row, existing row, multiple rows)
+- ON CONFLICT DO NOTHING (new row, existing row, with unique constraint)
+- ON CONFLICT DO UPDATE (new row, existing row, with EXCLUDED, increment, with WHERE)
+- UPSERT with RETURNING (inserted and updated)
 
 ### Key Files:
-- `StatementExecutor.Dml.cs` - Modified - RETURNING clause support in INSERT/UPDATE/DELETE
+- `StatementExecutor.Dml.cs` - Modified - RETURNING clause support in INSERT/UPDATE/DELETE, UPSERT support
 - `WitSqlResult.cs` - Modified - New constructor for DML with RETURNING
+- `ContextExecution.cs` - Modified - Added ExcludedRow property for EXCLUDED pseudo-table
+- `ExpressionEvaluator.Core.cs` - Modified - EXCLUDED.column reference evaluation
 - `WitSqlEngineReturningTests.cs` - Created - 20 RETURNING tests
+- `WitSqlEngineUpsertTests.cs` - Created - 19 UPSERT tests
 
 ### Missing Features:
-- [ ] **P1** `INSERT OR REPLACE`
-- [ ] **P1** `INSERT ... ON CONFLICT DO UPDATE` (UPSERT)
-- [ ] **P1** `INSERT ... ON CONFLICT DO NOTHING`
 - [ ] **P1** `TRUNCATE TABLE`
 - [ ] **P1** `MERGE` statement
 
@@ -441,6 +451,12 @@ EF Core scaffolding requires these views for reverse engineering:
 | `WitSqlResult.cs` | Modified - New constructor for DML with RETURNING |
 | `WitSqlEngineReturningTests.cs` | Created - 20 RETURNING tests |
 
+### UPSERT (Complete)
+| File | Status |
+|------|--------|
+| `StatementExecutor.Dml.cs` | Modified - UPSERT support |
+| `WitSqlEngineUpsertTests.cs` | Created - 19 UPSERT tests |
+
 
 ## Dependencies
 
@@ -476,4 +492,5 @@ EF Core scaffolding requires these views for reverse engineering:
 +-------------------------------------------------------------+
 |  TypeMapping --> QueryTranslation --> Migrations             |
 +-------------------------------------------------------------+
+
 
