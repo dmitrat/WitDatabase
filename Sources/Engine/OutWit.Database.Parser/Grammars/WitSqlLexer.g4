@@ -5,6 +5,7 @@
 // ============================================================================
 
 ADD: A D D;
+ANALYZE: A N A L Y Z E;
 ANY: A N Y;
 ALL: A L L;
 ALTER: A L T E R;
@@ -31,6 +32,7 @@ ELSE: E L S E;
 END: E N D;
 ESCAPE: E S C A P E;
 EXISTS: E X I S T S;
+EXPLAIN: E X P L A I N;
 FALSE: F A L S E;
 FOREIGN: F O R E I G N;
 FROM: F R O M;
@@ -129,6 +131,8 @@ RESTART: R E S T A R T;
 TYPE: T Y P E;
 RETURNING: R E T U R N I N G;
 TRUNCATE: T R U N C A T E;
+QUERY: Q U E R Y;
+PLAN: P L A N;
 
 // ============================================================================
 // NULL-related (order matters: longer first)

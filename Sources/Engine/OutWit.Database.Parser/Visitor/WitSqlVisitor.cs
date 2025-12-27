@@ -36,6 +36,8 @@ internal sealed partial class WitSqlVisitor : WitSqlParserBaseVisitor<object?>
             return VisitTransactionStatement(txn);
         if (context.signalStatement() is { } signal)
             return VisitSignalStatement(signal);
+        if (context.explainStatement() is { } explain)
+            return VisitExplainStatement(explain);
         return null;
     }
 
@@ -171,6 +173,23 @@ internal sealed partial class WitSqlVisitor : WitSqlParserBaseVisitor<object?>
         if (context.UNCOMMITTED() != null)
             return IsolationLevelType.ReadUncommitted;
         return IsolationLevelType.ReadCommitted;
+    }
+
+    #endregion
+
+    #region EXPLAIN Statement
+
+    private WitSqlStatementExplain VisitExplainStatement(WitSqlParser.ExplainStatementContext context)
+    {
+        var isQueryPlan = context.QUERY() != null && context.PLAN() != null;
+
+        return new WitSqlStatementExplain
+        {
+            Line = context.Start.Line,
+            Column = context.Start.Column,
+            QueryPlan = isQueryPlan,
+            Statement = VisitQueryExpression(context.queryExpression())
+        };
     }
 
     #endregion

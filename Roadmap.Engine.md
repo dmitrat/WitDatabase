@@ -26,7 +26,7 @@
 
 ## Progress Summary
 
-**Current Status: ~99% - Core SQL Execution + Transactions + Indexes + ALTER TABLE + Computed Columns + CTE + Window Functions + DML + JSON + ROWVERSION Complete**
+**Current Status: ~99% - Core SQL Execution + Transactions + Indexes + ALTER TABLE + Computed Columns + CTE + Window Functions + DML + JSON + ROWVERSION + EXPLAIN Complete**
 
 The Engine component (`OutWit.Database`) is responsible for:
 - SQL execution against the Core storage layer
@@ -65,7 +65,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 - ? **DELETE ... USING** (join-based deletes)
 - ? **ROWVERSION** (auto-increment on INSERT/UPDATE)
 - ? **INFORMATION_SCHEMA** views
-- ? **Query Optimization** (index selection, plan caching, join ordering)
+- ? **EXPLAIN / EXPLAIN QUERY PLAN** (query plan output with iterator hierarchy)
 
 ---
 
@@ -472,7 +472,8 @@ The Engine component (`OutWit.Database`) is responsible for:
 | Predicate pushdown | [ ] | P1 | v1 |
 | Query plan caching | [ ] | P1 | v1 |
 | Statistics-based optimization | [ ] | P2 | v2 |
-| EXPLAIN output | [ ] | P2 | v2 |
+| EXPLAIN output | [x] | P1 | v1 |
+| EXPLAIN QUERY PLAN | [x] | P1 | v1 |
 
 ---
 
@@ -509,7 +510,8 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 | Feature | Status | Priority | Version | Spec |
 |---------|--------|----------|---------|------|
-| `EXPLAIN` execution | [ ] | P2 | v2 | SS25.1 |
+| `EXPLAIN` execution | [x] | P1 | v1 | SS25.1 |
+| `EXPLAIN QUERY PLAN` execution | [x] | P1 | v1 | SS25.1 |
 | `EXPLAIN ANALYZE` | [ ] | P2 | v2 | SS25.1 |
 | `EXPLAIN (FORMAT JSON/TEXT)` | [ ] | P2 | v2 | SS25.1 |
 
@@ -591,7 +593,8 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 - [ ] User-defined functions
 - [ ] Stored procedures
-- [ ] EXPLAIN / EXPLAIN ANALYZE
+- [x] EXPLAIN / EXPLAIN QUERY PLAN ? (v1)
+- [ ] EXPLAIN ANALYZE
 - [ ] Database administration commands
 - [ ] Advanced statistics and optimization
 
@@ -621,11 +624,22 @@ The Engine component (`OutWit.Database`) is responsible for:
 | WitSqlEngineUpsertTests | 19 | ? Passing |
 | WitSqlEngineTruncateMergeTests | 23 | ? Passing |
 | WitSqlEngineJsonFunctionTests | 42 | ? Passing |
-| **Total** | **1311** | ? Passing |
+| WitSqlEngineExplainTests | 13 | ? Passing |
+| **Total** | **1324** | ? Passing |
 
 ---
 
 ## Recent Changes
+
+### 2025-12-27
+- ? **EXPLAIN Implementation Complete**:
+  - `EXPLAIN SELECT ...` - detailed query plan with column schema
+  - `EXPLAIN QUERY PLAN SELECT ...` - high-level query plan
+  - Shows iterator hierarchy (SCAN TABLE, NESTED LOOP JOIN, SORT, etc.)
+  - Shows index usage (SEARCH TABLE USING INDEX)
+  - Shows window functions, aggregation, limit, distinct operations
+  - Parser tests: 8 passing
+  - Engine tests: 13 passing
 
 ### 2025-02-05
 - ? **ROWVERSION Implementation Complete**:

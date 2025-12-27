@@ -21,6 +21,7 @@ statement
     | ddlStatement
     | transactionStatement
     | signalStatement
+    | explainStatement
     ;
 
 dmlStatement
@@ -56,7 +57,7 @@ transactionStatement
     | setTransactionStatement
     ;
 
-    // ============================================================================
+// ============================================================================
 // Transaction Statements
 // ============================================================================
 
@@ -272,15 +273,7 @@ mergeInsertClause
       VALUES LPAREN expression (COMMA expression)* RPAREN
     ;
 
-    // ============================================================================
-// RETURNING Clause
 // ============================================================================
-
-returningClause
-    : RETURNING selectList
-    ;
-
-    // ============================================================================
 // CREATE TABLE Statement
 // ============================================================================
 
@@ -638,8 +631,6 @@ alias
     | nonReservedKeyword
     ;
 
- // Keywords that can be used as identifiers (table names, column names, aliases)
-// These are function names and other keywords that should not be reserved
 nonReservedKeyword
     // Math functions
     : ABS | ROUND | FLOOR | CEIL | CEILING | SIGN | TRUNC | MOD
@@ -681,8 +672,17 @@ nonReservedKeyword
     | ACTION | TYPE | ISOLATION | LEVEL | SNAPSHOT
     | CONFLICT | DO | NOTHING | WRITE | SHARE
     | FIRST | LAST | VALUE
+    | PLAN | QUERY
     ;
 
 signalStatement
     : SIGNAL SQLSTATE STRING_LITERAL (SET MESSAGE_TEXT EQ expression)?
+    ;
+
+explainStatement
+    : EXPLAIN (QUERY PLAN)? queryExpression
+    ;
+
+returningClause
+    : RETURNING selectList
     ;

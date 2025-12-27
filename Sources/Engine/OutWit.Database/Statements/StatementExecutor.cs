@@ -92,6 +92,9 @@ public sealed partial class StatementExecutor
             WitSqlStatementReleaseSavepoint release => ExecuteReleaseSavepoint(release),
             WitSqlStatementSetTransaction setTx => ExecuteSetTransaction(setTx),
             
+            // Query Analysis
+            WitSqlStatementExplain explain => ExecuteExplain(explain),
+            
             _ => throw new NotSupportedException($"Statement type not supported: {statement.GetType().Name}")
         };
     }

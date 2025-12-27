@@ -45,6 +45,12 @@ namespace OutWit.Database.Parser.Interfaces
 
         #endregion
 
+        #region Statements - Query Analysis
+
+        T VisitStatementExplain(WitSqlStatementExplain node);
+
+        #endregion
+
         #region Expressions
 
         T VisitExpressionLiteral(WitSqlExpressionLiteral node);
