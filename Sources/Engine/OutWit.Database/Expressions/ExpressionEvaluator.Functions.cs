@@ -135,6 +135,20 @@ public sealed partial class ExpressionEvaluator
             // Sequence Functions
             "NEXTVAL" or "INCREMENT" => WitSqlValue.FromInt(m_context.Database.NextVal(args[0].AsString())),
             "CURRVAL" or "LASTINCREMENT" => WitSqlValue.FromInt(m_context.Database.CurrVal(args[0].AsString())),
+            
+            // JSON Functions
+            "JSON_EXTRACT" => EvaluateJsonExtract(args),
+            "JSON_VALUE" => EvaluateJsonValue(args),
+            "JSON_QUERY" => EvaluateJsonQuery(args),
+            "JSON_TYPE" => EvaluateJsonType(args),
+            "JSON_ARRAY_LENGTH" => EvaluateJsonArrayLength(args),
+            "JSON_VALID" => EvaluateJsonValid(args),
+            "JSON_SET" => EvaluateJsonSet(args),
+            "JSON_INSERT" => EvaluateJsonInsert(args),
+            "JSON_REPLACE" => EvaluateJsonReplace(args),
+            "JSON_REMOVE" => EvaluateJsonRemove(args),
+            "JSON_ARRAY" => EvaluateJsonArray(args),
+            "JSON_OBJECT" => EvaluateJsonObject(args),
 
             _ => throw new NotSupportedException($"Function not supported: {funcName}")
         };

@@ -42,7 +42,7 @@
 | CTE Execution | 0 | 0 | 0 | ? DONE |
 | Window Functions | 0 | 0 | 1 | ? DONE (frame clause P2) |
 | DML Enhancements | 0 | 0 | 0 | ? DONE (RETURNING + UPSERT + TRUNCATE + MERGE) |
-| JSON Functions | 0 | 3 | 3 | Required |
+| JSON Functions | 0 | 0 | 0 | ? DONE |
 | Query Optimization | 0 | 2 | 2 | Optional |
 | INFORMATION_SCHEMA | 0 | 6 | 0 | Required |
 | Misc/Cleanup | 0 | 0 | 3 | Polish |
@@ -269,22 +269,51 @@
 
 ---
 
-## 7. JSON Functions (P1)
+## 7. JSON Functions (COMPLETED ?)
 
-**Current State:** Partial implementation
+**Current State:** Full JSON function support implemented
 
-### Implemented:
-- [x] `JSON_EXTRACT(json, path)`
-- [x] `JSON_TYPE(json)`
-- [x] `JSON_ARRAY_LENGTH(json)`
+### Completed Tasks:
+- [x] **P1** `JSON_EXTRACT(json, path)` - extract any value at path
+- [x] **P1** `JSON_VALUE(json, path)` - extract scalar as SQL type (returns NULL for objects/arrays)
+- [x] **P1** `JSON_QUERY(json, path)` - extract object/array as JSON string (returns NULL for scalars)
+- [x] **P1** `JSON_SET(json, path, value)` - set value at path (creates or replaces)
+- [x] **P2** `JSON_INSERT(json, path, value)` - insert value only if path doesn't exist
+- [x] **P2** `JSON_REPLACE(json, path, value)` - replace value only if path exists
+- [x] **P2** `JSON_REMOVE(json, path)` - remove value at path
+- [x] **P1** `JSON_TYPE(json)` - returns type name ("null", "boolean", "number", "string", "array", "object")
+- [x] **P1** `JSON_ARRAY_LENGTH(json)` - returns array length or NULL if not array
+- [x] **P2** `JSON_VALID(str)` - checks if string is valid JSON
+- [x] **P2** `JSON_ARRAY(values...)` - construct JSON array from values
+- [x] **P2** `JSON_OBJECT(key1, value1, ...)` - construct JSON object from key-value pairs
 
-### Missing (needed for EF Core JSON mapping):
-- [ ] **P1** `JSON_VALUE(json, path)` - extract scalar as SQL type
-- [ ] **P1** `JSON_QUERY(json, path)` - extract object/array
-- [ ] **P1** `JSON_SET(json, path, value)` - modify JSON
-- [ ] **P2** `JSON_INSERT` / `JSON_REPLACE` / `JSON_REMOVE`
-- [ ] **P2** `JSON_ARRAY()` / `JSON_OBJECT()` - constructors
-- [ ] **P2** `JSON_VALID(str)` - validation
+### Implementation Summary:
+- **ExpressionEvaluator.Json.cs** - All JSON function implementations
+- **WitSqlValue.Json.cs** - Core JSON operations (JsonExtract, JsonType, JsonArrayLength)
+- **JSON Path support**: `$.property`, `$.nested.path`, `$.array[0]`, `$.array[0].property`
+- **Type preservation**: Scalars extracted as appropriate SQL types (Integer, Real, Text, Boolean)
+- **JSON modification**: Non-destructive operations returning new JSON strings
+
+### Test Coverage: 42 tests passing
+- JSON_EXTRACT (simple property, numeric, nested, array element, missing property, object extraction)
+- JSON_VALUE (scalar extraction, NULL for objects/arrays)
+- JSON_QUERY (object/array extraction, NULL for scalars)
+- JSON_TYPE (all type names, on NULL, on extracted objects)
+- JSON_ARRAY_LENGTH (count, empty array, non-array returns NULL)
+- JSON_VALID (valid JSON, invalid JSON, NULL, in WHERE clause)
+- JSON_SET (add new, replace existing, numeric values)
+- JSON_INSERT (add new, does not replace existing)
+- JSON_REPLACE (replace existing, does not add new)
+- JSON_REMOVE (delete property, missing property no error)
+- JSON_ARRAY (create array, mixed types, empty, with expressions)
+- JSON_OBJECT (create object, empty, from columns)
+- Integration tests (WHERE clause, COALESCE, CASE expression, nested operations)
+
+### Key Files:
+- `ExpressionEvaluator.Json.cs` - Created - JSON function implementations
+- `ExpressionEvaluator.Functions.cs` - Modified - JSON function routing
+- `WitSqlValue.Json.cs` - Core JSON operations
+- `WitSqlEngineJsonFunctionTests.cs` - Created - 42 JSON tests
 
 ---
 
@@ -398,7 +427,8 @@ EF Core scaffolding requires these views for reverse engineering:
 | WitSqlEngineReturning* | 20 | 0 | INSERT/UPDATE/DELETE RETURNING |
 | WitSqlEngineUpsert* | 19 | 0 | UPSERT (ON CONFLICT) |
 | WitSqlEngineTruncateMerge* | 23 | 0 | TRUNCATE + MERGE + Complex conditions + Integration |
-| **Total** | **1269** | **0** | 100% passing |
+| WitSqlEngineJsonFunction* | 42 | 0 | All JSON functions |
+| **Total** | **1311** | **0** | 100% passing |
 
 ---
 
@@ -479,6 +509,14 @@ EF Core scaffolding requires these views for reverse engineering:
 | `IDatabase.cs` | Modified - TruncateTable interface method |
 | `WitSqlEngineTruncateMergeTests.cs` | Created - 19 TRUNCATE/MERGE tests |
 
+### JSON Functions (Complete)
+| File | Status |
+|------|--------|
+| `ExpressionEvaluator.Json.cs` | Created - JSON function implementations |
+| `ExpressionEvaluator.Functions.cs` | Modified - JSON function routing |
+| `WitSqlValue.Json.cs` | Existing - Core JSON operations |
+| `WitSqlEngineJsonFunctionTests.cs` | Created - 42 JSON tests |
+
 
 ## Dependencies
 
@@ -514,6 +552,102 @@ EF Core scaffolding requires these views for reverse engineering:
 +-------------------------------------------------------------+
 |  TypeMapping --> QueryTranslation --> Migrations             |
 +-------------------------------------------------------------+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
 
 
