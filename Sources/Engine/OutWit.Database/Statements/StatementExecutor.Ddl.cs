@@ -395,25 +395,41 @@ public sealed partial class StatementExecutor
             }
         }
 
+        // Build Columns list: for expression elements, use synthetic placeholder names
+        // This ensures Columns.Count == ExpressionColumns.Count
+        var columns = new List<string>();
+        var expressionColumns = new List<string?>();
+        
+        for (int i = 0; i < createIndex.Elements.Count; i++)
+        {
+            var element = createIndex.Elements[i];
+            if (element.ColumnName != null)
+            {
+                columns.Add(element.ColumnName);
+                expressionColumns.Add(element.Expression != null 
+                    ? WitSqlExpressionSerializer.Serialize(element.Expression) 
+                    : null);
+            }
+            else if (element.Expression != null)
+            {
+                // Pure expression index element - use placeholder column name
+                columns.Add($"$expr{i}");
+                expressionColumns.Add(WitSqlExpressionSerializer.Serialize(element.Expression));
+            }
+        }
+
         var metadata = new DefinitionIndex
         {
             Name = createIndex.IndexName,
             TableName = createIndex.TableName,
-            Columns = createIndex.Elements
-                .Where(e => e.ColumnName != null)
-                .Select(e => e.ColumnName!)
-                .ToList(),
+            Columns = columns,
             IsUnique = createIndex.IsUnique,
             ColumnDescending = createIndex.Elements.Select(e => e.Descending).ToList(),
             WhereExpression = createIndex.WhereClause != null 
                 ? WitSqlExpressionSerializer.Serialize(createIndex.WhereClause) 
                 : null,
             IncludeColumns = createIndex.IncludeColumns,
-            ExpressionColumns = createIndex.Elements
-                .Select(e => e.Expression != null 
-                    ? WitSqlExpressionSerializer.Serialize(e.Expression) 
-                    : null)
-                .ToList()
+            ExpressionColumns = expressionColumns
         };
 
         m_context.Database.CreateIndex(metadata);

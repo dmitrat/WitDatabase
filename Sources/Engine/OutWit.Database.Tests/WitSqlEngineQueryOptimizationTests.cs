@@ -297,12 +297,11 @@ public sealed class WitSqlEngineQueryOptimizationTests : WitSqlEngineTestsBase
     #region Expression Index Tests
 
     [Test]
-    [Ignore("Expression indexes in CREATE INDEX not yet supported by parser")]
     public void QueryWithExpressionIndexWorksTest()
     {
         // Arrange
         CreateLargeUsersTable(100);
-        m_engine.Execute("CREATE INDEX idx_users_lower_name ON Users (LOWER(Name))");
+        m_engine.Execute("CREATE INDEX idx_users_lower_name ON Users ((LOWER(Name)))");
 
         // Act - expression index on LOWER(Name)
         var result = m_engine.Query(@"

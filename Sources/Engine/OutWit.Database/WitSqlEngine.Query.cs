@@ -224,6 +224,8 @@ public sealed partial class WitSqlEngine
 
     /// <summary>
     /// Gets the column types for an index's columns.
+    /// For expression indexes, uses StringVariable as the default type since
+    /// the actual type is determined when the expression is evaluated.
     /// </summary>
     private static WitDataType[] GetIndexColumnTypes(DefinitionTable table, DefinitionIndex indexDef)
     {
@@ -232,9 +234,19 @@ public sealed partial class WitSqlEngine
         for (int i = 0; i < indexDef.Columns.Count; i++)
         {
             var columnName = indexDef.Columns[i];
-            var column = table.GetColumn(columnName)
-                ?? throw new InvalidOperationException($"Column '{columnName}' not found in table '{table.Name}'");
-            types[i] = column.Type;
+            
+            // Check if this is an expression index column (placeholder name starts with $expr)
+            if (columnName.StartsWith("$expr", StringComparison.Ordinal))
+            {
+                // Expression index - use string type as default (expressions typically return strings like LOWER())
+                types[i] = WitDataType.StringVariable;
+            }
+            else
+            {
+                var column = table.GetColumn(columnName)
+                    ?? throw new InvalidOperationException($"Column '{columnName}' not found in table '{table.Name}'");
+                types[i] = column.Type;
+            }
         }
         
         return types;
