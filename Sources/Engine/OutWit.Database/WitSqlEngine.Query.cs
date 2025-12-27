@@ -102,8 +102,11 @@ public sealed partial class WitSqlEngine
         var table = m_schema.GetTable(tableName)
                     ?? throw new InvalidOperationException($"Table '{tableName}' not found");
 
+        // Create execution context for VIRTUAL computed columns evaluation
+        var context = new ContextExecution { Database = this };
+
         // Use transaction for scanning if one is active
-        return new IteratorTableScan(m_currentTransaction, m_database.Store, table);
+        return new IteratorTableScan(m_currentTransaction, m_database.Store, table, context);
     }
 
     /// <summary>

@@ -246,21 +246,29 @@ All these patterns are now supported!
 | ADD COLUMN with DEFAULT | 10 | ? |
 | ADD CONSTRAINT | 11 | ? |
 | DROP CONSTRAINT | 5 | ? |
-| Computed Columns | 7 | ? |
+| Computed Columns (basic) | 7 | ? |
+| Computed Columns Auto-Update | 4 | ? |
+| Virtual Computed Columns | 4 | ? |
+| Index on Computed Columns | 1 | ? |
 | Integration | 2 | ? |
-| **Total** | **35** | ? |
+| **Total** | **44** | ? |
 
 ---
 
 ## Future Enhancements (v2)
 
-### Computed Columns Auto-Update
-- [ ] Auto-recalculate STORED columns on UPDATE affecting source columns
-- [ ] Evaluate VIRTUAL columns on-the-fly during SELECT
+### Computed Columns - ? COMPLETED
 
-### Index on Computed Columns
-- [ ] Allow creating index on STORED computed column
-- [ ] Expression index already provides similar functionality
+All computed column features implemented:
+- [x] Auto-recalculate STORED columns on UPDATE affecting source columns
+- [x] Evaluate VIRTUAL columns on-the-fly during SELECT
+- [x] Auto-calculate STORED columns on INSERT
+- [x] Prevent direct INSERT into computed columns
+- [x] Create INDEX on STORED computed column
+
+### Remaining Items
+
+- [ ] Cascading updates for STORED columns (when source table FK changes)
 
 ---
 

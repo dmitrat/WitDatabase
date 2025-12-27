@@ -1,5 +1,8 @@
+using OutWit.Database.Context;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Definitions;
+using OutWit.Database.Expressions;
+using OutWit.Database.Parser;
 using OutWit.Database.Schema;
 using OutWit.Database.Types;
 using OutWit.Database.Utils;
@@ -19,10 +22,14 @@ internal sealed class IteratorTableScan : IteratorBase
     private readonly ITransaction? m_transaction;
     private readonly IKeyValueStore m_store;
     private readonly DefinitionTable m_table;
+    private readonly ContextExecution? m_context;
     private readonly byte[] m_prefix;
     private IReadOnlyList<WitSqlColumnInfo>? m_schema;
     private IEnumerator<(byte[] Key, byte[] Value)>? m_enumerator;
     private WitSqlRow m_current;
+    
+    // Cached info about virtual computed columns
+    private readonly List<(int Index, string Expression)>? m_virtualComputedColumns;
 
     #endregion
 
@@ -34,12 +41,26 @@ internal sealed class IteratorTableScan : IteratorBase
     /// <param name="transaction">The active transaction (if any).</param>
     /// <param name="store">The key-value store to scan (used when no transaction is active).</param>
     /// <param name="table">The table definition.</param>
-    public IteratorTableScan(ITransaction? transaction, IKeyValueStore store, DefinitionTable table)
+    /// <param name="context">The execution context (optional, for evaluating VIRTUAL computed columns).</param>
+    public IteratorTableScan(ITransaction? transaction, IKeyValueStore store, DefinitionTable table, ContextExecution? context = null)
     {
         m_transaction = transaction;
         m_store = store;
         m_table = table;
+        m_context = context;
         m_prefix = SchemaCatalog.GetTableDataPrefix(table.Name);
+        
+        // Cache virtual computed columns info
+        m_virtualComputedColumns = null;
+        for (int i = 0; i < table.Columns.Count; i++)
+        {
+            var col = table.Columns[i];
+            if (col.IsComputed && !col.IsStored && !string.IsNullOrEmpty(col.ComputedExpression))
+            {
+                m_virtualComputedColumns ??= new List<(int, string)>();
+                m_virtualComputedColumns.Add((i, col.ComputedExpression));
+            }
+        }
     }
 
     #endregion
@@ -129,6 +150,29 @@ internal sealed class IteratorTableScan : IteratorBase
         {
             values[i + 1] = dataRow[i];
             names[i + 1] = dataRow.ColumnNames[i];
+        }
+
+        // Evaluate VIRTUAL computed columns on-the-fly
+        if (m_virtualComputedColumns != null && m_context != null)
+        {
+            // Create a row without _rowid for expression evaluation (column indices match table definition)
+            var rowForEval = new WitSqlRow(dataRow.Values.ToArray(), dataRow.ColumnNames.ToArray());
+            var evaluator = new ExpressionEvaluator(m_context);
+
+            foreach (var (colIndex, expression) in m_virtualComputedColumns)
+            {
+                try
+                {
+                    var expr = WitSql.ParseExpression(expression);
+                    var computedValue = evaluator.Evaluate(expr, rowForEval);
+                    values[colIndex + 1] = computedValue; // +1 because of _rowid
+                }
+                catch
+                {
+                    // If evaluation fails, keep NULL
+                    values[colIndex + 1] = WitSqlValue.Null;
+                }
+            }
         }
 
         m_current = new WitSqlRow(values, names);

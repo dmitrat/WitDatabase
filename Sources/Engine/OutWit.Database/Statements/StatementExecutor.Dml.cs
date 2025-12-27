@@ -167,11 +167,16 @@ public sealed partial class StatementExecutor
         var names = table.Columns.Select(c => c.Name).ToArray();
         long rowId = 0;
 
-        // Initialize with defaults
+        // Initialize with defaults (skip computed columns for now)
         for (int i = 0; i < table.Columns.Count; i++)
         {
             var col = table.Columns[i];
-            if (col.IsAutoIncrement)
+            if (col.IsComputed)
+            {
+                // Computed columns will be calculated after all regular values are set
+                values[i] = WitSqlValue.Null;
+            }
+            else if (col.IsAutoIncrement)
             {
                 rowId = m_context.Database.GetNextAutoIncrement(table.Name);
                 values[i] = WitSqlValue.FromInt(rowId);
@@ -197,6 +202,13 @@ public sealed partial class StatementExecutor
                 var colIndex = table.GetOrdinal(columnNames[i]);
                 if (colIndex >= 0)
                 {
+                    var col = table.Columns[colIndex];
+                    // Don't allow setting computed columns directly
+                    if (col.IsComputed)
+                    {
+                        throw new InvalidOperationException(
+                            $"Cannot INSERT into computed column '{col.Name}'");
+                    }
                     values[colIndex] = evaluator.Evaluate(valueExprs[i], dummyRow);
                 }
             }
@@ -204,9 +216,28 @@ public sealed partial class StatementExecutor
         else
         {
             // Positional: INSERT INTO table VALUES (val1, val2, ...)
-            for (int i = 0; i < valueExprs.Count && i < table.Columns.Count; i++)
+            // Count non-computed columns for positional matching
+            int valueIndex = 0;
+            for (int i = 0; i < table.Columns.Count && valueIndex < valueExprs.Count; i++)
             {
-                values[i] = evaluator.Evaluate(valueExprs[i], dummyRow);
+                var col = table.Columns[i];
+                if (!col.IsComputed)
+                {
+                    values[i] = evaluator.Evaluate(valueExprs[valueIndex], dummyRow);
+                    valueIndex++;
+                }
+            }
+        }
+
+        // Now calculate STORED computed columns
+        var intermediateRow = new WitSqlRow(values, names);
+        for (int i = 0; i < table.Columns.Count; i++)
+        {
+            var col = table.Columns[i];
+            if (col.IsComputed && col.IsStored && !string.IsNullOrEmpty(col.ComputedExpression))
+            {
+                var expr = Parser.WitSql.ParseExpression(col.ComputedExpression);
+                values[i] = evaluator.Evaluate(expr, intermediateRow);
             }
         }
 
@@ -243,6 +274,11 @@ public sealed partial class StatementExecutor
         iterator.Open();
         var evaluator = new ExpressionEvaluator(m_context);
 
+        // Get computed columns info
+        var storedComputedColumns = table.Columns
+            .Where(c => c.IsComputed && c.IsStored)
+            .ToList();
+
         // Collect rows to update (can't modify while iterating)
         var rowsToUpdate = new List<(long RowId, WitSqlRow OldRow, WitSqlRow NewRow)>();
 
@@ -262,6 +298,28 @@ public sealed partial class StatementExecutor
                         if (columnNames[i].Equals(setClause.ColumnName, StringComparison.OrdinalIgnoreCase))
                         {
                             newValues[i] = evaluator.Evaluate(setClause.Value, currentRow);
+                            break;
+                        }
+                    }
+                }
+
+                // Create intermediate row for computing computed columns
+                var intermediateRow = new WitSqlRow(newValues, columnNames);
+
+                // Recalculate STORED computed columns
+                // Note: currentRow has _rowid at index 0, so table column index needs +1 offset
+                foreach (var computedCol in storedComputedColumns)
+                {
+                    // Find the column in the row (which includes _rowid as first column)
+                    for (int i = 0; i < columnNames.Length; i++)
+                    {
+                        if (columnNames[i].Equals(computedCol.Name, StringComparison.OrdinalIgnoreCase))
+                        {
+                            if (!string.IsNullOrEmpty(computedCol.ComputedExpression))
+                            {
+                                var expr = Parser.WitSql.ParseExpression(computedCol.ComputedExpression);
+                                newValues[i] = evaluator.Evaluate(expr, intermediateRow);
+                            }
                             break;
                         }
                     }

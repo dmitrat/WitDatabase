@@ -141,7 +141,7 @@
 - `Schema/SchemaCatalog.Columns.cs` - Constraint persistence
 - `Statements/StatementExecutor.Ddl.cs` - Handle constraint actions, computed columns
 
-### Test Coverage: 35 tests (11 ADD CONSTRAINT + 5 DROP CONSTRAINT + 10 ADD COLUMN with DEFAULT + 7 Computed Columns + 2 integration)
+### Test Coverage: 44 tests (11 ADD CONSTRAINT + 5 DROP CONSTRAINT + 10 ADD COLUMN with DEFAULT + 16 Computed Columns + 2 integration)
 
 ---
 
@@ -341,8 +341,8 @@ EF Core scaffolding requires these views for reverse engineering:
 | WitSqlValue* | 148 | 0 | OK |
 | WitSqlEngineIndex* | 67 | 0 | OK |
 | WitSqlEngine* | 132 | 0 | OK |
-| WitSqlEngineAlterTableConstraint* | 25 | 0 | NEW (incl. computed columns) |
-| **Total** | **1122+** | **0** | 100% passing |
+| WitSqlEngineAlterTableConstraint* | 44 | 0 | Computed columns complete |
+| **Total** | **1140+** | **0** | 100% passing |
 
 ---
 
