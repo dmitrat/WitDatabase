@@ -14,14 +14,26 @@ public sealed partial class StatementExecutor
             var iterator = m_planner.Plan(select);
             iterator.Open();
 
-            var rows = EnumerateRows(iterator);
+            // Materialize rows to a list before clearing CTE state
+            // This is necessary because EnumerateRows uses yield return (lazy evaluation)
+            var rows = EnumerateRows(iterator).ToList();
             return new WitSqlResult(rows, iterator.Schema);
         }
         finally
         {
-            // Clear CTE definitions after query execution
+            // Clear CTE definitions and cache after query execution
             // CTEs are scoped to a single statement
             m_context.CteDefinitions.Clear();
+            m_context.CteCache.Clear();
+            
+            // Clean up any CTE-related state
+            var keysToRemove = m_context.State.Keys
+                .Where(k => k.StartsWith("CTE_"))
+                .ToList();
+            foreach (var key in keysToRemove)
+            {
+                m_context.State.Remove(key);
+            }
         }
     }
 

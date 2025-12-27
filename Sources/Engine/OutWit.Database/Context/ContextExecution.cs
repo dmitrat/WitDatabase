@@ -64,4 +64,28 @@ public sealed class ContextExecution
     /// </summary>
     public Dictionary<string, ClauseCteDefinition> CteDefinitions { get; } =
         new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Gets the cache for CTE results.
+    /// When a CTE is executed, its results are cached here for reuse.
+    /// Maps CTE name to cached rows and schema.
+    /// </summary>
+    public Dictionary<string, CteCacheEntry> CteCache { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
+}
+
+/// <summary>
+/// Represents a cached CTE result.
+/// </summary>
+public sealed class CteCacheEntry
+{
+    /// <summary>
+    /// The cached rows from the CTE execution.
+    /// </summary>
+    public required IReadOnlyList<WitSqlRow> Rows { get; init; }
+
+    /// <summary>
+    /// The schema of the cached CTE result.
+    /// </summary>
+    public required IReadOnlyList<WitSqlColumnInfo> Schema { get; init; }
 }

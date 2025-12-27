@@ -157,7 +157,7 @@ public sealed class WitSqlEngineCteTests : WitSqlEngineTestsBase
             WITH UserTotals (UserId, TotalAmount) AS (
                 SELECT UserId, SUM(Amount) FROM Orders GROUP BY UserId
             )
-            SELECT * FROM UserTotals ORDER BY TotalAmount DESC");
+            SELECT * from UserTotals ORDER BY TotalAmount DESC");
 
         Assert.That(rows, Has.Count.EqualTo(3));
         // User 2 has highest total (150 + 300 = 450)
@@ -492,19 +492,35 @@ public sealed class WitSqlEngineCteTests : WitSqlEngineTestsBase
     {
         InsertCategoryHierarchy();
 
-        var rows = m_engine.Query(@"
-            WITH RECURSIVE CategoryTree (Id, Name, ParentId, Level) AS (
+        // First check without ORDER BY
+        var rowsUnordered = m_engine.Query(@"
+            WITH RECURSIVE SimpleTree (Id, Name, ParentId, Level) AS (
                 SELECT Id, Name, ParentId, 0 AS Level
                 FROM Categories
                 WHERE ParentId IS NULL
                 UNION ALL
-                SELECT c.Id, c.Name, c.ParentId, ct.Level + 1
+                SELECT c.Id, c.Name, c.ParentId, st.Level + 1
                 FROM Categories c
-                INNER JOIN CategoryTree ct ON c.ParentId = ct.Id
+                INNER JOIN SimpleTree st ON c.ParentId = st.Id
             )
-            SELECT * FROM CategoryTree ORDER BY Level, Name");
+            SELECT * FROM SimpleTree");
 
         // We have 10 categories total
+        Assert.That(rowsUnordered, Has.Count.EqualTo(10));
+        
+        // Now test with ORDER BY
+        var rows = m_engine.Query(@"
+            WITH RECURSIVE SimpleTree2 (Id, Name, ParentId, Level) AS (
+                SELECT Id, Name, ParentId, 0 AS Level
+                FROM Categories
+                WHERE ParentId IS NULL
+                UNION ALL
+                SELECT c.Id, c.Name, c.ParentId, st2.Level + 1
+                FROM Categories c
+                INNER JOIN SimpleTree2 st2 ON c.ParentId = st2.Id
+            )
+            SELECT * FROM SimpleTree2 ORDER BY Level, Name");
+
         Assert.That(rows, Has.Count.EqualTo(10));
         
         // Level 0: Electronics, Clothing (2 root categories)
@@ -728,6 +744,350 @@ public sealed class WitSqlEngineCteTests : WitSqlEngineTestsBase
 
         // Should have deep hierarchy
         Assert.That(rows[0]["MaxLevel"].AsInt64(), Is.GreaterThanOrEqualTo(2));
+    }
+
+    #endregion
+
+    #region CTE Caching Tests
+
+    [Test]
+    public void CteCachingMultipleReferencesTest()
+    {
+        InsertTestData();
+
+        // CTE referenced multiple times in the query should use cached results
+        var rows = m_engine.Query(@"
+            WITH OrderStats AS (
+                SELECT UserId, SUM(Amount) AS Total, COUNT(*) AS Count
+                FROM Orders
+                GROUP BY UserId
+            )
+            SELECT 
+                (SELECT SUM(Total) FROM OrderStats) AS GrandTotal,
+                (SELECT SUM(Count) FROM OrderStats) AS TotalOrders,
+                (SELECT MAX(Total) FROM OrderStats) AS MaxUserTotal");
+
+        Assert.That(rows, Has.Count.EqualTo(1));
+        Assert.That(rows[0]["GrandTotal"].AsDecimal(), Is.EqualTo(800m)); // 300 + 450 + 50
+        Assert.That(rows[0]["TotalOrders"].AsInt64(), Is.EqualTo(5));
+        Assert.That(rows[0]["MaxUserTotal"].AsDecimal(), Is.EqualTo(450m)); // User 2
+    }
+
+    [Test]
+    public void CteCachingSelfJoinTest()
+    {
+        InsertTestData();
+
+        // Self-join on CTE should work with cached results
+        var rows = m_engine.Query(@"
+            WITH UserOrders AS (
+                SELECT UserId, Amount FROM Orders
+            )
+            SELECT a.UserId AS User1, b.UserId AS User2, a.Amount AS Amount1, b.Amount AS Amount2
+            FROM UserOrders a
+            CROSS JOIN UserOrders b
+            WHERE a.UserId < b.UserId AND a.Amount = b.Amount");
+
+        // Orders with same amount from different users
+        // No matches expected since amounts are unique per user
+        Assert.That(rows, Has.Count.EqualTo(0));
+    }
+
+    [Test]
+    public void CteCachingWithAliasesTest()
+    {
+        InsertTestData();
+
+        // CTE accessed with different aliases should use same cached results
+        var rows = m_engine.Query(@"
+            WITH OrderData AS (
+                SELECT UserId, Amount FROM Orders WHERE Status = 'active'
+            )
+            SELECT o1.Amount AS First, o2.Amount AS Second
+            FROM OrderData o1, OrderData o2
+            WHERE o1.Amount < o2.Amount
+            ORDER BY o1.Amount, o2.Amount");
+
+        // Active orders: 100, 200, 300
+        // Pairs where first < second: (100,200), (100,300), (200,300)
+        Assert.That(rows, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public void CteCachingUnionWithSameCteTest()
+    {
+        InsertTestData();
+
+        // UNION with same CTE on both sides should use cached results
+        var rows = m_engine.Query(@"
+            WITH HighOrders AS (
+                SELECT Id, Amount FROM Orders WHERE Amount >= 150
+            )
+            SELECT Id, Amount, 'high' AS Category FROM HighOrders WHERE Amount >= 200
+            UNION ALL
+            SELECT Id, Amount, 'medium' AS Category FROM HighOrders WHERE Amount < 200
+            ORDER BY Amount DESC");
+
+        // Amount >= 150: 300, 200, 150
+        // >= 200: 300, 200 (high)
+        // < 200 but >= 150: 150 (medium)
+        Assert.That(rows, Has.Count.EqualTo(3));
+    }
+
+    [Test]
+    public void RecursiveCteCachingTest()
+    {
+        InsertCategoryHierarchy();
+
+        // Recursive CTE accessed multiple times should use cached results
+        var rows = m_engine.Query(@"
+            WITH RECURSIVE CategoryTree (Id, Name, ParentId, Level) AS (
+                SELECT Id, Name, ParentId, 0 AS Level
+                FROM Categories
+                WHERE ParentId IS NULL
+                UNION ALL
+                SELECT c.Id, c.Name, c.ParentId, ct.Level + 1
+                FROM Categories c
+                INNER JOIN CategoryTree ct ON c.ParentId = ct.Id
+            )
+            SELECT 
+                (SELECT COUNT(*) FROM CategoryTree) AS TotalCategories,
+                (SELECT COUNT(*) FROM CategoryTree WHERE Level = 0) AS RootCategories,
+                (SELECT MAX(Level) FROM CategoryTree) AS MaxDepth");
+
+        Assert.That(rows, Has.Count.EqualTo(1));
+        Assert.That(rows[0]["TotalCategories"].AsInt64(), Is.EqualTo(10));
+        Assert.That(rows[0]["RootCategories"].AsInt64(), Is.EqualTo(2));
+        Assert.That(rows[0]["MaxDepth"].AsInt64(), Is.EqualTo(2));
+    }
+
+    [Test]
+    public void CteCacheIsClearedBetweenQueriesTest()
+    {
+        InsertTestData();
+
+        // First query with CTE
+        var rows1 = m_engine.Query(@"
+            WITH OrderTotals AS (
+                SELECT SUM(Amount) AS Total FROM Orders
+            )
+            SELECT Total FROM OrderTotals");
+
+        Assert.That(rows1[0]["Total"].AsDecimal(), Is.EqualTo(800m));
+
+        // Add more data
+        m_engine.Execute("INSERT INTO Orders (UserId, Amount, Status) VALUES (4, 500, 'active')");
+
+        // Second query with same CTE name should see new data (cache is cleared)
+        var rows2 = m_engine.Query(@"
+            WITH OrderTotals AS (
+                SELECT SUM(Amount) AS Total FROM Orders
+            )
+            SELECT Total FROM OrderTotals");
+
+        Assert.That(rows2[0]["Total"].AsDecimal(), Is.EqualTo(1300m)); // 800 + 500
+    }
+
+    #endregion
+
+    #region Additional Integration Tests
+
+    [Test]
+    public void CteInNestedSubqueryTest()
+    {
+        InsertTestData();
+
+        var rows = m_engine.Query(@"
+            WITH HighValueOrders AS (
+                SELECT UserId, Amount FROM Orders WHERE Amount >= 150
+            )
+            SELECT * FROM Orders o
+            WHERE o.UserId IN (SELECT UserId FROM HighValueOrders)
+            ORDER BY o.Amount DESC");
+
+        // Users with high value orders: User 1 (200), User 2 (300, 150)
+        // All their orders: User 1 (100, 200), User 2 (150, 300)
+        Assert.That(rows, Has.Count.EqualTo(4));
+        Assert.That(rows[0]["Amount"].AsDecimal(), Is.EqualTo(300m));
+    }
+
+    [Test]
+    public void CteWithCorrelatedSubqueryTest()
+    {
+        InsertTestData();
+
+        var rows = m_engine.Query(@"
+            WITH UserOrderCounts AS (
+                SELECT UserId, COUNT(*) AS OrderCount FROM Orders GROUP BY UserId
+            )
+            SELECT o.Id, o.Amount, 
+                   (SELECT OrderCount FROM UserOrderCounts WHERE UserId = o.UserId) AS UserTotalOrders
+            FROM Orders o
+            ORDER BY o.Id");
+
+        Assert.That(rows, Has.Count.EqualTo(5));
+        
+        // User 1 has 2 orders, User 2 has 2 orders, User 3 has 1 order
+        var order1 = rows.First(r => r["Id"].AsInt64() == 1);
+        Assert.That(order1["UserTotalOrders"].AsInt64(), Is.EqualTo(2)); // User 1
+        
+        var order3 = rows.First(r => r["Id"].AsInt64() == 3);
+        Assert.That(order3["UserTotalOrders"].AsInt64(), Is.EqualTo(2)); // User 2
+        
+        var order5 = rows.First(r => r["Id"].AsInt64() == 5);
+        Assert.That(order5["UserTotalOrders"].AsInt64(), Is.EqualTo(1)); // User 3
+    }
+
+    [Test]
+    public void CteWithLeftJoinTest()
+    {
+        // Create Users table
+        m_engine.Execute(@"
+            CREATE TABLE Users (
+                Id BIGINT PRIMARY KEY AUTOINCREMENT,
+                Name VARCHAR(100)
+            )");
+        m_engine.Execute("INSERT INTO Users (Name) VALUES ('Alice')");
+        m_engine.Execute("INSERT INTO Users (Name) VALUES ('Bob')");
+        m_engine.Execute("INSERT INTO Users (Name) VALUES ('Charlie')");
+        m_engine.Execute("INSERT INTO Users (Name) VALUES ('Diana')"); // User with no orders
+
+        InsertTestData();
+
+        // Use ORDER BY u.Id to avoid issues with computed columns
+        var rows = m_engine.Query(@"
+            WITH OrderTotals AS (
+                SELECT UserId, SUM(Amount) AS TotalAmount, COUNT(*) AS OrderCount
+                FROM Orders
+                GROUP BY UserId
+            )
+            SELECT u.Name, COALESCE(ot.TotalAmount, 0) AS TotalSpent, COALESCE(ot.OrderCount, 0) AS Orders
+            FROM Users u
+            LEFT JOIN OrderTotals ot ON u.Id = ot.UserId
+            ORDER BY u.Id");
+
+        Assert.That(rows, Has.Count.EqualTo(4));
+        
+        // Diana has no orders (Diana is user 4)
+        var diana = rows.First(r => r["Name"].AsString() == "Diana");
+        Assert.That(diana["TotalSpent"].AsDecimal(), Is.EqualTo(0m));
+        Assert.That(diana["Orders"].AsInt64(), Is.EqualTo(0));
+        
+        // Verify Alice has orders
+        var alice = rows.First(r => r["Name"].AsString() == "Alice");
+        Assert.That(alice["TotalSpent"].AsDecimal(), Is.EqualTo(300m)); // 100 + 200
+    }
+
+    [Test]
+    public void CteWithComplexExpressionTest()
+    {
+        InsertTestData();
+
+        // Test aggregation functions in CTE with computed columns
+        var rows = m_engine.Query(@"
+            WITH OrderAnalysis AS (
+                SELECT 
+                    UserId,
+                    COUNT(*) AS OrderCount,
+                    SUM(Amount) AS TotalAmount,
+                    MIN(Amount) AS MinOrder,
+                    MAX(Amount) AS MaxOrder
+                FROM Orders
+                GROUP BY UserId
+            )
+            SELECT 
+                UserId,
+                OrderCount,
+                TotalAmount,
+                MinOrder,
+                MaxOrder,
+                TotalAmount / OrderCount AS ComputedAvg,
+                MaxOrder - MinOrder AS OrderRange
+            FROM OrderAnalysis
+            ORDER BY UserId");
+
+        Assert.That(rows, Has.Count.EqualTo(3));
+        
+        // User 1 has total 300 (100 + 200)
+        Assert.That(rows[0]["UserId"].AsInt64(), Is.EqualTo(1));
+        Assert.That(rows[0]["TotalAmount"].AsDecimal(), Is.EqualTo(300m));
+        Assert.That(rows[0]["OrderRange"].AsDecimal(), Is.EqualTo(100m)); // 200 - 100
+        
+        // User 2 has highest total (450)
+        Assert.That(rows[1]["UserId"].AsInt64(), Is.EqualTo(2));
+        Assert.That(rows[1]["TotalAmount"].AsDecimal(), Is.EqualTo(450m));
+        Assert.That(rows[1]["OrderRange"].AsDecimal(), Is.EqualTo(150m)); // 300 - 150
+        
+        // User 3 has 50
+        Assert.That(rows[2]["UserId"].AsInt64(), Is.EqualTo(3));
+        Assert.That(rows[2]["TotalAmount"].AsDecimal(), Is.EqualTo(50m));
+        Assert.That(rows[2]["OrderRange"].AsDecimal(), Is.EqualTo(0m)); // single order
+    }
+
+    [Test]
+    public void CteWithExistsSubqueryTest()
+    {
+        InsertTestData();
+
+        var rows = m_engine.Query(@"
+            WITH HighSpenders AS (
+                SELECT UserId FROM Orders GROUP BY UserId HAVING SUM(Amount) > 200
+            )
+            SELECT * FROM Orders o
+            WHERE EXISTS (SELECT 1 FROM HighSpenders hs WHERE hs.UserId = o.UserId)
+            ORDER BY o.Amount DESC");
+
+        // High spenders: User 1 (300), User 2 (450)
+        // Their orders: User 1 (100, 200), User 2 (150, 300)
+        Assert.That(rows, Has.Count.EqualTo(4));
+    }
+
+    [Test]
+    public void CteWithNotExistsSubqueryTest()
+    {
+        InsertTestData();
+
+        var rows = m_engine.Query(@"
+            WITH HighSpenders AS (
+                SELECT UserId FROM Orders GROUP BY UserId HAVING SUM(Amount) > 200
+            )
+            SELECT * FROM Orders o
+            WHERE NOT EXISTS (SELECT 1 FROM HighSpenders hs WHERE hs.UserId = o.UserId)
+            ORDER BY o.Amount DESC");
+
+        // Low spenders: User 3 (50)
+        Assert.That(rows, Has.Count.EqualTo(1));
+        Assert.That(rows[0]["Amount"].AsDecimal(), Is.EqualTo(50m));
+    }
+
+    [Test]
+    public void MultipleSeparateQueriesWithSameCteNameTest()
+    {
+        InsertTestData();
+
+        // First query
+        var rows1 = m_engine.Query(@"
+            WITH Stats AS (
+                SELECT COUNT(*) AS Total FROM Orders
+            )
+            SELECT Total FROM Stats");
+        Assert.That(rows1[0]["Total"].AsInt64(), Is.EqualTo(5));
+
+        // Second query with same CTE name but different definition
+        var rows2 = m_engine.Query(@"
+            WITH Stats AS (
+                SELECT AVG(Amount) AS AvgAmount FROM Orders
+            )
+            SELECT AvgAmount FROM Stats");
+        Assert.That(rows2[0]["AvgAmount"].AsDouble(), Is.EqualTo(160.0).Within(0.01));
+
+        // Third query with same CTE name, different definition again
+        var rows3 = m_engine.Query(@"
+            WITH Stats AS (
+                SELECT MAX(Amount) AS MaxAmount FROM Orders
+            )
+            SELECT MaxAmount FROM Stats");
+        Assert.That(rows3[0]["MaxAmount"].AsDecimal(), Is.EqualTo(300m));
     }
 
     #endregion

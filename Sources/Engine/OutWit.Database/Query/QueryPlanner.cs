@@ -27,6 +27,22 @@ public sealed class QueryPlanner
     };
 
     /// <summary>
+    /// Window functions that assign ranking/position to rows.
+    /// </summary>
+    private static readonly HashSet<string> WINDOW_RANKING_FUNCTIONS = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "ROW_NUMBER", "RANK", "DENSE_RANK", "NTILE", "PERCENT_RANK", "CUME_DIST"
+    };
+
+    /// <summary>
+    /// Window functions that access values from other rows.
+    /// </summary>
+    private static readonly HashSet<string> WINDOW_VALUE_FUNCTIONS = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "FIRST_VALUE", "LAST_VALUE", "NTH_VALUE", "LAG", "LEAD"
+    };
+
+    /// <summary>
     /// Maximum recursion depth for recursive CTEs to prevent infinite loops.
     /// </summary>
     private const int MAX_RECURSION_DEPTH = 1000;
@@ -154,11 +170,50 @@ public sealed class QueryPlanner
     }
 
     /// <summary>
+    /// Gets the schema for the recursive CTE working table.
+    /// </summary>
+    private IReadOnlyList<WitSqlColumnInfo>? GetRecursiveWorkingTableSchema(string cteName)
+    {
+        return m_context.State.TryGetValue($"CTE_SCHEMA_{cteName}", out var value)
+            ? value as IReadOnlyList<WitSqlColumnInfo>
+            : null;
+    }
+
+    /// <summary>
     /// Sets the in-memory working table for recursive CTE execution.
     /// </summary>
-    private void SetRecursiveWorkingTable(string cteName, List<WitSqlRow> rows)
+    private void SetRecursiveWorkingTable(string cteName, List<WitSqlRow> rows, IReadOnlyList<WitSqlColumnInfo>? schema = null)
     {
         m_context.State[$"CTE_WORKING_{cteName}"] = rows;
+        if (schema != null)
+        {
+            m_context.State[$"CTE_SCHEMA_{cteName}"] = schema;
+        }
+    }
+
+    /// <summary>
+    /// Tries to get cached CTE results.
+    /// </summary>
+    /// <param name="cteName">The CTE name.</param>
+    /// <returns>The cached entry if found, null otherwise.</returns>
+    private CteCacheEntry? TryGetCachedCte(string cteName)
+    {
+        return m_context.CteCache.TryGetValue(cteName, out var entry) ? entry : null;
+    }
+
+    /// <summary>
+    /// Caches CTE results for reuse.
+    /// </summary>
+    /// <param name="cteName">The CTE name.</param>
+    /// <param name="rows">The rows to cache.</param>
+    /// <param name="schema">The schema of the cached rows.</param>
+    private void CacheCteResults(string cteName, IReadOnlyList<WitSqlRow> rows, IReadOnlyList<WitSqlColumnInfo> schema)
+    {
+        m_context.CteCache[cteName] = new CteCacheEntry
+        {
+            Rows = rows,
+            Schema = schema
+        };
     }
 
     #endregion
@@ -189,17 +244,42 @@ public sealed class QueryPlanner
 
     private IResultIterator PlanNonAggregateQuery(IResultIterator iterator, WitSqlStatementSelect select)
     {
-        // ORDER BY - before projection to access original column names
-        iterator = ApplyOrderByClause(iterator, select.OrderByClause);
+        // Check if query contains window functions
+        bool hasWindowFunctions = HasWindowFunctions(select.SelectList);
 
-        // LIMIT/OFFSET - before projection for efficiency
-        iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
+        if (hasWindowFunctions)
+        {
+            // Window functions need all data to be processed first
+            // Apply ORDER BY before window processing if needed for window functions
+            // Note: Window functions have their own ORDER BY in OVER clause
+            
+            // Window function iterator processes all rows and computes window values
+            iterator = new IteratorWindow(iterator, select.SelectList, m_context);
+            
+            // ORDER BY - apply after window functions for final ordering
+            iterator = ApplyOrderByClause(iterator, select.OrderByClause);
 
-        // Projection (SELECT columns)
-        iterator = ApplyProjection(iterator, select.SelectList);
+            // LIMIT/OFFSET - after ordering
+            iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
 
-        // DISTINCT - after projection so internal columns (like _rowid) are excluded
-        iterator = ApplyDistinct(iterator, select.IsDistinct);
+            // DISTINCT - after window processing
+            iterator = ApplyDistinct(iterator, select.IsDistinct);
+        }
+        else
+        {
+            // Original non-window path
+            // ORDER BY - before projection to access original column names
+            iterator = ApplyOrderByClause(iterator, select.OrderByClause);
+
+            // LIMIT/OFFSET - before projection for efficiency
+            iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
+
+            // Projection (SELECT columns)
+            iterator = ApplyProjection(iterator, select.SelectList);
+
+            // DISTINCT - after projection so internal columns (like _rowid) are excluded
+            iterator = ApplyDistinct(iterator, select.IsDistinct);
+        }
 
         return iterator;
     }
@@ -365,13 +445,25 @@ public sealed class QueryPlanner
                 var workingTable = GetRecursiveWorkingTable(simple.TableName);
                 if (workingTable != null)
                 {
-                    // Use the working table for recursive iteration
-                    var inMemoryIterator = new IteratorInMemory(workingTable);
+                    // Use the working table for recursive iteration with proper schema
+                    var schema = GetRecursiveWorkingTableSchema(simple.TableName);
+                    var inMemoryIterator = schema != null
+                        ? new IteratorInMemory(workingTable, schema)
+                        : new IteratorInMemory(workingTable);
                     return WrapWithAlias(inMemoryIterator, simple.Alias ?? simple.TableName);
                 }
                 
                 // First access to recursive CTE - execute it fully
                 return CreateRecursiveCteIterator(cteDef, simple.Alias ?? simple.TableName);
+            }
+            
+            // For non-recursive CTEs, check if we have cached results
+            var cached = TryGetCachedCte(simple.TableName);
+            if (cached != null)
+            {
+                // Use cached results
+                var cachedIterator = new IteratorInMemory(cached.Rows, cached.Schema);
+                return WrapWithAlias(cachedIterator, simple.Alias ?? simple.TableName);
             }
             
             return CreateCteIterator(cteDef, simple.Alias ?? simple.TableName);
@@ -391,7 +483,16 @@ public sealed class QueryPlanner
 
     private IResultIterator CreateCteIterator(ClauseCteDefinition cteDef, string alias)
     {
-        // Plan the CTE query (recursively handles nested CTEs)
+        // Check if we already have cached results for this CTE
+        var cached = TryGetCachedCte(cteDef.Name);
+        if (cached != null)
+        {
+            // Use cached results
+            var cachedIterator = new IteratorInMemory(cached.Rows, cached.Schema);
+            return WrapWithAlias(cachedIterator, alias);
+        }
+        
+        // Execute CTE and cache results
         var cteIterator = Plan(cteDef.Query);
         
         // If CTE has explicit column names, rename the columns
@@ -400,7 +501,30 @@ public sealed class QueryPlanner
             cteIterator = new IteratorColumnRename(cteIterator, cteDef.ColumnNames);
         }
         
-        return WrapWithAlias(cteIterator, alias);
+        // Materialize the CTE results into memory and cache them
+        var rows = new List<WitSqlRow>();
+        cteIterator.Open();
+        try
+        {
+            // Get schema after opening (schema might be built during Open)
+            var schema = cteIterator.Schema;
+            
+            while (cteIterator.MoveNext())
+            {
+                rows.Add(cteIterator.Current);
+            }
+            
+            // Cache the results
+            CacheCteResults(cteDef.Name, rows, schema);
+            
+            // Return iterator over cached results
+            var cachedIterator = new IteratorInMemory(rows, schema);
+            return WrapWithAlias(cachedIterator, alias);
+        }
+        finally
+        {
+            cteIterator.Dispose();
+        }
     }
 
     private IResultIterator CreateRecursiveCteIterator(ClauseCteDefinition cteDef, string alias)
@@ -436,12 +560,15 @@ public sealed class QueryPlanner
 
         var allRows = new List<WitSqlRow>();
         var workingTable = new List<WitSqlRow>();
+        IReadOnlyList<WitSqlColumnInfo>? schema = null;
         
         // Execute anchor
         var anchorIterator = Plan(anchorQuery);
         anchorIterator.Open();
         try
         {
+            schema = anchorIterator.Schema;
+            
             while (anchorIterator.MoveNext())
             {
                 var row = RenameRowColumns(anchorIterator.Current, cteDef.ColumnNames);
@@ -454,6 +581,12 @@ public sealed class QueryPlanner
             anchorIterator.Dispose();
         }
 
+        // Update schema with renamed columns if needed
+        if (cteDef.ColumnNames != null && cteDef.ColumnNames.Count > 0 && schema != null)
+        {
+            schema = RenameSchemaColumns(schema, cteDef.ColumnNames);
+        }
+
         // Step 2: Iteratively execute recursive member
         var recursiveQuery = setOp.RightQuery;
         int recursionDepth = 0;
@@ -462,8 +595,8 @@ public sealed class QueryPlanner
         {
             recursionDepth++;
             
-            // Set working table for recursive reference
-            SetRecursiveWorkingTable(cteDef.Name, workingTable);
+            // Set working table for recursive reference with schema
+            SetRecursiveWorkingTable(cteDef.Name, workingTable, schema);
             
             var newRows = new List<WitSqlRow>();
             
@@ -490,6 +623,7 @@ public sealed class QueryPlanner
 
         // Clear working table state
         m_context.State.Remove($"CTE_WORKING_{cteDef.Name}");
+        m_context.State.Remove($"CTE_SCHEMA_{cteDef.Name}");
 
         if (recursionDepth >= MAX_RECURSION_DEPTH)
         {
@@ -497,8 +631,14 @@ public sealed class QueryPlanner
                 $"Recursive CTE '{cteDef.Name}' exceeded maximum recursion depth of {MAX_RECURSION_DEPTH}");
         }
 
+        // Cache the results for potential reuse
+        if (schema != null)
+        {
+            CacheCteResults(cteDef.Name, allRows, schema);
+        }
+
         // Return in-memory iterator over all collected rows
-        var resultIterator = new IteratorInMemory(allRows);
+        var resultIterator = new IteratorInMemory(allRows, schema ?? []);
         return WrapWithAlias(resultIterator, alias);
     }
 
@@ -514,6 +654,27 @@ public sealed class QueryPlanner
         }
 
         return new WitSqlRow(row.Values.ToArray(), names);
+    }
+
+    private static IReadOnlyList<WitSqlColumnInfo> RenameSchemaColumns(
+        IReadOnlyList<WitSqlColumnInfo> schema, 
+        IReadOnlyList<string> newNames)
+    {
+        var result = new List<WitSqlColumnInfo>(schema.Count);
+        
+        for (int i = 0; i < schema.Count; i++)
+        {
+            var newName = i < newNames.Count ? newNames[i] : schema[i].Name;
+            result.Add(new WitSqlColumnInfo
+            {
+                Name = newName,
+                Type = schema[i].Type,
+                IsNullable = schema[i].IsNullable,
+                TableName = schema[i].TableName
+            });
+        }
+        
+        return result;
     }
 
     private IResultIterator CreateViewIterator(DefinitionView view, string alias)
@@ -552,11 +713,132 @@ public sealed class QueryPlanner
 
     private bool IsAggregateQuery(WitSqlStatementSelect select)
     {
-        // Query is aggregate if it has GROUP BY or any aggregate function in SELECT
+        // Query is aggregate if it has GROUP BY or any aggregate function in SELECT (without OVER)
         if (select.GroupByClause != null && select.GroupByClause.Count > 0)
             return true;
 
-        return HasAggregates(select.SelectList);
+        return HasNonWindowAggregates(select.SelectList);
+    }
+
+    private static bool HasNonWindowAggregates(IReadOnlyList<ClauseSelectItem> selectList)
+    {
+        foreach (var item in selectList)
+        {
+            if (ContainsNonWindowAggregateFunction(item.Expression))
+                return true;
+        }
+        return false;
+    }
+
+    private static bool ContainsNonWindowAggregateFunction(WitSqlExpression? expression)
+    {
+        if (expression == null)
+            return false;
+
+        return expression switch
+        {
+            // Aggregate function WITHOUT OVER clause = regular aggregate
+            WitSqlExpressionFunctionCall func => 
+                AGGREGATE_FUNCTIONS.Contains(func.FunctionName) && func.Over == null,
+            WitSqlExpressionBinary binary => 
+                ContainsNonWindowAggregateFunction(binary.Left) || ContainsNonWindowAggregateFunction(binary.Right),
+            WitSqlExpressionUnary unary => 
+                ContainsNonWindowAggregateFunction(unary.Operand),
+            WitSqlExpressionCase caseExpr => 
+                ContainsNonWindowAggregateFunctionInCase(caseExpr),
+            _ => false
+        };
+    }
+
+    private static bool ContainsNonWindowAggregateFunctionInCase(WitSqlExpressionCase caseExpr)
+    {
+        if (ContainsNonWindowAggregateFunction(caseExpr.Operand))
+            return true;
+
+        foreach (var whenClause in caseExpr.WhenClauses)
+        {
+            if (ContainsNonWindowAggregateFunction(whenClause.When) || 
+                ContainsNonWindowAggregateFunction(whenClause.Then))
+                return true;
+        }
+
+        return ContainsNonWindowAggregateFunction(caseExpr.ElseResult);
+    }
+
+    /// <summary>
+    /// Checks if the SELECT list contains any window functions.
+    /// </summary>
+    private static bool HasWindowFunctions(IReadOnlyList<ClauseSelectItem> selectList)
+    {
+        foreach (var item in selectList)
+        {
+            if (ContainsWindowFunction(item.Expression))
+                return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Recursively checks if an expression contains a window function.
+    /// </summary>
+    private static bool ContainsWindowFunction(WitSqlExpression? expression)
+    {
+        if (expression == null)
+            return false;
+
+        return expression switch
+        {
+            WitSqlExpressionFunctionCall func => IsWindowFunction(func),
+            WitSqlExpressionBinary binary => 
+                ContainsWindowFunction(binary.Left) || ContainsWindowFunction(binary.Right),
+            WitSqlExpressionUnary unary => 
+                ContainsWindowFunction(unary.Operand),
+            WitSqlExpressionCase caseExpr => 
+                ContainsWindowFunctionInCase(caseExpr),
+            _ => false
+        };
+    }
+
+    private static bool ContainsWindowFunctionInCase(WitSqlExpressionCase caseExpr)
+    {
+        if (ContainsWindowFunction(caseExpr.Operand))
+            return true;
+
+        foreach (var whenClause in caseExpr.WhenClauses)
+        {
+            if (ContainsWindowFunction(whenClause.When) || 
+                ContainsWindowFunction(whenClause.Then))
+                return true;
+        }
+
+        return ContainsWindowFunction(caseExpr.ElseResult);
+    }
+
+    /// <summary>
+    /// Determines if a function call is a window function.
+    /// A window function is either:
+    /// 1. A ranking function (ROW_NUMBER, RANK, etc.) with OVER clause
+    /// 2. A value function (LAG, LEAD, etc.) with OVER clause
+    /// 3. An aggregate function with OVER clause
+    /// </summary>
+    private static bool IsWindowFunction(WitSqlExpressionFunctionCall func)
+    {
+        // Must have OVER clause to be a window function
+        if (func.Over == null)
+            return false;
+
+        var funcName = func.FunctionName.ToUpperInvariant();
+
+        // Check if it's a ranking or value window function
+        if (WINDOW_RANKING_FUNCTIONS.Contains(funcName) || 
+            WINDOW_VALUE_FUNCTIONS.Contains(funcName))
+            return true;
+
+        // Aggregate functions with OVER are also window functions
+        if (AGGREGATE_FUNCTIONS.Contains(funcName))
+            return true;
+
+        return false;
     }
 
     private static bool HasAggregates(IReadOnlyList<ClauseSelectItem> selectList)
