@@ -118,7 +118,7 @@ public class WitDataTypeRegistryTest
         Assert.That(WitTypeConverter.GetClrType(WitDataType.BinaryVariable), Is.EqualTo(typeof(byte[])));
         Assert.That(WitTypeConverter.GetClrType(WitDataType.BinaryFixed), Is.EqualTo(typeof(byte[])));
         Assert.That(WitTypeConverter.GetClrType(WitDataType.Null), Is.EqualTo(typeof(DBNull)));
-        Assert.That(WitTypeConverter.GetClrType(WitDataType.RowVersion), Is.EqualTo(typeof(byte[])));
+        Assert.That(WitTypeConverter.GetClrType(WitDataType.RowVersion), Is.EqualTo(typeof(ulong)));
         Assert.That(WitTypeConverter.GetClrType(WitDataType.Json), Is.EqualTo(typeof(JsonDocument)));
     }
 

@@ -99,10 +99,15 @@ public class WitTypeConverterTests
     [Test]
     [TestCase(WitDataType.BinaryFixed)]
     [TestCase(WitDataType.BinaryVariable)]
-    [TestCase(WitDataType.RowVersion)]
     public void ToSqlTypeBinaryTypesTest(WitDataType dataType)
     {
         Assert.That(WitTypeConverter.ToSqlType(dataType), Is.EqualTo(WitSqlType.Blob));
+    }
+
+    [Test]
+    public void ToSqlTypeRowVersionTest()
+    {
+        Assert.That(WitTypeConverter.ToSqlType(WitDataType.RowVersion), Is.EqualTo(WitSqlType.RowVersion));
     }
 
     [Test]

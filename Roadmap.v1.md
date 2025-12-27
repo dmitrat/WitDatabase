@@ -107,7 +107,7 @@
 
 | Feature | Core | Parser | Engine | Spec |
 |---------|------|--------|--------|------|
-| `ROWVERSION` | [x] | [x] | [ ] | SS15.1 |
+| `ROWVERSION` | [x] | [x] | [x] | SS15.1 |
 | `JSON` / `JSONB` | N/A | [x] | [x] | SS21.1 |
 
 ---
@@ -243,7 +243,7 @@
 | `UPDATE table SET col = expr` | N/A | [x] | [x] | SS3.3 |
 | `UPDATE ... WHERE condition` | N/A | [x] | [x] | SS3.3 |
 | `UPDATE ... RETURNING` | N/A | [x] | [x] | SS3.3 |
-| `UPDATE ... FROM other_table` | N/A | [x] | [ ] | SS17.2 |
+| `UPDATE ... FROM other_table` | N/A | [x] | [x] | SS17.2 |
 | `UPDATE table AS alias` | N/A | [x] | [x] | SS3.3 |
 
 ## 11. DELETE (SS3.4)
@@ -253,7 +253,7 @@
 | `DELETE FROM table` | N/A | [x] | [x] | SS3.4 |
 | `DELETE FROM ... WHERE` | N/A | [x] | [x] | SS3.4 |
 | `DELETE FROM ... RETURNING` | N/A | [x] | [x] | SS3.4 |
-| `DELETE ... USING other_table` | N/A | [x] | [ ] | SS17.3 |
+| `DELETE ... USING other_table` | N/A | [x] | [x] | SS17.3 |
 | `DELETE FROM table AS alias` | N/A | [x] | [x] | SS3.4 |
 
 ## 12. TRUNCATE / MERGE (SS16-17) ? COMPLETE

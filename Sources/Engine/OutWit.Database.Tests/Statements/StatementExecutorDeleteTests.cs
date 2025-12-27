@@ -242,14 +242,12 @@ public class StatementExecutorDeleteTests : StatementExecutorTestsBase
     public void DeleteFromNonExistentTableTest()
     {
         m_database.GetTable("NonExistent").Returns((DefinitionTable?)null);
-        m_database.CreateTableScan("NonExistent").Returns(CreateEmptyIterator());
 
         var executor = new StatementExecutor(m_context);
         var stmt = WitSql.ParseStatement("DELETE FROM NonExistent");
 
-        // Should execute without error (empty scan)
-        var result = executor.Execute(stmt);
-        Assert.That(result.RowsAffected, Is.EqualTo(0));
+        // Should throw error for non-existent table
+        Assert.Throws<InvalidOperationException>(() => executor.Execute(stmt));
     }
 
     #endregion

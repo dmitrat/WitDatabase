@@ -84,6 +84,7 @@ public static class WitTypeConverter
             WitSqlType.Guid => WitDataType.Guid,
             WitSqlType.DateTimeOffset => WitDataType.DateTimeOffset,
             WitSqlType.Json => WitDataType.Json,
+            WitSqlType.RowVersion => WitDataType.RowVersion,
             _ => WitDataType.StringVariable
         };
     }
@@ -247,6 +248,7 @@ public static class WitTypeConverter
         WitSqlType.Guid => typeof(Guid),
         WitSqlType.DateTimeOffset => typeof(DateTimeOffset),
         WitSqlType.Json => typeof(JsonDocument),
+        WitSqlType.RowVersion => typeof(ulong),
         _ => typeof(object)
     };
 
@@ -320,6 +322,7 @@ public static class WitTypeConverter
         WitSqlType.Guid => "GUID",
         WitSqlType.DateTimeOffset => "DATETIMEOFFSET",
         WitSqlType.Json => "JSON",
+        WitSqlType.RowVersion => "ROWVERSION",
         _ => "UNKNOWN"
     };
 
@@ -414,6 +417,7 @@ public static class WitTypeConverter
         WitSqlType.Guid => WitSqlValue.FromGuid(Guid.Empty),
         WitSqlType.DateTimeOffset => WitSqlValue.FromDateTimeOffset(DateTimeOffset.MinValue),
         WitSqlType.Json => WitSqlValue.Null,
+        WitSqlType.RowVersion => WitSqlValue.FromRowVersion(0UL),
         _ => WitSqlValue.Null
     };
 
@@ -455,6 +459,12 @@ public static class WitTypeConverter
     /// </summary>
     [MethodImpl(MethodImplOptions.AggressiveInlining)]
     public static bool UsesRealStorage(this WitSqlType type) => type is WitSqlType.Real;
+
+    /// <summary>
+    /// Checks if the type stores value in ulong field (m_ulongValue).
+    /// </summary>
+    [MethodImpl(MethodImplOptions.AggressiveInlining)]
+    public static bool UsesUlongStorage(this WitSqlType type) => type is WitSqlType.RowVersion;
 
     /// <summary>
     /// Checks if the type stores value in object field (m_objectValue).

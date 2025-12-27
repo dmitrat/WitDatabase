@@ -79,6 +79,7 @@ public class WitSqlTypeCompletenessTests
         WitSqlType.Guid => WitSqlValue.FromGuid(Guid.Parse("12345678-1234-1234-1234-123456789012")),
         WitSqlType.DateTimeOffset => WitSqlValue.FromDateTimeOffset(new DateTimeOffset(2025, 1, 1, 12, 0, 0, TimeSpan.FromHours(3))),
         WitSqlType.Json => WitSqlValue.FromJsonString("{\"test\": 1}"),
+        WitSqlType.RowVersion => WitSqlValue.FromRowVersion(12345UL),
         _ => throw new NotSupportedException($"No factory method test for {type}")
     };
 
@@ -221,13 +222,14 @@ public class WitSqlTypeCompletenessTests
 
             var usesInt = type.UsesIntStorage();
             var usesReal = type.UsesRealStorage();
+            var usesUlong = type.UsesUlongStorage();
             var usesObject = type.UsesObjectStorage();
 
-            var storageCount = (usesInt ? 1 : 0) + (usesReal ? 1 : 0) + (usesObject ? 1 : 0);
+            var storageCount = (usesInt ? 1 : 0) + (usesReal ? 1 : 0) + (usesUlong ? 1 : 0) + (usesObject ? 1 : 0);
             
             Assert.That(storageCount, Is.EqualTo(1),
                 $"Type {type} has {storageCount} storage categories (should be exactly 1). " +
-                $"UsesInt={usesInt}, UsesReal={usesReal}, UsesObject={usesObject}");
+                $"UsesInt={usesInt}, UsesReal={usesReal}, UsesUlong={usesUlong}, UsesObject={usesObject}");
         }
     }
 

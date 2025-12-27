@@ -26,7 +26,7 @@
 
 ## Progress Summary
 
-**Current Status: ~97% - Core SQL Execution + Transactions + Indexes + ALTER TABLE + Computed Columns + CTE + Window Functions + DML + JSON Complete**
+**Current Status: ~99% - Core SQL Execution + Transactions + Indexes + ALTER TABLE + Computed Columns + CTE + Window Functions + DML + JSON + ROWVERSION Complete**
 
 The Engine component (`OutWit.Database`) is responsible for:
 - SQL execution against the Core storage layer
@@ -61,6 +61,11 @@ The Engine component (`OutWit.Database`) is responsible for:
 - ? **CTE Execution** (Simple CTEs, Multiple CTEs, Recursive CTEs, Caching)
 - ? **Window Functions** (ROW_NUMBER, RANK, DENSE_RANK, NTILE, LAG, LEAD, FIRST_VALUE, LAST_VALUE, NTH_VALUE, PERCENT_RANK, CUME_DIST, Aggregate OVER)
 - ? **DML Enhancements** (RETURNING clause, INSERT OR REPLACE, ON CONFLICT DO UPDATE/NOTHING, TRUNCATE, MERGE)
+- ? **UPDATE ... FROM** (join-based updates)
+- ? **DELETE ... USING** (join-based deletes)
+- ? **ROWVERSION** (auto-increment on INSERT/UPDATE)
+- ? **INFORMATION_SCHEMA** views
+- ? **Query Optimization** (index selection, plan caching, join ordering)
 
 ---
 
@@ -76,7 +81,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 | Result set builder | [x] | P0 | v1 | - |
 | Query context with AffectedRows, LastInsertId | [x] | P0 | v1 | SS5.8 |
 | Parameter binding | [x] | P0 | v1 | SS11 |
-| Query timeout support | [ ] | P1 | v1 | - |
+| Query timeout support | [x] | P1 | v1 | - |
 | CancellationToken support | [x] | P0 | v1 | - |
 
 ---
@@ -119,7 +124,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 | Type | Status | Priority | Version | Spec |
 |------|--------|----------|---------|------|
 | `GUID` | [x] | P0 | v1 | SS1.6 |
-| `ROWVERSION` | [ ] | P1 | v1 | SS15.1 |
+| `ROWVERSION` | [x] | P1 | v1 | SS15.1 |
 | `JSON` / `JSONB` | [x] | P1 | v1 | SS21.1 |
 
 ---
@@ -250,7 +255,7 @@ The Engine component (`OutWit.Database`) is responsible for:
 | UPDATE with expressions | [x] | P0 | v1 | SS3.3 |
 | Index update on modification | [x] | P1 | v1 | SS3.3 |
 | NOT NULL validation on UPDATE | [x] | P0 | v1 | SS3.3 |
-| UPDATE ... FROM | [ ] | P1 | v1 | SS17.2 |
+| UPDATE ... FROM | [x] | P1 | v1 | SS17.2 |
 
 ### 4.5 DELETE Execution
 
@@ -260,8 +265,8 @@ The Engine component (`OutWit.Database`) is responsible for:
 | DELETE with WHERE | [x] | P0 | v1 | SS3.4 |
 | DELETE ... RETURNING | [x] | P1 | v1 | SS3.4 |
 | Index cleanup on delete | [x] | P1 | v1 | SS3.4 |
-| Cascading deletes | [ ] | P1 | v1 | SS2.1 |
-| DELETE ... USING | [ ] | P1 | v1 | SS17.3 |
+| Cascading deletes | [x] | P1 | v1 | SS2.1 |
+| DELETE ... USING | [x] | P1 | v1 | SS17.3 |
 
 ### 4.6 TRUNCATE / MERGE ? COMPLETE
 
@@ -558,9 +563,9 @@ The Engine component (`OutWit.Database`) is responsible for:
 - [x] Transaction isolation levels ?
 - [x] Savepoints ?
 - [x] FOR UPDATE / FOR SHARE ?
-- [ ] ROWVERSION support
-- [ ] INSERT ... ON CONFLICT
-- [ ] MERGE statement
+- [x] ROWVERSION support ?
+- [x] INSERT ... ON CONFLICT ?
+- [x] MERGE statement ?
 
 ### Phase 4: Production Ready - ? MOSTLY COMPLETE
 
@@ -619,90 +624,27 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 ## Recent Changes
 
-### 2025-02-03
-- ? **JSON Functions Implementation Complete**:
-  - `JSON_EXTRACT(json, path)` - extract any value at path
-  - `JSON_VALUE(json, path)` - extract scalar (NULL for objects/arrays)
-  - `JSON_QUERY(json, path)` - extract object/array (NULL for scalars)
-  - `JSON_SET(json, path, value)` - set value at path (creates or replaces)
-  - `JSON_INSERT(json, path, value)` - insert only if not exists
-  - `JSON_REPLACE(json, path, value)` - replace only if exists
-  - `JSON_REMOVE(json, path)` - remove value at path
-  - `JSON_TYPE(json)` - returns type name
-  - `JSON_ARRAY_LENGTH(json)` - returns array length
-  - `JSON_VALID(str)` - validates JSON string
-  - `JSON_ARRAY(values...)` - constructs JSON array
-  - `JSON_OBJECT(key1, val1, ...)` - constructs JSON object
-- ? **New Files**:
-  - `ExpressionEvaluator.Json.cs` - JSON function implementations
-  - `WitSqlEngineJsonFunctionTests.cs` - 42 JSON tests
-- ? **Modified Files**:
-  - `ExpressionEvaluator.Functions.cs` - JSON function routing
+### 2025-02-05
+- ? **ROWVERSION Implementation Complete**:
+  - Auto-generation on INSERT (database-wide counter)
+  - Auto-update on UPDATE
+  - Prevent explicit INSERT/UPDATE of ROWVERSION columns
+  - RETURNING clause returns generated ROWVERSION
+  - Global counter shared across tables
+  - 10 tests passing
+- ? **UPDATE ... FROM Implementation Complete**:
+  - Join target table with FROM clause tables
+  - Expression evaluation with joined row context
+  - Self-join support
+  - Subquery sources support
+  - RETURNING clause with FROM
+  - 9 tests passing
+- ? **DELETE ... USING Implementation Complete**:
+  - Join target table with USING clause tables
+  - Automatic deduplication of matched rows
+  - Multiple USING tables support
+  - Subquery sources support
+  - RETURNING clause with USING
+  - 9 tests passing
 
-### 2025-02-02
-- ? **DML Enhancements Implementation Complete**:
-  - `INSERT ... RETURNING` - returns inserted rows with auto-increment IDs
-  - `UPDATE ... RETURNING` - returns updated rows
-  - `DELETE ... RETURNING` - returns deleted rows before deletion
-  - `INSERT OR REPLACE` - delete + insert on conflict
-  - `INSERT OR IGNORE` - skip on conflict
-  - `ON CONFLICT DO NOTHING` - skip on conflict (column-specific)
-  - `ON CONFLICT DO UPDATE` - UPSERT with EXCLUDED pseudo-table
-  - `TRUNCATE TABLE` - fast delete with auto-increment reset
-  - `MERGE` - full UPSERT with WHEN MATCHED/NOT MATCHED clauses
-  - Complex conditions in MERGE (AND, OR, expressions)
-  - Subquery sources in MERGE
-- ? **Code Refactoring**:
-  - Split `StatementExecutor.Dml.cs` into separate files:
-    - `StatementExecutor.Insert.cs` - INSERT + Conflict resolution
-    - `StatementExecutor.Update.cs` - UPDATE
-    - `StatementExecutor.Delete.cs` - DELETE
-    - `StatementExecutor.Merge.cs` - MERGE + TRUNCATE
-    - `StatementExecutor.Returning.cs` - Shared RETURNING clause support
-- ? 62 DML tests passing (20 RETURNING + 19 UPSERT + 23 TRUNCATE/MERGE)
-
-### 2025-02-01
-- ? **Window Functions Implementation Complete**:
-  - `IteratorWindow.cs` - blocking operator for window function evaluation
-  - ROW_NUMBER, RANK, DENSE_RANK, NTILE, PERCENT_RANK, CUME_DIST
-  - LAG, LEAD with offset and default value support
-  - FIRST_VALUE, LAST_VALUE, NTH_VALUE
-  - Aggregate window functions (SUM, AVG, COUNT, MIN, MAX OVER)
-  - PARTITION BY and ORDER BY with NULLS FIRST/LAST
-  - Fixed SortPartition bug (was using idx => 0 instead of proper ordering)
-- ? **CTE Implementation Complete**:
-  - Simple CTEs with column renaming
-  - Multiple CTEs and CTE referencing another CTE
-  - Recursive CTEs with UNION ALL
-  - CTE caching for multiple references
-  - 43 CTE tests passing
-- ? 24 window function tests passing
-
-### 2025-01-31
-- ? **ALTER TABLE Implementation Complete**:
-  - `ALTER TABLE ADD CONSTRAINT` - CHECK, UNIQUE, FOREIGN KEY constraints
-  - `ALTER TABLE DROP CONSTRAINT` - Remove named constraints
-  - `ALTER TABLE ADD COLUMN` with DEFAULT - populates existing rows
-  - **Computed Columns** - STORED and VIRTUAL computed columns
-- ? 60 ALTER TABLE tests passing
-
-### 2025-01-30
-- ? **Index Implementation Complete**:
-  - `IteratorIndexSeek.cs` - equality lookup using secondary index
-  - `IteratorIndexRangeScan.cs` - range queries using index
-  - Index auto-update on INSERT/UPDATE/DELETE
-  - Index building from existing data
-  - Partial index, Expression index, Covering index support
-- ? 67 index tests passing
-
-### 2025-01-28
-- ? **Transaction Support Complete**:
-  - BEGIN TRANSACTION / COMMIT / ROLLBACK SQL execution
-  - Isolation level support
-  - Savepoints
-  - FOR UPDATE / FOR SHARE locking
-- ? 46 transaction and locking tests passing
-
----
-
-**Last Updated:** 2025-02-03
+### 2025-02-04

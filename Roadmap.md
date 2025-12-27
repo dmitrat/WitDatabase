@@ -290,8 +290,9 @@ For detailed version-specific information, see:
 - [x] Savepoints ?
 - [x] FOR UPDATE / FOR SHARE ?
 - [x] MERGE statement ?
+- [x] ROWVERSION support ?
 
-#### Phase 4: Production Ready - ?? IN PROGRESS
+#### Phase 4: Production Ready - ? COMPLETE
 - [x] Index implementation ?
 - [x] ALTER TABLE (constraints, defaults) ?
 - [x] Computed columns (STORED, VIRTUAL) ?
@@ -299,8 +300,10 @@ For detailed version-specific information, see:
 - [x] Recursive CTE ?
 - [x] Views and triggers ?
 - [x] JSON functions ?
-- [ ] INFORMATION_SCHEMA
-- [ ] Basic query optimization
+- [x] INFORMATION_SCHEMA ?
+- [x] Basic query optimization ?
+- [x] Cascading deletes (FK ON DELETE CASCADE/SET NULL/SET DEFAULT) ?
+- [x] Query timeout cancellation ?
 
 ### v2 Phases (Future)
 

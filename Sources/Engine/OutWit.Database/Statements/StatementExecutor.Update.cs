@@ -1,6 +1,9 @@
 using OutWit.Database.Definitions;
 using OutWit.Database.Expressions;
 using OutWit.Database.Iterators;
+using OutWit.Database.Parser.Expressions;
+using OutWit.Database.Parser.Schema.TableSources;
+using OutWit.Database.Parser.Schema.Types;
 using OutWit.Database.Parser.Statements;
 using OutWit.Database.Types;
 using OutWit.Database.Values;
@@ -35,13 +38,8 @@ public sealed partial class StatementExecutor
             }
         }
 
-        // Create a full scan and filter
-        var iterator = m_context.Database.CreateTableScan(update.TableName);
-
-        if (update.WhereClause != null)
-        {
-            iterator = new IteratorFilter(iterator, update.WhereClause, m_context);
-        }
+        // Create iterator - either simple scan or join with FROM clause
+        var iterator = CreateUpdateIterator(update);
 
         iterator.Open();
         var evaluator = new ExpressionEvaluator(m_context);
@@ -56,16 +54,24 @@ public sealed partial class StatementExecutor
             .ToList();
 
         // Collect rows to update (can't modify while iterating)
-        var rowsToUpdate = new List<(long RowId, WitSqlRow OldRow, WitSqlRow NewRow)>();
+        var rowsToUpdate = new List<(long RowId, WitSqlRow OldRow, WitSqlRow NewRow, WitSqlRow JoinedRow)>();
+
+        // Determine the alias/prefix for the target table columns
+        var tableAlias = update.TableAlias ?? update.TableName;
 
         try
         {
             while (iterator.MoveNext())
             {
                 var currentRow = iterator.Current;
-                var oldRow = currentRow;
-                var newValues = currentRow.Values.ToArray();
-                var columnNames = currentRow.ColumnNames.ToArray();
+                
+                // Get row ID - try with alias first, then table name, then direct
+                var rowId = GetRowIdFromRow(currentRow, tableAlias, update.TableName);
+                
+                // Build old row from target table columns only
+                var oldRow = ExtractTableRow(currentRow, table, tableAlias);
+                var newValues = oldRow.Values.ToArray();
+                var columnNames = oldRow.ColumnNames.ToArray();
 
                 foreach (var setClause in update.SetClauses)
                 {
@@ -73,6 +79,7 @@ public sealed partial class StatementExecutor
                     {
                         if (columnNames[i].Equals(setClause.ColumnName, StringComparison.OrdinalIgnoreCase))
                         {
+                            // Evaluate expression with joined row context (for FROM clause access)
                             newValues[i] = evaluator.Evaluate(setClause.Value, currentRow);
                             break;
                         }
@@ -96,10 +103,8 @@ public sealed partial class StatementExecutor
                 var intermediateRow = new WitSqlRow(newValues, columnNames);
 
                 // Recalculate STORED computed columns
-                // Note: currentRow has _rowid at index 0, so we search by column name
                 foreach (var computedCol in storedComputedColumns)
                 {
-                    // Find the column in the row (which includes _rowid as first column)
                     for (int i = 0; i < columnNames.Length; i++)
                     {
                         if (columnNames[i].Equals(computedCol.Name, StringComparison.OrdinalIgnoreCase))
@@ -114,9 +119,7 @@ public sealed partial class StatementExecutor
                     }
                 }
 
-                // Get row ID from _rowid column (added by TableScanIterator)
-                var rowId = currentRow["_rowid"].AsInt64();
-                rowsToUpdate.Add((rowId, oldRow, new WitSqlRow(newValues, columnNames)));
+                rowsToUpdate.Add((rowId, oldRow, new WitSqlRow(newValues, columnNames), currentRow));
             }
         }
         finally
@@ -133,7 +136,7 @@ public sealed partial class StatementExecutor
             returningRows = [];
         }
 
-        foreach (var (rowId, oldRow, originalNewRow) in rowsToUpdate)
+        foreach (var (rowId, oldRow, originalNewRow, joinedRow) in rowsToUpdate)
         {
             var newRow = originalNewRow;
 
@@ -181,6 +184,137 @@ public sealed partial class StatementExecutor
         }
 
         return new WitSqlResult(rowsAffected);
+    }
+
+    /// <summary>
+    /// Creates an iterator for UPDATE statement, handling optional FROM clause.
+    /// </summary>
+    private Interfaces.IResultIterator CreateUpdateIterator(WitSqlStatementUpdate update)
+    {
+        var tableAlias = update.TableAlias ?? update.TableName;
+        
+        // Create base iterator for target table
+        Interfaces.IResultIterator iterator = m_context.Database.CreateTableScan(update.TableName);
+        iterator = new IteratorAlias(iterator, tableAlias);
+
+        // If FROM clause exists, join with those tables
+        if (update.FromClause != null && update.FromClause.Count > 0)
+        {
+            foreach (var fromSource in update.FromClause)
+            {
+                var rightIterator = CreateTableSourceIterator(fromSource);
+                iterator = new IteratorJoin(iterator, rightIterator, JoinType.Cross, null, m_context);
+            }
+        }
+
+        // Apply WHERE filter
+        if (update.WhereClause != null)
+        {
+            iterator = new IteratorFilter(iterator, update.WhereClause, m_context);
+        }
+
+        return iterator;
+    }
+
+    /// <summary>
+    /// Creates an iterator for a table source (simple table, join, or subquery).
+    /// </summary>
+    private Interfaces.IResultIterator CreateTableSourceIterator(TableSource source)
+    {
+        return source switch
+        {
+            TableSourceSimple simple => CreateSimpleTableIterator(simple),
+            TableSourceJoin join => CreateJoinIterator(join),
+            TableSourceSubquery subquery => CreateSubqueryIterator(subquery),
+            _ => throw new NotSupportedException($"Table source type not supported: {source.GetType().Name}")
+        };
+    }
+
+    private Interfaces.IResultIterator CreateSimpleTableIterator(TableSourceSimple simple)
+    {
+        // Check if it's a view
+        var view = m_context.Database.GetView(simple.TableName);
+        if (view != null)
+        {
+            var viewSelect = Parser.WitSql.ParseStatement(view.SelectSql) as WitSqlStatementSelect
+                ?? throw new InvalidOperationException($"View '{view.Name}' contains invalid SELECT statement");
+            
+            var planner = new Query.QueryPlanner(m_context);
+            var viewIterator = planner.Plan(viewSelect);
+            return new IteratorAlias(viewIterator, simple.Alias ?? simple.TableName);
+        }
+
+        var iterator = m_context.Database.CreateTableScan(simple.TableName);
+        return new IteratorAlias(iterator, simple.Alias ?? simple.TableName);
+    }
+
+    private Interfaces.IResultIterator CreateJoinIterator(TableSourceJoin join)
+    {
+        var left = CreateTableSourceIterator(join.Left);
+        var right = CreateTableSourceIterator(join.Right);
+        return new IteratorJoin(left, right, join.JoinType, join.OnCondition, m_context);
+    }
+
+    private Interfaces.IResultIterator CreateSubqueryIterator(TableSourceSubquery subquery)
+    {
+        var planner = new Query.QueryPlanner(m_context);
+        var subqueryIterator = planner.Plan(subquery.Subquery);
+        var alias = subquery.Alias ?? throw new InvalidOperationException("Subquery must have an alias");
+        return new IteratorAlias(subqueryIterator, alias);
+    }
+
+    /// <summary>
+    /// Gets the _rowid value from a row, trying different column name patterns.
+    /// </summary>
+    private static long GetRowIdFromRow(WitSqlRow row, string tableAlias, string tableName)
+    {
+        // Try alias._rowid first
+        if (row.TryGetValue($"{tableAlias}._rowid", out var value))
+            return value.AsInt64();
+        
+        // Try tableName._rowid
+        if (tableAlias != tableName && row.TryGetValue($"{tableName}._rowid", out value))
+            return value.AsInt64();
+        
+        // Try plain _rowid
+        if (row.TryGetValue("_rowid", out value))
+            return value.AsInt64();
+
+        throw new InvalidOperationException("Cannot find _rowid column in row");
+    }
+
+    /// <summary>
+    /// Extracts only the target table's columns from a joined row.
+    /// </summary>
+    private static WitSqlRow ExtractTableRow(WitSqlRow joinedRow, DefinitionTable table, string tableAlias)
+    {
+        var columnNames = new List<string>();
+        var values = new List<WitSqlValue>();
+
+        // Add _rowid first
+        columnNames.Add("_rowid");
+        values.Add(WitSqlValue.FromInt(GetRowIdFromRow(joinedRow, tableAlias, table.Name)));
+
+        foreach (var col in table.Columns)
+        {
+            columnNames.Add(col.Name);
+            
+            // Try qualified name first
+            if (joinedRow.TryGetValue($"{tableAlias}.{col.Name}", out var value))
+            {
+                values.Add(value);
+            }
+            else if (joinedRow.TryGetValue(col.Name, out value))
+            {
+                values.Add(value);
+            }
+            else
+            {
+                values.Add(WitSqlValue.Null);
+            }
+        }
+
+        return new WitSqlRow(values.ToArray(), columnNames.ToArray());
     }
 
     /// <summary>
