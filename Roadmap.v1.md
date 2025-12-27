@@ -362,32 +362,23 @@
 | `SET TRANSACTION ISOLATION LEVEL` | [x] | [x] | [x] | SS14.1 |
 | Isolation level keywords | [x] | [x] | [x] | SS14.1 |
 
-## 31. INFORMATION_SCHEMA (SS13.1)
+## 31. INFORMATION_SCHEMA (SS13.1) - COMPLETE ?
 
 | Feature | Core | Parser | Engine | Spec |
 |---------|------|--------|--------|------|
-| `INFORMATION_SCHEMA.TABLES` | N/A | N/A | [ ] | SS13.1 |
-| `INFORMATION_SCHEMA.COLUMNS` | N/A | N/A | [ ] | SS13.1 |
-| `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` | N/A | N/A | [ ] | SS13.1 |
-| `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` | N/A | N/A | [ ] | SS13.1 |
-| `INFORMATION_SCHEMA.INDEXES` | N/A | N/A | [ ] | SS13.1 |
-| `INFORMATION_SCHEMA.VIEWS` | N/A | N/A | [ ] | SS13.1 |
+| `INFORMATION_SCHEMA.TABLES` | N/A | N/A | [x] | SS13.1 |
+| `INFORMATION_SCHEMA.COLUMNS` | N/A | N/A | [x] | SS13.1 |
+| `INFORMATION_SCHEMA.KEY_COLUMN_USAGE` | N/A | N/A | [x] | SS13.1 |
+| `INFORMATION_SCHEMA.REFERENTIAL_CONSTRAINTS` | N/A | N/A | [x] | SS13.1 |
+| `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` | N/A | N/A | [x] | SS13.1 |
+| `INFORMATION_SCHEMA.INDEXES` | N/A | N/A | [x] | SS13.1 |
+| `INFORMATION_SCHEMA.VIEWS` | N/A | N/A | [x] | SS13.1 |
 
----
+## 32. Query Optimization - COMPLETE ?
 
-# Files Reference
-
-| File | Content |
-|------|---------|
-| `Roadmap.v1.md` | This v1 roadmap |
-| `Roadmap.v2.md` | v2 features roadmap |
-| `Roadmap.Core.md` | Core-only roadmap |
-| `Roadmap.Parser.md` | Parser-only roadmap |
-| `Roadmap.Engine.md` | Engine-only roadmap |
-| `WitSql.md` | Language Specification |
-| `Sources/Engine/OutWit.Database.Todo.md` | Engine TODO list |
-| `Docs/CODE_STYLE_GUIDE.md` | Code style guide |
-
----
-
-**Last Updated:** 2025-02-03
+| Feature | Core | Parser | Engine | Spec |
+|---------|------|--------|--------|------|
+| Index selection (cost-based) | N/A | N/A | [x] | - |
+| Query plan caching | N/A | N/A | [x] | - |
+| Join order optimization | N/A | N/A | [x] | - |
+| Predicate pushdown | N/A | N/A | [x] | - |

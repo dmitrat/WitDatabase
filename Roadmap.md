@@ -2,7 +2,7 @@
 
 **Version:** 2.4  
 **Based on:** WitSql.md specification v1.2  
-**Last Updated:** 2025-02-03
+**Last Updated:** 2025-02-04
 
 ---
 
@@ -137,7 +137,7 @@ For detailed version-specific information, see:
 
 | Category | Status | Details |
 |----------|--------|---------|
-| Query Execution Infrastructure | 95% | All core components complete |
+| Query Execution Infrastructure | 100% | All core components complete |
 | Data Type Implementation | 100% | All types supported |
 | DDL Execution | 100% | Tables, Views, Triggers, Sequences ? |
 | DML Execution (SELECT) | 100% | JOINs, Subqueries, Set Ops ? |
@@ -155,11 +155,22 @@ For detailed version-specific information, see:
 | Computed Columns | 100% | STORED (auto-recalc), VIRTUAL (on-the-fly) ? |
 | CTE Execution | 100% | Simple, Multiple, Recursive, Caching ? |
 | Window Functions | 100% | All ranking, value, aggregate window functions ? |
-| Schema Information | 0% | INFORMATION_SCHEMA not started |
+| Schema Information | 100% | INFORMATION_SCHEMA views complete ? |
+| Query Optimization | 100% | Index selection, Plan caching, Join ordering ? |
 | ADO.NET Provider | 0% | Not started |
-| Query Optimization | 10% | Basic plan building only |
 
-### Recently Completed (2025-02-03)
+### Recently Completed (2025-02-04)
+
+- ? **Query Optimization Complete**:
+  - Index selection (cost-based) for WHERE clause predicates
+  - Query plan caching with LRU eviction and TTL
+  - Join order optimization (greedy algorithm)
+  - Implicit cross join optimization (`FROM a, b, c`)
+  - Explicit JOIN optimization (swap sides for INNER/CROSS)
+  - Semantic preservation for LEFT/RIGHT/FULL joins
+  - 64 optimization tests passing
+
+### Previously Completed (2025-02-03)
 
 - ? **JSON Functions Complete**:
   - `JSON_EXTRACT(json, path)` - extract any value at path
@@ -210,13 +221,30 @@ For detailed version-specific information, see:
 
 ### Previously Completed (2025-01-31)
 
-- ? ALTER TABLE ADD/DROP CONSTRAINT (CHECK, UNIQUE, FOREIGN KEY)
-- ? ALTER TABLE ADD COLUMN with DEFAULT (populates existing rows)
-- ? Computed columns STORED (auto-recalculate on UPDATE, auto-calculate on INSERT)
-- ? Computed columns VIRTUAL (evaluated on-the-fly in all iterators)
-- ? INDEX on STORED computed columns
-- ? Prevent direct INSERT/UPDATE into computed columns
-- ? VIRTUAL columns evaluation in IteratorIndexSeek and IteratorIndexRangeScan
+- ? **ALTER TABLE implementation complete**
+  - `ADD/DROP CONSTRAINT` (CHECK, UNIQUE, FOREIGN KEY)
+  - `ADD COLUMN with DEFAULT` (populates existing rows)
+  - Computed columns **STORED** (auto-recalculate on UPDATE, auto-calculate on INSERT)
+  - Computed columns **VIRTUAL** (evaluated on-the-fly in all iterators)
+  - INDEX on STORED computed columns
+  - Prevent direct INSERT/UPDATE into computed columns
+  - VIRTUAL columns evaluation in IteratorIndexSeek and IteratorIndexRangeScan
+
+### Previously Completed (2025-01-30)
+
+- Engine: Transaction support complete (BEGIN/COMMIT/ROLLBACK, Savepoints)
+- Engine: FOR UPDATE/FOR SHARE locking complete
+- Engine: Index implementation complete (seek, range, auto-update, partial, expression, covering)
+
+### Previously Completed (2025-01-26)
+
+- Engine: Added full subquery support
+  - Scalar subqueries
+  - EXISTS / NOT EXISTS
+  - IN (subquery) / NOT IN (subquery)
+  - ANY / SOME / ALL
+  - Correlated subqueries
+- Engine: Fixed IteratorAlias for proper column name aliasing
 
 ### v2 Deferred
 
@@ -292,8 +320,8 @@ For detailed version-specific information, see:
 |-----------|-------|--------|
 | OutWit.Database.Core | 1811+ | ? Passing |
 | OutWit.Database.Parser | 1000+ | ? Passing |
-| OutWit.Database (Engine) | 1311 | ? Passing |
-| **Total** | **4122+** | ? Passing |
+| OutWit.Database (Engine) | 1395 | ? Passing |
+| **Total** | **4206+** | ? Passing |
 
 ### Engine Test Breakdown
 
@@ -303,19 +331,23 @@ For detailed version-specific information, see:
 | StatementExecutor | 162 |
 | Iterators | 119 |
 | QueryPlanner | 50 |
+| QueryOptimizer | 14 |
+| QueryPlanCache | 12 |
+| JoinOrderOptimizer | 11 |
 | WitSqlValue | 148 |
-| Definitions | 90 |
-| Schema | 50 |
 | WitSqlEngine Integration | 132 |
 | WitSqlEngine Index | 67 |
 | WitSqlEngine ALTER TABLE | 60 |
 | WitSqlEngine Transactions | 46 |
 | WitSqlEngine CTE | 43 |
 | WitSqlEngine JSON Functions | 42 |
+| WitSqlEngine INFORMATION_SCHEMA | 42 |
 | WitSqlEngine Window Functions | 24 |
 | WitSqlEngine RETURNING | 20 |
 | WitSqlEngine UPSERT | 19 |
 | WitSqlEngine TRUNCATE/MERGE | 23 |
+| WitSqlEngine Query Optimization | 16 (1 skipped) |
+| WitSqlEngine Join Optimization | 10 |
 
 ---
 
@@ -336,6 +368,16 @@ For detailed version-specific information, see:
 ---
 
 ## Recent Changes
+
+### 2025-02-04
+- Engine: Query Optimization complete
+  - Cost-based index selection for WHERE clause predicates
+  - Query plan caching with LRU eviction and TTL
+  - Join order optimization (greedy algorithm)
+  - Implicit cross join optimization (`FROM a, b, c`)
+  - Explicit JOIN optimization (swap sides for INNER/CROSS)
+  - Semantic preservation for LEFT/RIGHT/FULL joins
+  - 64 optimization tests passing
 
 ### 2025-02-03
 - Engine: JSON Functions complete (12 functions)
@@ -360,26 +402,33 @@ For detailed version-specific information, see:
   - ROW_NUMBER, RANK, DENSE_RANK, NTILE, PERCENT_RANK, CUME_DIST
   - LAG, LEAD, FIRST_VALUE, LAST_VALUE, NTH_VALUE
   - Aggregate window functions (SUM, AVG, COUNT, MIN, MAX OVER)
+  - PARTITION BY and ORDER BY with NULLS FIRST/LAST
   - 24 tests passing
-- Engine: CTE implementation complete
-  - Simple and recursive CTEs
-  - CTE caching
+- Engine: CTE Execution implementation complete
+  - Simple CTEs with explicit column names
+  - Multiple CTEs and CTE referencing another CTE
+  - Recursive CTEs with max depth protection
+  - CTE caching for multiple references
   - 43 tests passing
 
 ### 2025-01-31
 - Engine: ALTER TABLE implementation complete
-  - ADD/DROP CONSTRAINT (CHECK, UNIQUE, FOREIGN KEY)
-  - ADD COLUMN with DEFAULT (populates existing rows)
-  - Computed columns STORED (auto-recalculate)
-  - Computed columns VIRTUAL (on-the-fly evaluation)
-- Engine: 60 ALTER TABLE tests passing
+  - `ADD/DROP CONSTRAINT` (CHECK, UNIQUE, FOREIGN KEY)
+  - `ADD COLUMN with DEFAULT` (populates existing rows)
+  - Computed columns **STORED** (auto-recalculate on UPDATE, auto-calculate on INSERT)
+  - Computed columns **VIRTUAL** (evaluated on-the-fly in all iterators)
+  - INDEX on STORED computed columns
+  - Prevent direct INSERT/UPDATE into computed columns
+  - VIRTUAL columns evaluation in IteratorIndexSeek and IteratorIndexRangeScan
 
 ### 2025-01-30
+
 - Engine: Transaction support complete (BEGIN/COMMIT/ROLLBACK, Savepoints)
 - Engine: FOR UPDATE/FOR SHARE locking complete
 - Engine: Index implementation complete (seek, range, auto-update, partial, expression, covering)
 
 ### 2025-01-26
+
 - Engine: Added full subquery support
   - Scalar subqueries
   - EXISTS / NOT EXISTS
