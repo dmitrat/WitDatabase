@@ -9,6 +9,7 @@ using OutWit.Database.Parser.Schema.Clauses;
 using OutWit.Database.Parser.Schema.TableSources;
 using OutWit.Database.Parser.Schema.Types;
 using OutWit.Database.Parser.Statements;
+using OutWit.Database.Values;
 
 namespace OutWit.Database.Query;
 
@@ -24,6 +25,11 @@ public sealed class QueryPlanner
     {
         "COUNT", "SUM", "AVG", "MIN", "MAX", "GROUP_CONCAT"
     };
+
+    /// <summary>
+    /// Maximum recursion depth for recursive CTEs to prevent infinite loops.
+    /// </summary>
+    private const int MAX_RECURSION_DEPTH = 1000;
 
     #endregion
 
@@ -55,6 +61,9 @@ public sealed class QueryPlanner
     /// <returns>The root iterator of the query plan.</returns>
     public IResultIterator Plan(WitSqlStatementSelect select)
     {
+        // Register CTE definitions if present
+        RegisterCteDefinitions(select);
+
         // Build base iterator from FROM clause
         var iterator = CreateSourceIterator(select);
 
@@ -78,6 +87,78 @@ public sealed class QueryPlanner
         iterator = ApplySetOperations(iterator, select);
 
         return iterator;
+    }
+
+    #endregion
+
+    #region CTE Handling
+
+    /// <summary>
+    /// Registers CTE definitions from the WITH clause into the execution context.
+    /// </summary>
+    private void RegisterCteDefinitions(WitSqlStatementSelect select)
+    {
+        if (select.CteDefinitions == null || select.CteDefinitions.Count == 0)
+            return;
+
+        foreach (var cte in select.CteDefinitions)
+        {
+            if (m_context.CteDefinitions.ContainsKey(cte.Name))
+            {
+                throw new InvalidOperationException($"Duplicate CTE name: '{cte.Name}'");
+            }
+
+            // For recursive CTEs, we need to mark them specially
+            if (select.IsRecursive)
+            {
+                // Store with a marker that this is a recursive CTE
+                m_context.CteDefinitions[cte.Name] = cte;
+                m_context.State[$"CTE_RECURSIVE_{cte.Name}"] = true;
+            }
+            else
+            {
+                m_context.CteDefinitions[cte.Name] = cte;
+            }
+        }
+    }
+
+    /// <summary>
+    /// Tries to resolve a table name as a CTE reference.
+    /// </summary>
+    /// <param name="tableName">The table name to resolve.</param>
+    /// <returns>The CTE definition if found, null otherwise.</returns>
+    private ClauseCteDefinition? TryGetCteDefinition(string tableName)
+    {
+        return m_context.CteDefinitions.TryGetValue(tableName, out var cteDef) 
+            ? cteDef 
+            : null;
+    }
+
+    /// <summary>
+    /// Checks if a CTE is marked as recursive.
+    /// </summary>
+    private bool IsRecursiveCte(string cteName)
+    {
+        return m_context.State.TryGetValue($"CTE_RECURSIVE_{cteName}", out var value) 
+               && value is true;
+    }
+
+    /// <summary>
+    /// Gets the in-memory working table for recursive CTE execution.
+    /// </summary>
+    private List<WitSqlRow>? GetRecursiveWorkingTable(string cteName)
+    {
+        return m_context.State.TryGetValue($"CTE_WORKING_{cteName}", out var value)
+            ? value as List<WitSqlRow>
+            : null;
+    }
+
+    /// <summary>
+    /// Sets the in-memory working table for recursive CTE execution.
+    /// </summary>
+    private void SetRecursiveWorkingTable(string cteName, List<WitSqlRow> rows)
+    {
+        m_context.State[$"CTE_WORKING_{cteName}"] = rows;
     }
 
     #endregion
@@ -274,7 +355,29 @@ public sealed class QueryPlanner
 
     private IResultIterator CreateSimpleTableIterator(TableSourceSimple simple)
     {
-        // First check if it's a view
+        // First check if it's a CTE reference
+        var cteDef = TryGetCteDefinition(simple.TableName);
+        if (cteDef != null)
+        {
+            // Check if this is a recursive CTE and we have a working table
+            if (IsRecursiveCte(simple.TableName))
+            {
+                var workingTable = GetRecursiveWorkingTable(simple.TableName);
+                if (workingTable != null)
+                {
+                    // Use the working table for recursive iteration
+                    var inMemoryIterator = new IteratorInMemory(workingTable);
+                    return WrapWithAlias(inMemoryIterator, simple.Alias ?? simple.TableName);
+                }
+                
+                // First access to recursive CTE - execute it fully
+                return CreateRecursiveCteIterator(cteDef, simple.Alias ?? simple.TableName);
+            }
+            
+            return CreateCteIterator(cteDef, simple.Alias ?? simple.TableName);
+        }
+
+        // Then check if it's a view
         var view = m_context.Database.GetView(simple.TableName);
         if (view != null)
         {
@@ -284,6 +387,133 @@ public sealed class QueryPlanner
         // Otherwise it's a regular table
         var tableIterator = m_context.Database.CreateTableScan(simple.TableName);
         return WrapWithAlias(tableIterator, simple.Alias ?? simple.TableName);
+    }
+
+    private IResultIterator CreateCteIterator(ClauseCteDefinition cteDef, string alias)
+    {
+        // Plan the CTE query (recursively handles nested CTEs)
+        var cteIterator = Plan(cteDef.Query);
+        
+        // If CTE has explicit column names, rename the columns
+        if (cteDef.ColumnNames != null && cteDef.ColumnNames.Count > 0)
+        {
+            cteIterator = new IteratorColumnRename(cteIterator, cteDef.ColumnNames);
+        }
+        
+        return WrapWithAlias(cteIterator, alias);
+    }
+
+    private IResultIterator CreateRecursiveCteIterator(ClauseCteDefinition cteDef, string alias)
+    {
+        var cteQuery = cteDef.Query;
+        
+        // Recursive CTE must have UNION ALL
+        if (cteQuery.SetOperations == null || cteQuery.SetOperations.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Recursive CTE '{cteDef.Name}' must contain UNION ALL");
+        }
+
+        var setOp = cteQuery.SetOperations[0];
+        if (!setOp.IsAll)
+        {
+            throw new InvalidOperationException(
+                $"Recursive CTE '{cteDef.Name}' requires UNION ALL, not UNION");
+        }
+
+        // Step 1: Execute anchor member (the base SELECT before UNION ALL)
+        var anchorQuery = new WitSqlStatementSelect
+        {
+            IsDistinct = cteQuery.IsDistinct,
+            IsRecursive = false,
+            CteDefinitions = null,
+            SelectList = cteQuery.SelectList,
+            FromClause = cteQuery.FromClause,
+            WhereClause = cteQuery.WhereClause,
+            GroupByClause = cteQuery.GroupByClause,
+            HavingClause = cteQuery.HavingClause
+        };
+
+        var allRows = new List<WitSqlRow>();
+        var workingTable = new List<WitSqlRow>();
+        
+        // Execute anchor
+        var anchorIterator = Plan(anchorQuery);
+        anchorIterator.Open();
+        try
+        {
+            while (anchorIterator.MoveNext())
+            {
+                var row = RenameRowColumns(anchorIterator.Current, cteDef.ColumnNames);
+                workingTable.Add(row);
+                allRows.Add(row);
+            }
+        }
+        finally
+        {
+            anchorIterator.Dispose();
+        }
+
+        // Step 2: Iteratively execute recursive member
+        var recursiveQuery = setOp.RightQuery;
+        int recursionDepth = 0;
+
+        while (workingTable.Count > 0 && recursionDepth < MAX_RECURSION_DEPTH)
+        {
+            recursionDepth++;
+            
+            // Set working table for recursive reference
+            SetRecursiveWorkingTable(cteDef.Name, workingTable);
+            
+            var newRows = new List<WitSqlRow>();
+            
+            // Execute recursive member
+            var recursiveIterator = Plan(recursiveQuery);
+            recursiveIterator.Open();
+            try
+            {
+                while (recursiveIterator.MoveNext())
+                {
+                    var row = RenameRowColumns(recursiveIterator.Current, cteDef.ColumnNames);
+                    newRows.Add(row);
+                    allRows.Add(row);
+                }
+            }
+            finally
+            {
+                recursiveIterator.Dispose();
+            }
+
+            // Swap working table for next iteration
+            workingTable = newRows;
+        }
+
+        // Clear working table state
+        m_context.State.Remove($"CTE_WORKING_{cteDef.Name}");
+
+        if (recursionDepth >= MAX_RECURSION_DEPTH)
+        {
+            throw new InvalidOperationException(
+                $"Recursive CTE '{cteDef.Name}' exceeded maximum recursion depth of {MAX_RECURSION_DEPTH}");
+        }
+
+        // Return in-memory iterator over all collected rows
+        var resultIterator = new IteratorInMemory(allRows);
+        return WrapWithAlias(resultIterator, alias);
+    }
+
+    private static WitSqlRow RenameRowColumns(WitSqlRow row, IReadOnlyList<string>? newNames)
+    {
+        if (newNames == null || newNames.Count == 0)
+            return row;
+
+        var names = new string[row.ColumnCount];
+        for (int i = 0; i < row.ColumnCount; i++)
+        {
+            names[i] = i < newNames.Count ? newNames[i] : row.ColumnNames[i];
+        }
+
+        return new WitSqlRow(row.Values.ToArray(), names);
     }
 
     private IResultIterator CreateViewIterator(DefinitionView view, string alias)

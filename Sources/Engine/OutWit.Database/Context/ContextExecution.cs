@@ -1,5 +1,7 @@
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Interfaces;
+using OutWit.Database.Parser.Schema.Clauses;
+using OutWit.Database.Parser.Statements;
 using OutWit.Database.Values;
 
 namespace OutWit.Database.Context;
@@ -55,4 +57,11 @@ public sealed class ContextExecution
     /// Set by SET TRANSACTION ISOLATION LEVEL and consumed by BEGIN TRANSACTION.
     /// </summary>
     public IsolationLevel? PendingIsolationLevel { get; set; }
+
+    /// <summary>
+    /// Gets the CTE (Common Table Expression) definitions for the current query.
+    /// Maps CTE name to its definition (including column names and query).
+    /// </summary>
+    public Dictionary<string, ClauseCteDefinition> CteDefinitions { get; } =
+        new(StringComparer.OrdinalIgnoreCase);
 }

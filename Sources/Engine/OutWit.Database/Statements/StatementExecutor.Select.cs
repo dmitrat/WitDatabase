@@ -9,11 +9,20 @@ public sealed partial class StatementExecutor
 
     private WitSqlResult ExecuteSelect(WitSqlStatementSelect select)
     {
-        var iterator = m_planner.Plan(select);
-        iterator.Open();
+        try
+        {
+            var iterator = m_planner.Plan(select);
+            iterator.Open();
 
-        var rows = EnumerateRows(iterator);
-        return new WitSqlResult(rows, iterator.Schema);
+            var rows = EnumerateRows(iterator);
+            return new WitSqlResult(rows, iterator.Schema);
+        }
+        finally
+        {
+            // Clear CTE definitions after query execution
+            // CTEs are scoped to a single statement
+            m_context.CteDefinitions.Clear();
+        }
     }
 
     #endregion

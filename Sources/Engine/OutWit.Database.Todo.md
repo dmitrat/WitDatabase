@@ -135,14 +135,35 @@
 
 ---
 
-## 4. CTE (WITH clause) Execution (P0/P1)
+## 4. CTE (WITH clause) Execution (COMPLETED ?)
 
-**Current State:** Parser supports CTE, Engine doesn't execute
+**Current State:** Full CTE support including recursive CTEs
 
-### Tasks:
-- [ ] **P0** Simple CTE execution (non-recursive) - needed for EF Core
-- [ ] **P0** Multiple CTEs in single query
-- [ ] **P1** `WITH RECURSIVE` - recursive CTE execution
+### Completed Tasks:
+- [x] **P0** Simple CTE execution (non-recursive) - needed for EF Core
+- [x] **P0** Multiple CTEs in single query
+- [x] **P1** `WITH RECURSIVE` - recursive CTE execution
+
+### Implementation Summary:
+- **Non-recursive CTEs**: Plan the CTE query and reference it as a virtual table
+- **Recursive CTEs**: Execute anchor member, then iteratively execute recursive member until no new rows
+- **Column renaming**: Support explicit column names in CTE definition `WITH cte_name (col1, col2) AS (...)`
+- **Max recursion depth**: 1000 iterations to prevent infinite loops
+
+### Test Coverage: 30 tests passing
+- Simple CTE queries (select, filter, aggregation)
+- CTE with explicit column names
+- Multiple CTEs and CTE referencing another CTE
+- ORDER BY, LIMIT, GROUP BY, DISTINCT on CTE
+- Recursive CTE for hierarchies
+- Recursive CTE for sequences (numbers, Fibonacci)
+- Error handling (max depth, requires UNION ALL)
+
+### Key Files:
+- `QueryPlanner.cs` - CTE registration and iterator creation
+- `IteratorColumnRename.cs` - Column renaming for explicit CTE column names
+- `IteratorInMemory.cs` - In-memory row storage for recursive CTE working tables
+- `StatementExecutor.Select.cs` - CTE cleanup after query execution
 
 ---
 
@@ -339,6 +360,14 @@ EF Core scaffolding requires these views for reverse engineering:
 | `WitSqlEngineAlterTableConstraintTests.cs` | Created |
 | `WitSqlEngineAlterTableIntegrationTests.cs` | Created |
 
+### CTE (WITH clause) Execution (Complete)
+| File | Status |
+|------|--------|
+| `QueryPlanner.cs` | Modified - CTE registration and iterator creation |
+| `IteratorColumnRename.cs` | Created - Column renaming for explicit CTE column names |
+| `IteratorInMemory.cs` | Created - In-memory row storage for recursive CTE working tables |
+| `StatementExecutor.Select.cs` | Modified - CTE cleanup after query execution |
+
 ---
 
 ## Dependencies
@@ -388,7 +417,7 @@ EF Core scaffolding requires these views for reverse engineering:
 5. ~~**ALTER TABLE DROP CONSTRAINT**~~ ?
 6. ~~**ALTER TABLE ADD CONSTRAINT**~~ ?
 7. ~~**Computed Columns (STORED/VIRTUAL)**~~ ?
-8. **CTE Execution** ? NEXT - implement simple (non-recursive) CTE
+8. ~~**CTE Execution**~~ ?
 9. **RETURNING clause** - INSERT/UPDATE/DELETE ... RETURNING
 10. **Window Functions** - ROW_NUMBER(), RANK(), etc.
 
