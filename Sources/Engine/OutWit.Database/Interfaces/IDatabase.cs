@@ -97,6 +97,20 @@ public interface IDatabase
     void SetColumnNotNull(string tableName, string columnName, bool notNull);
 
     /// <summary>
+    /// Add a named constraint to an existing table.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="constraint">The constraint definition.</param>
+    void AddConstraint(string tableName, DefinitionNamedConstraint constraint);
+
+    /// <summary>
+    /// Drop a named constraint from an existing table.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="constraintName">The constraint name.</param>
+    void DropConstraint(string tableName, string constraintName);
+
+    /// <summary>
     /// Get an index by name.
     /// </summary>
     DefinitionIndex? GetIndex(string indexName);

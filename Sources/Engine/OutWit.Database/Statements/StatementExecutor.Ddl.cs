@@ -231,6 +231,14 @@ public sealed partial class StatementExecutor
                 ExecuteAlterColumn(alterTable.TableName, alterColumn);
                 break;
 
+            case AlterActionAddConstraint addConstraint:
+                ExecuteAddConstraint(alterTable.TableName, addConstraint);
+                break;
+
+            case AlterActionDropConstraint dropConstraint:
+                m_context.Database.DropConstraint(alterTable.TableName, dropConstraint.ConstraintName);
+                break;
+
             default:
                 throw new NotSupportedException($"ALTER TABLE action not supported: {alterTable.Action.GetType().Name}");
         }
@@ -297,6 +305,53 @@ public sealed partial class StatementExecutor
         {
             m_context.Database.SetColumnNotNull(tableName, action.ColumnName, action.SetNotNull.Value);
         }
+    }
+
+    private void ExecuteAddConstraint(string tableName, AlterActionAddConstraint addConstraint)
+    {
+        if (addConstraint.Constraint == null)
+        {
+            throw new InvalidOperationException("ADD CONSTRAINT requires a constraint definition");
+        }
+
+        var constraint = addConstraint.Constraint;
+        var constraintName = constraint.Name 
+            ?? throw new InvalidOperationException("ADD CONSTRAINT requires a constraint name");
+
+        DefinitionNamedConstraint namedConstraint = constraint switch
+        {
+            TableConstraintCheck check => new DefinitionNamedConstraint
+            {
+                Name = constraintName,
+                Type = ConstraintType.Check,
+                CheckExpression = WitSqlExpressionSerializer.Serialize(check.Condition)
+            },
+            TableConstraintUnique unique => new DefinitionNamedConstraint
+            {
+                Name = constraintName,
+                Type = ConstraintType.Unique,
+                Columns = unique.Columns.ToList()
+            },
+            TableConstraintForeignKey fk => new DefinitionNamedConstraint
+            {
+                Name = constraintName,
+                Type = ConstraintType.ForeignKey,
+                Columns = fk.Columns.ToList(),
+                ForeignKey = new DefinitionForeignKey
+                {
+                    Columns = fk.Columns.ToList(),
+                    ForeignTable = fk.ForeignTable,
+                    ForeignColumns = fk.ForeignColumns?.ToList(),
+                    OnDelete = MapReferenceAction(fk.OnDelete),
+                    OnUpdate = MapReferenceAction(fk.OnUpdate)
+                }
+            },
+            TableConstraintPrimaryKey => throw new NotSupportedException(
+                "Adding PRIMARY KEY constraint to existing table is not supported"),
+            _ => throw new NotSupportedException($"Constraint type not supported: {constraint.GetType().Name}")
+        };
+
+        m_context.Database.AddConstraint(tableName, namedConstraint);
     }
 
     #endregion

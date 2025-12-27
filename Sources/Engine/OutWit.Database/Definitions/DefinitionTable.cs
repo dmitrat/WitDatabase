@@ -32,6 +32,7 @@ namespace OutWit.Database.Definitions
                    && AutoIncrementRowId.Is(other.AutoIncrementRowId)
                    && CheckExpressions.Is(other.CheckExpressions)
                    && ForeignKeys.Is(other.ForeignKeys)
+                   && NamedConstraints.Is(other.NamedConstraints)
                    && UniqueConstraints?
                        .SelectMany(x=>x)
                        .ToList()
@@ -51,7 +52,8 @@ namespace OutWit.Database.Definitions
                 AutoIncrementRowId = AutoIncrementRowId,
                 CheckExpressions = CheckExpressions?.ToList(),
                 ForeignKeys = ForeignKeys?.Select(key => key.Clone()).ToList(),
-                UniqueConstraints = UniqueConstraints?.Select(list => list.ToList()).ToList()
+                UniqueConstraints = UniqueConstraints?.Select(list => list.ToList()).ToList(),
+                NamedConstraints = NamedConstraints?.Select(c => c.Clone()).ToList()
             };
         }
 
@@ -78,6 +80,15 @@ namespace OutWit.Database.Definitions
                     return i;
             }
             return -1;
+        }
+
+        /// <summary>
+        /// Gets a named constraint by name.
+        /// </summary>
+        public DefinitionNamedConstraint? GetConstraint(string constraintName)
+        {
+            return NamedConstraints?.FirstOrDefault(c => 
+                c.Name.Equals(constraintName, StringComparison.OrdinalIgnoreCase));
         }
 
         public override string ToString()
@@ -137,6 +148,13 @@ namespace OutWit.Database.Definitions
         [MemoryPackOrder(7)]
         [ReadOnlyStringMatrixFormatter]
         public IReadOnlyList<IReadOnlyList<string>>? UniqueConstraints { get; init; }
+
+        /// <summary>
+        /// Gets the named constraints on this table.
+        /// Named constraints can be dropped by name via ALTER TABLE DROP CONSTRAINT.
+        /// </summary>
+        [MemoryPackOrder(8)]
+        public IReadOnlyList<DefinitionNamedConstraint>? NamedConstraints { get; init; }
 
         #endregion
     }

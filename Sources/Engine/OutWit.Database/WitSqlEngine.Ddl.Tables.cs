@@ -4,6 +4,7 @@ using OutWit.Database.Definitions;
 using OutWit.Database.Expressions;
 using OutWit.Database.Parser;
 using OutWit.Database.Parser.Expressions;
+using OutWit.Database.Parser.Serializers;
 using OutWit.Database.Schema;
 using OutWit.Database.Types;
 using OutWit.Database.Utils;
@@ -399,6 +400,280 @@ public sealed partial class WitSqlEngine
         }
 
         m_schema.SetColumnNotNull(tableName, columnName, notNull);
+    }
+
+    #endregion
+
+    #region Add Constraint
+
+    /// <summary>
+    /// Add a named constraint to an existing table.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="constraint">The constraint definition.</param>
+    public void AddConstraint(string tableName, DefinitionNamedConstraint constraint)
+    {
+        var table = m_schema.GetTable(tableName)
+            ?? throw new InvalidOperationException($"Table '{tableName}' not found");
+
+        // Check if constraint with this name already exists
+        if (table.GetConstraint(constraint.Name) != null)
+        {
+            throw new InvalidOperationException($"Constraint '{constraint.Name}' already exists on table '{tableName}'");
+        }
+
+        // Validate constraint based on type
+        switch (constraint.Type)
+        {
+            case ConstraintType.Check:
+                ValidateCheckConstraint(table, constraint);
+                break;
+
+            case ConstraintType.Unique:
+                ValidateUniqueConstraint(table, constraint);
+                break;
+
+            case ConstraintType.ForeignKey:
+                ValidateForeignKeyConstraint(table, constraint);
+                break;
+
+            case ConstraintType.PrimaryKey:
+                throw new NotSupportedException(
+                    "Adding PRIMARY KEY constraint to existing table is not supported. " +
+                    "This would require rebuilding the table.");
+        }
+
+        // Add constraint to schema
+        m_schema.AddConstraint(tableName, constraint);
+
+        // For UNIQUE constraints, create an implicit unique index
+        if (constraint.Type == ConstraintType.Unique && constraint.Columns != null)
+        {
+            var indexName = $"UQ_{tableName}_{constraint.Name}";
+            var index = new DefinitionIndex
+            {
+                Name = indexName,
+                TableName = tableName,
+                Columns = constraint.Columns.ToList(),
+                IsUnique = true
+            };
+            CreateIndex(index);
+        }
+    }
+
+    private void ValidateCheckConstraint(DefinitionTable table, DefinitionNamedConstraint constraint)
+    {
+        if (string.IsNullOrEmpty(constraint.CheckExpression))
+        {
+            throw new InvalidOperationException("CHECK constraint must have an expression");
+        }
+
+        // Parse the check expression
+        var expression = WitSql.ParseExpression(constraint.CheckExpression);
+        var context = new ContextExecution { Database = this };
+        var evaluator = new ExpressionEvaluator(context);
+
+        // Validate all existing rows satisfy the check constraint
+        var prefix = SchemaCatalog.GetTableDataPrefix(table.Name);
+        foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+        {
+            var row = table.DeserializeRow(value);
+            var result = evaluator.Evaluate(expression, row);
+
+            if (!result.IsNull && result.AsBool() == false)
+            {
+                throw new InvalidOperationException(
+                    $"CHECK constraint '{constraint.Name}' is violated by existing data");
+            }
+        }
+    }
+
+    private void ValidateUniqueConstraint(DefinitionTable table, DefinitionNamedConstraint constraint)
+    {
+        if (constraint.Columns == null || constraint.Columns.Count == 0)
+        {
+            throw new InvalidOperationException("UNIQUE constraint must specify at least one column");
+        }
+
+        // Verify columns exist
+        var columnIndices = new int[constraint.Columns.Count];
+        for (int i = 0; i < constraint.Columns.Count; i++)
+        {
+            var colIndex = table.GetOrdinal(constraint.Columns[i]);
+            if (colIndex < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Column '{constraint.Columns[i]}' not found in table '{table.Name}'");
+            }
+            columnIndices[i] = colIndex;
+        }
+
+        // Check for duplicate values
+        var seenValues = new HashSet<string>();
+        var prefix = SchemaCatalog.GetTableDataPrefix(table.Name);
+
+        foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+        {
+            var row = table.DeserializeRow(value);
+
+            // Build composite key from all constraint columns
+            var keyParts = new string[columnIndices.Length];
+            bool allNull = true;
+
+            for (int i = 0; i < columnIndices.Length; i++)
+            {
+                var val = row[columnIndices[i]];
+                keyParts[i] = val.IsNull ? "\0NULL\0" : val.AsString() ?? "";
+                if (!val.IsNull) allNull = false;
+            }
+
+            // Skip rows where all columns are NULL (NULL != NULL in UNIQUE)
+            if (allNull) continue;
+
+            var compositeKey = string.Join("\0", keyParts);
+            if (!seenValues.Add(compositeKey))
+            {
+                throw new InvalidOperationException(
+                    $"UNIQUE constraint '{constraint.Name}' is violated by existing duplicate data");
+            }
+        }
+    }
+
+    private void ValidateForeignKeyConstraint(DefinitionTable table, DefinitionNamedConstraint constraint)
+    {
+        if (constraint.ForeignKey == null)
+        {
+            throw new InvalidOperationException("FOREIGN KEY constraint must have foreign key definition");
+        }
+
+        var fk = constraint.ForeignKey;
+
+        // Verify referenced table exists
+        var refTable = m_schema.GetTable(fk.ForeignTable)
+            ?? throw new InvalidOperationException($"Referenced table '{fk.ForeignTable}' not found");
+
+        // Verify columns exist in source table
+        var sourceColumnIndices = new int[fk.Columns.Count];
+        for (int i = 0; i < fk.Columns.Count; i++)
+        {
+            var colIndex = table.GetOrdinal(fk.Columns[i]);
+            if (colIndex < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Column '{fk.Columns[i]}' not found in table '{table.Name}'");
+            }
+            sourceColumnIndices[i] = colIndex;
+        }
+
+        // Determine referenced columns (use PK if not specified)
+        var refColumns = fk.ForeignColumns ?? refTable.PrimaryKey;
+        if (refColumns == null || refColumns.Count == 0)
+        {
+            throw new InvalidOperationException(
+                $"Referenced table '{fk.ForeignTable}' has no primary key and no columns specified");
+        }
+
+        // Verify referenced columns exist
+        var refColumnIndices = new int[refColumns.Count];
+        for (int i = 0; i < refColumns.Count; i++)
+        {
+            var colIndex = refTable.GetOrdinal(refColumns[i]);
+            if (colIndex < 0)
+            {
+                throw new InvalidOperationException(
+                    $"Column '{refColumns[i]}' not found in referenced table '{fk.ForeignTable}'");
+            }
+            refColumnIndices[i] = colIndex;
+        }
+
+        // Build set of valid referenced values
+        var validValues = new HashSet<string>();
+        var refPrefix = SchemaCatalog.GetTableDataPrefix(fk.ForeignTable);
+        foreach (var (key, value) in m_database.Scan(refPrefix, GetNextPrefix(refPrefix)))
+        {
+            var row = refTable.DeserializeRow(value);
+            var keyParts = new string[refColumnIndices.Length];
+            for (int i = 0; i < refColumnIndices.Length; i++)
+            {
+                var val = row[refColumnIndices[i]];
+                keyParts[i] = val.IsNull ? "\0NULL\0" : val.AsString() ?? "";
+            }
+            validValues.Add(string.Join("\0", keyParts));
+        }
+
+        // Validate all source rows reference valid values
+        var sourcePrefix = SchemaCatalog.GetTableDataPrefix(table.Name);
+        foreach (var (key, value) in m_database.Scan(sourcePrefix, GetNextPrefix(sourcePrefix)))
+        {
+            var row = table.DeserializeRow(value);
+
+            // Build source key
+            var keyParts = new string[sourceColumnIndices.Length];
+            bool hasNull = false;
+            for (int i = 0; i < sourceColumnIndices.Length; i++)
+            {
+                var val = row[sourceColumnIndices[i]];
+                if (val.IsNull)
+                {
+                    hasNull = true;
+                    break;
+                }
+                keyParts[i] = val.AsString() ?? "";
+            }
+
+            // NULL values don't violate FK constraint
+            if (hasNull) continue;
+
+            var compositeKey = string.Join("\0", keyParts);
+            if (!validValues.Contains(compositeKey))
+            {
+                throw new InvalidOperationException(
+                    $"FOREIGN KEY constraint '{constraint.Name}' is violated: value not found in referenced table");
+            }
+        }
+    }
+
+    #endregion
+
+    #region Drop Constraint
+
+    /// <summary>
+    /// Drop a named constraint from an existing table.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="constraintName">The constraint name.</param>
+    public void DropConstraint(string tableName, string constraintName)
+    {
+        var table = m_schema.GetTable(tableName)
+            ?? throw new InvalidOperationException($"Table '{tableName}' not found");
+
+        var constraint = table.GetConstraint(constraintName);
+        if (constraint == null)
+        {
+            throw new InvalidOperationException(
+                $"Constraint '{constraintName}' not found on table '{tableName}'");
+        }
+
+        // Cannot drop PRIMARY KEY (would require table rebuild)
+        if (constraint.Type == ConstraintType.PrimaryKey)
+        {
+            throw new NotSupportedException(
+                "Dropping PRIMARY KEY constraint is not supported. This would require rebuilding the table.");
+        }
+
+        // For UNIQUE constraints, drop the associated index
+        if (constraint.Type == ConstraintType.Unique)
+        {
+            var indexName = $"UQ_{tableName}_{constraintName}";
+            var existingIndex = GetIndex(indexName);
+            if (existingIndex != null)
+            {
+                DropIndex(indexName);
+            }
+        }
+
+        // Remove constraint from schema
+        m_schema.DropConstraint(tableName, constraintName);
     }
 
     #endregion

@@ -1,7 +1,7 @@
 # ALTER TABLE Implementation TODO
 
 **Created:** 2025-01-29  
-**Status:** In Progress  
+**Status:** ? COMPLETED  
 **Priority:** P0 (Required for EF Core migrations)
 
 ---
@@ -10,108 +10,83 @@
 
 ALTER TABLE is critical for EF Core migrations. Three main features need implementation:
 
-1. **ADD CONSTRAINT** - Add named constraints to existing table
-2. **DROP CONSTRAINT** - Remove named constraints
+1. ~~**ADD CONSTRAINT** - Add named constraints to existing table~~ ? COMPLETED
+2. ~~**DROP CONSTRAINT** - Remove named constraints~~ ? COMPLETED
 3. ~~**ADD COLUMN with DEFAULT** - Populate existing rows with default value~~ ? COMPLETED
 
 ---
 
-## 1. ALTER TABLE ADD CONSTRAINT (P0)
+## 1. ALTER TABLE ADD CONSTRAINT (P0) ? COMPLETED
 
 ### Current State
 - Parser: ? Supported (`AlterActionAddConstraint`)
-- Engine: ? Not implemented (throws `NotSupportedException`)
+- Engine: ? **IMPLEMENTED**
 
-### Constraint Types to Support
+### Implementation Summary
 
-| Constraint Type | SQL Example | Implementation Complexity |
-|----------------|-------------|--------------------------|
-| PRIMARY KEY | `ADD CONSTRAINT pk_name PRIMARY KEY (cols)` | High - requires data migration |
-| UNIQUE | `ADD CONSTRAINT uq_name UNIQUE (cols)` | Medium - needs index creation |
-| FOREIGN KEY | `ADD CONSTRAINT fk_name FOREIGN KEY (cols) REFERENCES ...` | Medium |
-| CHECK | `ADD CONSTRAINT chk_name CHECK (expr)` | Low - metadata only + validation |
+**Completed on:** 2025-01-30
 
-### Implementation Steps
+#### Supported Constraint Types
 
-#### Step 1.1: Update `DefinitionTable` for Named Constraints
-- [ ] Add `NamedConstraints` property: `IReadOnlyList<DefinitionNamedConstraint>?`
-- [ ] Create `DefinitionNamedConstraint` class with:
-  ```csharp
-  public sealed class DefinitionNamedConstraint
-  {
-      public required string Name { get; init; }
-      public required ConstraintType Type { get; init; } // PrimaryKey, Unique, ForeignKey, Check
-      public IReadOnlyList<string>? Columns { get; init; }
-      public string? CheckExpression { get; init; }
-      public DefinitionForeignKey? ForeignKey { get; init; }
-  }
-  ```
-- [ ] Update `DefinitionTable.Is()` and `Clone()` methods
+| Constraint Type | SQL Example | Status |
+|----------------|-------------|--------|
+| CHECK | `ADD CONSTRAINT chk_name CHECK (expr)` | ? Implemented |
+| UNIQUE | `ADD CONSTRAINT uq_name UNIQUE (cols)` | ? Implemented |
+| FOREIGN KEY | `ADD CONSTRAINT fk_name FOREIGN KEY (cols) REFERENCES ...` | ? Implemented |
+| PRIMARY KEY | `ADD CONSTRAINT pk_name PRIMARY KEY (cols)` | ? Not Supported (throws NotSupportedException) |
 
-#### Step 1.2: Implement `IDatabase.AddConstraint()`
-- [ ] Add method to `IDatabase` interface:
-  ```csharp
-  void AddConstraint(string tableName, DefinitionNamedConstraint constraint);
-  ```
-- [ ] Implement in `WitSqlEngine`:
-  - For CHECK: Validate all existing rows, add to metadata
-  - For UNIQUE: Create unique index, validate no duplicates exist
-  - For FOREIGN KEY: Validate all existing values reference valid rows
-  - For PRIMARY KEY: Complex - requires data restructuring
+#### Files Created
+- `Definitions/DefinitionNamedConstraint.cs` - Named constraint model with ConstraintType enum
 
-#### Step 1.3: Update `StatementExecutor.Ddl.cs`
-- [ ] Handle `AlterActionAddConstraint` case:
-  ```csharp
-  case AlterActionAddConstraint addConstraint:
-      ExecuteAddConstraint(alterTable.TableName, addConstraint);
-      break;
-  ```
-- [ ] Implement `ExecuteAddConstraint()` method
+#### Files Modified
+- `Definitions/DefinitionTable.cs` - Added `NamedConstraints` property and `GetConstraint()` method
+- `Interfaces/IDatabase.cs` - Added `AddConstraint()` and `DropConstraint()` methods
+- `WitSqlEngine.Ddl.Tables.cs` - Implemented constraint validation and management
+- `Schema/SchemaCatalog.Columns.cs` - Added `AddConstraint()` and `DropConstraint()` methods
+- `Statements/StatementExecutor.Ddl.cs` - Added handling for `AlterActionAddConstraint` and `AlterActionDropConstraint`
 
-#### Step 1.4: Constraint Validation
-- [ ] For CHECK: Scan all rows, evaluate expression, throw if any fails
-- [ ] For UNIQUE: Check for duplicates before creating index
-- [ ] For FOREIGN KEY: Validate referential integrity
+#### Validation Logic
+- **CHECK**: Parses expression and evaluates against all existing rows
+- **UNIQUE**: Validates no duplicates exist (NULL values excluded from uniqueness)
+- **FOREIGN KEY**: Validates all values exist in referenced table (NULL values allowed)
 
-#### Step 1.5: Tests
-- [ ] `AlterTableAddCheckConstraintTest()`
-- [ ] `AlterTableAddUniqueConstraintTest()`
-- [ ] `AlterTableAddUniqueConstraintOnDuplicatesThrowsTest()`
-- [ ] `AlterTableAddForeignKeyConstraintTest()`
-- [ ] `AlterTableAddForeignKeyWithInvalidDataThrowsTest()`
-- [ ] `AlterTableAddCheckConstraintWithInvalidDataThrowsTest()`
+#### Tests Added (WitSqlEngineAlterTableConstraintTests.cs)
+- [x] `AlterTableAddCheckConstraintTest()`
+- [x] `AlterTableAddCheckConstraintWithInvalidDataThrowsTest()`
+- [x] `AlterTableAddCheckConstraintOnEmptyTableTest()`
+- [x] `AlterTableAddUniqueConstraintTest()`
+- [x] `AlterTableAddUniqueConstraintOnDuplicatesThrowsTest()`
+- [x] `AlterTableAddUniqueConstraintAllowsMultipleNullsTest()`
+- [x] `AlterTableAddCompositeUniqueConstraintTest()`
+- [x] `AlterTableAddForeignKeyConstraintTest()`
+- [x] `AlterTableAddForeignKeyWithInvalidDataThrowsTest()`
+- [x] `AlterTableAddForeignKeyAllowsNullTest()`
+- [x] `AlterTableAddPrimaryKeyThrowsNotSupportedTest()`
 
 ---
 
-## 2. ALTER TABLE DROP CONSTRAINT (P0)
+## 2. ALTER TABLE DROP CONSTRAINT (P0) ? COMPLETED
 
 ### Current State
 - Parser: ? Supported (`AlterActionDropConstraint`)
-- Engine: ? Not implemented (throws `NotSupportedException`)
+- Engine: ? **IMPLEMENTED**
 
-### Implementation Steps
+### Implementation Summary
 
-#### Step 2.1: Implement `IDatabase.DropConstraint()`
-- [ ] Add method to `IDatabase` interface:
-  ```csharp
-  void DropConstraint(string tableName, string constraintName);
-  ```
-- [ ] Implement in `WitSqlEngine`:
-  - Find constraint by name in table metadata
-  - For UNIQUE: Drop associated index
-  - For CHECK/FOREIGN KEY: Remove from metadata
-  - For PRIMARY KEY: Not supported (would require table rebuild)
+**Completed on:** 2025-01-30
 
-#### Step 2.2: Update `StatementExecutor.Ddl.cs`
-- [ ] Handle `AlterActionDropConstraint` case (already exists but may throw)
-- [ ] Call `m_context.Database.DropConstraint()`
+The `DropConstraint()` method in `WitSqlEngine.Ddl.Tables.cs`:
+1. Finds constraint by name in table metadata
+2. For UNIQUE: Drops associated index
+3. For CHECK/FOREIGN KEY: Removes from metadata
+4. For PRIMARY KEY: Throws NotSupportedException
 
-#### Step 2.3: Tests
-- [ ] `AlterTableDropCheckConstraintTest()`
-- [ ] `AlterTableDropUniqueConstraintTest()`
-- [ ] `AlterTableDropForeignKeyConstraintTest()`
-- [ ] `AlterTableDropNonExistentConstraintThrowsTest()`
-- [ ] `AlterTableDropPrimaryKeyThrowsTest()` (not supported)
+#### Tests Added
+- [x] `AlterTableDropCheckConstraintTest()`
+- [x] `AlterTableDropUniqueConstraintTest()`
+- [x] `AlterTableDropForeignKeyConstraintTest()`
+- [x] `AlterTableDropNonExistentConstraintThrowsTest()`
+- [x] `AlterTableDropConstraintAlreadyExistsTest()`
 
 ---
 
@@ -133,12 +108,12 @@ The `AddColumn()` method in `WitSqlEngine.Ddl.Tables.cs` now:
 5. For non-deterministic expressions: evaluates per row to generate unique values
 6. Updates all existing rows with the new column and its default value
 
-### Helper Methods Added
+#### Helper Methods Added
 - `IsDeterministicExpression()` - checks if expression returns same value each call
 - `IsDeterministicFunction()` - identifies non-deterministic functions (NOW, NEWGUID, RANDOM, etc.)
 - `IsDeterministicCase()` - handles CASE expression determinism
 
-### Tests Added (10 new tests in `WitSqlEngineDdlTests.cs`)
+#### Tests Added (WitSqlEngineDdlTests.cs)
 - [x] `AlterTableAddColumnWithDefaultPopulatesExistingRowsTest()` - string default
 - [x] `AlterTableAddColumnWithNullDefaultTest()` - no default = NULL
 - [x] `AlterTableAddColumnWithIntegerDefaultTest()` - integer literal default
@@ -147,11 +122,6 @@ The `AddColumn()` method in `WitSqlEngine.Ddl.Tables.cs` now:
 - [x] `AlterTableAddNotNullColumnWithDefaultTest()` - NOT NULL with DEFAULT
 - [x] `AlterTableAddColumnWithNowDefaultGeneratesTimestampsTest()` - `DEFAULT (NOW())`
 - [x] `AlterTableAddColumnWithNewGuidDefaultGeneratesUniqueGuidsTest()` - `DEFAULT (NEWGUID())`
-
-### Files Modified
-- `WitSqlEngine.Ddl.Tables.cs` - Added expression evaluation logic to `AddColumn()`
-- `WitSqlRow.cs` - Added `Empty` static field
-- `WitSqlEngineDdlTests.cs` - Added tests, enabled previously ignored test
 
 ---
 
@@ -181,111 +151,74 @@ The `AddColumn()` method in `WitSqlEngine.Ddl.Tables.cs` now:
 
 ## File Changes Summary
 
-### Files to Modify
-
-| File | Changes |
-|------|---------|
-| `Definitions/DefinitionTable.cs` | Add `NamedConstraints` property |
-| `Definitions/DefinitionNamedConstraint.cs` | **NEW** - Named constraint definition |
-| `Interfaces/IDatabase.cs` | Add `AddConstraint()`, `DropConstraint()` methods |
-| `WitSqlEngine.Ddl.Tables.cs` | Implement constraint methods |
-| `WitSqlEngine.Dml.cs` | Update `AddColumn()` to populate defaults |
-| `Statements/StatementExecutor.Ddl.cs` | Handle `AddConstraint`, `DropConstraint` |
-| `Schema/SchemaCatalog.cs` | Persist named constraints |
-
-### Files to Create
+### Files Created
 
 | File | Purpose |
 |------|---------|
-| `Definitions/DefinitionNamedConstraint.cs` | Named constraint model |
-| `Tests/WitSqlEngineAlterTableConstraintTests.cs` | Constraint tests |
+| `Definitions/DefinitionNamedConstraint.cs` | Named constraint model with ConstraintType enum |
+| `Tests/WitSqlEngineAlterTableConstraintTests.cs` | Constraint tests (18 tests) |
+
+### Files Modified
+
+| File | Changes |
+|------|---------|
+| `Definitions/DefinitionTable.cs` | Added `NamedConstraints` property, `GetConstraint()` method |
+| `Interfaces/IDatabase.cs` | Added `AddConstraint()`, `DropConstraint()` methods |
+| `WitSqlEngine.Ddl.Tables.cs` | Implemented constraint methods, ADD COLUMN with DEFAULT |
+| `Schema/SchemaCatalog.Columns.cs` | Added `AddConstraint()`, `DropConstraint()` methods |
+| `Statements/StatementExecutor.Ddl.cs` | Handle `AddConstraint`, `DropConstraint` actions |
+| `WitSqlRow.cs` | Added `Empty` static field |
+| `WitSqlEngineDdlTests.cs` | Added tests for ADD COLUMN with DEFAULT |
 
 ---
 
-## Dependencies
-
-```
-DefinitionNamedConstraint  <--  DefinitionTable
-        |
-        v
-IDatabase.AddConstraint()  -->  WitSqlEngine
-        |
-        v
-StatementExecutor.ExecuteAddConstraint()
-        |
-        v
-Constraint Validation (scan existing data)
-```
-
----
-
-## Test Plan
-
-### Unit Tests
-- [ ] `DefinitionNamedConstraintTests.cs` - Model tests
-
-### Integration Tests (in `WitSqlEngineAlterTableConstraintTests.cs`)
-- [ ] ADD CONSTRAINT tests (6)
-- [ ] DROP CONSTRAINT tests (5)
-- [ ] ADD COLUMN with DEFAULT tests (5)
-
-### Regression Tests
-- [ ] Verify existing ALTER TABLE tests still pass
-- [ ] Verify CREATE TABLE with constraints still works
-
----
-
-## Implementation Order (Updated)
-
-1. ~~**Week 1**: ADD COLUMN with DEFAULT (smallest scope, unblocks EF Core)~~ ? DONE
-   - ~~Update `AddColumn()` logic~~
-   - ~~Implement row population~~
-   - ~~Enable ignored test~~
-
-2. **Week 2**: DROP CONSTRAINT
-   - Add `DropConstraint()` method
-   - Handle different constraint types
-   - Tests
-
-3. **Week 3**: ADD CONSTRAINT (most complex)
-   - Create `DefinitionNamedConstraint`
-   - Implement validation logic
-   - Handle each constraint type
-   - Tests
-
----
-
-## EF Core Migration Patterns
+## EF Core Migration Patterns ? NOW SUPPORTED
 
 EF Core generates migrations like:
 
 ```sql
--- Adding a new column with default
-ALTER TABLE "Products" ADD "CreatedAt" DATETIME NOT NULL DEFAULT NOW();
+-- Adding a new column with default ?
+ALTER TABLE "Products" ADD "CreatedAt" DATETIME NOT NULL DEFAULT (NOW());
 
--- Adding a unique constraint
+-- Adding a unique constraint ?
 ALTER TABLE "Users" ADD CONSTRAINT "UQ_Users_Email" UNIQUE ("Email");
 
--- Adding a foreign key
+-- Adding a foreign key ?
 ALTER TABLE "Orders" ADD CONSTRAINT "FK_Orders_Users"
     FOREIGN KEY ("UserId") REFERENCES "Users" ("Id")
     ON DELETE CASCADE;
 
--- Dropping a constraint
+-- Adding a check constraint ?
+ALTER TABLE "Products" ADD CONSTRAINT "CHK_Price" CHECK (Price >= 0);
+
+-- Dropping a constraint ?
 ALTER TABLE "Users" DROP CONSTRAINT "UQ_Users_Email";
 ```
 
-All these patterns must be supported for EF Core migrations to work.
+All these patterns are now supported!
 
 ---
 
 ## Notes
 
-- PRIMARY KEY constraint cannot be added to existing table (would require table rebuild)
-- NOT NULL constraint with DEFAULT should be handled carefully (set default, then set not null)
-- Unique constraint creates an implicit unique index
-- Consider transaction support for large table modifications
+- PRIMARY KEY constraint cannot be added/dropped (would require table rebuild)
+- UNIQUE constraint creates an implicit unique index named `UQ_{table}_{constraint}`
+- NULL values don't violate UNIQUE or FOREIGN KEY constraints
+- CHECK constraint allows NULL values (NULL != FALSE)
 
 ---
 
-**Last Updated:** 2025-01-30
+## Test Summary
+
+| Category | Tests | Status |
+|----------|-------|--------|
+| ADD COLUMN with DEFAULT | 10 | ? |
+| ADD CONSTRAINT | 11 | ? |
+| DROP CONSTRAINT | 5 | ? |
+| Integration | 2 | ? |
+| **Total** | **28** | ? |
+
+---
+
+**Last Updated:** 2025-01-30  
+**Completed:** 2025-01-30

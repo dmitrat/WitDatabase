@@ -198,5 +198,58 @@ public sealed partial class SchemaCatalog
         }
     }
 
+    /// <summary>
+    /// Adds a named constraint to an existing table.
+    /// </summary>
+    public void AddConstraint(string tableName, DefinitionNamedConstraint constraint)
+    {
+        m_lock.EnterWriteLock();
+        try
+        {
+            if (!m_tables.TryGetValue(tableName, out var table))
+                throw new InvalidOperationException($"Table '{tableName}' not found");
+
+            var constraints = table.NamedConstraints?.ToList() ?? [];
+            constraints.Add(constraint);
+
+            m_tables[tableName] = table.With(x => x.NamedConstraints, constraints);
+            SaveSchema();
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Drops a named constraint from an existing table.
+    /// </summary>
+    public void DropConstraint(string tableName, string constraintName)
+    {
+        m_lock.EnterWriteLock();
+        try
+        {
+            if (!m_tables.TryGetValue(tableName, out var table))
+                throw new InvalidOperationException($"Table '{tableName}' not found");
+
+            if (table.NamedConstraints == null)
+                throw new InvalidOperationException($"Constraint '{constraintName}' not found on table '{tableName}'");
+
+            var constraints = table.NamedConstraints
+                .Where(c => !c.Name.Equals(constraintName, StringComparison.OrdinalIgnoreCase))
+                .ToList();
+
+            if (constraints.Count == table.NamedConstraints.Count)
+                throw new InvalidOperationException($"Constraint '{constraintName}' not found on table '{tableName}'");
+
+            m_tables[tableName] = table.With(x => x.NamedConstraints, constraints.Count > 0 ? constraints : null);
+            SaveSchema();
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
     #endregion
 }
