@@ -347,7 +347,7 @@
 | `LEAD` | N/A | [x] | [x] | SS7.2 |
 | Aggregate window functions (SUM, AVG, COUNT, MIN, MAX OVER) | N/A | [x] | [x] | SS7 |
 
-**Note:** Frame clause (ROWS/RANGE BETWEEN) deferred to v2. Current implementation uses entire partition for aggregate window functions.
+**Note:** Current implementation uses entire partition for aggregate window functions.
 
 ## 30. Transactions (SS9)
 

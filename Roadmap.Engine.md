@@ -593,7 +593,6 @@ The Engine component (`OutWit.Database`) is responsible for:
 - [ ] Stored procedures
 - [ ] EXPLAIN / EXPLAIN ANALYZE
 - [ ] Database administration commands
-- [ ] Window frame clause (ROWS/RANGE BETWEEN)
 - [ ] Advanced statistics and optimization
 
 ---
