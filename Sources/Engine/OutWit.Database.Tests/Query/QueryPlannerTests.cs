@@ -334,8 +334,9 @@ public class QueryPlannerTests
         var iterator = planner.Plan(select);
 
         // The top iterator should be the join (wrapped in alias potentially)
-        m_database.Received(1).CreateTableScan("Users");
-        m_database.Received(1).CreateTableScan("Orders");
+        // Note: Join optimization may call CreateTableScan multiple times for size estimation
+        m_database.Received().CreateTableScan("Users");
+        m_database.Received().CreateTableScan("Orders");
     }
 
     [Test]
@@ -364,8 +365,9 @@ public class QueryPlannerTests
         var iterator = planner.Plan(select);
 
         // Should create cross join for multiple tables in FROM
-        m_database.Received(1).CreateTableScan("Users");
-        m_database.Received(1).CreateTableScan("Orders");
+        // Note: Join optimization may call CreateTableScan multiple times for size estimation
+        m_database.Received().CreateTableScan("Users");
+        m_database.Received().CreateTableScan("Orders");
     }
 
     #endregion

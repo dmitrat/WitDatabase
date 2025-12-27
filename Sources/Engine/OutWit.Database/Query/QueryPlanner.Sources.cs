@@ -26,17 +26,101 @@ public sealed partial class QueryPlanner
             return new IteratorSingleRow([], []);
         }
 
-        // Start with the first table source (with index optimization)
-        var iterator = CreateTableSourceIterator(select.FromClause[0], select.WhereClause);
-
-        // Handle implicit cross joins (multiple tables in FROM without explicit JOIN)
-        for (int i = 1; i < select.FromClause.Count; i++)
+        // For multiple tables in FROM (implicit cross joins), optimize the order
+        if (select.FromClause.Count > 1)
         {
-            var rightIterator = CreateTableSourceIterator(select.FromClause[i], null);
+            return CreateOptimizedMultiTableIterator(select.FromClause, select.WhereClause);
+        }
+
+        // Single table source (may be a join)
+        return CreateTableSourceIterator(select.FromClause[0], select.WhereClause);
+    }
+
+    /// <summary>
+    /// Creates an optimized iterator for multiple tables in FROM clause.
+    /// Reorders tables to minimize intermediate result sizes.
+    /// </summary>
+    private IResultIterator CreateOptimizedMultiTableIterator(
+        IReadOnlyList<TableSource> tables, 
+        WitSqlExpression? whereClause)
+    {
+        // Try to optimize join order
+        var joinOptimizer = new JoinOrderOptimizer(m_context.Database);
+        var joinConditions = ExtractJoinConditions(whereClause);
+        var optimizedOrder = joinOptimizer.OptimizeJoinOrder(tables, joinConditions);
+
+        // Use optimized order if available, otherwise use original
+        var orderedTables = optimizedOrder ?? tables;
+
+        // Start with the first table source (with index optimization)
+        var iterator = CreateTableSourceIterator(orderedTables[0], whereClause);
+
+        // Handle implicit cross joins
+        for (int i = 1; i < orderedTables.Count; i++)
+        {
+            var rightIterator = CreateTableSourceIterator(orderedTables[i], null);
             iterator = new IteratorJoin(iterator, rightIterator, JoinType.Cross, null, m_context);
         }
 
         return iterator;
+    }
+
+    /// <summary>
+    /// Extracts join condition information from WHERE clause for optimization.
+    /// </summary>
+    private List<JoinConditionInfo>? ExtractJoinConditions(WitSqlExpression? whereClause)
+    {
+        if (whereClause == null)
+            return null;
+
+        var conditions = new List<JoinConditionInfo>();
+        ExtractJoinConditionsRecursive(whereClause, conditions);
+
+        return conditions.Count > 0 ? conditions : null;
+    }
+
+    private void ExtractJoinConditionsRecursive(WitSqlExpression expression, List<JoinConditionInfo> conditions)
+    {
+        switch (expression)
+        {
+            case WitSqlExpressionBinary binary:
+                if (binary.Operator == BinaryOperatorType.And)
+                {
+                    ExtractJoinConditionsRecursive(binary.Left, conditions);
+                    ExtractJoinConditionsRecursive(binary.Right, conditions);
+                }
+                else if (binary.Operator == BinaryOperatorType.Equal)
+                {
+                    // Check if this is a join condition (column = column)
+                    if (binary.Left is WitSqlExpressionColumnRef leftCol && 
+                        binary.Right is WitSqlExpressionColumnRef rightCol &&
+                        leftCol.TableName != null && rightCol.TableName != null)
+                    {
+                        var isPkJoin = IsColumnPrimaryKey(leftCol.TableName, leftCol.ColumnName) ||
+                                      IsColumnPrimaryKey(rightCol.TableName, rightCol.ColumnName);
+
+                        conditions.Add(new JoinConditionInfo
+                        {
+                            LeftTableAlias = leftCol.TableName,
+                            LeftColumnName = leftCol.ColumnName,
+                            RightTableAlias = rightCol.TableName,
+                            RightColumnName = rightCol.ColumnName,
+                            IsPrimaryKeyJoin = isPkJoin
+                        });
+                    }
+                }
+                break;
+        }
+    }
+
+    private bool IsColumnPrimaryKey(string tableName, string columnName)
+    {
+        var table = m_context.Database.GetTable(tableName);
+        if (table?.PrimaryKey == null)
+            return false;
+
+        return table.PrimaryKey.Any(pk => 
+            pk.Equals(columnName, StringComparison.OrdinalIgnoreCase));
     }
 
     private IResultIterator CreateTableSourceIterator(TableSource source, WitSqlExpression? whereClause = null)
@@ -333,6 +417,15 @@ public sealed partial class QueryPlanner
     {
         var left = CreateTableSourceIterator(join.Left);
         var right = CreateTableSourceIterator(join.Right);
+
+        // Optimize join side order for INNER and CROSS joins
+        var joinOptimizer = new JoinOrderOptimizer(m_context.Database);
+        if (joinOptimizer.ShouldSwapJoinSides(join))
+        {
+            // Swap left and right for better performance
+            return new IteratorJoin(right, left, join.JoinType, join.OnCondition, m_context);
+        }
+
         return new IteratorJoin(left, right, join.JoinType, join.OnCondition, m_context);
     }
 
