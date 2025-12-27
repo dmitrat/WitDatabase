@@ -20,6 +20,40 @@ public sealed partial class WitSqlEngine
 
     #endregion
 
+    #region Get Index
+
+    /// <summary>
+    /// Get an index definition by name.
+    /// </summary>
+    /// <param name="indexName">The index name.</param>
+    /// <returns>The index definition, or null if not found.</returns>
+    public DefinitionIndex? GetIndex(string indexName)
+    {
+        return m_schema.GetIndex(indexName);
+    }
+
+    /// <summary>
+    /// Get all indexes for a table.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <returns>Collection of index definitions.</returns>
+    public IEnumerable<DefinitionIndex> GetTableIndexes(string tableName)
+    {
+        return m_schema.GetTableIndexes(tableName);
+    }
+
+    /// <summary>
+    /// Explicit interface implementation for IDatabase.GetIndex.
+    /// </summary>
+    DefinitionIndex? Interfaces.IDatabase.GetIndex(string indexName) => GetIndex(indexName);
+
+    /// <summary>
+    /// Explicit interface implementation for IDatabase.GetTableIndexes.
+    /// </summary>
+    IEnumerable<DefinitionIndex> Interfaces.IDatabase.GetTableIndexes(string tableName) => GetTableIndexes(tableName);
+
+    #endregion
+
     #region Drop Index
 
     /// <summary>

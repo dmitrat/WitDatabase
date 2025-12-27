@@ -305,14 +305,20 @@ public sealed partial class StatementExecutor
 
     private WitSqlResult ExecuteCreateIndex(WitSqlStatementCreateIndex createIndex)
     {
+        // Check if table exists
+        var table = m_context.Database.GetTable(createIndex.TableName);
+        if (table == null)
+        {
+            throw new InvalidOperationException($"Table '{createIndex.TableName}' not found");
+        }
+
         // Check if index already exists when IF NOT EXISTS is specified
         if (createIndex.IfNotExists)
         {
-            var table = m_context.Database.GetTable(createIndex.TableName);
-            // Skip if table doesn't exist or index already exists
-            if (table == null)
+            var existingIndex = m_context.Database.GetIndex(createIndex.IndexName);
+            if (existingIndex != null)
             {
-                throw new InvalidOperationException($"Table '{createIndex.TableName}' not found");
+                return new WitSqlResult(); // Index already exists, do nothing
             }
         }
 
@@ -343,6 +349,16 @@ public sealed partial class StatementExecutor
 
     private WitSqlResult ExecuteDropIndex(WitSqlStatementDropIndex dropIndex)
     {
+        // Check IF EXISTS
+        if (dropIndex.IfExists)
+        {
+            var existingIndex = m_context.Database.GetIndex(dropIndex.IndexName);
+            if (existingIndex == null)
+            {
+                return new WitSqlResult(); // Index doesn't exist, do nothing
+            }
+        }
+
         m_context.Database.DropIndex(dropIndex.IndexName);
         return new WitSqlResult();
     }

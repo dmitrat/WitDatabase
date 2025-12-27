@@ -37,7 +37,7 @@
 | Category | P0 | P1 | P2 | Status |
 |----------|----|----|----|----|
 | Transaction Support | 0 | 0 | 0 | DONE |
-| Index Implementation | 3 | 3 | 0 | BLOCKING |
+| Index Implementation | 1 | 3 | 0 | IN PROGRESS |
 | ALTER TABLE | 3 | 0 | 1 | MISSING |
 | CTE Execution | 2 | 1 | 0 | Required |
 | Window Functions | 0 | 6 | 3 | Required |
@@ -119,26 +119,37 @@ All 46 transaction and locking tests passing:
 
 ---
 
-## 2. Index Implementation (P0 - BLOCKING)
+## 2. Index Implementation (P0 - IN PROGRESS)
 
-**Current State:** Index metadata stored, but NOT USED for queries
+**Current State:** Index metadata stored, iterators created, but not yet integrated into query planner
 
 ### Found in Code:
 ```csharp
-// WitSqlEngine.Query.cs:117
-// TODO: Implement proper index seek
-
-// WitSqlEngine.Query.cs:135  
-// TODO: Implement proper index range scan
+// WitSqlEngine.Query.cs - NOW IMPLEMENTED
+public IResultIterator CreateIndexSeek(string tableName, string indexName, WitSqlValue[] keyValues)
+public IResultIterator CreateIndexRangeScan(string tableName, string indexName, ...)
 ```
 
-### Tasks:
-- [ ] **P0** Implement `CreateIndexSeek()` - equality lookup using B+Tree index
-- [ ] **P0** Implement `CreateIndexRangeScan()` - range queries using index
+### Completed Tasks:
+- [x] **P0** Implement `IteratorIndexSeek.cs` - equality lookup using secondary index
+- [x] **P0** Implement `IteratorIndexRangeScan.cs` - range queries using index
+- [x] **P0** Implement `CreateIndexSeek()` in WitSqlEngine
+- [x] **P0** Implement `CreateIndexRangeScan()` in WitSqlEngine
+- [x] **P0** Index key serialization (sort-order preserving)
+
+### Remaining Tasks:
 - [ ] **P0** Index auto-update on INSERT/UPDATE/DELETE
 - [ ] **P1** Partial index evaluation (WHERE clause on index)
 - [ ] **P1** Expression index evaluation (functional indexes)
 - [ ] **P1** Covering index support (INCLUDE columns)
+
+### Implementation Files Created:
+- `Iterators/IteratorIndexSeek.cs` - Index equality lookup iterator
+- `Iterators/IteratorIndexRangeScan.cs` - Index range scan iterator
+
+### Updated Files:
+- `WitSqlEngine.Query.cs` - Added `CreateIndexSeek()`, `CreateIndexRangeScan()`, `SerializeIndexKey()`
+- `Values/WitSqlValue.Getters.cs` - Added `AsLong()`, `AsULong()`, `AsUInt64()` methods
 
 ---
 
@@ -328,7 +339,7 @@ EF Core scaffolding requires these views for reverse engineering:
 
 | Week | Tasks |
 |------|-------|
-| **Week 1-2** | ~~Transaction fix~~, ~~FOR UPDATE/SHARE~~, Index seek/range, ALTER TABLE fix |
+| **Week 1-2** | ~~Transaction fix~~, ~~FOR UPDATE/SHARE~~, ~~Index seek/range~~, Index auto-update, ALTER TABLE fix |
 | **Week 3-4** | CTE execution, RETURNING clause |
 | **Week 5-6** | Window functions (ROW_NUMBER, RANK) |
 | **Week 7-8** | INFORMATION_SCHEMA, JSON functions |
@@ -365,19 +376,33 @@ EF Core scaffolding requires these views for reverse engineering:
 
 ---
 
-## Files to Create (Engine)
+## Files Created (Index Implementation)
+
+| File | Purpose |
+|------|---------|
+| `Iterators/IteratorIndexSeek.cs` | Index equality lookup iterator |
+| `Iterators/IteratorIndexRangeScan.cs` | Index range scan iterator |
+
+## Files Modified (Index Implementation)
+
+| File | Changes Made |
+|------|-------------|
+| `WitSqlEngine.Query.cs` | Added `CreateIndexSeek()`, `CreateIndexRangeScan()`, `SerializeIndexKey()` |
+| `Values/WitSqlValue.Getters.cs` | Added `AsLong()`, `AsULong()`, `AsUInt64()` methods |
+
+---
+
+## Files to Create (Remaining Engine Work)
 
 | File | Purpose |
 |------|---------|
 | `Iterators/IteratorWindow.cs` | Window function iterator |
 | `Iterators/IteratorCte.cs` | CTE materialization iterator |
-| `Iterators/IteratorIndexSeek.cs` | Index equality lookup |
-| `Iterators/IteratorIndexRangeScan.cs` | Index range scan |
 | `Schema/InformationSchema.cs` | INFORMATION_SCHEMA views |
 
 ---
 
-## Files Modified (Transaction Support)
+## Files Modified (Transaction Support) - Previously
 
 | File | Changes Made |
 |------|-------------|
@@ -393,7 +418,7 @@ EF Core scaffolding requires these views for reverse engineering:
 | `SchemaCatalog.cs` | Added transaction-aware row ID methods |
 | `WitSqlEngine.Ddl.Tables.cs` | Updated `GetNextAutoIncrement()` to use transaction |
 
-## Files Modified (FOR UPDATE/FOR SHARE Support)
+## Files Modified (FOR UPDATE/FOR SHARE Support) - Previously
 
 | File | Changes Made |
 |------|-------------|
@@ -409,7 +434,9 @@ EF Core scaffolding requires these views for reverse engineering:
 +-------------------------------------------------------------+
 |                     SQL ENGINE (Phase 2)                     |
 +-------------------------------------------------------------+
-|  Transaction Fix ? --> FOR UPDATE/SHARE ? --> Index Usage    |
+|  Transaction Fix ? --> FOR UPDATE/SHARE ? --> Index Seek ?   |
+|        |                                                     |
+|        +--> Index Auto-Update (pending)                      |
 |        |                                                     |
 |        +--> ALTER TABLE (ADD/DROP CONSTRAINT)                |
 |        |                                                     |
@@ -445,9 +472,10 @@ EF Core scaffolding requires these views for reverse engineering:
 
 1. ~~**Transaction Fix** - fix lock recursion issue~~ ?
 2. ~~**FOR UPDATE/SHARE** - implement locking hints~~ ?
-3. **ALTER TABLE** - add `AddConstraint` / `DropConstraint` to `ExecuteAlterTable`
-4. **Index Seek** - implement `CreateIndexSeek()` for B+Tree
-5. **Index Range Scan** - implement range queries
+3. ~~**Index Seek** - implement `CreateIndexSeek()` for secondary index~~ ?
+4. ~~**Index Range Scan** - implement range queries~~ ?
+5. **Index Auto-Update** - update indexes on INSERT/UPDATE/DELETE
+6. **ALTER TABLE** - add `AddConstraint` / `DropConstraint` to `ExecuteAlterTable`
 
 ---
 

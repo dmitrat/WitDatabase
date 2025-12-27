@@ -1,3 +1,4 @@
+using System.Buffers.Binary;
 using System.Globalization;
 using System.Runtime.CompilerServices;
 using System.Text;
@@ -663,6 +664,213 @@ public static class WitTypeConverter
     /// Number of WitSqlType values. Update when adding new types!
     /// </summary>
     public const int SqlTypeCount = 14;
+
+    #endregion
+
+    #region Index Key Serialization
+
+    /// <summary>
+    /// Serializes a WitSqlValue for index storage in a sort-order preserving format.
+    /// </summary>
+    /// <param name="writer">The binary writer to write to.</param>
+    /// <param name="value">The value to serialize.</param>
+    /// <param name="columnType">The storage data type of the column.</param>
+    /// <remarks>
+    /// The serialization format ensures that byte comparison yields the same order
+    /// as comparing the original values. This is critical for index range scans.
+    /// 
+    /// Format:
+    /// - NULL values: 0x00 (sorts first)
+    /// - Non-null values: 0x01 + type-specific encoding
+    /// </remarks>
+    public static void SerializeValueForIndex(BinaryWriter writer, WitSqlValue value, WitDataType columnType)
+    {
+        if (value.IsNull)
+        {
+            // Null values are represented as 0x00 (sorts first)
+            writer.Write((byte)0x00);
+            return;
+        }
+
+        // Non-null values start with 0x01
+        writer.Write((byte)0x01);
+
+        // Serialize based on type
+        switch (columnType)
+        {
+            case WitDataType.Int8:
+            case WitDataType.Int16:
+            case WitDataType.Int32:
+            case WitDataType.Int64:
+                // For signed integers, flip sign bit for correct ordering
+                var longVal = value.AsLong();
+                var unsignedVal = (ulong)(longVal ^ long.MinValue);
+                writer.Write(BinaryPrimitives.ReverseEndianness(unsignedVal));
+                break;
+
+            case WitDataType.UInt8:
+            case WitDataType.UInt16:
+            case WitDataType.UInt32:
+            case WitDataType.UInt64:
+                // Unsigned integers in big-endian for correct ordering
+                var ulongVal = value.AsULong();
+                writer.Write(BinaryPrimitives.ReverseEndianness(ulongVal));
+                break;
+
+            case WitDataType.Float16:
+            case WitDataType.Float32:
+            case WitDataType.Float64:
+                // Floats need special encoding for ordering
+                SerializeFloatForIndex(writer, value.AsDouble());
+                break;
+
+            case WitDataType.Decimal:
+                // Decimal is complex - use string representation for now
+                SerializeStringForIndex(writer, value.AsDecimal().ToString(CultureInfo.InvariantCulture));
+                break;
+
+            case WitDataType.StringFixed:
+            case WitDataType.StringVariable:
+                SerializeStringForIndex(writer, value.AsString() ?? "");
+                break;
+
+            case WitDataType.Boolean:
+                writer.Write(value.AsBool() ? (byte)1 : (byte)0);
+                break;
+
+            case WitDataType.Guid:
+                // GUID as raw bytes (not sort-friendly but works for equality)
+                writer.Write(value.AsGuid().ToByteArray());
+                break;
+
+            case WitDataType.DateTime:
+                // DateTime ticks in big-endian for correct ordering
+                writer.Write(BinaryPrimitives.ReverseEndianness(value.AsDateTime().Ticks));
+                break;
+
+            case WitDataType.DateTimeOffset:
+                var dto = value.AsDateTimeOffset();
+                // Use UTC ticks for consistent ordering
+                writer.Write(BinaryPrimitives.ReverseEndianness(dto.UtcTicks));
+                break;
+
+            case WitDataType.DateOnly:
+                // DayNumber in big-endian for correct ordering
+                writer.Write(BinaryPrimitives.ReverseEndianness(value.AsDateOnly().DayNumber));
+                break;
+
+            case WitDataType.TimeOnly:
+                // Ticks in big-endian for correct ordering
+                writer.Write(BinaryPrimitives.ReverseEndianness(value.AsTimeOnly().Ticks));
+                break;
+
+            case WitDataType.TimeSpan:
+                // TimeSpan ticks - flip sign bit like signed integers for negative durations
+                var tsTicks = value.AsTimeSpan().Ticks;
+                var tsUnsigned = (ulong)(tsTicks ^ long.MinValue);
+                writer.Write(BinaryPrimitives.ReverseEndianness(tsUnsigned));
+                break;
+
+            case WitDataType.BinaryFixed:
+            case WitDataType.BinaryVariable:
+                SerializeBlobForIndex(writer, value.AsBlob() ?? []);
+                break;
+
+            case WitDataType.Json:
+                // JSON as string for indexing (not ideal but works)
+                SerializeStringForIndex(writer, value.AsString() ?? "");
+                break;
+
+            case WitDataType.RowVersion:
+                // RowVersion as 8-byte unsigned big-endian
+                var rvBlob = value.AsBlob();
+                if (rvBlob.Length == 8)
+                {
+                    var rvValue = BinaryPrimitives.ReadUInt64BigEndian(rvBlob);
+                    writer.Write(BinaryPrimitives.ReverseEndianness(rvValue));
+                }
+                else
+                {
+                    SerializeBlobForIndex(writer, rvBlob);
+                }
+                break;
+
+            default:
+                // Fallback: serialize as string
+                SerializeStringForIndex(writer, value.ToString() ?? "");
+                break;
+        }
+    }
+
+    /// <summary>
+    /// Serializes a double value for index storage with proper ordering.
+    /// </summary>
+    /// <remarks>
+    /// IEEE 754 doubles don't sort correctly when compared as bytes.
+    /// This encoding flips bits to ensure correct byte ordering:
+    /// - Positive numbers (including +0): flip sign bit only
+    /// - Negative numbers: flip all bits
+    /// This ensures: -? &lt; -1 &lt; -0 &lt; +0 &lt; 1 &lt; +?
+    /// </remarks>
+    private static void SerializeFloatForIndex(BinaryWriter writer, double value)
+    {
+        var bits = BitConverter.DoubleToInt64Bits(value);
+        
+        // Check if negative (sign bit is set)
+        if (bits < 0)
+        {
+            // Negative: flip all bits (XOR with all 1s)
+            bits = ~bits;
+        }
+        else
+        {
+            // Positive (including +0): flip sign bit only to make it sort after negative
+            bits ^= long.MinValue;
+        }
+        
+        writer.Write(BinaryPrimitives.ReverseEndianness(bits));
+    }
+
+    /// <summary>
+    /// Serializes a string value for index storage.
+    /// </summary>
+    private static void SerializeStringForIndex(BinaryWriter writer, string value)
+    {
+        var bytes = Encoding.UTF8.GetBytes(value);
+        writer.Write((ushort)bytes.Length);
+        writer.Write(bytes);
+    }
+
+    /// <summary>
+    /// Serializes a blob value for index storage.
+    /// </summary>
+    private static void SerializeBlobForIndex(BinaryWriter writer, byte[] value)
+    {
+        writer.Write((ushort)value.Length);
+        writer.Write(value);
+    }
+
+    /// <summary>
+    /// Serializes multiple key values to a byte array for index lookup.
+    /// </summary>
+    /// <param name="keyValues">The values to serialize.</param>
+    /// <param name="columnTypes">The storage types for each column.</param>
+    /// <returns>The serialized index key.</returns>
+    public static byte[] SerializeIndexKey(WitSqlValue[] keyValues, WitDataType[] columnTypes)
+    {
+        if (keyValues.Length > columnTypes.Length)
+            throw new ArgumentException($"Too many key values: expected at most {columnTypes.Length}, got {keyValues.Length}");
+
+        using var ms = new MemoryStream();
+        using var writer = new BinaryWriter(ms);
+
+        for (int i = 0; i < keyValues.Length; i++)
+        {
+            SerializeValueForIndex(writer, keyValues[i], columnTypes[i]);
+        }
+
+        return ms.ToArray();
+    }
 
     #endregion
 }

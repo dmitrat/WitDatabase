@@ -1,8 +1,8 @@
 # OutWit.Database (Engine) - Roadmap
 
-**Version:** 2.1  
+**Version:** 2.2  
 **Based on:** WitSql.md specification v1.2  
-**Last Updated:** 2025-01-26
+**Last Updated:** 2025-01-28
 
 ---
 
@@ -26,7 +26,7 @@
 
 ## Progress Summary
 
-**Current Status: ~65% - Core SQL Execution Complete**
+**Current Status: ~70% - Core SQL Execution + Transactions Complete**
 
 The Engine component (`OutWit.Database`) is responsible for:
 - SQL execution against the Core storage layer
@@ -46,12 +46,14 @@ The Engine component (`OutWit.Database`) is responsible for:
 - ? `AggregateExpressionEvaluator` - Aggregate function evaluation in GROUP BY context
 - ? `StatementExecutor` - DDL/DML execution with triggers and validation
 - ? `QueryPlanner` - Query plan building with iterator model
-- ? All iterator types (Filter, Project, Sort, Limit, Distinct, Join, GroupBy, Union, Intersect, Except, Alias)
+- ? All iterator types (Filter, Project, Sort, Limit, Distinct, Join, GroupBy, Union, Intersect, Except, Alias, Locking)
 - ? Subquery support (Scalar, EXISTS, IN, ANY/SOME/ALL, Correlated)
 - ? All scalar functions (60+)
 - ? All aggregate functions
 - ? Constraint validation (NOT NULL, UNIQUE, CHECK, FOREIGN KEY)
 - ? Trigger execution (BEFORE/AFTER/INSTEAD OF)
+- ? **Transaction support** (BEGIN/COMMIT/ROLLBACK, Isolation Levels, Savepoints)
+- ? **FOR UPDATE / FOR SHARE** locking hints with NOWAIT/SKIP LOCKED
 
 ---
 
@@ -131,6 +133,9 @@ The Engine component (`OutWit.Database`) is responsible for:
 | DEFAULT values | [x] | P0 | v1 | SS2.1 |
 | `DROP TABLE` execution | [x] | P0 | v1 | SS2.2 |
 | `ALTER TABLE` execution | [x] | P1 | v1 | SS2.3 |
+| `ALTER TABLE ADD CONSTRAINT` | [ ] | P0 | v1 | SS2.3 |
+| `ALTER TABLE DROP CONSTRAINT` | [ ] | P0 | v1 | SS2.3 |
+| `ALTER TABLE ADD COLUMN` with DEFAULT (populate existing rows) | [ ] | P0 | v1 | SS2.3 |
 
 ### 3.2 Index Operations
 
@@ -139,6 +144,8 @@ The Engine component (`OutWit.Database`) is responsible for:
 | `CREATE INDEX` execution | [x] | P0 | v1 | SS2.4 |
 | `CREATE UNIQUE INDEX` | [x] | P0 | v1 | SS2.4 |
 | Index building from existing data | [ ] | P0 | v1 | SS2.4 |
+| Index seek (equality lookup) | [ ] | P0 | v1 | SS2.4 |
+| Index range scan | [ ] | P0 | v1 | SS2.4 |
 | Index auto-update on DML | [ ] | P0 | v1 | SS2.4 |
 | `DROP INDEX` execution | [x] | P0 | v1 | SS2.5 |
 | Partial indexes | [ ] | P1 | v1 | SS19.1 |
@@ -439,18 +446,28 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 ---
 
-## 9. Transaction Support
+## 9. Transaction Support ? COMPLETE
 
 | Feature | Status | Priority | Version | Spec |
 |---------|--------|----------|---------|------|
-| BEGIN TRANSACTION | [ ] | P0 | v1 | SS9 |
-| COMMIT | [ ] | P0 | v1 | SS9 |
-| ROLLBACK | [ ] | P0 | v1 | SS9 |
-| SAVEPOINT | [ ] | P1 | v1 | SS9 |
-| RELEASE SAVEPOINT | [ ] | P1 | v1 | SS9 |
-| ROLLBACK TO SAVEPOINT | [ ] | P1 | v1 | SS9 |
-| Isolation level support | [ ] | P0 | v1 | SS14.1 |
-| FOR UPDATE / FOR SHARE | [ ] | P1 | v1 | SS14.2 |
+| BEGIN TRANSACTION | [x] | P0 | v1 | SS9 |
+| COMMIT | [x] | P0 | v1 | SS9 |
+| ROLLBACK | [x] | P0 | v1 | SS9 |
+| SAVEPOINT | [x] | P1 | v1 | SS9 |
+| RELEASE SAVEPOINT | [x] | P1 | v1 | SS9 |
+| ROLLBACK TO SAVEPOINT | [x] | P1 | v1 | SS9 |
+| Isolation level support | [x] | P0 | v1 | SS14.1 |
+| FOR UPDATE | [x] | P1 | v1 | SS14.2 |
+| FOR SHARE | [x] | P1 | v1 | SS14.2 |
+| FOR UPDATE NOWAIT | [x] | P1 | v1 | SS14.2 |
+| FOR UPDATE SKIP LOCKED | [x] | P1 | v1 | SS14.2 |
+
+### Implementation Details:
+- **Transaction SQL**: `BEGIN TRANSACTION`, `COMMIT`, `ROLLBACK` executed via `StatementExecutor.Transactions.cs`
+- **Savepoints**: Full support via `SAVEPOINT name`, `RELEASE SAVEPOINT name`, `ROLLBACK TO SAVEPOINT name`
+- **Isolation Levels**: READ UNCOMMITTED, READ COMMITTED, REPEATABLE READ, SERIALIZABLE, SNAPSHOT
+- **Row-Level Locking**: `IteratorLocking.cs` applies locks during query iteration
+- **Wait Modes**: WAIT (default), NOWAIT (immediate failure), SKIP LOCKED (skip locked rows)
 
 ---
 
@@ -586,21 +603,22 @@ The Engine component (`OutWit.Database`) is responsible for:
 - [ ] CTE (WITH clause)
 - [x] UNION / UNION ALL / INTERSECT / EXCEPT ?
 
-### Phase 3: Transactions and Concurrency (Planned)
+### Phase 3: Transactions and Concurrency - ? COMPLETE
 
 **Goal:** Full transaction support
 
-- [ ] Transaction isolation levels
-- [ ] Savepoints
-- [ ] FOR UPDATE / FOR SHARE
+- [x] Transaction isolation levels ?
+- [x] Savepoints ?
+- [x] FOR UPDATE / FOR SHARE ?
 - [ ] ROWVERSION support
 - [ ] INSERT ... ON CONFLICT
 - [ ] MERGE statement
 
-### Phase 4: Production Ready (Planned)
+### Phase 4: Production Ready (Current)
 
 **Goal:** Production-ready engine
 
+- [ ] **Index Implementation** (BLOCKING - P0)
 - [ ] Window functions
 - [ ] Recursive CTE
 - [x] Views and triggers ?
@@ -626,18 +644,33 @@ The Engine component (`OutWit.Database`) is responsible for:
 | Component | Tests | Status |
 |-----------|-------|--------|
 | ExpressionEvaluator (all) | 194 | ? Passing |
-| StatementExecutor | 145 | ? Passing |
+| StatementExecutor | 162 | ? Passing |
 | Iterators | 119 | ? Passing |
 | QueryPlanner | 50 | ? Passing |
 | WitSqlValue | 130 | ? Passing |
 | Definitions | 90 | ? Passing |
 | Schema | 50 | ? Passing |
-| WitSqlEngine (integration) | 115 | ? Passing |
-| **Total** | **893** | ? Passing |
+| WitSqlEngine (integration) | 132 | ? Passing |
+| StatementExecutorLockingTests | 17 | ? Passing |
+| **Total** | **976** | ? Passing |
 
 ---
 
 ## Recent Changes
+
+### 2025-01-28
+- ? **Transaction Support Complete**:
+  - BEGIN TRANSACTION / COMMIT / ROLLBACK SQL execution
+  - Isolation level support (SET TRANSACTION ISOLATION LEVEL)
+  - Savepoints (SAVEPOINT, RELEASE SAVEPOINT, ROLLBACK TO SAVEPOINT)
+  - Transaction-aware table scans via `ITransaction.Scan()`
+- ? **FOR UPDATE / FOR SHARE Locking**:
+  - `IteratorLocking.cs` - applies row-level locks during iteration
+  - `QueryPlanner.ApplyLockingClause()` - integrates locking into query plan
+  - NOWAIT mode - immediate failure if lock unavailable
+  - SKIP LOCKED mode - skip rows that are already locked
+  - Requires MVCC transaction
+- ? 46 new transaction and locking tests
 
 ### 2025-01-26
 - ? Added full subquery support:
@@ -653,4 +686,4 @@ The Engine component (`OutWit.Database`) is responsible for:
 
 ---
 
-**Last Updated:** 2025-01-26
+**Last Updated:** 2025-01-28

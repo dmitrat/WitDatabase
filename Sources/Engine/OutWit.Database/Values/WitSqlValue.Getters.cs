@@ -23,6 +23,32 @@ namespace OutWit.Database.Values
         };
 
         /// <summary>
+        /// Gets the value as long (alias for AsInt64).
+        /// </summary>
+        /// <exception cref="InvalidCastException">If conversion is not possible.</exception>
+        public long AsLong() => AsInt64();
+
+        /// <summary>
+        /// Gets the value as UInt64.
+        /// </summary>
+        /// <exception cref="InvalidCastException">If conversion is not possible.</exception>
+        public ulong AsUInt64() => m_type switch
+        {
+            WitSqlType.Integer or WitSqlType.Boolean => (ulong)m_intValue,
+            WitSqlType.Real => (ulong)m_realValue,
+            WitSqlType.Text => ulong.TryParse((string)m_objectValue!, out var v) ? v : 0,
+            WitSqlType.Decimal => (ulong)(decimal)m_objectValue!,
+            WitSqlType.Null => 0,
+            _ => ThrowInvalidCast<ulong>()
+        };
+
+        /// <summary>
+        /// Gets the value as ulong (alias for AsUInt64).
+        /// </summary>
+        /// <exception cref="InvalidCastException">If conversion is not possible.</exception>
+        public ulong AsULong() => AsUInt64();
+
+        /// <summary>
         /// Gets the value as Double.
         /// </summary>
         /// <exception cref="InvalidCastException">If conversion is not possible.</exception>

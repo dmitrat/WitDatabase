@@ -97,6 +97,16 @@ public interface IDatabase
     void SetColumnNotNull(string tableName, string columnName, bool notNull);
 
     /// <summary>
+    /// Get an index by name.
+    /// </summary>
+    DefinitionIndex? GetIndex(string indexName);
+
+    /// <summary>
+    /// Get all indexes for a table.
+    /// </summary>
+    IEnumerable<DefinitionIndex> GetTableIndexes(string tableName);
+
+    /// <summary>
     /// Create an index.
     /// </summary>
     void CreateIndex(DefinitionIndex metadata);
