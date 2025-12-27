@@ -15,7 +15,15 @@ public sealed partial class WitSqlEngine
     /// <param name="index">The index definition.</param>
     public void CreateIndex(DefinitionIndex index)
     {
+        // Store metadata in schema catalog
         m_schema.CreateIndex(index);
+        
+        // Create the physical secondary index in the database
+        // This enables index lookups via m_database.GetIndex()
+        if (m_database.SupportsIndexes)
+        {
+            m_database.CreateIndex(index.Name, index.IsUnique);
+        }
     }
 
     #endregion
@@ -62,7 +70,14 @@ public sealed partial class WitSqlEngine
     /// <param name="indexName">The index name to drop.</param>
     public void DropIndex(string indexName)
     {
+        // Remove metadata from schema catalog
         m_schema.DropIndex(indexName);
+        
+        // Drop the physical secondary index from the database
+        if (m_database.SupportsIndexes)
+        {
+            m_database.DropIndex(indexName);
+        }
     }
 
     #endregion

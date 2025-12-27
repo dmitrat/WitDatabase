@@ -832,21 +832,24 @@ public static class WitTypeConverter
     }
 
     /// <summary>
-    /// Serializes a string value for index storage.
+    /// Serializes a string value for index storage in sort-order preserving format.
+    /// Uses raw UTF-8 bytes without length prefix to preserve lexicographic ordering.
     /// </summary>
     private static void SerializeStringForIndex(BinaryWriter writer, string value)
     {
+        // Write raw UTF-8 bytes without length prefix to preserve lexicographic order
+        // UTF-8 naturally preserves Unicode code point order for ASCII characters
         var bytes = Encoding.UTF8.GetBytes(value);
-        writer.Write((ushort)bytes.Length);
         writer.Write(bytes);
     }
 
     /// <summary>
     /// Serializes a blob value for index storage.
+    /// Uses raw bytes without length prefix to preserve lexicographic ordering.
     /// </summary>
     private static void SerializeBlobForIndex(BinaryWriter writer, byte[] value)
     {
-        writer.Write((ushort)value.Length);
+        // Write raw bytes without length prefix
         writer.Write(value);
     }
 

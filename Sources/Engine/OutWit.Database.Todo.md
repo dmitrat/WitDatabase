@@ -136,9 +136,9 @@ public IResultIterator CreateIndexRangeScan(string tableName, string indexName, 
 - [x] **P0** Implement `CreateIndexSeek()` in WitSqlEngine
 - [x] **P0** Implement `CreateIndexRangeScan()` in WitSqlEngine
 - [x] **P0** Index key serialization (sort-order preserving)
+- [x] **P0** Index auto-update on INSERT/UPDATE/DELETE
 
 ### Remaining Tasks:
-- [ ] **P0** Index auto-update on INSERT/UPDATE/DELETE
 - [ ] **P1** Partial index evaluation (WHERE clause on index)
 - [ ] **P1** Expression index evaluation (functional indexes)
 - [ ] **P1** Covering index support (INCLUDE columns)
@@ -149,7 +149,17 @@ public IResultIterator CreateIndexRangeScan(string tableName, string indexName, 
 
 ### Updated Files:
 - `WitSqlEngine.Query.cs` - Added `CreateIndexSeek()`, `CreateIndexRangeScan()`, `SerializeIndexKey()`
+- `WitSqlEngine.Dml.cs` - Added index auto-update on INSERT/UPDATE/DELETE
+- `WitSqlEngine.Ddl.Indexes.cs` - Added physical secondary index creation/drop
 - `Values/WitSqlValue.Getters.cs` - Added `AsLong()`, `AsULong()`, `AsUInt64()` methods
+- `Types/WitTypeConverter.cs` - Fixed string serialization for lexicographic ordering
+
+### Test Coverage:
+All 23 index auto-update tests passing:
+- INSERT: Updates secondary indexes, composite indexes, multiple indexes, unique index violation
+- UPDATE: Updates indexed columns, removes null from index, adds non-null to index
+- DELETE: Removes entries from all indexes
+- Range scan: Reflects inserts, updates, and deletes correctly
 
 ---
 
@@ -388,7 +398,10 @@ EF Core scaffolding requires these views for reverse engineering:
 | File | Changes Made |
 |------|-------------|
 | `WitSqlEngine.Query.cs` | Added `CreateIndexSeek()`, `CreateIndexRangeScan()`, `SerializeIndexKey()` |
+| `WitSqlEngine.Dml.cs` | Added index auto-update on INSERT/UPDATE/DELETE |
+| `WitSqlEngine.Ddl.Indexes.cs` | Added physical secondary index creation/drop |
 | `Values/WitSqlValue.Getters.cs` | Added `AsLong()`, `AsULong()`, `AsUInt64()` methods |
+| `Types/WitTypeConverter.cs` | Fixed string serialization for lexicographic ordering |
 
 ---
 
@@ -474,7 +487,7 @@ EF Core scaffolding requires these views for reverse engineering:
 2. ~~**FOR UPDATE/SHARE** - implement locking hints~~ ?
 3. ~~**Index Seek** - implement `CreateIndexSeek()` for secondary index~~ ?
 4. ~~**Index Range Scan** - implement range queries~~ ?
-5. **Index Auto-Update** - update indexes on INSERT/UPDATE/DELETE
+5. ~~**Index Auto-Update** - update indexes on INSERT/UPDATE/DELETE~~
 6. **ALTER TABLE** - add `AddConstraint` / `DropConstraint` to `ExecuteAlterTable`
 
 ---
