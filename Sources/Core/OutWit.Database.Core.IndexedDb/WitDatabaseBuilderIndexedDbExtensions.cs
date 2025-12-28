@@ -1,6 +1,7 @@
 using Microsoft.JSInterop;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.IndexedDb.Indexes;
+using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.IndexedDb;
 
@@ -72,19 +73,19 @@ public static class WitDatabaseBuilderIndexedDbExtensions
         builder.OnValidating += ValidateIndexedDbOnBuild;
 
         // Auto-disable incompatible features
-        builder.Options.EnableFileLocking = false;  // Not applicable in browser
+        builder.Options.TransactionParameters.Set("fileLocking", false);  // Not applicable in browser
         
         // Force BTree if no engine specified
         if (!builder.Options.UseBTree && !builder.Options.UseLsmTree)
         {
-            builder.Options.UseBTree = true;
+            builder.Options.StoreProviderKey = StoreBTree.PROVIDER_KEY;
         }
 
         // Set storage
-        builder.Options.Storage = new StorageIndexedDb(databaseName, jsRuntime, pageSize);
-        builder.Options.UseMemoryStorage = false;
-        builder.Options.FilePath = null;
-        builder.Options.LsmDirectory = null;
+        builder.Options.CustomStorage = new StorageIndexedDb(databaseName, jsRuntime, pageSize);
+        builder.Options.StoreParameters.Remove("useMemory");
+        builder.Options.StoreParameters.Remove("filePath");
+        builder.Options.StoreParameters.Remove("directory");
 
         // Auto-configure secondary index factory for IndexedDB
         // Use database name with "_indexes" suffix to avoid conflicts
@@ -138,7 +139,7 @@ public static class WitDatabaseBuilderIndexedDbExtensions
     private static void ValidateIndexedDbOnBuild(WitDatabaseBuilderOptions options)
     {
         // Only validate if IndexedDB storage is configured
-        if (options.Storage is not StorageIndexedDb)
+        if (options.CustomStorage is not StorageIndexedDb)
             return;
 
         ValidateIndexedDbCompatibility(options);
@@ -172,7 +173,7 @@ public static class WitDatabaseBuilderIndexedDbExtensions
         }
 
         // External transaction journal not supported
-        if (options.TransactionJournal != null)
+        if (options.CustomJournal != null || !string.IsNullOrEmpty(options.JournalProviderKey))
         {
             errors.Add(
                 "External transaction journal is not supported with IndexedDB storage. " +

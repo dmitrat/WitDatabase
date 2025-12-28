@@ -190,7 +190,7 @@ public class WitDatabaseBuilderEventsTests : IDisposable
         
         builder.OnValidating += options =>
         {
-            isEncrypted = options.CryptoProvider != null;
+            isEncrypted = options.HasEncryption;
         };
         
         using var db = builder
@@ -437,8 +437,8 @@ public class WitDatabaseBuilderEventsTests : IDisposable
                     "IndexedDB storage is not compatible with LSM-Tree. Use .WithBTree() instead.");
             }
             
-            // Auto-disable file locking for browser environment
-            options.EnableFileLocking = false;
+            // Auto-disable file locking for browser environment via TransactionParameters
+            options.TransactionParameters.Set("fileLocking", false);
         };
         
         // Should work with BTree

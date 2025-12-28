@@ -1,124 +1,224 @@
 using OutWit.Database.Core.Interfaces;
-using OutWit.Database.Core.LSM;
+using OutWit.Database.Core.Providers;
+using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.Builder;
 
 /// <summary>
 /// Configuration options for WitDatabaseBuilder.
+/// Stores provider keys and parameters for deferred creation during Build().
 /// </summary>
+/// <remarks>
+/// <para>
+/// This class follows a consistent pattern for each component:
+/// - ProviderKey: identifies which provider to use (e.g., "btree", "aes-gcm")
+/// - Parameters: ProviderParameters for that component
+/// - Custom*: optional pre-built instance that bypasses registry
+/// </para>
+/// <para>
+/// All component-specific settings (like file paths, cache sizes, etc.) 
+/// are stored in the respective ProviderParameters, not as separate fields.
+/// </para>
+/// </remarks>
 public sealed class WitDatabaseBuilderOptions
 {
-    #region Constants
+    #region Store Configuration
 
-    private static readonly byte[] DEFAULT_SALT = "WitDBSalt123"u8.ToArray();
+    /// <summary>
+    /// Provider key for key-value store (e.g., "btree", "lsm", "inmemory").
+    /// Default is "btree".
+    /// </summary>
+    public string StoreProviderKey { get; set; } = StoreBTree.PROVIDER_KEY;
+
+    /// <summary>
+    /// Parameters for creating the store via ProviderRegistry.
+    /// Common parameters: "filePath", "directory", "cacheSize", "pageSize", "options" (LsmOptions).
+    /// </summary>
+    public ProviderParameters StoreParameters { get; } = new();
+
+    /// <summary>
+    /// Custom key-value store instance. If set, StoreProviderKey is ignored.
+    /// </summary>
+    public IKeyValueStore? CustomStore { get; set; }
+
+    /// <summary>
+    /// Custom storage implementation. Used when building BTree store.
+    /// </summary>
+    public IStorage? CustomStorage { get; set; }
 
     #endregion
 
-    #region Properties
+    #region Encryption Configuration
 
     /// <summary>
-    /// Storage implementation to use.
+    /// Provider key for encryption (e.g., "aes-gcm"). Null means no encryption.
     /// </summary>
-    public IStorage? Storage { get; set; }
-    
+    public string? EncryptionProviderKey { get; set; }
+
     /// <summary>
-    /// Path for file-based storage.
+    /// Parameters for creating the crypto provider.
+    /// Common parameters: "key" (byte[]), "salt" (byte[]), "password" (string), "user" (string), "iterations" (int).
     /// </summary>
-    public string? FilePath { get; set; }
-    
+    public ProviderParameters EncryptionParameters { get; } = new();
+
     /// <summary>
-    /// Whether to use memory storage.
+    /// Custom crypto provider. If set, EncryptionProviderKey is ignored.
     /// </summary>
-    public bool UseMemoryStorage { get; set; }
-    
-    /// <summary>
-    /// Crypto provider for encryption.
-    /// </summary>
-    public ICryptoProvider? CryptoProvider { get; set; }
-    
-    /// <summary>
-    /// Salt for encryption key derivation.
-    /// </summary>
-    public byte[] EncryptionSalt { get; set; } = DEFAULT_SALT;
-    
-    /// <summary>
-    /// Custom key-value store implementation.
-    /// </summary>
-    public IKeyValueStore? KeyValueStore { get; set; }
-    
-    /// <summary>
-    /// Transaction journal for durability.
-    /// </summary>
-    public ITransactionJournal? TransactionJournal { get; set; }
-    
-    /// <summary>
-    /// LSM-Tree options (when using LSM engine).
-    /// </summary>
-    public LsmOptions? LsmOptions { get; set; }
-    
-    /// <summary>
-    /// Page size in bytes.
-    /// </summary>
-    public int PageSize { get; set; } = DatabaseConstants.DEFAULT_PAGE_SIZE;
-    
-    /// <summary>
-    /// Number of pages to cache.
-    /// </summary>
-    public int CacheSize { get; set; } = DatabaseConstants.DEFAULT_CACHE_SIZE;
-    
-    /// <summary>
-    /// Lock timeout for concurrent access.
-    /// </summary>
-    public TimeSpan LockTimeout { get; set; } = TimeSpan.FromSeconds(30);
-    
+    public ICryptoProvider? CustomCryptoProvider { get; set; }
+
+    #endregion
+
+    #region Transaction Configuration
+
     /// <summary>
     /// Whether to enable transaction support.
     /// </summary>
     public bool EnableTransactions { get; set; } = true;
-    
+
     /// <summary>
-    /// Whether to enable file locking for concurrent access.
+    /// Provider key for transaction journal (e.g., "rollback", "wal"). Null means no journal.
     /// </summary>
-    public bool EnableFileLocking { get; set; } = true;
-    
+    public string? JournalProviderKey { get; set; }
+
     /// <summary>
-    /// Whether to use BTree engine (default).
+    /// Parameters for creating the journal.
+    /// Common parameters: "filePath", "walPath", "pageSize".
     /// </summary>
-    public bool UseBTree { get; set; } = true;
-    
+    public ProviderParameters JournalParameters { get; } = new();
+
     /// <summary>
-    /// Whether to use LSM-Tree engine.
+    /// Custom transaction journal. If set, JournalProviderKey is ignored.
     /// </summary>
-    public bool UseLsmTree { get; set; }
-    
+    public ITransactionJournal? CustomJournal { get; set; }
+
     /// <summary>
-    /// Directory for LSM-Tree storage.
+    /// Parameters for transaction handling.
+    /// Common parameters: "mvcc", "isolationLevel", "fileLocking", "lockTimeout".
     /// </summary>
-    public string? LsmDirectory { get; set; }
+    public ProviderParameters TransactionParameters { get; } = new();
+
+    #endregion
+
+    #region Cache Configuration
+
+    /// <summary>
+    /// Provider key for page cache (e.g., "clock", "lru"). Null means default cache.
+    /// </summary>
+    public string? CacheProviderKey { get; set; }
+
+    /// <summary>
+    /// Parameters for creating the cache.
+    /// Common parameters: "size", "pageSize".
+    /// </summary>
+    public ProviderParameters CacheParameters { get; } = new();
+
+    /// <summary>
+    /// Custom page cache. If set, CacheProviderKey is ignored.
+    /// </summary>
+    public IPageCache? CustomCache { get; set; }
+
+    #endregion
+
+    #region Index Configuration
 
     /// <summary>
     /// Custom secondary index factory.
-    /// If not set, a default factory based on the storage engine will be used.
     /// </summary>
     public ISecondaryIndexFactory? SecondaryIndexFactory { get; set; }
 
     /// <summary>
-    /// Directory for secondary index storage (used when separate index storage is needed).
-    /// If not set, indexes are stored alongside the main data.
+    /// Parameters for secondary index configuration.
+    /// Common parameters: "directory".
     /// </summary>
-    public string? IndexDirectory { get; set; }
+    public ProviderParameters IndexParameters { get; } = new();
+
+    #endregion
+
+    #region Computed Properties - Store
 
     /// <summary>
-    /// Whether to enable MVCC (Multi-Version Concurrency Control).
-    /// When enabled, the database supports snapshot isolation and concurrent transactions.
+    /// Gets whether using LSM-Tree engine.
     /// </summary>
-    public bool EnableMvcc { get; set; }
+    public bool UseLsmTree => StoreProviderKey == StoreLsm.PROVIDER_KEY;
 
     /// <summary>
-    /// Default isolation level for transactions.
-    /// Only applies when MVCC is enabled.
+    /// Gets whether using BTree engine.
     /// </summary>
-    public IsolationLevel DefaultIsolationLevel { get; set; } = IsolationLevel.ReadCommitted;
+    public bool UseBTree => StoreProviderKey == StoreBTree.PROVIDER_KEY;
+
+    /// <summary>
+    /// Gets whether using in-memory storage.
+    /// </summary>
+    public bool UseMemoryStorage => StoreParameters.Get<bool>("useMemory");
+
+    /// <summary>
+    /// Gets the effective store provider key.
+    /// </summary>
+    public string EffectiveStoreProviderKey => CustomStore?.ProviderKey ?? StoreProviderKey;
+
+    /// <summary>
+    /// Gets the file path from StoreParameters.
+    /// </summary>
+    public string? FilePath => StoreParameters.Get<string>("filePath");
+
+    /// <summary>
+    /// Gets the LSM directory from StoreParameters.
+    /// </summary>
+    public string? LsmDirectory => StoreParameters.Get<string>("directory");
+
+    /// <summary>
+    /// Gets the page size from StoreParameters, or default.
+    /// </summary>
+    public int PageSize => StoreParameters.Get("pageSize", DatabaseConstants.DEFAULT_PAGE_SIZE);
+
+    /// <summary>
+    /// Gets the cache size from CacheParameters or StoreParameters, or default.
+    /// </summary>
+    public int CacheSize => CacheParameters.Get("size", 
+        StoreParameters.Get("cacheSize", DatabaseConstants.DEFAULT_CACHE_SIZE));
+
+    #endregion
+
+    #region Computed Properties - Encryption
+
+    /// <summary>
+    /// Gets whether encryption is configured.
+    /// </summary>
+    public bool HasEncryption => CustomCryptoProvider != null || !string.IsNullOrEmpty(EncryptionProviderKey);
+
+    #endregion
+
+    #region Computed Properties - Transactions
+
+    /// <summary>
+    /// Gets whether MVCC is enabled.
+    /// </summary>
+    public bool EnableMvcc => TransactionParameters.Get<bool>("mvcc");
+
+    /// <summary>
+    /// Gets the default isolation level.
+    /// </summary>
+    public IsolationLevel DefaultIsolationLevel => 
+        TransactionParameters.Get("isolationLevel", IsolationLevel.ReadCommitted);
+
+    /// <summary>
+    /// Gets whether file locking is enabled.
+    /// </summary>
+    public bool EnableFileLocking => TransactionParameters.Get("fileLocking", true);
+
+    /// <summary>
+    /// Gets the lock timeout.
+    /// </summary>
+    public TimeSpan LockTimeout => TransactionParameters.Get("lockTimeout", TimeSpan.FromSeconds(30));
+
+    #endregion
+
+    #region Computed Properties - Index
+
+    /// <summary>
+    /// Gets the index directory from IndexParameters.
+    /// </summary>
+    public string? IndexDirectory => IndexParameters.Get<string>("directory");
 
     #endregion
 }

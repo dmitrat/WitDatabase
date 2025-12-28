@@ -66,5 +66,21 @@ public static class CryptoUtils
         return SHA256.HashData(userBytes)[..16];
     }
 
+    /// <summary>
+    /// Derives a deterministic salt from a key.
+    /// Used when encryption is configured with key bytes directly.
+    /// </summary>
+    /// <param name="key">The key to derive salt from.</param>
+    /// <param name="suffix">Optional suffix to make salt unique per use case.</param>
+    /// <returns>A 16-byte salt.</returns>
+    public static byte[] DeriveKeySalt(byte[] key, string suffix = "_WitDB_KeySalt")
+    {
+        var suffixBytes = System.Text.Encoding.UTF8.GetBytes(suffix);
+        var combined = new byte[key.Length + suffixBytes.Length];
+        key.CopyTo(combined, 0);
+        suffixBytes.CopyTo(combined, key.Length);
+        return SHA256.HashData(combined)[..16];
+    }
+
     #endregion
 }

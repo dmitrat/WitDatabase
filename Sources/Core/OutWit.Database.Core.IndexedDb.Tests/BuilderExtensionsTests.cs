@@ -34,8 +34,8 @@ public class BuilderExtensionsTests
         var builder = new WitDatabaseBuilder()
             .WithIndexedDbStorage("TestDb", m_jsRuntime);
         
-        Assert.That(builder.Options.Storage, Is.Not.Null);
-        Assert.That(builder.Options.Storage, Is.InstanceOf<StorageIndexedDb>());
+        Assert.That(builder.Options.CustomStorage, Is.Not.Null);
+        Assert.That(builder.Options.CustomStorage, Is.InstanceOf<StorageIndexedDb>());
     }
 
     [Test]
@@ -44,7 +44,7 @@ public class BuilderExtensionsTests
         var builder = new WitDatabaseBuilder()
             .WithIndexedDbStorage("MyDatabase", m_jsRuntime);
         
-        var storage = (StorageIndexedDb)builder.Options.Storage!;
+        var storage = (StorageIndexedDb)builder.Options.CustomStorage!;
         Assert.That(storage.DatabaseName, Is.EqualTo("MyDatabase"));
     }
 
@@ -94,7 +94,7 @@ public class BuilderExtensionsTests
         var builder = new WitDatabaseBuilder()
             .WithIndexedDbStorage("TestDb", m_jsRuntime, pageSize: 8192);
         
-        var storage = (StorageIndexedDb)builder.Options.Storage!;
+        var storage = (StorageIndexedDb)builder.Options.CustomStorage!;
         Assert.That(storage.PageSize, Is.EqualTo(8192));
     }
 
@@ -164,7 +164,7 @@ public class BuilderExtensionsTests
             .WithPageSize(8192)
             .WithCacheSize(100);
         
-        Assert.That(builder.Options.Storage, Is.Not.Null);
+        Assert.That(builder.Options.CustomStorage, Is.Not.Null);
         Assert.That(builder.Options.UseBTree, Is.True);
         Assert.That(builder.Options.EnableTransactions, Is.True);
     }
@@ -186,7 +186,7 @@ public class BuilderExtensionsTests
             .WithIndexedDbStorage("TestDb", m_jsRuntime)
             .WithEncryption("password");
         
-        Assert.That(builder.Options.CryptoProvider, Is.Not.Null);
+        Assert.That(builder.Options.CustomCryptoProvider, Is.Not.Null);
     }
 
     [Test]

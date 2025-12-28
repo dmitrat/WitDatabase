@@ -25,7 +25,6 @@ public sealed class ProviderRegistry
     #region Fields
 
     private readonly ConcurrentDictionary<Type, ConcurrentDictionary<string, Delegate>> m_factories = new();
-    private readonly Lock m_lock = new();
 
     #endregion
 
@@ -33,8 +32,8 @@ public sealed class ProviderRegistry
 
     private ProviderRegistry()
     {
-        // Register built-in providers
-        RegisterBuiltInProviders();
+        // Built-in providers are registered via ProviderRegistration.Initialize()
+        // which is called automatically via [ModuleInitializer]
     }
 
     #endregion
@@ -161,19 +160,6 @@ public sealed class ProviderRegistry
             return typeFactories.Keys.ToArray();
         }
         return Array.Empty<string>();
-    }
-
-    #endregion
-
-    #region Built-in Providers
-
-    private void RegisterBuiltInProviders()
-    {
-        // Storage providers are registered in their static constructors
-        // This method ensures the types are loaded
-        
-        // Note: Actual registration happens in each provider class
-        // via [ModuleInitializer] or explicit calls
     }
 
     #endregion

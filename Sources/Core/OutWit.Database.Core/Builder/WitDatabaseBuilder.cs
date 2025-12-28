@@ -1,9 +1,11 @@
+using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Concurrency;
 using OutWit.Database.Core.Encryption;
 using OutWit.Database.Core.Indexes;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.LSM;
 using OutWit.Database.Core.Managers;
+using OutWit.Database.Core.Providers;
 using OutWit.Database.Core.Storage;
 using OutWit.Database.Core.Stores;
 using OutWit.Database.Core.Transactions;
@@ -20,18 +22,11 @@ public sealed class WitDatabaseBuilder
 
     /// <summary>
     /// Event fired during validation, before building the database.
-    /// External packages can subscribe to perform additional validation.
     /// </summary>
-    /// <remarks>
-    /// Subscribers should throw <see cref="InvalidOperationException"/> to fail validation.
-    /// This allows extension packages (e.g., IndexedDb) to validate their specific requirements
-    /// without modifying the core builder.
-    /// </remarks>
     public event Action<WitDatabaseBuilderOptions>? OnValidating;
 
     /// <summary>
     /// Event fired after the store is built but before creating the database.
-    /// Can be used for post-build configuration or logging.
     /// </summary>
     public event Action<IKeyValueStore>? OnStoreBuilt;
 
@@ -40,7 +35,7 @@ public sealed class WitDatabaseBuilder
     #region Properties
 
     /// <summary>
-    /// Gets the configuration options. Can be modified by extension methods.
+    /// Gets the configuration options.
     /// </summary>
     public WitDatabaseBuilderOptions Options { get; } = new();
 
@@ -51,51 +46,44 @@ public sealed class WitDatabaseBuilder
     /// <summary>
     /// Builds the database with the configured options.
     /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown if the configured storage requires async operations (e.g., IndexedDB).
-    /// Use <see cref="BuildAsync"/> instead.
-    /// </exception>
     public WitDatabase Build()
     {
         ValidateConfiguration();
         ValidateSyncBuildAllowed();
-        
+
         var store = BuildStoreInternal();
         OnStoreBuilt?.Invoke(store);
-        
+
         var indexManager = BuildIndexManagerInternal();
-        
+
         if (Options.EnableTransactions)
         {
             var transactionalStore = BuildTransactionalStoreInternal(store);
             return new WitDatabase(transactionalStore, indexManager, disposeStore: true);
         }
-        
+
         return new WitDatabase(store, indexManager, disposeStore: true);
     }
 
     /// <summary>
     /// Builds the database asynchronously.
-    /// Use this in environments where synchronous I/O is not available (e.g., Blazor WASM).
     /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
-    /// <returns>An initialized WitDatabase.</returns>
     public async ValueTask<WitDatabase> BuildAsync(CancellationToken cancellationToken = default)
     {
         ValidateConfiguration();
-        
+
         var store = await BuildStoreInternalAsync(cancellationToken).ConfigureAwait(false);
         OnStoreBuilt?.Invoke(store);
-        
+
         var indexManager = BuildIndexManagerInternal();
-        
+
         if (Options.EnableTransactions)
         {
             var transactionalStore = BuildTransactionalStoreInternal(store);
             return await WitDatabase.CreateAsync(transactionalStore, indexManager, disposeStore: true, cancellationToken)
                 .ConfigureAwait(false);
         }
-        
+
         return await WitDatabase.CreateAsync(store, indexManager, disposeStore: true, cancellationToken)
             .ConfigureAwait(false);
     }
@@ -103,10 +91,6 @@ public sealed class WitDatabaseBuilder
     /// <summary>
     /// Builds just the key-value store without transaction wrapper.
     /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown if the configured storage requires async operations.
-    /// Use <see cref="BuildStoreAsync"/> instead.
-    /// </exception>
     public IKeyValueStore BuildStore()
     {
         ValidateConfiguration();
@@ -115,10 +99,8 @@ public sealed class WitDatabaseBuilder
     }
 
     /// <summary>
-    /// Builds just the key-value store asynchronously without transaction wrapper.
-    /// Use this in environments where synchronous I/O is not available (e.g., Blazor WASM).
+    /// Builds just the key-value store asynchronously.
     /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
     public ValueTask<IKeyValueStore> BuildStoreAsync(CancellationToken cancellationToken = default)
     {
         ValidateConfiguration();
@@ -128,10 +110,6 @@ public sealed class WitDatabaseBuilder
     /// <summary>
     /// Builds a transactional store.
     /// </summary>
-    /// <exception cref="InvalidOperationException">
-    /// Thrown if the configured storage requires async operations.
-    /// Use <see cref="BuildTransactionalStoreAsync"/> instead.
-    /// </exception>
     public ITransactionalStore BuildTransactionalStore()
     {
         ValidateConfiguration();
@@ -142,9 +120,7 @@ public sealed class WitDatabaseBuilder
 
     /// <summary>
     /// Builds a transactional store asynchronously.
-    /// Use this in environments where synchronous I/O is not available (e.g., Blazor WASM).
     /// </summary>
-    /// <param name="cancellationToken">Cancellation token.</param>
     public async ValueTask<ITransactionalStore> BuildTransactionalStoreAsync(CancellationToken cancellationToken = default)
     {
         ValidateConfiguration();
@@ -167,36 +143,99 @@ public sealed class WitDatabaseBuilder
 
     private void ValidateConfiguration()
     {
-        // Validate incompatible combinations FIRST (before checking if storage is configured)
-        if (Options.UseLsmTree && Options.Storage != null)
+        ValidateStorageCompatibility();
+        ValidateCustomStoreCompatibility();
+        ValidateProviderKeys();
+        ValidateStorageConfigured();
+        ValidatePageSize();
+        ValidateEncryptionSalt();
+
+        OnValidating?.Invoke(Options);
+    }
+
+    private void ValidateStorageCompatibility()
+    {
+        if (Options.UseLsmTree && Options.CustomStorage != null)
         {
             throw new InvalidOperationException(
                 "LSM-Tree uses directory-based storage and cannot use WithStorage(). " +
                 "Use WithFilePath(directory) instead, or use BTree with WithStorage().");
         }
+    }
 
-        // Validate custom store doesn't conflict with other settings
-        if (Options.KeyValueStore != null)
+    private void ValidateCustomStoreCompatibility()
+    {
+        if (Options.CustomStore == null)
+            return;
+
+        if (Options.HasEncryption)
         {
-            if (Options.CryptoProvider != null)
-            {
-                throw new InvalidOperationException(
-                    "Cannot use WithAesEncryption() or WithEncryption() with WithStore(). " +
-                    "Configure encryption in your custom store implementation.");
-            }
-            if (Options.Storage != null)
-            {
-                throw new InvalidOperationException(
-                    "Cannot use WithStorage() with WithStore(). Choose one or the other.");
-            }
+            throw new InvalidOperationException(
+                "Cannot use WithAesEncryption() or WithEncryption() with WithStore(IKeyValueStore). " +
+                "Configure encryption in your custom store implementation.");
         }
 
-        // Validate storage is configured
-        if (Options.Storage == null && 
-            Options.KeyValueStore == null && 
-            !Options.UseMemoryStorage && 
-            string.IsNullOrEmpty(Options.FilePath) &&
-            string.IsNullOrEmpty(Options.LsmDirectory))
+        if (Options.CustomStorage != null)
+        {
+            throw new InvalidOperationException(
+                "Cannot use WithStorage() with WithStore(IKeyValueStore). Choose one or the other.");
+        }
+    }
+
+    private void ValidateProviderKeys()
+    {
+        // Validate store provider key (if not using custom store)
+        if (Options.CustomStore == null && !ProviderRegistry.Instance.IsRegistered<IKeyValueStore>(Options.StoreProviderKey))
+        {
+            var available = ProviderRegistry.Instance.GetRegisteredKeys<IKeyValueStore>();
+            throw new InvalidOperationException(
+                $"Store provider '{Options.StoreProviderKey}' is not registered. " +
+                $"Available: {string.Join(", ", available)}");
+        }
+
+        // Validate encryption provider key (if set)
+        if (!string.IsNullOrEmpty(Options.EncryptionProviderKey) && 
+            !ProviderRegistry.Instance.IsRegistered<ICryptoProvider>(Options.EncryptionProviderKey))
+        {
+            var available = ProviderRegistry.Instance.GetRegisteredKeys<ICryptoProvider>();
+            throw new InvalidOperationException(
+                $"Encryption provider '{Options.EncryptionProviderKey}' is not registered. " +
+                $"Available: {string.Join(", ", available)}");
+        }
+
+        // Validate journal provider key (if set)
+        if (!string.IsNullOrEmpty(Options.JournalProviderKey) && 
+            !ProviderRegistry.Instance.IsRegistered<ITransactionJournal>(Options.JournalProviderKey))
+        {
+            var available = ProviderRegistry.Instance.GetRegisteredKeys<ITransactionJournal>();
+            throw new InvalidOperationException(
+                $"Journal provider '{Options.JournalProviderKey}' is not registered. " +
+                $"Available: {string.Join(", ", available)}");
+        }
+
+        // Validate cache provider key (if set)
+        if (!string.IsNullOrEmpty(Options.CacheProviderKey) && 
+            !ProviderRegistry.Instance.IsRegistered<IPageCache>(Options.CacheProviderKey))
+        {
+            var available = ProviderRegistry.Instance.GetRegisteredKeys<IPageCache>();
+            throw new InvalidOperationException(
+                $"Cache provider '{Options.CacheProviderKey}' is not registered. " +
+                $"Available: {string.Join(", ", available)}");
+        }
+    }
+
+    private void ValidateStorageConfigured()
+    {
+        // Custom store doesn't need storage
+        if (Options.CustomStore != null)
+            return;
+
+        bool hasStorage = Options.CustomStorage != null ||
+                          Options.UseMemoryStorage ||
+                          !string.IsNullOrEmpty(Options.FilePath) ||
+                          !string.IsNullOrEmpty(Options.LsmDirectory);
+
+        if (!hasStorage)
         {
             if (Options.UseLsmTree)
             {
@@ -207,36 +246,41 @@ public sealed class WitDatabaseBuilder
                 "Storage not configured. Use WithFilePath(path), WithMemoryStorage(), or WithStorage(storage).");
         }
 
-        // Validate LSM-Tree has directory
-        if (Options.UseLsmTree && 
-            Options.KeyValueStore == null &&
-            string.IsNullOrEmpty(Options.LsmDirectory) && 
+        if (Options.UseLsmTree &&
+            string.IsNullOrEmpty(Options.LsmDirectory) &&
             string.IsNullOrEmpty(Options.FilePath))
         {
             throw new InvalidOperationException(
                 "LSM-Tree requires a directory path. Use WithFilePath(path) or WithLsmTree(directory).");
         }
+    }
 
-        // Validate page size is power of 2
+    private void ValidatePageSize()
+    {
         if (!IsPowerOfTwo(Options.PageSize))
         {
             throw new InvalidOperationException(
                 $"Page size must be a power of 2. Got {Options.PageSize}.");
         }
+    }
 
-        // Fire validation event for external validators
-        OnValidating?.Invoke(Options);
+    private void ValidateEncryptionSalt()
+    {
+        if (Options.HasEncryption && Options.EncryptionParameters.Get<byte[]>("salt") == null)
+        {
+            throw new InvalidOperationException(
+                "Encryption salt is required when encryption is enabled. " +
+                "Use WithEncryption(password) or WithAesEncryption(key, salt) to configure encryption with salt.");
+        }
     }
 
     private void ValidateSyncBuildAllowed()
     {
-        // Check if storage requires async-only operations
-        if (Options.Storage is IAsyncOnlyStorage asyncOnly && asyncOnly.RequiresAsyncOperations)
+        if (Options.CustomStorage is IAsyncOnlyStorage asyncOnly && asyncOnly.RequiresAsyncOperations)
         {
             throw new InvalidOperationException(
-                $"The configured storage ({Options.Storage.ProviderKey}) requires asynchronous operations. " +
-                "Use BuildAsync() instead of Build(). " +
-                "This is required for browser-based storage like IndexedDB in Blazor WASM.");
+                $"The configured storage ({Options.CustomStorage.ProviderKey}) requires asynchronous operations. " +
+                "Use BuildAsync() instead of Build().");
         }
     }
 
@@ -247,283 +291,342 @@ public sealed class WitDatabaseBuilder
 
     #endregion
 
-    #region Internal Build Methods
-
-    private ProviderMetadata BuildProviderMetadata()
-    {
-        var features = ProviderFeatures.None;
-        
-        if (Options.CryptoProvider != null)
-            features |= ProviderFeatures.Encryption;
-        
-        if (Options.EnableTransactions)
-            features |= ProviderFeatures.Transactions;
-        
-        if (Options.EnableFileLocking)
-            features |= ProviderFeatures.FileLocking;
-
-        return new ProviderMetadata
-        {
-            Features = features,
-            StoreProviderKey = Options.UseLsmTree ? StoreLsm.PROVIDER_KEY : StoreBTree.PROVIDER_KEY,
-            EncryptionProviderKey = Options.CryptoProvider?.ProviderKey ?? "",
-            CacheProviderKey = "clock", // Default cache
-            JournalProviderKey = Options.TransactionJournal?.ProviderKey ?? ""
-        };
-    }
+    #region Store Building
 
     private IKeyValueStore BuildStoreInternal()
     {
-        // Use custom store if provided
-        if (Options.KeyValueStore != null)
-            return Options.KeyValueStore;
+        // Use custom store directly
+        if (Options.CustomStore != null)
+            return Options.CustomStore;
 
-        // Build provider metadata for new databases
+        // Build LSM-Tree
+        if (Options.UseLsmTree)
+            return BuildLsmStore();
+
+        // Build via provider registry
+        return BuildStoreFromRegistry();
+    }
+
+    private IKeyValueStore BuildStoreFromRegistry()
+    {
+        var cryptoProvider = BuildCryptoProvider();
+        var storage = BuildStorage(cryptoProvider);
         var metadata = BuildProviderMetadata();
 
-        // Build LSM-Tree store
-        if (Options.UseLsmTree)
+        // Prepare parameters
+        var parameters = new ProviderParameters();
+        
+        // Copy user parameters
+        foreach (var (key, value) in Options.StoreParameters.GetAll())
         {
-            var directory = Options.LsmDirectory ?? Options.FilePath!;
-            
-            var lsmOptions = Options.LsmOptions ?? new LsmOptions();
-            
-            // Add encryption to LSM options if configured
-            if (Options.CryptoProvider != null)
-            {
-                lsmOptions.Encryptor = new EncryptorBlock(Options.CryptoProvider, Options.EncryptionSalt);
-            }
-            
-            return new StoreLsm(directory, lsmOptions);
+            parameters.Set(key, value);
         }
 
-        // Build BTree store with provider metadata
-        var storage = BuildStorage();
-        return new StoreBTree(storage, Options.CacheSize, ownsStorage: true, metadata);
+        // Set defaults if not provided
+        if (!parameters.Has("storage"))
+            parameters.Set("storage", storage);
+        if (!parameters.Has("cacheSize"))
+            parameters.Set("cacheSize", Options.CacheSize);
+        if (!parameters.Has("ownsStorage"))
+            parameters.Set("ownsStorage", true);
+        if (!parameters.Has("providerMetadata"))
+            parameters.Set("providerMetadata", metadata);
+
+        return ProviderRegistry.Instance.Create<IKeyValueStore>(Options.StoreProviderKey, parameters);
+    }
+
+    private IKeyValueStore BuildLsmStore()
+    {
+        var cryptoProvider = BuildCryptoProvider();
+        var directory = Options.LsmDirectory ?? Options.FilePath!;
+        var lsmOptions = Options.StoreParameters.Get<LsmOptions>("options") ?? new LsmOptions();
+
+        if (cryptoProvider != null)
+        {
+            var salt = GetEncryptionSalt();
+            lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider, salt);
+        }
+
+        return new StoreLsm(directory, lsmOptions);
     }
 
     private async ValueTask<IKeyValueStore> BuildStoreInternalAsync(CancellationToken cancellationToken)
     {
-        // Use custom store if provided
-        if (Options.KeyValueStore != null)
-            return Options.KeyValueStore;
+        // Use custom store directly
+        if (Options.CustomStore != null)
+            return Options.CustomStore;
 
-        // Build provider metadata for new databases
+        // LSM is sync
+        if (Options.UseLsmTree)
+            return BuildLsmStore();
+
+        // BTree with async init
+        var cryptoProvider = BuildCryptoProvider();
+        var storage = BuildStorage(cryptoProvider);
         var metadata = BuildProviderMetadata();
 
-        // Build LSM-Tree store (LSM is inherently file-based, sync is OK)
-        if (Options.UseLsmTree)
-        {
-            var directory = Options.LsmDirectory ?? Options.FilePath!;
-            
-            var lsmOptions = Options.LsmOptions ?? new LsmOptions();
-            
-            // Add encryption to LSM options if configured
-            if (Options.CryptoProvider != null)
-            {
-                lsmOptions.Encryptor = new EncryptorBlock(Options.CryptoProvider, Options.EncryptionSalt);
-            }
-            
-            return new StoreLsm(directory, lsmOptions);
-        }
-
-        // Build BTree store with async initialization
-        var storage = BuildStorage();
-        
-        // Initialize storage if it supports async initialization (e.g., IndexedDB)
         if (storage is IAsyncInitializable asyncInitializable)
         {
             await asyncInitializable.InitializeAsync(cancellationToken).ConfigureAwait(false);
         }
-        
+
         return await StoreBTree.CreateAsync(storage, Options.CacheSize, ownsStorage: true, metadata, cancellationToken)
             .ConfigureAwait(false);
     }
 
-    private IStorage BuildStorage()
+    private IStorage BuildStorage(ICryptoProvider? cryptoProvider = null)
     {
-        // Use custom storage if provided
-        if (Options.Storage != null)
-            return Options.Storage;
+        if (Options.CustomStorage != null)
+            return Options.CustomStorage;
 
-        IStorage baseStorage;
-        
-        // Calculate actual storage page size (including encryption overhead if needed)
-        int storagePageSize = Options.PageSize;
-        if (Options.CryptoProvider != null)
-        {
-            // PageEncryptor adds overhead: nonce + tag
-            var overhead = Options.CryptoProvider.Overhead;
-            storagePageSize = Options.PageSize + overhead;
-        }
-        
-        if (Options.UseMemoryStorage)
-        {
-            baseStorage = new StorageMemory(storagePageSize);
-        }
-        else if (!string.IsNullOrEmpty(Options.FilePath))
-        {
-            baseStorage = new StorageFile(Options.FilePath, storagePageSize);
-        }
-        else
-        {
-            throw new InvalidOperationException("Storage not configured. Use WithFilePath() or WithMemoryStorage().");
-        }
+        int storagePageSize = CalculateStoragePageSize(cryptoProvider);
+        var baseStorage = CreateBaseStorage(storagePageSize);
 
-        // Wrap with encryption if configured
-        if (Options.CryptoProvider != null)
+        if (cryptoProvider != null)
         {
-            var encryptor = new EncryptorPage(Options.CryptoProvider, Options.EncryptionSalt);
+            var salt = GetEncryptionSalt();
+            var encryptor = new EncryptorPage(cryptoProvider, salt);
             return new StorageEncrypted(baseStorage, encryptor);
         }
 
         return baseStorage;
     }
 
-    private ITransactionalStore BuildTransactionalStoreInternal(IKeyValueStore store)
+    private int CalculateStoragePageSize(ICryptoProvider? cryptoProvider)
     {
-        LockManager? lockManager = null;
-        
-        if (Options.EnableFileLocking)
+        if (cryptoProvider == null)
+            return Options.PageSize;
+
+        return Options.PageSize + cryptoProvider.Overhead;
+    }
+
+    private IStorage CreateBaseStorage(int pageSize)
+    {
+        if (Options.UseMemoryStorage)
+            return new StorageMemory(pageSize);
+
+        if (!string.IsNullOrEmpty(Options.FilePath))
+            return new StorageFile(Options.FilePath, pageSize);
+
+        throw new InvalidOperationException("Storage not configured.");
+    }
+
+    private ICryptoProvider? BuildCryptoProvider()
+    {
+        // Use custom provider
+        if (Options.CustomCryptoProvider != null)
+            return Options.CustomCryptoProvider;
+
+        // Use provider registry
+        if (!string.IsNullOrEmpty(Options.EncryptionProviderKey))
         {
-            lockManager = new LockManager(Options.LockTimeout);
+            return ProviderRegistry.Instance.Create<ICryptoProvider>(
+                Options.EncryptionProviderKey, 
+                Options.EncryptionParameters);
         }
 
-        // Use MVCC transactional store when enabled
+        return null;
+    }
+
+    private byte[] GetEncryptionSalt()
+    {
+        return Options.EncryptionParameters.Get<byte[]>("salt") 
+            ?? throw new InvalidOperationException("Encryption salt is required.");
+    }
+
+    private ITransactionJournal? BuildJournal()
+    {
+        // Use custom journal
+        if (Options.CustomJournal != null)
+            return Options.CustomJournal;
+
+        // Use provider registry
+        if (!string.IsNullOrEmpty(Options.JournalProviderKey))
+        {
+            var parameters = new ProviderParameters();
+            
+            // Copy user parameters
+            foreach (var (key, value) in Options.JournalParameters.GetAll())
+            {
+                parameters.Set(key, value);
+            }
+
+            // Set defaults if not provided
+            if (!parameters.Has("filePath") && !parameters.Has("walPath"))
+            {
+                var basePath = Options.FilePath ?? Options.LsmDirectory;
+                if (!string.IsNullOrEmpty(basePath))
+                {
+                    var journalPath = Path.Combine(
+                        Path.GetDirectoryName(basePath) ?? ".",
+                        Path.GetFileNameWithoutExtension(basePath) + ".journal");
+                    parameters.Set("filePath", journalPath);
+                    parameters.Set("walPath", journalPath);
+                }
+            }
+
+            if (!parameters.Has("pageSize"))
+                parameters.Set("pageSize", Options.PageSize);
+
+            return ProviderRegistry.Instance.Create<ITransactionJournal>(Options.JournalProviderKey, parameters);
+        }
+
+        return null;
+    }
+
+    private ProviderMetadata BuildProviderMetadata()
+    {
+        var features = ProviderFeatures.None;
+
+        if (Options.HasEncryption)
+            features |= ProviderFeatures.Encryption;
+
+        if (Options.EnableTransactions)
+            features |= ProviderFeatures.Transactions;
+
+        if (Options.EnableFileLocking)
+            features |= ProviderFeatures.FileLocking;
+
+        return new ProviderMetadata
+        {
+            Features = features,
+            StoreProviderKey = Options.EffectiveStoreProviderKey,
+            EncryptionProviderKey = Options.CustomCryptoProvider?.ProviderKey ?? Options.EncryptionProviderKey ?? "",
+            CacheProviderKey = Options.CacheProviderKey ?? PageCacheShardedClock.PROVIDER_KEY,
+            JournalProviderKey = Options.CustomJournal?.ProviderKey ?? Options.JournalProviderKey ?? ""
+        };
+    }
+
+    #endregion
+
+    #region Transaction Building
+
+    private ITransactionalStore BuildTransactionalStoreInternal(IKeyValueStore store)
+    {
+        var lockManager = Options.EnableFileLocking
+            ? new LockManager(Options.LockTimeout)
+            : null;
+
+        var journal = BuildJournal();
+
         if (Options.EnableMvcc)
         {
             return new MvccTransactionalStore(
-                store, 
-                lockManager, 
+                store,
+                lockManager,
                 Options.DefaultIsolationLevel,
                 ownsStore: true);
         }
-        
+
         return new TransactionalStore(
-            store, 
-            Options.TransactionJournal, 
+            store,
+            journal,
             lockManager,
             ownsStore: true);
     }
 
+    #endregion
+
+    #region Index Building
+
     private IIndexManager BuildIndexManagerInternal()
     {
-        // Use custom factory if provided
         if (Options.SecondaryIndexFactory != null)
-        {
             return new IndexManager(Options.SecondaryIndexFactory);
-        }
 
-        // Build factory based on storage engine
         var factory = BuildDefaultIndexFactory();
         return new IndexManager(factory);
     }
 
     private ISecondaryIndexFactory BuildDefaultIndexFactory()
     {
-        // If custom store is provided without custom index factory,
-        // use in-memory indexes (safest default)
-        if (Options.KeyValueStore != null)
-        {
-            return new SecondaryIndexFactoryKeyValueStore(
-                indexName => new StoreInMemory(),
-                "inmemory"
-            );
-        }
+        // Custom store - use in-memory indexes
+        if (Options.CustomStore != null)
+            return CreateInMemoryIndexFactory();
 
-        // Determine if user explicitly specified index directory
-        bool hasExplicitIndexDir = !string.IsNullOrEmpty(Options.IndexDirectory);
-        
-        // Determine the base directory for indexes
-        string? baseDirectory;
-        if (hasExplicitIndexDir)
-        {
-            // User explicitly specified - use as-is
-            baseDirectory = Options.IndexDirectory;
-        }
-        else
-        {
-            // Auto-derive from main storage path
-            var mainDir = Options.LsmDirectory 
-                ?? (Options.FilePath != null ? Path.GetDirectoryName(Options.FilePath) : null);
-            
-            // Add _indexes subdirectory for auto-derived paths
-            baseDirectory = mainDir != null ? Path.Combine(mainDir, "_indexes") : null;
-        }
+        var baseDirectory = GetIndexBaseDirectory();
 
-        // For memory storage, use in-memory indexes
+        // Memory storage or no directory - use in-memory
         if (Options.UseMemoryStorage || baseDirectory == null)
-        {
-            return new SecondaryIndexFactoryKeyValueStore(
-                indexName => new StoreInMemory(),
-                "inmemory"
-            );
-        }
+            return CreateInMemoryIndexFactory();
 
-        // For LSM-Tree, use LSM-based indexes
         if (Options.UseLsmTree)
-        {
-            var indexDir = baseDirectory;
-            
-            // Capture encryption settings for lambda (create new instances per index)
-            var cryptoProvider = Options.CryptoProvider;
-            var encryptionSalt = Options.EncryptionSalt;
-            
-            return new SecondaryIndexFactoryKeyValueStore(
-                indexName =>
-                {
-                    var indexPath = Path.Combine(indexDir!, indexName);
-                    Directory.CreateDirectory(indexPath);
-                    
-                    var lsmOptions = new LsmOptions();
-                    if (cryptoProvider != null)
-                    {
-                        // Create new encryptor instance for each index
-                        lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider.Clone(), encryptionSalt);
-                    }
-                    
-                    return new StoreLsm(indexPath, lsmOptions);
-                },
-                StoreLsm.PROVIDER_KEY
-            );
-        }
+            return CreateLsmIndexFactory(baseDirectory);
 
-        // For BTree, use BTree-based indexes (each index gets its own file)
-        var btreeIndexDir = baseDirectory;
-        
-        // Capture settings for lambda
-        var pageSize = Options.PageSize;
-        var cacheSize = Options.CacheSize;
-        var btreeCryptoProvider = Options.CryptoProvider;
-        var btreeEncryptionSalt = Options.EncryptionSalt;
-        
+        return CreateBTreeIndexFactory(baseDirectory);
+    }
+
+    private string? GetIndexBaseDirectory()
+    {
+        if (!string.IsNullOrEmpty(Options.IndexDirectory))
+            return Options.IndexDirectory;
+
+        var mainDir = Options.LsmDirectory
+            ?? (Options.FilePath != null ? Path.GetDirectoryName(Options.FilePath) : null);
+
+        return mainDir != null ? Path.Combine(mainDir, "_indexes") : null;
+    }
+
+    private static ISecondaryIndexFactory CreateInMemoryIndexFactory()
+    {
+        return new SecondaryIndexFactoryKeyValueStore(
+            _ => new StoreInMemory(),
+            StoreInMemory.PROVIDER_KEY);
+    }
+
+    private ISecondaryIndexFactory CreateLsmIndexFactory(string baseDirectory)
+    {
+        var cryptoProvider = BuildCryptoProvider();
+        var encryptionSalt = Options.EncryptionParameters.Get<byte[]>("salt");
+
         return new SecondaryIndexFactoryKeyValueStore(
             indexName =>
             {
-                Directory.CreateDirectory(btreeIndexDir!);
-                var indexPath = Path.Combine(btreeIndexDir!, $"{indexName}.idx");
-                
+                var indexPath = Path.Combine(baseDirectory, indexName);
+                Directory.CreateDirectory(indexPath);
+
+                var lsmOptions = new LsmOptions();
+                if (cryptoProvider != null && encryptionSalt != null)
+                {
+                    lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider.Clone(), encryptionSalt);
+                }
+
+                return new StoreLsm(indexPath, lsmOptions);
+            },
+            StoreLsm.PROVIDER_KEY);
+    }
+
+    private ISecondaryIndexFactory CreateBTreeIndexFactory(string baseDirectory)
+    {
+        var pageSize = Options.PageSize;
+        var cacheSize = Options.CacheSize;
+        var cryptoProvider = BuildCryptoProvider();
+        var encryptionSalt = Options.EncryptionParameters.Get<byte[]>("salt");
+
+        return new SecondaryIndexFactoryKeyValueStore(
+            indexName =>
+            {
+                Directory.CreateDirectory(baseDirectory);
+                var indexPath = Path.Combine(baseDirectory, $"{indexName}.idx");
+
                 IStorage storage;
                 int storagePageSize = pageSize;
-                
-                if (btreeCryptoProvider != null)
+
+                if (cryptoProvider != null && encryptionSalt != null)
                 {
-                    var overhead = btreeCryptoProvider.Overhead;
-                    storagePageSize = pageSize + overhead;
+                    storagePageSize = pageSize + cryptoProvider.Overhead;
                     var baseStorage = new StorageFile(indexPath, storagePageSize);
-                    // Create new crypto provider instance for each index to avoid shared disposal
-                    var encryptor = new EncryptorPage(btreeCryptoProvider.Clone(), btreeEncryptionSalt);
+                    var encryptor = new EncryptorPage(cryptoProvider.Clone(), encryptionSalt);
                     storage = new StorageEncrypted(baseStorage, encryptor);
                 }
                 else
                 {
                     storage = new StorageFile(indexPath, storagePageSize);
                 }
-                
+
                 return new StoreBTree(storage, cacheSize / 4, ownsStorage: true);
             },
-            StoreBTree.PROVIDER_KEY
-        );
+            StoreBTree.PROVIDER_KEY);
     }
 
     #endregion

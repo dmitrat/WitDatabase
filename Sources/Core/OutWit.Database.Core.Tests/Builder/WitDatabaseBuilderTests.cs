@@ -2,7 +2,9 @@ using NUnit.Framework;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.LSM;
+using OutWit.Database.Core.Providers;
 using OutWit.Database.Core.Storage;
+using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.Tests.Builder;
 
@@ -447,7 +449,7 @@ public class WitDatabaseBuilderTests
     [Test]
     public void CustomStoreWithEncryptionThrowsTest()
     {
-        var store = new StoreInMemory();
+        var store = new TestStoreInMemory();
         var key = new byte[32];
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
@@ -465,7 +467,7 @@ public class WitDatabaseBuilderTests
     [Test]
     public void CustomStoreWithStorageThrowsTest()
     {
-        var store = new StoreInMemory();
+        var store = new TestStoreInMemory();
         var storage = new StorageMemory(4096);
 
         var ex = Assert.Throws<InvalidOperationException>(() =>
@@ -476,7 +478,7 @@ public class WitDatabaseBuilderTests
                 .Build();
         });
         
-        Assert.That(ex!.Message, Does.Contain("Cannot use WithStorage() with WithStore()"));
+        Assert.That(ex!.Message, Does.Contain("Cannot use WithStorage() with WithStore(IKeyValueStore)"));
         store.Dispose();
         storage.Dispose();
     }
@@ -859,9 +861,476 @@ public class WitDatabaseBuilderTests
 
     #endregion
 
+    #region Provider Key API Tests
+
+    [Test]
+    public void WithStoreKeyBTreeTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "provider_btree.db");
+
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithStoreKey(StoreBTree.PROVIDER_KEY)
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithStoreKeyLsmTest()
+    {
+        var lsmDir = Path.Combine(m_testDir, "provider_lsm");
+
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(lsmDir)
+            .WithStoreKey(StoreLsm.PROVIDER_KEY)
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithStoreKeyInMemoryTest()
+    {
+        using var db = new WitDatabaseBuilder()
+            .WithMemoryStorage()
+            .WithStoreKey(StoreInMemory.PROVIDER_KEY)
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithStoreKeyAndParametersTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "provider_params.db");
+
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithStoreKey(StoreBTree.PROVIDER_KEY, p =>
+            {
+                p.Set("cacheSize", 50);
+            })
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithStoreKeyEmptyParametersUsesDefaultsTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "provider_defaults.db");
+
+        // Empty parameters should be filled with defaults
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithStoreKey(StoreBTree.PROVIDER_KEY, new ProviderParameters())
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithStoreKeyInvalidThrowsTest()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            new WitDatabaseBuilder()
+                .WithMemoryStorage()
+                .WithStoreKey("non-existent-provider")
+                .Build();
+        });
+
+        Assert.That(ex!.Message, Does.Contain("Store provider 'non-existent-provider' is not registered"));
+    }
+
+    [Test]
+    public void WithEncryptionKeyAesGcmTest()
+    {
+        using var db = new WitDatabaseBuilder()
+            .WithMemoryStorage()
+            .WithBTree()
+            .WithEncryptionKey("aes-gcm", "my-password")
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("secret"u8, "classified"u8);
+        Assert.That(db.Get("secret"u8), Is.EqualTo("classified"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithEncryptionKeyUserPasswordTest()
+    {
+        using var db = new WitDatabaseBuilder()
+            .WithMemoryStorage()
+            .WithBTree()
+            .WithEncryptionKey("aes-gcm", "user", "password")
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("secret"u8, "classified"u8);
+        Assert.That(db.Get("secret"u8), Is.EqualTo("classified"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithEncryptionKeyFastTest()
+    {
+        using var db = new WitDatabaseBuilder()
+            .WithMemoryStorage()
+            .WithBTree()
+            .WithEncryptionKeyFast("aes-gcm", "my-password")
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("secret"u8, "classified"u8);
+        Assert.That(db.Get("secret"u8), Is.EqualTo("classified"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithEncryptionKeyInvalidThrowsTest()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            new WitDatabaseBuilder()
+                .WithMemoryStorage()
+                .WithBTree()
+                .WithEncryptionKey("non-existent-crypto", "password")
+                .Build();
+        });
+
+        Assert.That(ex!.Message, Does.Contain("Encryption provider 'non-existent-crypto' is not registered"));
+    }
+
+    [Test]
+    public void WithJournalKeyRollbackTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "journal_rollback.db");
+
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithBTree()
+            .WithJournalKey("rollback")
+            .Build();
+
+        Assert.That(db.SupportsTransactions, Is.True);
+
+        using (var tx = db.BeginTransaction())
+        {
+            tx.Put("key1"u8, "value1"u8);
+            tx.Commit();
+        }
+
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithJournalKeyWalTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "journal_wal.db");
+
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithBTree()
+            .WithJournalKey("wal")
+            .Build();
+
+        Assert.That(db.SupportsTransactions, Is.True);
+
+        using (var tx = db.BeginTransaction())
+        {
+            tx.Put("key1"u8, "value1"u8);
+            tx.Commit();
+        }
+
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithJournalKeyWithParametersTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "journal_params.db");
+        var journalPath = Path.Combine(m_testDir, "custom.journal");
+
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithBTree()
+            .WithJournalKey("rollback", p =>
+            {
+                p.Set("filePath", journalPath);
+            })
+            .Build();
+
+        Assert.That(db.SupportsTransactions, Is.True);
+
+        using (var tx = db.BeginTransaction())
+        {
+            tx.Put("key1"u8, "value1"u8);
+            tx.Commit();
+        }
+
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithJournalKeyInvalidThrowsTest()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            new WitDatabaseBuilder()
+                .WithMemoryStorage()
+                .WithBTree()
+                .WithJournalKey("non-existent-journal")
+                .Build();
+        });
+
+        Assert.That(ex!.Message, Does.Contain("Journal provider 'non-existent-journal' is not registered"));
+    }
+
+    [Test]
+    public void WithCacheKeyClockTest()
+    {
+        using var db = new WitDatabaseBuilder()
+            .WithMemoryStorage()
+            .WithBTree()
+            .WithCacheKey("clock")
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithCacheKeyLruTest()
+    {
+        using var db = new WitDatabaseBuilder()
+            .WithMemoryStorage()
+            .WithBTree()
+            .WithCacheKey("lru")
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithCacheKeyWithParametersTest()
+    {
+        using var db = new WitDatabaseBuilder()
+            .WithMemoryStorage()
+            .WithBTree()
+            .WithCacheKey("clock", p =>
+            {
+                p.Set("capacity", 100);
+            })
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void WithCacheKeyInvalidThrowsTest()
+    {
+        var ex = Assert.Throws<InvalidOperationException>(() =>
+        {
+            new WitDatabaseBuilder()
+                .WithMemoryStorage()
+                .WithBTree()
+                .WithCacheKey("non-existent-cache")
+                .WithoutTransactions()
+                .Build();
+        });
+
+        Assert.That(ex!.Message, Does.Contain("Cache provider 'non-existent-cache' is not registered"));
+    }
+
+    [Test]
+    public void ProviderKeyWithTransactionsTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "provider_tx.db");
+
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithStoreKey(StoreBTree.PROVIDER_KEY)
+            .WithTransactions()
+            .Build();
+
+        Assert.That(db.SupportsTransactions, Is.True);
+
+        using (var tx = db.BeginTransaction())
+        {
+            tx.Put("key1"u8, "value1"u8);
+            tx.Commit();
+        }
+
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void ProviderKeyWithMvccTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "provider_mvcc.db");
+
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithStoreKey(StoreBTree.PROVIDER_KEY)
+            .WithMvcc()
+            .Build();
+
+        Assert.That(db.SupportsMvcc, Is.True);
+
+        db.Put("key1"u8, "value1"u8);
+
+        var readTx = db.BeginReadOnlyTransaction();
+        Assert.That(readTx.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+        readTx.Dispose();
+    }
+
+    [Test]
+    public void CombinedProviderKeysTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "combined_providers.db");
+
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithStoreKey(StoreBTree.PROVIDER_KEY)
+            .WithEncryptionKey("aes-gcm", "password")
+            .WithCacheKey("clock")
+            .WithJournalKey("rollback")
+            .Build();
+
+        Assert.That(db.SupportsTransactions, Is.True);
+
+        using (var tx = db.BeginTransaction())
+        {
+            tx.Put("secret"u8, "classified"u8);
+            tx.Commit();
+        }
+
+        Assert.That(db.Get("secret"u8), Is.EqualTo("classified"u8.ToArray()));
+    }
+
+    #endregion
+
+    #region Provider Parameters Default Values Tests
+
+    [Test]
+    public void EmptyStoreParametersGetFilledWithDefaultsTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "default_store_params.db");
+
+        // Should work even with empty parameters - defaults will be applied
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithStoreKey(StoreBTree.PROVIDER_KEY, new ProviderParameters())
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void PartialStoreParametersGetMergedWithDefaultsTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "partial_store_params.db");
+
+        // Only cacheSize specified - other defaults should be applied
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithStoreKey(StoreBTree.PROVIDER_KEY, p =>
+            {
+                p.Set("cacheSize", 50);
+                // storage, ownsStorage, providerMetadata should get defaults
+            })
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void EmptyJournalParametersGetFilledWithDefaultsTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "default_journal_params.db");
+
+        // Should work even with empty parameters - filePath will be derived from dbPath
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithBTree()
+            .WithJournalKey("rollback", new ProviderParameters())
+            .Build();
+
+        Assert.That(db.SupportsTransactions, Is.True);
+
+        using (var tx = db.BeginTransaction())
+        {
+            tx.Put("key1"u8, "value1"u8);
+            tx.Commit();
+        }
+
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void LsmProviderKeyWithEmptyParametersTest()
+    {
+        var lsmDir = Path.Combine(m_testDir, "lsm_empty_params");
+
+        // Should work - directory and options will be derived
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(lsmDir)
+            .WithStoreKey(StoreLsm.PROVIDER_KEY, new ProviderParameters())
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    [Test]
+    public void ProviderParametersOverrideDefaultsTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "override_defaults.db");
+        var customCacheSize = 123;
+
+        // User-specified value should override default
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithCacheSize(50) // Default from builder
+            .WithStoreKey(StoreBTree.PROVIDER_KEY, p =>
+            {
+                p.Set("cacheSize", customCacheSize); // Override in parameters
+            })
+            .WithoutTransactions()
+            .Build();
+
+        db.Put("key1"u8, "value1"u8);
+        Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+    }
+
+    #endregion
+
     #region Helper class for tests
 
-    private class StoreInMemory : IKeyValueStore
+    /// <summary>
+    /// Test-only in-memory store (different from OutWit.Database.Core.Stores.StoreInMemory).
+    /// </summary>
+    private sealed class TestStoreInMemory : IKeyValueStore
     {
         private readonly Dictionary<string, byte[]> m_data = new();
 

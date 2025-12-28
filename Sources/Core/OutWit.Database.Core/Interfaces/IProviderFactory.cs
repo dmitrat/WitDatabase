@@ -121,6 +121,27 @@ public sealed class ProviderParameters
     /// </summary>
     public bool Has(string name) => m_values.ContainsKey(name);
 
+    /// <summary>
+    /// Gets all parameters as key-value pairs.
+    /// </summary>
+    public IEnumerable<KeyValuePair<string, object>> GetAll() => m_values;
+
+    /// <summary>
+    /// Clears all parameters.
+    /// </summary>
+    public void Clear() => m_values.Clear();
+
+    /// <summary>
+    /// Removes a parameter.
+    /// </summary>
+    /// <returns>True if the parameter was removed.</returns>
+    public bool Remove(string name) => m_values.Remove(name);
+
+    /// <summary>
+    /// Gets the number of parameters.
+    /// </summary>
+    public int Count => m_values.Count;
+
     #endregion
 
     #region Properties
