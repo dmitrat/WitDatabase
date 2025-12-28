@@ -132,7 +132,7 @@ public sealed class IteratorExcept : IteratorBase
 
     #endregion
 
-    #region Proeprties
+    #region Properties
 
     /// <inheritdoc/>
     public override IReadOnlyList<WitSqlColumnInfo> Schema => m_left.Schema;
