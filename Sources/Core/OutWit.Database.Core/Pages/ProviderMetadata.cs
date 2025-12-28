@@ -192,6 +192,11 @@ public struct ProviderMetadata
     /// </summary>
     public readonly bool HasFileLocking => Features.HasFlag(ProviderFeatures.FileLocking);
 
+    /// <summary>
+    /// Gets whether MVCC (Multi-Version Concurrency Control) is enabled.
+    /// </summary>
+    public readonly bool HasMvcc => Features.HasFlag(ProviderFeatures.Mvcc);
+
     #endregion
 
     #region Equality
@@ -218,6 +223,9 @@ public struct ProviderMetadata
         
         if (HasTransactions)
             parts.Add("Transactions");
+        
+        if (HasMvcc)
+            parts.Add("MVCC");
         
         if (HasFileLocking)
             parts.Add("FileLocking");
@@ -255,9 +263,14 @@ public enum ProviderFeatures : byte
     FileLocking = 1 << 2,
 
     /// <summary>
+    /// MVCC (Multi-Version Concurrency Control) is enabled.
+    /// When enabled, keys are stored with version suffixes for snapshot isolation.
+    /// </summary>
+    Mvcc = 1 << 3,
+
+    /// <summary>
     /// Reserved for future use.
     /// </summary>
-    Reserved1 = 1 << 3,
     Reserved2 = 1 << 4,
     Reserved3 = 1 << 5,
     Reserved4 = 1 << 6,

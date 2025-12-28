@@ -259,9 +259,17 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
 
         // Configure features from detection
         if (detection.HasTransactions)
-            builder.WithTransactions();
+        {
+            // Use MVCC if it was enabled when the database was created
+            if (detection.HasMvcc)
+                builder.WithMvcc();
+            else
+                builder.WithTransactions();
+        }
         else
+        {
             builder.WithoutTransactions();
+        }
 
         if (detection.HasFileLocking)
             builder.WithFileLocking();

@@ -103,6 +103,7 @@ public static class StorageDetector
                     RequiresPassword = hints.RequiresEncryption,
                     EncryptionProvider = hints.EncryptionProvider,
                     HasTransactions = hints.HasTransactions,
+                    HasMvcc = hints.HasMvcc,
                     HasFileLocking = hints.HasFileLocking
                 };
             }
@@ -173,6 +174,11 @@ public sealed class StorageDetectionResult
     /// Whether transactions were enabled (BTree only).
     /// </summary>
     public bool HasTransactions { get; init; }
+
+    /// <summary>
+    /// Whether MVCC (Multi-Version Concurrency Control) was enabled (BTree only).
+    /// </summary>
+    public bool HasMvcc { get; init; }
 
     /// <summary>
     /// Whether file locking was enabled (BTree only).

@@ -76,7 +76,6 @@ public class WitDbConnectionEncryptionTests
     }
 
     [Test]
-    [Ignore("Encrypted data persistence across sessions requires storage layer improvements")]
     public void AesGcmDataPersistsAcrossSessionsTest()
     {
         var connectionString = $"Data Source={m_testDbPath};Encryption=aes-gcm;Password=TestPassword123";
@@ -105,7 +104,6 @@ public class WitDbConnectionEncryptionTests
     }
 
     [Test]
-    [Ignore("Encrypted data persistence across sessions requires storage layer improvements")]
     public void AesGcmWrongPasswordCannotOpenExistingDatabaseTest()
     {
         // Create with one password
@@ -117,10 +115,11 @@ public class WitDbConnectionEncryptionTests
             cmd.ExecuteNonQuery();
         }
 
-        // Try to open with wrong password
+        // Try to open with wrong password - should throw CryptographicException
+        // because different password produces different encryption key
         using var conn2 = new WitDbConnection($"Data Source={m_testDbPath};Encryption=aes-gcm;Password=WrongPassword");
         
-        Assert.Throws<Exception>(() => conn2.Open());
+        Assert.That(() => conn2.Open(), Throws.InstanceOf<Exception>());
     }
 
     [Test]

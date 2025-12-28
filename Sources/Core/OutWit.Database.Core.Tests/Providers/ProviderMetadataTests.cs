@@ -1,6 +1,7 @@
 using NUnit.Framework;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Managers;
+using OutWit.Database.Core.Providers;
 using OutWit.Database.Core.Storage;
 
 namespace OutWit.Database.Core.Tests.Providers;
@@ -295,6 +296,98 @@ public class ProviderMetadataTests
         Assert.That(loaded.IsEncrypted, Is.True);
         Assert.That(loaded.HasTransactions, Is.True);
         Assert.That(loaded.Features.HasFlag(ProviderFeatures.FileLocking), Is.True);
+    }
+
+    #endregion
+
+    #region MVCC Feature Flag Persistence Tests
+
+    [Test]
+    public void MvccFlagPersistedAndDetectedTest()
+    {
+        var path = Path.Combine(m_testDir, "mvcc.db");
+
+        // Create with MVCC
+        using (var db = new WitDatabaseBuilder()
+            .WithFilePath(path)
+            .WithBTree()
+            .WithMvcc()
+            .Build())
+        {
+            db.Put("key"u8, "value"u8);
+        }
+
+        // Check metadata via StorageDetector
+        var detection = StorageDetector.Detect(path);
+        Assert.That(detection.HasMvcc, Is.True, "MVCC flag should be persisted");
+        Assert.That(detection.HasTransactions, Is.True, "Transactions flag should be set");
+
+        // Reopen and verify MVCC is used
+        using (var db = WitDatabase.Open(path))
+        {
+            Assert.That(db.SupportsMvcc, Is.True, "Reopened database should use MVCC");
+            Assert.That(db.Get("key"u8), Is.EqualTo("value"u8.ToArray()), "Data should persist");
+        }
+    }
+
+    [Test]
+    public void MvccRoundTripPersistenceTest()
+    {
+        var path = Path.Combine(m_testDir, "mvcc_roundtrip.db");
+
+        // Create with MVCC and write multiple keys
+        using (var db = new WitDatabaseBuilder()
+            .WithFilePath(path)
+            .WithBTree()
+            .WithMvcc()
+            .Build())
+        {
+            db.Put("key1"u8, "value1"u8);
+            db.Put("key2"u8, "value2"u8);
+            db.Put("key3"u8, "value3"u8);
+        }
+
+        // Reopen and verify all data persists
+        using (var db = WitDatabase.Open(path))
+        {
+            Assert.That(db.Get("key1"u8), Is.EqualTo("value1"u8.ToArray()));
+            Assert.That(db.Get("key2"u8), Is.EqualTo("value2"u8.ToArray()));
+            Assert.That(db.Get("key3"u8), Is.EqualTo("value3"u8.ToArray()));
+
+            // Verify scan works
+            var allKeys = db.Scan().ToList();
+            Assert.That(allKeys.Count, Is.EqualTo(3));
+        }
+    }
+
+    [Test]
+    public void MvccMultipleReopenPersistenceTest()
+    {
+        var path = Path.Combine(m_testDir, "mvcc_multi.db");
+
+        // Session 1: Create
+        using (var db = new WitDatabaseBuilder()
+            .WithFilePath(path)
+            .WithBTree()
+            .WithMvcc()
+            .Build())
+        {
+            db.Put("session1"u8, "data1"u8);
+        }
+
+        // Session 2: Reopen and add more data
+        using (var db = WitDatabase.Open(path))
+        {
+            Assert.That(db.SupportsMvcc, Is.True);
+            db.Put("session2"u8, "data2"u8);
+        }
+
+        // Session 3: Verify all data
+        using (var db = WitDatabase.Open(path))
+        {
+            Assert.That(db.Get("session1"u8), Is.EqualTo("data1"u8.ToArray()));
+            Assert.That(db.Get("session2"u8), Is.EqualTo("data2"u8.ToArray()));
+        }
     }
 
     #endregion

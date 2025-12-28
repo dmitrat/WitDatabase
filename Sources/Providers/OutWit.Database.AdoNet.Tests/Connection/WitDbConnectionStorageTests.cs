@@ -310,4 +310,36 @@ public class WitDbConnectionStorageTests
     }
 
     #endregion
+
+    #region Data Persistence Tests
+
+    [Test]
+    public void BTreeDataPersistsAcrossSessionsWithoutEncryptionTest()
+    {
+        var connectionString = $"Data Source={m_testDbPath}";
+
+        // Create and populate database
+        using (var conn1 = new WitDbConnection(connectionString))
+        {
+            conn1.Open();
+            using var cmd = conn1.CreateCommand();
+            cmd.CommandText = "CREATE TABLE Test (Id INT PRIMARY KEY, Value TEXT)";
+            cmd.ExecuteNonQuery();
+            cmd.CommandText = "INSERT INTO Test VALUES (1, 'Persisted Data')";
+            cmd.ExecuteNonQuery();
+        }
+
+        // Reopen and verify
+        using (var conn2 = new WitDbConnection(connectionString))
+        {
+            conn2.Open();
+            using var cmd = conn2.CreateCommand();
+            cmd.CommandText = "SELECT Value FROM Test WHERE Id = 1";
+            var result = cmd.ExecuteScalar();
+
+            Assert.That(result, Is.EqualTo("Persisted Data"));
+        }
+    }
+
+    #endregion
 }

@@ -487,6 +487,9 @@ public sealed class WitDatabaseBuilder
         if (Options.EnableFileLocking)
             features |= ProviderFeatures.FileLocking;
 
+        if (Options.EnableMvcc)
+            features |= ProviderFeatures.Mvcc;
+
         return new ProviderMetadata
         {
             Features = features,

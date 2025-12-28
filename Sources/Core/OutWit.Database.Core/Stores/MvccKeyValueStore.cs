@@ -61,8 +61,9 @@ namespace OutWit.Database.Core.Stores
         public byte[]? Get(ReadOnlySpan<byte> key)
         {
             ThrowIfDisposed();
-            // Default: get latest committed version
-            return GetAsOf(key, m_timestampManager.CurrentTimestamp, transactionId: 0);
+            // For non-transactional reads, use MaxValue to see all committed data
+            // This handles the case when database is reopened with fresh timestamp manager
+            return GetAsOf(key, long.MaxValue, transactionId: 0);
         }
 
         /// <inheritdoc/>
@@ -260,7 +261,9 @@ namespace OutWit.Database.Core.Stores
         public IEnumerable<(byte[] Key, byte[] Value)> Scan(byte[]? startKey, byte[]? endKey)
         {
             ThrowIfDisposed();
-            return ScanAsOf(startKey, endKey, m_timestampManager.CurrentTimestamp, transactionId: 0);
+            // For non-transactional reads, use MaxValue to see all committed data
+            // This handles the case when database is reopened with fresh timestamp manager
+            return ScanAsOf(startKey, endKey, long.MaxValue, transactionId: 0);
         }
 
         /// <inheritdoc/>

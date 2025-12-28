@@ -85,6 +85,7 @@ public static class ConfigurationValidator
             EncryptionProvider = stored.EncryptionProviderKey,
             StoreProvider = stored.StoreProviderKey,
             HasTransactions = stored.HasTransactions,
+            HasMvcc = stored.HasMvcc,
             HasFileLocking = stored.Features.HasFlag(ProviderFeatures.FileLocking)
         };
     }

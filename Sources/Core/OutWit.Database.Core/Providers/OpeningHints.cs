@@ -18,6 +18,9 @@ public sealed class OpeningHints
         if (HasTransactions)
             parts.Add("Transactions: enabled");
         
+        if (HasMvcc)
+            parts.Add("MVCC: enabled");
+        
         if (HasFileLocking)
             parts.Add("FileLocking: enabled");
 
@@ -45,6 +48,11 @@ public sealed class OpeningHints
     /// Whether transactions were enabled.
     /// </summary>
     public bool HasTransactions { get; init; }
+
+    /// <summary>
+    /// Whether MVCC (Multi-Version Concurrency Control) was enabled.
+    /// </summary>
+    public bool HasMvcc { get; init; }
 
     /// <summary>
     /// Whether file locking was enabled.

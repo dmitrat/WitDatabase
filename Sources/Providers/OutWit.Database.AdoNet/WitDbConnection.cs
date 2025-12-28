@@ -133,6 +133,9 @@ public sealed class WitDbConnection : DbConnection
 
             if (OwnsEngine && m_engine != null)
             {
+                // Flush data to disk before disposing
+                m_database?.Flush();
+                
                 m_engine.Dispose();
                 m_engine = null;
                 m_database = null;
@@ -242,6 +245,31 @@ public sealed class WitDbConnection : DbConnection
     {
         options.ThrowIfInvalid();
         
+        // Check if this is a memory database
+        if (options.Mode == WitDbConnectionMode.Memory ||
+            string.Equals(options.DataSource, ":memory:", StringComparison.OrdinalIgnoreCase))
+        {
+            return CreateNewDatabase(options);
+        }
+        
+        // For file-based databases, check if file exists to open vs create
+        if (!string.IsNullOrEmpty(options.DataSource))
+        {
+            var exists = File.Exists(options.DataSource) || Directory.Exists(options.DataSource);
+            
+            if (exists)
+            {
+                // Open existing database
+                return OpenExistingDatabase(options);
+            }
+        }
+        
+        // Create new database
+        return CreateNewDatabase(options);
+    }
+
+    private static WitDatabaseInstance CreateNewDatabase(WitDbConnectionStringBuilder options)
+    {
         var builder = new WitDatabaseBuilder();
         
         // Collect all provider parameters from connection string
@@ -271,6 +299,73 @@ public sealed class WitDbConnection : DbConnection
         ConfigureTransactions(builder, options);
 
         return builder.Build();
+    }
+
+    private static WitDatabaseInstance OpenExistingDatabase(WitDbConnectionStringBuilder options)
+    {
+        var path = options.DataSource!;
+        
+        // If encryption is specified, use CreateOrOpen with password
+        // This handles both new and existing databases correctly
+        if (!string.IsNullOrEmpty(options.Encryption) && !string.IsNullOrEmpty(options.Password))
+        {
+            // For encrypted databases, we need to use the builder approach
+            // because WitDatabase.Open with password doesn't support all options
+            var builder = new WitDatabaseBuilder();
+            var providerParams = new ProviderParameters();
+            
+            foreach (var (key, value) in options.GetProviderParameters())
+            {
+                if (value != null)
+                    providerParams.Set(key, value);
+            }
+
+            // Use StorageDetector to get database info
+            var detection = StorageDetector.Detect(path);
+            
+            // Configure based on detected store type
+            if (detection.StoreType == "lsm" || detection.IsDirectory)
+            {
+                builder.WithLsmTree(path);
+            }
+            else
+            {
+                builder.WithFilePath(path).WithBTree();
+            }
+
+            // Configure encryption
+            ConfigureEncryption(builder, options, providerParams);
+
+            // Configure transactions based on detection or connection string options
+            if (detection.HasTransactions || options.Transactions)
+            {
+                // Use MVCC if detected or specified in connection string
+                if (detection.HasMvcc || options.Mvcc)
+                {
+                    var coreIsolationLevel = MapDbIsolationLevel(options.IsolationLevel);
+                    builder.WithMvcc(coreIsolationLevel);
+                }
+                else
+                {
+                    builder.WithTransactions();
+                }
+            }
+            else
+            {
+                builder.WithoutTransactions();
+            }
+
+            // Configure file locking from detection
+            if (detection.HasFileLocking)
+                builder.WithFileLocking();
+            else
+                builder.WithoutFileLocking();
+
+            return builder.Build();
+        }
+        
+        // For non-encrypted databases, use WitDatabase.Open which auto-detects settings
+        return WitDatabaseInstance.Open(path);
     }
 
     private static void ConfigureStorage(WitDatabaseBuilder builder, WitDbConnectionStringBuilder options)
@@ -377,6 +472,10 @@ public sealed class WitDbConnection : DbConnection
             return;
         }
 
+        // MVCC provides snapshot isolation and is generally recommended.
+        // However, MVCC stores data with version suffixes which changes the key format.
+        // For file-based databases, we still use MVCC since the database will be
+        // reopened with the same MVCC setting (stored in metadata).
         if (options.Mvcc)
         {
             var coreIsolationLevel = MapDbIsolationLevel(options.IsolationLevel);
@@ -386,6 +485,12 @@ public sealed class WitDbConnection : DbConnection
         {
             var coreIsolationLevel = MapDbIsolationLevel(options.IsolationLevel);
             builder.WithDefaultIsolationLevel(coreIsolationLevel);
+            builder.WithTransactions();
+        }
+        else
+        {
+            // Default: use regular transactions when Mvcc=false
+            builder.WithTransactions();
         }
     }
 
