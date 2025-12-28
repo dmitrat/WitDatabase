@@ -24,51 +24,50 @@ public sealed partial class QueryPlanner
             ? tableName.Split('.', 2)[1]
             : tableName;
 
-        // Get schema catalog from database to create InformationSchema helper
-        // We need to get the schema catalog - it's stored in the context's database
+        // Get schema catalog from database
         if (m_context.Database is not WitSqlEngine engine)
         {
             throw new InvalidOperationException("INFORMATION_SCHEMA is only available with WitSqlEngine");
         }
 
-        var infoSchema = engine.GetInformationSchema();
+        var catalog = engine.Catalog;
 
         return viewName.ToUpperInvariant() switch
         {
             "TABLES" => new IteratorInformationSchema(
-                infoSchema.GetTables(),
-                InformationSchema.GetTablesColumns(),
-                InformationSchema.GetTablesColumnTypes()),
+                catalog.GetInformationSchemaTables(),
+                SchemaCatalog.GetInformationSchemaTablesColumns(),
+                SchemaCatalog.GetInformationSchemaTablesColumnTypes()),
                 
             "COLUMNS" => new IteratorInformationSchema(
-                infoSchema.GetColumns(),
-                InformationSchema.GetColumnsColumns(),
-                InformationSchema.GetColumnsColumnTypes()),
+                catalog.GetInformationSchemaColumns(),
+                SchemaCatalog.GetInformationSchemaColumnsColumns(),
+                SchemaCatalog.GetInformationSchemaColumnsColumnTypes()),
                 
             "KEY_COLUMN_USAGE" => new IteratorInformationSchema(
-                infoSchema.GetKeyColumnUsage(),
-                InformationSchema.GetKeyColumnUsageColumns(),
-                InformationSchema.GetKeyColumnUsageColumnTypes()),
+                catalog.GetInformationSchemaKeyColumnUsage(),
+                SchemaCatalog.GetInformationSchemaKeyColumnUsageColumns(),
+                SchemaCatalog.GetInformationSchemaKeyColumnUsageColumnTypes()),
                 
             "TABLE_CONSTRAINTS" => new IteratorInformationSchema(
-                infoSchema.GetTableConstraints(),
-                InformationSchema.GetTableConstraintsColumns(),
-                InformationSchema.GetTableConstraintsColumnTypes()),
+                catalog.GetInformationSchemaTableConstraints(),
+                SchemaCatalog.GetInformationSchemaTableConstraintsColumns(),
+                SchemaCatalog.GetInformationSchemaTableConstraintsColumnTypes()),
                 
             "REFERENTIAL_CONSTRAINTS" => new IteratorInformationSchema(
-                infoSchema.GetReferentialConstraints(),
-                InformationSchema.GetReferentialConstraintsColumns(),
-                InformationSchema.GetReferentialConstraintsColumnTypes()),
+                catalog.GetInformationSchemaReferentialConstraints(),
+                SchemaCatalog.GetInformationSchemaReferentialConstraintsColumns(),
+                SchemaCatalog.GetInformationSchemaReferentialConstraintsColumnTypes()),
                 
             "INDEXES" => new IteratorInformationSchema(
-                infoSchema.GetIndexes(),
-                InformationSchema.GetIndexesColumns(),
-                InformationSchema.GetIndexesColumnTypes()),
+                catalog.GetInformationSchemaIndexes(),
+                SchemaCatalog.GetInformationSchemaIndexesColumns(),
+                SchemaCatalog.GetInformationSchemaIndexesColumnTypes()),
                 
             "VIEWS" => new IteratorInformationSchema(
-                infoSchema.GetViews(),
-                InformationSchema.GetViewsColumns(),
-                InformationSchema.GetViewsColumnTypes()),
+                catalog.GetInformationSchemaViews(),
+                SchemaCatalog.GetInformationSchemaViewsColumns(),
+                SchemaCatalog.GetInformationSchemaViewsColumnTypes()),
                 
             _ => throw new InvalidOperationException($"Unknown INFORMATION_SCHEMA view: {viewName}")
         };

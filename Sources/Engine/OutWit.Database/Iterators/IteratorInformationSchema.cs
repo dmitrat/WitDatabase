@@ -38,7 +38,7 @@ public sealed class IteratorInformationSchema : IResultIterator
                 Name = columnNames[i],
                 Type = columnTypes[i],
                 IsNullable = true,
-                TableName = InformationSchema.SCHEMA_NAME
+                TableName = SchemaCatalog.INFORMATION_SCHEMA_NAME
             };
         }
         Schema = schema;

@@ -20,7 +20,6 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
 
     private readonly WitDatabase m_database;
     private readonly SchemaCatalog m_schema;
-    private readonly InformationSchema m_informationSchema;
     private readonly QueryPlanCache m_planCache;
     private readonly bool m_ownsStore;
     private ITransaction? m_currentTransaction;
@@ -43,7 +42,6 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
     {
         m_database = database;
         m_schema = new SchemaCatalog(database.Store);
-        m_informationSchema = new InformationSchema(m_schema);
         m_planCache = new QueryPlanCache();
         m_ownsStore = ownsStore;
     }
@@ -193,12 +191,9 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
     #region Schema Information
 
     /// <summary>
-    /// Gets the INFORMATION_SCHEMA helper for querying database metadata.
+    /// Gets the schema catalog for accessing database metadata.
     /// </summary>
-    public InformationSchema GetInformationSchema()
-    {
-        return m_informationSchema;
-    }
+    public SchemaCatalog Catalog => m_schema;
 
     /// <summary>
     /// Gets the query plan cache for statistics and management.

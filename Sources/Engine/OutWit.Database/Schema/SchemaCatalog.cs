@@ -22,6 +22,8 @@ public sealed partial class SchemaCatalog : IDisposable
     private const string ROWID_PREFIX = "$schema:_rowid:";
     private const string ROWVERSION_KEY = "$schema:_rowversion";
 
+    public const string INFORMATION_SCHEMA_NAME = "INFORMATION_SCHEMA";
+
     // Pre-computed UTF8 bytes for frequently used keys
     private static readonly byte[] TABLES_KEY_BYTES = Encoding.UTF8.GetBytes(TABLES_KEY);
     private static readonly byte[] INDEXES_KEY_BYTES = Encoding.UTF8.GetBytes(INDEXES_KEY);
