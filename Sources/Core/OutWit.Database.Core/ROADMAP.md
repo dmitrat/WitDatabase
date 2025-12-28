@@ -7,7 +7,7 @@
 
 ## v1 Status: 100% Complete
 
-All v1 features are implemented. See [STATUS.md](Sources/Core/OutWit.Database.Core/STATUS.md) for details.
+All v1 features are implemented. See [STATUS.md](STATUS.md) for details.
 
 **Test Coverage:** 1811+ tests passing
 
@@ -49,6 +49,6 @@ All v1 features are implemented. See [STATUS.md](Sources/Core/OutWit.Database.Co
 
 ## See Also
 
-- [README.md](Sources/Core/OutWit.Database.Core/README.md) - Documentation
-- [STATUS.md](Sources/Core/OutWit.Database.Core/STATUS.md) - Implementation status
-- [EXTENSIBILITY.md](Sources/Core/OutWit.Database.Core/EXTENSIBILITY.md) - Extension guide
+- [README.md](README.md) - Documentation
+- [STATUS.md](STATUS.md) - Implementation status
+- [EXTENSIBILITY.md](EXTENSIBILITY.md) - Extension guide

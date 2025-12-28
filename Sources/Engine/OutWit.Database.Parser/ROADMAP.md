@@ -7,7 +7,7 @@
 
 ## v1 Status: 100% Complete
 
-All v1 features (298 features) are implemented. See [STATUS.md](Sources/Engine/OutWit.Database.Parser/STATUS.md) for details.
+All v1 features (298 features) are implemented. See [STATUS.md](STATUS.md) for details.
 
 **Test Coverage:** 1000+ tests passing
 
@@ -56,6 +56,6 @@ All v1 features (298 features) are implemented. See [STATUS.md](Sources/Engine/O
 
 ## See Also
 
-- [README.md](Sources/Engine/OutWit.Database.Parser/README.md) - Documentation
-- [STATUS.md](Sources/Engine/OutWit.Database.Parser/STATUS.md) - Implementation status
-- [WitSQL.md](WitSQL.md) - Language specification
+- [README.md](README.md) - Documentation
+- [STATUS.md](STATUS.md) - Implementation status
+- [../../WitSQL.md](../../WitSQL.md) - Language specification

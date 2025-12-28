@@ -5,29 +5,13 @@
 
 ---
 
-## v1 Status: ~97% Complete
+## v1 Status: 100% Complete
 
-All SQL execution features are implemented. Only ADO.NET Provider remains.
+All SQL execution features are implemented.
 
-See [STATUS.md](Sources/Engine/OutWit.Database/STATUS.md) for details.
+See [STATUS.md](STATUS.md) for details.
 
 **Test Coverage:** 1395+ tests passing
-
----
-
-## v1 Remaining: ADO.NET Provider
-
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| `WitDbConnection` | P0 | DbConnection implementation |
-| `WitDbCommand` | P0 | DbCommand implementation |
-| `WitDbDataReader` | P0 | DbDataReader implementation |
-| `WitDbParameter` | P0 | DbParameter implementation |
-| `WitDbTransaction` | P0 | DbTransaction implementation |
-| `WitDbConnectionStringBuilder` | P0 | Connection string parsing |
-| `WitDbProviderFactory` | P0 | Provider factory for DI |
-| Async methods | P0 | Async versions of all operations |
-| Connection pooling | P1 | Reuse connections |
 
 ---
 
@@ -81,6 +65,6 @@ See [STATUS.md](Sources/Engine/OutWit.Database/STATUS.md) for details.
 
 ## See Also
 
-- [README.md](Sources/Engine/OutWit.Database/README.md) - Documentation
-- [STATUS.md](Sources/Engine/OutWit.Database/STATUS.md) - Implementation status
-- [WitSQL.md](WitSQL.md) - Language specification
+- [README.md](README.md) - Documentation
+- [STATUS.md](STATUS.md) - Implementation status
+- [../../WitSQL.md](../../WitSQL.md) - Language specification
