@@ -28,14 +28,16 @@ This package provides an Entity Framework Core provider for WitDatabase, enablin
 - [x] **Phase 7:** Migrations (P1) - COMPLETED
 - [x] **Phase 8:** Database Creation (P1) - COMPLETED
 - [x] **Phase 9:** Function Translations (P1) - COMPLETED
+- [x] **Phase 10:** Advanced Features (P2) - COMPLETED (basic)
 
-### Pending Phases
+### Pending Features
 
-- [ ] **Phase 10:** Advanced Features (P2)
+- [ ] JSON column support (ToJson/FromJson)
+- [ ] Full integration tests with real database
 
 ### Current Test Status
 
-- **241 tests passing** (net9.0 and net10.0)
+- **252 tests passing** (net9.0 and net10.0)
 - **0 tests skipped**
 
 ---
@@ -371,9 +373,37 @@ Implemented in: `Query/WitMethodCallTranslatorProvider.cs` and `Query/WitMemberT
 
 ---
 
-### Phase 10: Advanced Features (P2) - NOT STARTED
+### Phase 10: Advanced Features (P2) - COMPLETED (basic)
 
-#### 10.1 JSON Support
+#### 10.1 Computed Columns
+
+Implemented in: `Extensions/WitPropertyBuilderExtensions.cs` and `Migrations/WitMigrationsSqlGenerator.cs`
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| `HasWitComputedColumnSql()` | Done | Define computed column with SQL expression |
+| `IsStored` | Done | STORED vs VIRTUAL computed columns |
+| Migration support | Done | GENERATED ALWAYS AS syntax |
+
+#### 10.2 Concurrency
+
+Implemented in: `Extensions/WitPropertyBuilderExtensions.cs` and `Update/WitUpdateSqlGenerator.cs`
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| `IsWitRowVersion()` | Done | Integer-based row version |
+| `IsConcurrencyToken()` | Done | Standard EF Core concurrency |
+| WHERE clause support | Done | Original value comparison in updates |
+
+#### 10.3 Value Converters
+
+| Feature | Status | Description |
+|---------|--------|-------------|
+| Enum to int | Done | Store enum as INT (default) |
+| Enum to string | Pending | Store enum as TEXT |
+| JSON serialization | Pending | Complex types as JSON |
+
+#### 10.4 JSON Support (Future)
 
 | Feature | Priority | Description |
 |---------|----------|-------------|
@@ -381,28 +411,6 @@ Implemented in: `Query/WitMethodCallTranslatorProvider.cs` and `Query/WitMemberT
 | `FromJson()` | P2 | Map JSON column to entity |
 | JSON path queries | P2 | `JSON_VALUE`, `JSON_QUERY` |
 | JSON updates | P2 | `JSON_SET`, `JSON_REMOVE` |
-
-#### 10.2 Computed Columns
-
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| `HasComputedColumnSql()` | P2 | Define computed column |
-| `IsStored()` | P2 | STORED vs VIRTUAL |
-
-#### 10.3 Value Converters
-
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| Enum to string | P2 | Store enum as TEXT |
-| Enum to int | P0 | Store enum as INT |
-| JSON serialization | P2 | Complex types as JSON |
-
-#### 10.4 Concurrency
-
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| `IsRowVersion()` | P1 | ROWVERSION columns |
-| `IsConcurrencyToken()` | P1 | Optimistic concurrency |
 
 ---
 
@@ -453,6 +461,7 @@ OutWit.Database.EntityFramework/
 +-- Extensions/
 |   +-- WitDbContextOptionsBuilderExtensions.cs  [Done]
 |   +-- WitDbServiceCollectionExtensions.cs      [Done]
+|   +-- WitPropertyBuilderExtensions.cs          [Done]
 +-- Infrastructure/
 |   +-- WitDbContextOptionsExtension.cs   [Done]
 |   +-- WitDbContextOptionsBuilder.cs     [Done]
@@ -483,6 +492,7 @@ OutWit.Database.EntityFramework/
 |   +-- WitModificationCommandBatchFactory.cs  [Done]
 |   +-- WitUpdateSqlGenerator.cs          [Done]
 +-- TODO.md
++-- README.md
 ```
 
 ---
@@ -513,6 +523,7 @@ The project targets both .NET 9 and .NET 10 with appropriate EF Core versions:
 OutWit.Database.EntityFramework.Tests/
 +-- Extensions/
 |   +-- WitDbContextOptionsBuilderExtensionsTests.cs  [Done] (14 tests)
+|   +-- WitPropertyBuilderExtensionsTests.cs          [Done] (6 tests)
 +-- Infrastructure/
 |   +-- WitDbContextOptionsExtensionTests.cs          [Done] (16 tests)
 |   +-- WitDatabaseProviderTests.cs                   [Done] (3 tests)
@@ -521,6 +532,7 @@ OutWit.Database.EntityFramework.Tests/
 +-- Migrations/
 |   +-- WitHistoryRepositoryTests.cs                  [Done] (18 tests)
 |   +-- WitMigrationsSqlGeneratorTests.cs             [Done] (18 tests)
+|   +-- WitMigrationsSqlGeneratorComputedColumnTests.cs [Done] (5 tests)
 +-- Query/
 |   +-- WitStringMethodTranslatorTests.cs             [Done] (17 tests)
 |   +-- WitMathMethodTranslatorTests.cs               [Done] (30 tests)
@@ -531,16 +543,18 @@ OutWit.Database.EntityFramework.Tests/
 |   +-- WitDatabaseCreatorTests.cs                    [Done] (12 tests)
 |   +-- WitSqlGenerationHelperTests.cs                [Done] (17 tests)
 |   +-- WitTypeMappingSourceTests.cs                  [Done] (37 tests)
++-- Update/
+|   +-- WitUpdateSqlGeneratorTests.cs                 [Done] (3 tests)
 ```
 
 ---
 
 ## Next Steps
 
-1. **Phase 10:** Advanced features (P2)
-   - JSON support
-   - Computed columns
-   - Concurrency tokens
+1. **JSON Support** (P2)
+   - Add JSON column type mapping
+   - Implement JSON method translators
+   - Add JSON function support in migrations
 
 ---
 

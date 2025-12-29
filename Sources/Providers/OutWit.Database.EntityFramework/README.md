@@ -82,6 +82,62 @@ services.AddDbContext<AppDbContext>(options =>
     options.UseWitDb(Configuration.GetConnectionString("DefaultConnection")));
 ```
 
+## Advanced Features
+
+### Row Versioning (Optimistic Concurrency)
+
+```csharp
+public class Product
+{
+    public int Id { get; set; }
+    public string Name { get; set; }
+    public decimal Price { get; set; }
+    public int Version { get; set; }  // Row version column
+}
+
+// In OnModelCreating
+modelBuilder.Entity<Product>(entity =>
+{
+    entity.Property(e => e.Version).IsWitRowVersion();
+});
+```
+
+### Computed Columns
+
+```csharp
+public class Employee
+{
+    public int Id { get; set; }
+    public string FirstName { get; set; }
+    public string LastName { get; set; }
+    public string FullName { get; set; }  // Computed column
+}
+
+// In OnModelCreating
+modelBuilder.Entity<Employee>(entity =>
+{
+    entity.Property(e => e.FullName)
+        .HasWitComputedColumnSql("FirstName || ' ' || LastName", stored: true);
+});
+```
+
+### Concurrency Tokens
+
+```csharp
+public class Document
+{
+    public int Id { get; set; }
+    public string Content { get; set; }
+    public Guid ConcurrencyStamp { get; set; }
+}
+
+// In OnModelCreating
+modelBuilder.Entity<Document>(entity =>
+{
+    entity.Property(e => e.ConcurrencyStamp).IsConcurrencyToken();
+});
+```
+
 ## Supported Data Types
 
 | C# Type | WitSQL Type | Notes |
@@ -159,12 +215,12 @@ All connection string options from `OutWit.Database.AdoNet` are supported:
 - [x] Migrations support (CREATE/DROP TABLE, ADD/DROP COLUMN, indexes)
 - [x] Database creation (EnsureCreated/EnsureDeleted)
 - [x] LINQ method translations (string, math, datetime, guid)
+- [x] Computed columns support
+- [x] Concurrency tokens and row versioning
 
 ### Planned
 
 - [ ] JSON column support
-- [ ] Computed columns
-- [ ] Concurrency tokens
 
 ## Requirements
 

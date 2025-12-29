@@ -45,5 +45,39 @@ public sealed class WitUpdateSqlGenerator : UpdateSqlGenerator
         return $"SELECT INCREMENT('{name}')";
     }
 
+    /// <inheritdoc/>
+    protected override void AppendWhereCondition(
+        StringBuilder commandStringBuilder,
+        IColumnModification columnModification,
+        bool useOriginalValue)
+    {
+        var columnName = Dependencies.SqlGenerationHelper.DelimitIdentifier(columnModification.ColumnName);
+
+        if (useOriginalValue && columnModification.OriginalValue == null)
+        {
+            commandStringBuilder.Append(columnName).Append(" IS NULL");
+        }
+        else if (!useOriginalValue && columnModification.Value == null)
+        {
+            commandStringBuilder.Append(columnName).Append(" IS NULL");
+        }
+        else
+        {
+            commandStringBuilder.Append(columnName).Append(" = ");
+            if (useOriginalValue)
+            {
+                commandStringBuilder.Append(
+                    Dependencies.SqlGenerationHelper.GenerateParameterNamePlaceholder(
+                        columnModification.OriginalParameterName!));
+            }
+            else
+            {
+                commandStringBuilder.Append(
+                    Dependencies.SqlGenerationHelper.GenerateParameterNamePlaceholder(
+                        columnModification.ParameterName!));
+            }
+        }
+    }
+
     #endregion
 }
