@@ -35,9 +35,10 @@ public static class WitDbServiceCollectionExtensions
         var builder = new EntityFrameworkRelationalServicesBuilder(services);
 
         builder
-            // Core services
+            // Core infrastructure
             .TryAdd<LoggingDefinitions, WitLoggingDefinitions>()
             .TryAdd<IDatabaseProvider, WitDatabaseProvider>()
+            .TryAdd<IModelRuntimeInitializer, WitModelRuntimeInitializer>()
             
             // Connection and type mapping
             .TryAdd<IRelationalTypeMappingSource, WitTypeMappingSource>()
@@ -53,7 +54,7 @@ public static class WitDbServiceCollectionExtensions
             .TryAdd<IUpdateSqlGenerator, WitUpdateSqlGenerator>()
             .TryAdd<IModificationCommandBatchFactory, WitModificationCommandBatchFactory>()
             
-            // Model building
+            // Model building and validation
             .TryAdd<IRelationalAnnotationProvider, WitAnnotationProvider>()
             .TryAdd<IModelValidator, WitModelValidator>()
             
@@ -64,6 +65,7 @@ public static class WitDbServiceCollectionExtensions
             // Database creation
             .TryAdd<IRelationalDatabaseCreator, WitDatabaseCreator>();
 
+        // Add all core services that EF Core provides by default
         builder.TryAddCoreServices();
 
         return services;

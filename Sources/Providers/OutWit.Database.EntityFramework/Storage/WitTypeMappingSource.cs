@@ -11,16 +11,13 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
     #region Constants
 
     // Integer types
-    private const string TYPE_TINYINT = "TINYINT";
-    private const string TYPE_UTINYINT = "UTINYINT";
-    private const string TYPE_SMALLINT = "SMALLINT";
-    private const string TYPE_USMALLINT = "USMALLINT";
     private const string TYPE_INT = "INT";
-    private const string TYPE_UINT = "UINT";
     private const string TYPE_BIGINT = "BIGINT";
-    private const string TYPE_UBIGINT = "UBIGINT";
+    private const string TYPE_SMALLINT = "SMALLINT";
+    private const string TYPE_TINYINT = "TINYINT";
 
     // Floating-point types
+    private const string TYPE_REAL = "REAL";
     private const string TYPE_FLOAT = "FLOAT";
     private const string TYPE_DOUBLE = "DOUBLE";
     private const string TYPE_DECIMAL = "DECIMAL";
@@ -33,16 +30,12 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
     private const string TYPE_TIME = "TIME";
     private const string TYPE_DATETIME = "DATETIME";
     private const string TYPE_DATETIMEOFFSET = "DATETIMEOFFSET";
-    private const string TYPE_INTERVAL = "INTERVAL";
 
     // String types
     private const string TYPE_TEXT = "TEXT";
-    private const string TYPE_VARCHAR = "VARCHAR";
-    private const string TYPE_JSON = "JSON";
 
     // Binary types
     private const string TYPE_BLOB = "BLOB";
-    private const string TYPE_VARBINARY = "VARBINARY";
 
     // Other types
     private const string TYPE_GUID = "GUID";
@@ -52,18 +45,15 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
     #region Fields
 
     // Integer mappings
-    private readonly SByteTypeMapping m_sbyteMapping = new(TYPE_TINYINT, DbType.SByte);
-    private readonly ByteTypeMapping m_byteMapping = new(TYPE_UTINYINT, DbType.Byte);
-    private readonly ShortTypeMapping m_shortMapping = new(TYPE_SMALLINT, DbType.Int16);
-    private readonly UShortTypeMapping m_ushortMapping = new(TYPE_USMALLINT);
     private readonly IntTypeMapping m_intMapping = new(TYPE_INT, DbType.Int32);
-    private readonly UIntTypeMapping m_uintMapping = new(TYPE_UINT);
     private readonly LongTypeMapping m_longMapping = new(TYPE_BIGINT, DbType.Int64);
-    private readonly ULongTypeMapping m_ulongMapping = new(TYPE_UBIGINT);
+    private readonly ShortTypeMapping m_shortMapping = new(TYPE_SMALLINT, DbType.Int16);
+    private readonly ByteTypeMapping m_byteMapping = new(TYPE_TINYINT, DbType.Byte);
+    private readonly SByteTypeMapping m_sbyteMapping = new(TYPE_TINYINT, DbType.SByte);
 
     // Floating-point mappings
-    private readonly FloatTypeMapping m_floatMapping = new(TYPE_FLOAT);
-    private readonly DoubleTypeMapping m_doubleMapping = new(TYPE_DOUBLE);
+    private readonly FloatTypeMapping m_floatMapping = new(TYPE_REAL);
+    private readonly DoubleTypeMapping m_doubleMapping = new(TYPE_FLOAT);
     private readonly DecimalTypeMapping m_decimalMapping = new(TYPE_DECIMAL);
 
     // Boolean mapping
@@ -74,16 +64,13 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
     private readonly TimeOnlyTypeMapping m_timeOnlyMapping = new(TYPE_TIME);
     private readonly DateTimeTypeMapping m_dateTimeMapping = new(TYPE_DATETIME, DbType.DateTime);
     private readonly DateTimeOffsetTypeMapping m_dateTimeOffsetMapping = new(TYPE_DATETIMEOFFSET);
-    private readonly TimeSpanTypeMapping m_timeSpanMapping = new(TYPE_INTERVAL);
+    private readonly TimeSpanTypeMapping m_timeSpanMapping = new(TYPE_TIME);
 
-    // String mappings
+    // String mapping
     private readonly StringTypeMapping m_textMapping = new(TYPE_TEXT, DbType.String);
-    private readonly StringTypeMapping m_varcharMapping = new(TYPE_VARCHAR, DbType.String);
-    private readonly StringTypeMapping m_jsonMapping = new(TYPE_JSON, DbType.String);
 
-    // Binary mappings
+    // Binary mapping
     private readonly ByteArrayTypeMapping m_blobMapping = new(TYPE_BLOB, DbType.Binary);
-    private readonly ByteArrayTypeMapping m_varbinaryMapping = new(TYPE_VARBINARY, DbType.Binary);
 
     // GUID mapping
     private readonly GuidTypeMapping m_guidMapping = new(TYPE_GUID);
@@ -111,14 +98,14 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
         m_clrTypeMappings = new Dictionary<Type, RelationalTypeMapping>
         {
             // Integers
-            { typeof(sbyte), m_sbyteMapping },
-            { typeof(byte), m_byteMapping },
-            { typeof(short), m_shortMapping },
-            { typeof(ushort), m_ushortMapping },
             { typeof(int), m_intMapping },
-            { typeof(uint), m_uintMapping },
             { typeof(long), m_longMapping },
-            { typeof(ulong), m_ulongMapping },
+            { typeof(short), m_shortMapping },
+            { typeof(byte), m_byteMapping },
+            { typeof(sbyte), m_sbyteMapping },
+            { typeof(uint), m_intMapping },
+            { typeof(ulong), m_longMapping },
+            { typeof(ushort), m_intMapping },
 
             // Floating-point
             { typeof(float), m_floatMapping },
@@ -142,73 +129,51 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
             { typeof(byte[]), m_blobMapping },
 
             // GUID
-            { typeof(Guid), m_guidMapping }
+            { typeof(Guid), m_guidMapping },
+
+            // Char
+            { typeof(char), m_textMapping }
         };
 
         m_storeTypeMappings = new Dictionary<string, RelationalTypeMapping>(StringComparer.OrdinalIgnoreCase)
         {
-            // Integer types and aliases
-            { TYPE_TINYINT, m_sbyteMapping },
-            { "INT8", m_sbyteMapping },
-            { TYPE_UTINYINT, m_byteMapping },
-            { "UINT8", m_byteMapping },
-            { TYPE_SMALLINT, m_shortMapping },
-            { "INT16", m_shortMapping },
-            { TYPE_USMALLINT, m_ushortMapping },
-            { "UINT16", m_ushortMapping },
+            // Integer types
             { TYPE_INT, m_intMapping },
-            { "INT32", m_intMapping },
             { "INTEGER", m_intMapping },
-            { TYPE_UINT, m_uintMapping },
-            { "UINT32", m_uintMapping },
             { TYPE_BIGINT, m_longMapping },
-            { "INT64", m_longMapping },
-            { "LONG", m_longMapping },
-            { TYPE_UBIGINT, m_ulongMapping },
-            { "UINT64", m_ulongMapping },
-            { "ULONG", m_ulongMapping },
+            { TYPE_SMALLINT, m_shortMapping },
+            { TYPE_TINYINT, m_byteMapping },
 
-            // Floating-point types and aliases
-            { TYPE_FLOAT, m_floatMapping },
-            { "FLOAT32", m_floatMapping },
-            { "REAL", m_floatMapping },
+            // Floating-point types
+            { TYPE_REAL, m_floatMapping },
+            { TYPE_FLOAT, m_doubleMapping },
             { TYPE_DOUBLE, m_doubleMapping },
-            { "FLOAT64", m_doubleMapping },
             { TYPE_DECIMAL, m_decimalMapping },
-            { "MONEY", m_decimalMapping },
             { "NUMERIC", m_decimalMapping },
 
-            // Boolean types and aliases
+            // Boolean
             { TYPE_BOOLEAN, m_boolMapping },
             { "BOOL", m_boolMapping },
 
-            // Date/Time types and aliases
+            // Date/Time
             { TYPE_DATE, m_dateOnlyMapping },
-            { "DATEONLY", m_dateOnlyMapping },
             { TYPE_TIME, m_timeOnlyMapping },
-            { "TIMEONLY", m_timeOnlyMapping },
             { TYPE_DATETIME, m_dateTimeMapping },
-            { "TIMESTAMP", m_dateTimeMapping },
             { TYPE_DATETIMEOFFSET, m_dateTimeOffsetMapping },
-            { TYPE_INTERVAL, m_timeSpanMapping },
-            { "TIMESPAN", m_timeSpanMapping },
 
-            // String types
+            // String
             { TYPE_TEXT, m_textMapping },
-            { "NTEXT", m_textMapping },
-            { TYPE_VARCHAR, m_varcharMapping },
-            { "NVARCHAR", m_varcharMapping },
-            { "CHAR", m_varcharMapping },
-            { "NCHAR", m_varcharMapping },
-            { TYPE_JSON, m_jsonMapping },
-            { "JSONB", m_jsonMapping },
+            { "VARCHAR", m_textMapping },
+            { "NVARCHAR", m_textMapping },
+            { "CHAR", m_textMapping },
+            { "NCHAR", m_textMapping },
 
-            // Binary types
+            // Binary
             { TYPE_BLOB, m_blobMapping },
-            { TYPE_VARBINARY, m_varbinaryMapping },
-            { "BINARY", m_varbinaryMapping },
+            { "BINARY", m_blobMapping },
+            { "VARBINARY", m_blobMapping },
 
-            // GUID types and aliases
+            // GUID
             { TYPE_GUID, m_guidMapping },
             { "UUID", m_guidMapping },
             { "UNIQUEIDENTIFIER", m_guidMapping }
@@ -222,41 +187,12 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
     /// <inheritdoc/>
     protected override RelationalTypeMapping? FindMapping(in RelationalTypeMappingInfo mappingInfo)
     {
-        var mapping = FindExactMapping(mappingInfo);
-        if (mapping != null)
-        {
-            return mapping;
-        }
-
-        // Handle nullable types
-        var clrType = mappingInfo.ClrType;
-        if (clrType != null)
-        {
-            var underlyingType = Nullable.GetUnderlyingType(clrType);
-            if (underlyingType != null && m_clrTypeMappings.TryGetValue(underlyingType, out var underlyingMapping))
-            {
-                return underlyingMapping;
-            }
-
-            // Handle enums as integers
-            if (clrType.IsEnum)
-            {
-                return m_intMapping;
-            }
-        }
-
-        return base.FindMapping(mappingInfo);
-    }
-
-    private RelationalTypeMapping? FindExactMapping(in RelationalTypeMappingInfo mappingInfo)
-    {
         var clrType = mappingInfo.ClrType;
         var storeTypeName = mappingInfo.StoreTypeName;
 
         // First try exact store type match
         if (!string.IsNullOrEmpty(storeTypeName))
         {
-            // Handle sized types like VARCHAR(100)
             var baseTypeName = GetBaseTypeName(storeTypeName);
             if (m_storeTypeMappings.TryGetValue(baseTypeName, out var storeMapping))
             {
@@ -265,12 +201,25 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
         }
 
         // Then try CLR type match
-        if (clrType != null && m_clrTypeMappings.TryGetValue(clrType, out var clrMapping))
+        if (clrType != null)
         {
-            return clrMapping;
+            // Handle nullable types
+            var underlyingType = Nullable.GetUnderlyingType(clrType) ?? clrType;
+            
+            if (m_clrTypeMappings.TryGetValue(underlyingType, out var clrMapping))
+            {
+                return clrMapping;
+            }
+
+            // Handle enums as integers
+            if (underlyingType.IsEnum)
+            {
+                return m_intMapping;
+            }
         }
 
-        return null;
+        // Fall back to base implementation
+        return base.FindMapping(mappingInfo);
     }
 
     private static string GetBaseTypeName(string storeTypeName)
@@ -278,15 +227,6 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
         var parenIndex = storeTypeName.IndexOf('(');
         return parenIndex > 0 ? storeTypeName[..parenIndex].Trim() : storeTypeName.Trim();
     }
-
-    #endregion
-
-    #region Properties
-
-    /// <summary>
-    /// Gets the JSON type mapping.
-    /// </summary>
-    public StringTypeMapping JsonMapping => m_jsonMapping;
 
     #endregion
 }
