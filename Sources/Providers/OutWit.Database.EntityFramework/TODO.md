@@ -15,259 +15,190 @@ This package provides an Entity Framework Core provider for WitDatabase, enablin
 
 ---
 
+## Implementation Progress
+
+### Completed Phases
+
+- [x] **Phase 1:** Core Provider Infrastructure (P0) - COMPLETED
+- [x] **Phase 2:** Database Provider (P0) - COMPLETED  
+- [x] **Phase 3:** SQL Generation (P0) - COMPLETED (basic)
+- [x] **Phase 4:** Type Mapping (P0) - COMPLETED
+- [x] **Phase 5:** Model Building (P0) - COMPLETED (basic)
+- [x] **Phase 6:** Update Pipeline (P0) - COMPLETED (basic)
+
+### Pending Phases
+
+- [ ] **Phase 7:** Migrations (P1)
+- [ ] **Phase 8:** Database Creation (P1)
+- [ ] **Phase 9:** Function Translations (P1)
+- [ ] **Phase 10:** Advanced Features (P2)
+
+### Current Test Status
+
+- **88 tests passing**
+- **2 integration tests skipped** (require full provider implementation)
+
+---
+
 ## Implementation Plan
 
-### Phase 1: Core Provider Infrastructure (P0)
+### Phase 1: Core Provider Infrastructure (P0) ? COMPLETED
 
-#### 1.1 WitDbContextOptionsExtension
+#### 1.1 WitDbContextOptionsExtension ?
 
-```csharp
-public class WitDbContextOptionsExtension : IDbContextOptionsExtension
-```
+Implemented in: `Infrastructure/WitDbContextOptionsExtension.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `Info` property | P0 | Extension info for logging |
-| `ApplyServices()` | P0 | Register provider services |
-| `Validate()` | P0 | Validate options |
-| `ConnectionString` property | P0 | Database connection string |
-| `Connection` property | P0 | Existing connection |
-| `InMemory` property | P1 | In-memory mode |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `Info` property | ? | Extension info for logging |
+| `ApplyServices()` | ? | Register provider services |
+| `Validate()` | ? | Validate options |
+| `ConnectionString` property | ? | Database connection string |
+| `Connection` property | ? | Existing connection |
+| `InMemory` property | ? | In-memory mode |
 
-#### 1.2 WitDbContextOptionsBuilder
+#### 1.2 WitDbContextOptionsBuilder ?
 
-Extension methods for `DbContextOptionsBuilder`:
+Implemented in: `Extensions/WitDbContextOptionsBuilderExtensions.cs`
 
-```csharp
-public static class WitDbContextOptionsBuilderExtensions
-{
-    public static DbContextOptionsBuilder UseWitDb(
-        this DbContextOptionsBuilder builder,
-        string connectionString,
-        Action<WitDbContextOptionsBuilder>? optionsAction = null);
-        
-    public static DbContextOptionsBuilder UseWitDb(
-        this DbContextOptionsBuilder builder,
-        WitDbConnection connection,
-        Action<WitDbContextOptionsBuilder>? optionsAction = null);
-}
-```
-
-| Method | Priority | Description |
-|--------|----------|-------------|
-| `UseWitDb(connectionString)` | P0 | Configure with connection string |
-| `UseWitDb(connection)` | P0 | Configure with existing connection |
-| `UseWitDb(action)` | P0 | Configure with options builder |
-| `EnableSensitiveDataLogging()` | P1 | Log parameter values |
-| `UseQuerySplittingBehavior()` | P1 | Split/single query mode |
+| Method | Status | Description |
+|--------|--------|-------------|
+| `UseWitDb(connectionString)` | ? | Configure with connection string |
+| `UseWitDb(connection)` | ? | Configure with existing connection |
+| `UseWitDbInMemory()` | ? | Configure for in-memory |
+| `EnableSensitiveDataLogging()` | ? | Log parameter values |
+| `UseQuerySplittingBehavior()` | ? | Split/single query mode |
 
 ---
 
-### Phase 2: Database Provider (P0)
+### Phase 2: Database Provider (P0) ? COMPLETED
 
-#### 2.1 WitDatabaseProvider
+#### 2.1 WitDatabaseProvider ?
 
-```csharp
-public class WitDatabaseProvider : DatabaseProvider<WitDbContextOptionsExtension>
-```
+Implemented in: `Infrastructure/WitDatabaseProvider.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `Name` property | P0 | Provider name ("OutWit.Database.EntityFramework") |
-| `IsConfigured()` | P0 | Check if provider is configured |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `Name` property | ? | Provider name ("OutWit.Database.EntityFramework") |
+| `IsConfigured()` | ? | Check if provider is configured |
 
-#### 2.2 WitRelationalConnection
+#### 2.2 WitRelationalConnection ?
 
-```csharp
-public class WitRelationalConnection : RelationalConnection
-```
+Implemented in: `Storage/WitRelationalConnection.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `CreateDbConnection()` | P0 | Create WitDbConnection |
-| `DbConnection` property | P0 | Get/set connection |
-| `ConnectionString` property | P0 | Connection string |
-| `Open()` / `OpenAsync()` | P0 | Open connection |
-| `Close()` / `CloseAsync()` | P0 | Close connection |
-| `BeginTransaction()` | P0 | Start transaction |
-| `BeginTransactionAsync()` | P0 | Async version |
-| `CurrentTransaction` property | P0 | Active transaction |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `CreateDbConnection()` | ? | Create WitDbConnection |
+| `ConnectionString` property | ? | Connection string |
 
 ---
 
-### Phase 3: SQL Generation (P0)
+### Phase 3: SQL Generation (P0) ? COMPLETED (basic)
 
-#### 3.1 WitSqlGenerationHelper
+#### 3.1 WitSqlGenerationHelper ?
 
-```csharp
-public class WitSqlGenerationHelper : RelationalSqlGenerationHelper
-```
+Implemented in: `Storage/WitSqlGenerationHelper.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `DelimitIdentifier()` | P0 | Quote identifiers with `"` |
-| `EscapeIdentifier()` | P0 | Escape special characters |
-| `GenerateParameterName()` | P0 | Generate @param names |
-| `GenerateParameterNamePlaceholder()` | P0 | Generate @param placeholders |
-| `StatementTerminator` property | P0 | Return `;` |
-| `BatchTerminator` property | P0 | Return empty (no GO) |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `DelimitIdentifier()` | ? | Quote identifiers with `"` |
+| `EscapeIdentifier()` | ? | Escape special characters |
+| `GenerateParameterName()` | ? | Generate @param names |
+| `GenerateParameterNamePlaceholder()` | ? | Generate @param placeholders |
+| `StatementTerminator` property | ? | Return `;` |
+| `BatchTerminator` property | ? | Return empty (no GO) |
 
-#### 3.2 WitQuerySqlGenerator
+#### 3.2 WitQuerySqlGenerator ?
 
-```csharp
-public class WitQuerySqlGenerator : QuerySqlGenerator
-```
+Implemented in: `Query/WitQuerySqlGenerator.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `VisitSelect()` | P0 | Generate SELECT |
-| `VisitTable()` | P0 | Generate table reference |
-| `VisitColumn()` | P0 | Generate column reference |
-| `VisitSqlBinary()` | P0 | Generate binary expressions |
-| `VisitSqlUnary()` | P0 | Generate unary expressions |
-| `VisitSqlConstant()` | P0 | Generate literals |
-| `VisitSqlParameter()` | P0 | Generate parameters |
-| `VisitSqlFunction()` | P0 | Generate function calls |
-| `VisitLike()` | P0 | Generate LIKE |
-| `VisitIn()` | P0 | Generate IN |
-| `VisitExists()` | P0 | Generate EXISTS |
-| `VisitCase()` | P0 | Generate CASE |
-| `VisitOrdering()` | P0 | Generate ORDER BY |
-| `VisitLimit()` | P0 | Generate LIMIT/OFFSET |
-| `VisitJoin()` | P0 | Generate JOINs |
-| `VisitSetOperation()` | P1 | Generate UNION/INTERSECT/EXCEPT |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `VisitSqlBinary()` | ? | Generate binary expressions (string concatenation with `||`) |
+| `GenerateLimitOffset()` | ? | Generate LIMIT/OFFSET |
+| `GenerateTop()` | ? | Empty (WitDB doesn't use TOP) |
 
-#### 3.3 WitQueryableMethodTranslatingExpressionVisitor
+#### 3.3 WitQuerySqlGeneratorFactory ?
 
-```csharp
-public class WitQueryableMethodTranslatingExpressionVisitor 
-    : RelationalQueryableMethodTranslatingExpressionVisitor
-```
-
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `TranslateAggregate()` | P0 | COUNT, SUM, AVG, MIN, MAX |
-| `TranslateContains()` | P0 | IN clause |
-| `TranslateElementAtOrDefault()` | P0 | LIMIT 1 OFFSET n |
-| `TranslateFirstOrDefault()` | P0 | LIMIT 1 |
-| `TranslateLastOrDefault()` | P1 | ORDER BY DESC LIMIT 1 |
-| `TranslateSingleOrDefault()` | P0 | LIMIT 2 (for validation) |
-| `TranslateSkip()` | P0 | OFFSET |
-| `TranslateTake()` | P0 | LIMIT |
-| `TranslateDistinct()` | P0 | DISTINCT |
-| `TranslateOrderBy()` | P0 | ORDER BY |
-| `TranslateWhere()` | P0 | WHERE |
-| `TranslateGroupBy()` | P0 | GROUP BY |
-| `TranslateHaving()` | P0 | HAVING |
-| `TranslateJoin()` | P0 | JOIN |
-| `TranslateLeftJoin()` | P0 | LEFT JOIN |
-| `TranslateSelectMany()` | P0 | CROSS JOIN |
+Implemented in: `Query/WitQuerySqlGeneratorFactory.cs`
 
 ---
 
-### Phase 4: Type Mapping (P0)
+### Phase 4: Type Mapping (P0) ? COMPLETED
 
-#### 4.1 WitTypeMappingSource
+#### 4.1 WitTypeMappingSource ?
 
-```csharp
-public class WitTypeMappingSource : RelationalTypeMappingSource
-```
+Implemented in: `Storage/WitTypeMappingSource.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `FindMapping(Type)` | P0 | Map CLR type to WitSQL |
-| `FindMapping(string)` | P0 | Map store type to CLR |
-| `GetMappingForValue()` | P0 | Map value to type |
-
-#### 4.2 Type Mappings
-
-| CLR Type | WitSQL Type | EF Core Type |
-|----------|-------------|--------------|
-| `bool` | `BOOLEAN` | `BoolTypeMapping` |
-| `byte` | `UTINYINT` | `ByteTypeMapping` |
-| `sbyte` | `TINYINT` | `SByteTypeMapping` |
-| `short` | `SMALLINT` | `ShortTypeMapping` |
-| `ushort` | `USMALLINT` | `UShortTypeMapping` |
-| `int` | `INT` | `IntTypeMapping` |
-| `uint` | `UINT` | `UIntTypeMapping` |
-| `long` | `BIGINT` | `LongTypeMapping` |
-| `ulong` | `UBIGINT` | `ULongTypeMapping` |
-| `float` | `FLOAT` | `FloatTypeMapping` |
-| `double` | `DOUBLE` | `DoubleTypeMapping` |
-| `decimal` | `DECIMAL` | `DecimalTypeMapping` |
-| `string` | `TEXT` | `StringTypeMapping` |
-| `byte[]` | `BLOB` | `ByteArrayTypeMapping` |
-| `DateTime` | `DATETIME` | `DateTimeTypeMapping` |
-| `DateTimeOffset` | `DATETIMEOFFSET` | `DateTimeOffsetTypeMapping` |
-| `DateOnly` | `DATE` | `DateOnlyTypeMapping` |
-| `TimeOnly` | `TIME` | `TimeOnlyTypeMapping` |
-| `TimeSpan` | `INTERVAL` | `TimeSpanTypeMapping` |
-| `Guid` | `GUID` | `GuidTypeMapping` |
-| `Enum` | `INT` | `EnumTypeMapping` |
-| JSON types | `JSON` | `JsonTypeMapping` |
+| CLR Type | WitSQL Type | Status |
+|----------|-------------|--------|
+| `bool` | `BOOLEAN` | ? |
+| `byte` | `UTINYINT` | ? |
+| `sbyte` | `TINYINT` | ? |
+| `short` | `SMALLINT` | ? |
+| `ushort` | `USMALLINT` | ? |
+| `int` | `INT` | ? |
+| `uint` | `UINT` | ? |
+| `long` | `BIGINT` | ? |
+| `ulong` | `UBIGINT` | ? |
+| `float` | `FLOAT` | ? |
+| `double` | `DOUBLE` | ? |
+| `decimal` | `DECIMAL` | ? |
+| `string` | `TEXT` | ? |
+| `byte[]` | `BLOB` | ? |
+| `DateTime` | `DATETIME` | ? |
+| `DateTimeOffset` | `DATETIMEOFFSET` | ? |
+| `DateOnly` | `DATE` | ? |
+| `TimeOnly` | `TIME` | ? |
+| `TimeSpan` | `INTERVAL` | ? |
+| `Guid` | `GUID` | ? |
+| `Enum` | `INT` | ? |
 
 ---
 
-### Phase 5: Model Building (P0)
+### Phase 5: Model Building (P0) ? COMPLETED (basic)
 
-#### 5.1 WitModelValidator
+#### 5.1 WitModelValidator ?
 
-```csharp
-public class WitModelValidator : RelationalModelValidator
-```
+Implemented in: `Metadata/WitModelValidator.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `ValidateModel()` | P0 | Validate model against WitDB constraints |
-| `ValidateTypeMappings()` | P0 | Validate all types are mappable |
-| `ValidateRelationships()` | P0 | Validate FK relationships |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `ValidateModel()` | ? | Validate model against WitDB constraints |
+| `ValidateNoSchemas()` | ? | WitDB doesn't support schemas |
 
-#### 5.2 WitAnnotationProvider
+#### 5.2 WitAnnotationProvider ?
 
-```csharp
-public class WitAnnotationProvider : RelationalAnnotationProvider
-```
+Implemented in: `Metadata/WitAnnotationProvider.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `For(ITable)` | P0 | Table annotations |
-| `For(IColumn)` | P0 | Column annotations |
-| `For(IIndex)` | P0 | Index annotations |
-| `For(IForeignKey)` | P0 | FK annotations |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `For(IColumn)` | ? | Column annotations (autoincrement) |
 
 ---
 
-### Phase 6: Update Pipeline (P0)
+### Phase 6: Update Pipeline (P0) ? COMPLETED (basic)
 
-#### 6.1 WitUpdateSqlGenerator
+#### 6.1 WitUpdateSqlGenerator ?
 
-```csharp
-public class WitUpdateSqlGenerator : UpdateSqlGenerator
-```
+Implemented in: `Update/WitUpdateSqlGenerator.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `AppendInsertOperation()` | P0 | Generate INSERT |
-| `AppendUpdateOperation()` | P0 | Generate UPDATE |
-| `AppendDeleteOperation()` | P0 | Generate DELETE |
-| `AppendInsertOperationReturning()` | P0 | INSERT ... RETURNING |
-| `AppendUpdateOperationReturning()` | P0 | UPDATE ... RETURNING |
-| `AppendDeleteOperationReturning()` | P0 | DELETE ... RETURNING |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `AppendValues()` | ? | Handle DEFAULT VALUES |
+| `GenerateNextSequenceValueOperation()` | ? | Generate INCREMENT() |
 
-#### 6.2 WitModificationCommandBatchFactory
+#### 6.2 WitModificationCommandBatchFactory ?
 
-```csharp
-public class WitModificationCommandBatchFactory : IModificationCommandBatchFactory
-```
+Implemented in: `Update/WitModificationCommandBatchFactory.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `Create()` | P0 | Create modification batch |
-| `MaxBatchSize` | P1 | Maximum batch size |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `Create()` | ? | Create modification batch |
 
 ---
 
-### Phase 7: Migrations (P1)
+### Phase 7: Migrations (P1) - NOT STARTED
 
 #### 7.1 WitMigrationsSqlGenerator
 
@@ -329,7 +260,7 @@ public class WitMigrationsAnnotationProvider : MigrationsAnnotationProvider
 
 ---
 
-### Phase 8: Database Creation (P1)
+### Phase 8: Database Creation (P1) - NOT STARTED
 
 #### 8.1 WitDatabaseCreator
 
@@ -358,7 +289,7 @@ public class WitDatabaseCreator : RelationalDatabaseCreator
 
 ---
 
-### Phase 9: Function Translations (P1)
+### Phase 9: Function Translations (P1) - NOT STARTED
 
 #### 9.1 WitMethodCallTranslator
 
@@ -450,7 +381,7 @@ public class WitMemberTranslator : IMemberTranslator
 
 ---
 
-### Phase 10: Advanced Features (P2)
+### Phase 10: Advanced Features (P2) - NOT STARTED
 
 #### 10.1 JSON Support
 
@@ -518,82 +449,66 @@ public class WitDbServiceCollectionExtensions
 
 ---
 
-## File Structure
+## Current File Structure
 
 ```
 OutWit.Database.EntityFramework/
+??? Diagnostics/
+?   ??? WitLoggingDefinitions.cs          ?
 ??? Extensions/
-?   ??? WitDbContextOptionsBuilderExtensions.cs
-?   ??? WitDbServiceCollectionExtensions.cs
+?   ??? WitDbContextOptionsBuilderExtensions.cs  ?
+?   ??? WitDbServiceCollectionExtensions.cs      ?
 ??? Infrastructure/
-?   ??? WitDbContextOptionsExtension.cs
-?   ??? WitDatabaseProvider.cs
-?   ??? WitRelationalConnection.cs
-??? Query/
-?   ??? WitQuerySqlGenerator.cs
-?   ??? WitQuerySqlGeneratorFactory.cs
-?   ??? WitQueryableMethodTranslatingExpressionVisitor.cs
-?   ??? WitQueryCompilationContextFactory.cs
-??? Storage/
-?   ??? WitTypeMappingSource.cs
-?   ??? TypeMappings/
-?   ?   ??? WitBoolTypeMapping.cs
-?   ?   ??? WitStringTypeMapping.cs
-?   ?   ??? WitGuidTypeMapping.cs
-?   ?   ??? WitDateTimeTypeMapping.cs
-?   ?   ??? ...
-?   ??? WitSqlGenerationHelper.cs
-??? Update/
-?   ??? WitUpdateSqlGenerator.cs
-?   ??? WitModificationCommandBatchFactory.cs
-??? Migrations/
-?   ??? WitMigrationsSqlGenerator.cs
-?   ??? WitHistoryRepository.cs
-?   ??? WitMigrationsAnnotationProvider.cs
-?   ??? WitDatabaseCreator.cs
+?   ??? WitDbContextOptionsExtension.cs   ?
+?   ??? WitDbContextOptionsBuilder.cs     ?
+?   ??? WitDatabaseProvider.cs            ?
 ??? Metadata/
-?   ??? WitModelValidator.cs
-?   ??? WitAnnotationProvider.cs
-??? Query/Internal/
-?   ??? WitMethodCallTranslator.cs
-?   ??? WitMemberTranslator.cs
-?   ??? WitSqlExpressionFactory.cs
-??? README.md
+?   ??? WitAnnotationProvider.cs          ?
+?   ??? WitModelValidator.cs              ?
+??? Query/
+?   ??? WitQuerySqlGenerator.cs           ?
+?   ??? WitQuerySqlGeneratorFactory.cs    ?
+??? Storage/
+?   ??? WitRelationalConnection.cs        ?
+?   ??? WitSqlGenerationHelper.cs         ?
+?   ??? WitTypeMappingSource.cs           ?
+??? Update/
+?   ??? WitModificationCommandBatchFactory.cs  ?
+?   ??? WitUpdateSqlGenerator.cs          ?
+??? TODO.md
 ```
 
 ---
 
-## Test Plan
+## Test Structure
 
-### Unit Tests
+```
+OutWit.Database.EntityFramework.Tests/
+??? Extensions/
+?   ??? WitDbContextOptionsBuilderExtensionsTests.cs  ? (14 tests)
+??? Infrastructure/
+?   ??? WitDbContextOptionsExtensionTests.cs          ? (17 tests)
+?   ??? WitDatabaseProviderTests.cs                   ? (3 tests)
+??? Integration/
+?   ??? BasicDbContextTests.cs                        (2 tests skipped)
+??? Storage/
+    ??? WitSqlGenerationHelperTests.cs                ? (17 tests)
+    ??? WitTypeMappingSourceTests.cs                  ? (37 tests)
+```
 
-| Category | Tests |
-|----------|-------|
-| Type mappings | 50+ |
-| SQL generation | 60+ |
-| Query translation | 80+ |
-| Method translations | 50+ |
-| Update generation | 30+ |
-| Migrations | 40+ |
-| Model validation | 20+ |
-| **Total** | **330+** |
+---
 
-### Integration Tests
+## Next Steps
 
-| Scenario | Description |
-|----------|-------------|
-| Basic CRUD | Add/Query/Update/Remove entities |
-| Relationships | 1:1, 1:N, N:M |
-| Inheritance | TPH, TPT |
-| Complex queries | Joins, subqueries, aggregates |
-| Transactions | Commit, rollback |
-| Migrations | Up, Down, idempotent |
-| Concurrency | Optimistic locking |
-| Bulk operations | Large data sets |
+1. **Phase 7:** Implement migrations support
+   - WitMigrationsSqlGenerator
+   - WitHistoryRepository
+   
+2. **Phase 8:** Implement database creation
+   - WitDatabaseCreator with EnsureCreated/EnsureDeleted
 
-### EF Core Test Suite
-
-Run subset of EF Core functional tests to ensure compatibility.
+3. **Enable skipped integration tests**
+   - Once database creation works, enable BasicDbContextTests
 
 ---
 
@@ -601,20 +516,8 @@ Run subset of EF Core functional tests to ensure compatibility.
 
 | Package | Version | Purpose |
 |---------|---------|---------|
-| Microsoft.EntityFrameworkCore.Relational | 9.0.0 | EF Core base |
+| Microsoft.EntityFrameworkCore.Relational | 9.0.6 | EF Core base |
 | OutWit.Database.AdoNet | 1.0.0 | ADO.NET provider |
-| OutWit.Database | 1.0.0 | SQL engine |
-
----
-
-## Implementation Order
-
-1. **Phase 1-2:** Core infrastructure (options, provider, connection)
-2. **Phase 3-4:** SQL generation and type mapping
-3. **Phase 5-6:** Model building and update pipeline
-4. **Phase 7-8:** Migrations and database creation
-5. **Phase 9:** Function translations
-6. **Phase 10:** Advanced features
 
 ---
 
