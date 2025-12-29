@@ -106,6 +106,56 @@ public class WitPropertyBuilderExtensionsTests
 
     #endregion
 
+    #region JSON Column Tests
+
+    [Test]
+    public void HasJsonColumnTypeConfiguresJsonTypeTest()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<JsonTestDbContext>();
+        optionsBuilder.UseWitDbInMemory();
+
+        using var context = new JsonTestDbContext(optionsBuilder.Options);
+        var entityType = context.Model.FindEntityType(typeof(EntityWithJsonColumn));
+        var jsonProperty = entityType?.FindProperty(nameof(EntityWithJsonColumn.JsonData));
+
+        Assert.That(jsonProperty, Is.Not.Null);
+        Assert.That(jsonProperty!.GetColumnType(), Is.EqualTo("JSON"));
+    }
+
+    #endregion
+
+    #region Enum Conversion Tests
+
+    [Test]
+    public void EnumDefaultsToIntTypeTest()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<EnumTestDbContext>();
+        optionsBuilder.UseWitDbInMemory();
+
+        using var context = new EnumTestDbContext(optionsBuilder.Options);
+        var entityType = context.Model.FindEntityType(typeof(EntityWithEnum));
+        var enumProperty = entityType?.FindProperty(nameof(EntityWithEnum.Status));
+
+        Assert.That(enumProperty, Is.Not.Null);
+        Assert.That(enumProperty!.GetColumnType(), Is.EqualTo("INT"));
+    }
+
+    [Test]
+    public void HasEnumToStringConversionConfiguresTextTypeTest()
+    {
+        var optionsBuilder = new DbContextOptionsBuilder<EnumTestDbContext>();
+        optionsBuilder.UseWitDbInMemory();
+
+        using var context = new EnumTestDbContext(optionsBuilder.Options);
+        var entityType = context.Model.FindEntityType(typeof(EntityWithEnumAsString));
+        var enumProperty = entityType?.FindProperty(nameof(EntityWithEnumAsString.Status));
+
+        Assert.That(enumProperty, Is.Not.Null);
+        Assert.That(enumProperty!.GetColumnType(), Is.EqualTo("TEXT"));
+    }
+
+    #endregion
+
     #region Test Models
 
     public class EntityWithRowVersion
@@ -128,6 +178,26 @@ public class WitPropertyBuilderExtensionsTests
         public int Id { get; set; }
         public string? Name { get; set; }
         public Guid ConcurrencyStamp { get; set; }
+    }
+
+    public class EntityWithJsonColumn
+    {
+        public int Id { get; set; }
+        public string? JsonData { get; set; }
+    }
+
+    public enum TestStatus { Active, Inactive, Pending }
+
+    public class EntityWithEnum
+    {
+        public int Id { get; set; }
+        public TestStatus Status { get; set; }
+    }
+
+    public class EntityWithEnumAsString
+    {
+        public int Id { get; set; }
+        public TestStatus Status { get; set; }
     }
 
     public class TestDbContext : DbContext
@@ -157,6 +227,44 @@ public class WitPropertyBuilderExtensionsTests
             {
                 entity.HasKey(e => e.Id);
                 entity.Property(e => e.ConcurrencyStamp).IsConcurrencyToken();
+            });
+        }
+    }
+
+    public class JsonTestDbContext : DbContext
+    {
+        public JsonTestDbContext(DbContextOptions<JsonTestDbContext> options) : base(options) { }
+
+        public DbSet<EntityWithJsonColumn> JsonEntities => Set<EntityWithJsonColumn>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<EntityWithJsonColumn>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.JsonData).HasJsonColumnType();
+            });
+        }
+    }
+
+    public class EnumTestDbContext : DbContext
+    {
+        public EnumTestDbContext(DbContextOptions<EnumTestDbContext> options) : base(options) { }
+
+        public DbSet<EntityWithEnum> EnumEntities => Set<EntityWithEnum>();
+        public DbSet<EntityWithEnumAsString> EnumAsStringEntities => Set<EntityWithEnumAsString>();
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+        {
+            modelBuilder.Entity<EntityWithEnum>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+            });
+
+            modelBuilder.Entity<EntityWithEnumAsString>(entity =>
+            {
+                entity.HasKey(e => e.Id);
+                entity.Property(e => e.Status).HasEnumToStringConversion();
             });
         }
     }
