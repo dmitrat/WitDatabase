@@ -8,12 +8,10 @@ namespace OutWit.Database.EntityFramework.Infrastructure;
 /// <summary>
 /// Extension for configuring WitDatabase provider options in Entity Framework Core.
 /// </summary>
-public sealed class WitDbContextOptionsExtension : IDbContextOptionsExtension
+public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
 {
     #region Fields
 
-    private string? m_connectionString;
-    private WitDbConnection? m_connection;
     private bool m_inMemory;
     private DbContextOptionsExtensionInfo? m_info;
 
@@ -34,9 +32,8 @@ public sealed class WitDbContextOptionsExtension : IDbContextOptionsExtension
     /// </summary>
     /// <param name="copyFrom">The instance to copy from.</param>
     private WitDbContextOptionsExtension(WitDbContextOptionsExtension copyFrom)
+        : base(copyFrom)
     {
-        m_connectionString = copyFrom.m_connectionString;
-        m_connection = copyFrom.m_connection;
         m_inMemory = copyFrom.m_inMemory;
     }
 
@@ -45,63 +42,52 @@ public sealed class WitDbContextOptionsExtension : IDbContextOptionsExtension
     #region Functions
 
     /// <summary>
-    /// Creates a copy of this extension with the specified connection string.
-    /// </summary>
-    /// <param name="connectionString">The connection string.</param>
-    /// <returns>A new extension instance.</returns>
-    public WitDbContextOptionsExtension WithConnectionString(string connectionString)
-    {
-        var clone = Clone();
-        clone.m_connectionString = connectionString;
-        return clone;
-    }
-
-    /// <summary>
-    /// Creates a copy of this extension with the specified connection.
-    /// </summary>
-    /// <param name="connection">The database connection.</param>
-    /// <returns>A new extension instance.</returns>
-    public WitDbContextOptionsExtension WithConnection(WitDbConnection connection)
-    {
-        var clone = Clone();
-        clone.m_connection = connection;
-        return clone;
-    }
-
-    /// <summary>
     /// Creates a copy of this extension configured for in-memory mode.
     /// </summary>
     /// <param name="inMemory">True to enable in-memory mode.</param>
     /// <returns>A new extension instance.</returns>
     public WitDbContextOptionsExtension WithInMemory(bool inMemory = true)
     {
-        var clone = Clone();
+        var clone = (WitDbContextOptionsExtension)Clone();
         clone.m_inMemory = inMemory;
         return clone;
     }
 
-    private WitDbContextOptionsExtension Clone()
+    /// <summary>
+    /// Creates a copy of this extension with the specified connection string.
+    /// </summary>
+    /// <param name="connectionString">The connection string.</param>
+    /// <returns>A new extension instance.</returns>
+    public new WitDbContextOptionsExtension WithConnectionString(string connectionString)
+    {
+        return (WitDbContextOptionsExtension)base.WithConnectionString(connectionString);
+    }
+
+    /// <inheritdoc/>
+    protected override RelationalOptionsExtension Clone()
     {
         return new WitDbContextOptionsExtension(this);
     }
 
     #endregion
 
-    #region IDbContextOptionsExtension
+    #region RelationalOptionsExtension
 
     /// <inheritdoc/>
-    public DbContextOptionsExtensionInfo Info => m_info ??= new ExtensionInfo(this);
+    public override DbContextOptionsExtensionInfo Info => m_info ??= new ExtensionInfo(this);
 
     /// <inheritdoc/>
-    public void ApplyServices(IServiceCollection services)
+    public override void ApplyServices(IServiceCollection services)
     {
         services.AddEntityFrameworkWitDb();
     }
 
     /// <inheritdoc/>
-    public void Validate(IDbContextOptions options)
+    public override void Validate(IDbContextOptions options)
     {
-        if (m_connection == null && string.IsNullOrEmpty(m_connectionString) && !m_inMemory)
+        base.Validate(options);
+        
+        if (Connection == null && string.IsNullOrEmpty(ConnectionString) && !m_inMemory)
         {
             throw new InvalidOperationException(
                 "A connection string or connection must be specified to use WitDatabase with Entity Framework Core.");
@@ -113,16 +99,6 @@ public sealed class WitDbContextOptionsExtension : IDbContextOptionsExtension
     #region Properties
 
     /// <summary>
-    /// Gets the connection string.
-    /// </summary>
-    public string? ConnectionString => m_connectionString;
-
-    /// <summary>
-    /// Gets the database connection.
-    /// </summary>
-    public WitDbConnection? Connection => m_connection;
-
-    /// <summary>
     /// Gets whether in-memory mode is enabled.
     /// </summary>
     public bool InMemory => m_inMemory;
@@ -131,7 +107,7 @@ public sealed class WitDbContextOptionsExtension : IDbContextOptionsExtension
 
     #region Nested Types
 
-    private sealed class ExtensionInfo : DbContextOptionsExtensionInfo
+    private sealed class ExtensionInfo : RelationalExtensionInfo
     {
         #region Fields
 
@@ -156,8 +132,7 @@ public sealed class WitDbContextOptionsExtension : IDbContextOptionsExtension
             if (m_serviceProviderHash == null)
             {
                 var hashCode = new HashCode();
-                hashCode.Add(Extension.ConnectionString);
-                hashCode.Add(Extension.Connection);
+                hashCode.Add(base.GetServiceProviderHashCode());
                 hashCode.Add(Extension.InMemory);
                 m_serviceProviderHash = hashCode.ToHashCode();
             }
@@ -168,15 +143,13 @@ public sealed class WitDbContextOptionsExtension : IDbContextOptionsExtension
         public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
         {
             return other is ExtensionInfo otherInfo
-                && Extension.ConnectionString == otherInfo.Extension.ConnectionString
-                && Extension.Connection == otherInfo.Extension.Connection
+                && base.ShouldUseSameServiceProvider(other)
                 && Extension.InMemory == otherInfo.Extension.InMemory;
         }
 
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
         {
             debugInfo["WitDb:ConnectionString"] = Extension.ConnectionString ?? "(null)";
-            debugInfo["WitDb:Connection"] = Extension.Connection != null ? "(set)" : "(null)";
             debugInfo["WitDb:InMemory"] = Extension.InMemory.ToString();
         }
 
@@ -185,8 +158,6 @@ public sealed class WitDbContextOptionsExtension : IDbContextOptionsExtension
         #region Properties
 
         private new WitDbContextOptionsExtension Extension => (WitDbContextOptionsExtension)base.Extension;
-
-        public override bool IsDatabaseProvider => true;
 
         public override string LogFragment
         {
@@ -203,7 +174,7 @@ public sealed class WitDbContextOptionsExtension : IDbContextOptionsExtension
                     }
                     else if (!string.IsNullOrEmpty(Extension.ConnectionString))
                     {
-                        builder.Append("'").Append(Extension.ConnectionString).Append("'");
+                        builder.Append("'").Append(Extension.ConnectionString).Append("'}");
                     }
                     else if (Extension.Connection != null)
                     {

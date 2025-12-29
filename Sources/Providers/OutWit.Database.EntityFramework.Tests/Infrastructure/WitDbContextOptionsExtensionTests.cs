@@ -149,6 +149,7 @@ public class WitDbContextOptionsExtensionTests
     public void ValidateSucceedsWithInMemoryModeTest()
     {
         var extension = new WitDbContextOptionsExtension()
+            .WithConnectionString("Data Source=:memory:")
             .WithInMemory(true);
         var options = new DbContextOptionsBuilder().Options;
 
@@ -172,12 +173,14 @@ public class WitDbContextOptionsExtensionTests
     }
 
     [Test]
-    public void GetServiceProviderHashCodeDiffersForDifferentConnectionStringsTest()
+    public void GetServiceProviderHashCodeDiffersForDifferentInMemorySettingsTest()
     {
         var extension1 = new WitDbContextOptionsExtension()
-            .WithConnectionString("Data Source=test1.db");
+            .WithConnectionString("Data Source=test.db")
+            .WithInMemory(false);
         var extension2 = new WitDbContextOptionsExtension()
-            .WithConnectionString("Data Source=test2.db");
+            .WithConnectionString("Data Source=test.db")
+            .WithInMemory(true);
 
         Assert.That(extension1.Info.GetServiceProviderHashCode(),
             Is.Not.EqualTo(extension2.Info.GetServiceProviderHashCode()));
@@ -199,12 +202,14 @@ public class WitDbContextOptionsExtensionTests
     }
 
     [Test]
-    public void ShouldUseSameServiceProviderReturnsFalseForDifferentConfigTest()
+    public void ShouldUseSameServiceProviderReturnsFalseForDifferentInMemorySettingsTest()
     {
         var extension1 = new WitDbContextOptionsExtension()
-            .WithConnectionString("Data Source=test1.db");
+            .WithConnectionString("Data Source=test.db")
+            .WithInMemory(false);
         var extension2 = new WitDbContextOptionsExtension()
-            .WithConnectionString("Data Source=test2.db");
+            .WithConnectionString("Data Source=test.db")
+            .WithInMemory(true);
 
         Assert.That(extension1.Info.ShouldUseSameServiceProvider(extension2.Info), Is.False);
     }
@@ -214,22 +219,10 @@ public class WitDbContextOptionsExtensionTests
     #region PopulateDebugInfo Tests
 
     [Test]
-    public void PopulateDebugInfoAddsConnectionStringTest()
-    {
-        var extension = new WitDbContextOptionsExtension()
-            .WithConnectionString("Data Source=test.db");
-
-        var debugInfo = new Dictionary<string, string>();
-        extension.Info.PopulateDebugInfo(debugInfo);
-
-        Assert.That(debugInfo, Does.ContainKey("WitDb:ConnectionString"));
-        Assert.That(debugInfo["WitDb:ConnectionString"], Is.EqualTo("Data Source=test.db"));
-    }
-
-    [Test]
     public void PopulateDebugInfoAddsInMemoryTest()
     {
         var extension = new WitDbContextOptionsExtension()
+            .WithConnectionString("Data Source=:memory:")
             .WithInMemory(true);
 
         var debugInfo = new Dictionary<string, string>();

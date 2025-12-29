@@ -3,6 +3,7 @@ using Microsoft.EntityFrameworkCore.Diagnostics;
 using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Metadata;
 using Microsoft.EntityFrameworkCore.Metadata.Conventions.Infrastructure;
+using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Query;
 using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Update;
@@ -10,6 +11,7 @@ using Microsoft.Extensions.DependencyInjection;
 using OutWit.Database.EntityFramework.Diagnostics;
 using OutWit.Database.EntityFramework.Infrastructure;
 using OutWit.Database.EntityFramework.Metadata;
+using OutWit.Database.EntityFramework.Migrations;
 using OutWit.Database.EntityFramework.Query;
 using OutWit.Database.EntityFramework.Storage;
 using OutWit.Database.EntityFramework.Update;
@@ -33,16 +35,32 @@ public static class WitDbServiceCollectionExtensions
         var builder = new EntityFrameworkRelationalServicesBuilder(services);
 
         builder
+            // Core services
             .TryAdd<LoggingDefinitions, WitLoggingDefinitions>()
             .TryAdd<IDatabaseProvider, WitDatabaseProvider>()
+            
+            // Connection and type mapping
             .TryAdd<IRelationalTypeMappingSource, WitTypeMappingSource>()
             .TryAdd<ISqlGenerationHelper, WitSqlGenerationHelper>()
             .TryAdd<IRelationalConnection, WitRelationalConnection>()
+            
+            // Query generation
             .TryAdd<IQuerySqlGeneratorFactory, WitQuerySqlGeneratorFactory>()
+            
+            // Update pipeline
             .TryAdd<IUpdateSqlGenerator, WitUpdateSqlGenerator>()
             .TryAdd<IModificationCommandBatchFactory, WitModificationCommandBatchFactory>()
+            
+            // Model building
             .TryAdd<IRelationalAnnotationProvider, WitAnnotationProvider>()
-            .TryAdd<IModelValidator, WitModelValidator>();
+            .TryAdd<IModelValidator, WitModelValidator>()
+            
+            // Migrations
+            .TryAdd<IMigrationsSqlGenerator, WitMigrationsSqlGenerator>()
+            .TryAdd<IHistoryRepository, WitHistoryRepository>()
+            
+            // Database creation
+            .TryAdd<IRelationalDatabaseCreator, WitDatabaseCreator>();
 
         builder.TryAddCoreServices();
 

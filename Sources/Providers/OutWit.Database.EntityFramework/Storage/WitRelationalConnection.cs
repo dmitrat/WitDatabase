@@ -33,7 +33,7 @@ public sealed class WitRelationalConnection : RelationalConnection
         if (extension != null)
         {
             m_connectionString = extension.ConnectionString;
-            m_existingConnection = extension.Connection;
+            m_existingConnection = extension.Connection as WitDbConnection;
         }
     }
 

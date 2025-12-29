@@ -27,7 +27,7 @@ public static class WitDbContextOptionsBuilderExtensions
         ArgumentNullException.ThrowIfNull(optionsBuilder);
         ArgumentException.ThrowIfNullOrEmpty(connectionString);
 
-        var extension = GetOrCreateExtension(optionsBuilder)
+        var extension = (WitDbContextOptionsExtension)GetOrCreateExtension(optionsBuilder)
             .WithConnectionString(connectionString);
 
         ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);
@@ -52,7 +52,7 @@ public static class WitDbContextOptionsBuilderExtensions
         ArgumentNullException.ThrowIfNull(optionsBuilder);
         ArgumentNullException.ThrowIfNull(connection);
 
-        var extension = GetOrCreateExtension(optionsBuilder)
+        var extension = (WitDbContextOptionsExtension)GetOrCreateExtension(optionsBuilder)
             .WithConnection(connection);
 
         ((IDbContextOptionsBuilderInfrastructure)optionsBuilder).AddOrUpdateExtension(extension);

@@ -9,7 +9,7 @@
 
 This package provides an Entity Framework Core provider for WitDatabase, enabling full ORM support including migrations, LINQ queries, change tracking, and all standard EF Core features.
 
-**Target:** Full EF Core 9.0 compatibility with support for all standard features.
+**Target:** Full EF Core 9.0/10.0 compatibility with support for all standard features.
 
 **Prerequisite:** `OutWit.Database.AdoNet` must be completed first.
 
@@ -25,11 +25,11 @@ This package provides an Entity Framework Core provider for WitDatabase, enablin
 - [x] **Phase 4:** Type Mapping (P0) - COMPLETED
 - [x] **Phase 5:** Model Building (P0) - COMPLETED (basic)
 - [x] **Phase 6:** Update Pipeline (P0) - COMPLETED (basic)
+- [x] **Phase 7:** Migrations (P1) - COMPLETED
+- [x] **Phase 8:** Database Creation (P1) - COMPLETED
 
 ### Pending Phases
 
-- [ ] **Phase 7:** Migrations (P1)
-- [ ] **Phase 8:** Database Creation (P1)
 - [ ] **Phase 9:** Function Translations (P1)
 - [ ] **Phase 10:** Advanced Features (P2)
 
@@ -198,94 +198,77 @@ Implemented in: `Update/WitModificationCommandBatchFactory.cs`
 
 ---
 
-### Phase 7: Migrations (P1) - NOT STARTED
+### Phase 7: Migrations (P1) ? COMPLETED
 
-#### 7.1 WitMigrationsSqlGenerator
+#### 7.1 WitMigrationsSqlGenerator ?
 
-```csharp
-public class WitMigrationsSqlGenerator : MigrationsSqlGenerator
-```
+Implemented in: `Migrations/WitMigrationsSqlGenerator.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `Generate(CreateTableOperation)` | P1 | CREATE TABLE |
-| `Generate(DropTableOperation)` | P1 | DROP TABLE |
-| `Generate(AlterTableOperation)` | P1 | ALTER TABLE |
-| `Generate(RenameTableOperation)` | P1 | RENAME TABLE |
-| `Generate(AddColumnOperation)` | P1 | ADD COLUMN |
-| `Generate(DropColumnOperation)` | P1 | DROP COLUMN |
-| `Generate(AlterColumnOperation)` | P1 | ALTER COLUMN |
-| `Generate(RenameColumnOperation)` | P1 | RENAME COLUMN |
-| `Generate(CreateIndexOperation)` | P1 | CREATE INDEX |
-| `Generate(DropIndexOperation)` | P1 | DROP INDEX |
-| `Generate(AddForeignKeyOperation)` | P1 | ADD CONSTRAINT FK |
-| `Generate(DropForeignKeyOperation)` | P1 | DROP CONSTRAINT |
-| `Generate(AddPrimaryKeyOperation)` | P1 | ADD PRIMARY KEY |
-| `Generate(DropPrimaryKeyOperation)` | P1 | DROP PRIMARY KEY |
-| `Generate(AddUniqueConstraintOperation)` | P1 | ADD UNIQUE |
-| `Generate(DropUniqueConstraintOperation)` | P1 | DROP UNIQUE |
-| `Generate(AddCheckConstraintOperation)` | P1 | ADD CHECK |
-| `Generate(DropCheckConstraintOperation)` | P1 | DROP CHECK |
-| `Generate(CreateSequenceOperation)` | P1 | CREATE SEQUENCE |
-| `Generate(DropSequenceOperation)` | P1 | DROP SEQUENCE |
-| `Generate(SqlOperation)` | P1 | Raw SQL |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `Generate(CreateTableOperation)` | ? | CREATE TABLE |
+| `Generate(DropTableOperation)` | ? | DROP TABLE IF EXISTS |
+| `Generate(RenameTableOperation)` | ? | ALTER TABLE RENAME TO |
+| `Generate(AddColumnOperation)` | ? | ALTER TABLE ADD COLUMN |
+| `Generate(DropColumnOperation)` | ? | ALTER TABLE DROP COLUMN |
+| `Generate(AlterColumnOperation)` | ? | ALTER COLUMN SET/DROP |
+| `Generate(RenameColumnOperation)` | ? | ALTER TABLE RENAME COLUMN |
+| `Generate(CreateIndexOperation)` | ? | CREATE INDEX IF NOT EXISTS |
+| `Generate(DropIndexOperation)` | ? | DROP INDEX IF EXISTS |
+| `Generate(AddForeignKeyOperation)` | ? | Comment (limited support) |
+| `Generate(DropForeignKeyOperation)` | ? | Comment (limited support) |
+| `Generate(AddPrimaryKeyOperation)` | ? | Comment (limited support) |
+| `Generate(DropPrimaryKeyOperation)` | ? | Comment (limited support) |
+| `Generate(AddUniqueConstraintOperation)` | ? | Create unique index |
+| `Generate(DropUniqueConstraintOperation)` | ? | Drop index |
+| `Generate(AddCheckConstraintOperation)` | ? | Comment (future support) |
+| `Generate(DropCheckConstraintOperation)` | ? | Comment (future support) |
+| `Generate(CreateSequenceOperation)` | ? | CREATE SEQUENCE |
+| `Generate(DropSequenceOperation)` | ? | DROP SEQUENCE |
+| `Generate(AlterSequenceOperation)` | ? | ALTER SEQUENCE RESTART |
+| `Generate(SqlOperation)` | ? | Raw SQL |
+| `ColumnDefinition()` | ? | Column definition with types |
 
-#### 7.2 WitHistoryRepository
+#### 7.2 WitHistoryRepository ?
 
-```csharp
-public class WitHistoryRepository : HistoryRepository
-```
+Implemented in: `Migrations/WitHistoryRepository.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `ExistsAsync()` | P1 | Check if __EFMigrationsHistory exists |
-| `GetCreateScript()` | P1 | Script to create history table |
-| `GetBeginIfExistsScript()` | P2 | Conditional begin |
-| `GetEndIfScript()` | P2 | Conditional end |
-| `GetAppliedMigrationsAsync()` | P1 | Get applied migrations |
-| `GetInsertScript()` | P1 | Insert migration record |
-| `GetDeleteScript()` | P1 | Delete migration record |
-
-#### 7.3 WitMigrationsAnnotationProvider
-
-```csharp
-public class WitMigrationsAnnotationProvider : MigrationsAnnotationProvider
-```
-
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `For(IModel)` | P1 | Model annotations |
-| `For(IEntityType)` | P1 | Entity annotations |
-| `For(IProperty)` | P1 | Property annotations |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `ExistsSql` property | ? | SELECT from INFORMATION_SCHEMA |
+| `GetCreateScript()` | ? | CREATE TABLE IF NOT EXISTS |
+| `GetCreateIfNotExistsScript()` | ? | Same as GetCreateScript |
+| `GetBeginIfNotExistsScript()` | ? | Empty (not supported) |
+| `GetBeginIfExistsScript()` | ? | Empty (not supported) |
+| `GetEndIfScript()` | ? | Empty (not supported) |
+| `GetInsertScript()` | ? | INSERT INTO __EFMigrationsHistory |
+| `GetDeleteScript()` | ? | DELETE FROM __EFMigrationsHistory |
+| `AcquireDatabaseLock()` | ? | No-op lock (single-user) |
+| `AcquireDatabaseLockAsync()` | ? | No-op lock (single-user) |
+| `InterpretExistsResult()` | ? | Check for non-null result |
+| `LockReleaseBehavior` property | ? | Explicit release |
+| `ConfigureTable()` | ? | Configure column types |
 
 ---
 
-### Phase 8: Database Creation (P1) - NOT STARTED
+### Phase 8: Database Creation (P1) ? COMPLETED
 
-#### 8.1 WitDatabaseCreator
+#### 8.1 WitDatabaseCreator ?
 
-```csharp
-public class WitDatabaseCreator : RelationalDatabaseCreator
-```
+Implemented in: `Storage/WitDatabaseCreator.cs`
 
-| Member | Priority | Description |
-|--------|----------|-------------|
-| `Exists()` | P1 | Check if database exists |
-| `ExistsAsync()` | P1 | Async version |
-| `HasTables()` | P1 | Check if has any tables |
-| `HasTablesAsync()` | P1 | Async version |
-| `Create()` | P1 | Create database file |
-| `CreateAsync()` | P1 | Async version |
-| `CreateTables()` | P1 | Create all tables |
-| `CreateTablesAsync()` | P1 | Async version |
-| `Delete()` | P1 | Delete database file |
-| `DeleteAsync()` | P1 | Async version |
-| `EnsureCreated()` | P1 | Create if not exists |
-| `EnsureCreatedAsync()` | P1 | Async version |
-| `EnsureDeleted()` | P1 | Delete if exists |
-| `EnsureDeletedAsync()` | P1 | Async version |
-| `CanConnect()` | P1 | Test connection |
-| `CanConnectAsync()` | P1 | Async version |
+| Member | Status | Description |
+|--------|--------|-------------|
+| `Exists()` | ? | Check if database file exists |
+| `ExistsAsync()` | ? | Async version |
+| `HasTables()` | ? | Query INFORMATION_SCHEMA.TABLES |
+| `HasTablesAsync()` | ? | Async version |
+| `Create()` | ? | Open/close connection creates file |
+| `CreateAsync()` | ? | Async version |
+| `Delete()` | ? | Delete database file |
+| `DeleteAsync()` | ? | Async version |
+
+Note: `EnsureCreated()`, `EnsureDeleted()`, `CreateTables()`, `CanConnect()` are provided by base class `RelationalDatabaseCreator`.
 
 ---
 
@@ -418,33 +401,36 @@ public class WitMemberTranslator : IMemberTranslator
 
 ## Service Registration
 
+Current registered services in `WitDbServiceCollectionExtensions.cs`:
+
 ```csharp
-public class WitDbServiceCollectionExtensions
-{
-    public static IServiceCollection AddEntityFrameworkWitDb(
-        this IServiceCollection services)
-    {
-        var builder = new EntityFrameworkRelationalServicesBuilder(services)
-            .TryAdd<IDatabaseProvider, WitDatabaseProvider>()
-            .TryAdd<IRelationalConnection, WitRelationalConnection>()
-            .TryAdd<ISqlGenerationHelper, WitSqlGenerationHelper>()
-            .TryAdd<IQuerySqlGeneratorFactory, WitQuerySqlGeneratorFactory>()
-            .TryAdd<ITypeMappingSource, WitTypeMappingSource>()
-            .TryAdd<IRelationalTypeMappingSource, WitTypeMappingSource>()
-            .TryAdd<IModelValidator, WitModelValidator>()
-            .TryAdd<IUpdateSqlGenerator, WitUpdateSqlGenerator>()
-            .TryAdd<IModificationCommandBatchFactory, WitModificationCommandBatchFactory>()
-            .TryAdd<IMigrationsSqlGenerator, WitMigrationsSqlGenerator>()
-            .TryAdd<IHistoryRepository, WitHistoryRepository>()
-            .TryAdd<IRelationalDatabaseCreator, WitDatabaseCreator>()
-            .TryAdd<IMethodCallTranslator, WitMethodCallTranslator>()
-            .TryAdd<IMemberTranslator, WitMemberTranslator>()
-            // ... more services
-            .TryAddCoreServices();
-            
-        return services;
-    }
-}
+builder
+    // Core services
+    .TryAdd<LoggingDefinitions, WitLoggingDefinitions>()
+    .TryAdd<IDatabaseProvider, WitDatabaseProvider>()
+    
+    // Connection and type mapping
+    .TryAdd<IRelationalTypeMappingSource, WitTypeMappingSource>()
+    .TryAdd<ISqlGenerationHelper, WitSqlGenerationHelper>()
+    .TryAdd<IRelationalConnection, WitRelationalConnection>()
+    
+    // Query generation
+    .TryAdd<IQuerySqlGeneratorFactory, WitQuerySqlGeneratorFactory>()
+    
+    // Update pipeline
+    .TryAdd<IUpdateSqlGenerator, WitUpdateSqlGenerator>()
+    .TryAdd<IModificationCommandBatchFactory, WitModificationCommandBatchFactory>()
+    
+    // Model building
+    .TryAdd<IRelationalAnnotationProvider, WitAnnotationProvider>()
+    .TryAdd<IModelValidator, WitModelValidator>()
+    
+    // Migrations
+    .TryAdd<IMigrationsSqlGenerator, WitMigrationsSqlGenerator>()
+    .TryAdd<IHistoryRepository, WitHistoryRepository>()
+    
+    // Database creation
+    .TryAdd<IRelationalDatabaseCreator, WitDatabaseCreator>()
 ```
 
 ---
@@ -465,10 +451,14 @@ OutWit.Database.EntityFramework/
 ??? Metadata/
 ?   ??? WitAnnotationProvider.cs          ?
 ?   ??? WitModelValidator.cs              ?
+??? Migrations/
+?   ??? WitHistoryRepository.cs           ?
+?   ??? WitMigrationsSqlGenerator.cs      ?
 ??? Query/
 ?   ??? WitQuerySqlGenerator.cs           ?
 ?   ??? WitQuerySqlGeneratorFactory.cs    ?
 ??? Storage/
+?   ??? WitDatabaseCreator.cs             ?
 ?   ??? WitRelationalConnection.cs        ?
 ?   ??? WitSqlGenerationHelper.cs         ?
 ?   ??? WitTypeMappingSource.cs           ?
@@ -476,6 +466,26 @@ OutWit.Database.EntityFramework/
 ?   ??? WitModificationCommandBatchFactory.cs  ?
 ?   ??? WitUpdateSqlGenerator.cs          ?
 ??? TODO.md
+```
+
+---
+
+## Multi-targeting Configuration
+
+The project targets both .NET 9 and .NET 10 with appropriate EF Core versions:
+
+```xml
+<PropertyGroup>
+  <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+</PropertyGroup>
+
+<ItemGroup Condition="'$(TargetFramework)' == 'net9.0'">
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="9.0.6" />
+</ItemGroup>
+
+<ItemGroup Condition="'$(TargetFramework)' == 'net10.0'">
+  <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.0-preview.5.25277.114" />
+</ItemGroup>
 ```
 
 ---
@@ -500,24 +510,26 @@ OutWit.Database.EntityFramework.Tests/
 
 ## Next Steps
 
-1. **Phase 7:** Implement migrations support
-   - WitMigrationsSqlGenerator
-   - WitHistoryRepository
-   
-2. **Phase 8:** Implement database creation
-   - WitDatabaseCreator with EnsureCreated/EnsureDeleted
+1. **Phase 9:** Implement function translations
+   - WitMethodCallTranslator for string, math, datetime functions
+   - WitMemberTranslator for property access translations
 
-3. **Enable skipped integration tests**
-   - Once database creation works, enable BasicDbContextTests
+2. **Enable skipped integration tests**
+   - Once full provider works, enable BasicDbContextTests
+
+3. **Phase 10:** Advanced features
+   - JSON support
+   - Computed columns
+   - Concurrency tokens
 
 ---
 
 ## Dependencies
 
-| Package | Version | Purpose |
-|---------|---------|---------|
-| Microsoft.EntityFrameworkCore.Relational | 9.0.6 | EF Core base |
-| OutWit.Database.AdoNet | 1.0.0 | ADO.NET provider |
+| Package | Version (net9.0) | Version (net10.0) | Purpose |
+|---------|------------------|-------------------|---------|
+| Microsoft.EntityFrameworkCore.Relational | 9.0.6 | 10.0.0-preview.5 | EF Core base |
+| OutWit.Database.AdoNet | 1.0.0 | 1.0.0 | ADO.NET provider |
 
 ---
 
