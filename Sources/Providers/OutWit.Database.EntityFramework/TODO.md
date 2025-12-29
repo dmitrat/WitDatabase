@@ -27,15 +27,15 @@ This package provides an Entity Framework Core provider for WitDatabase, enablin
 - [x] **Phase 6:** Update Pipeline (P0) - COMPLETED (basic)
 - [x] **Phase 7:** Migrations (P1) - COMPLETED
 - [x] **Phase 8:** Database Creation (P1) - COMPLETED
+- [x] **Phase 9:** Function Translations (P1) - COMPLETED
 
 ### Pending Phases
 
-- [ ] **Phase 9:** Function Translations (P1)
 - [ ] **Phase 10:** Advanced Features (P2)
 
 ### Current Test Status
 
-- **138 tests passing**
+- **233 tests passing**
 - **2 integration tests skipped** (require full provider implementation)
 
 ---
@@ -272,95 +272,102 @@ Note: `EnsureCreated()`, `EnsureDeleted()`, `CreateTables()`, `CanConnect()` are
 
 ---
 
-### Phase 9: Function Translations (P1) - NOT STARTED
+### Phase 9: Function Translations (P1) - COMPLETED
 
-#### 9.1 WitMethodCallTranslator
+#### 9.1 WitStringMethodTranslator
 
-```csharp
-public class WitMethodCallTranslator : IMethodCallTranslator
-```
+Implemented in: `Query/Translators/WitStringMethodTranslator.cs`
 
-**String Functions:**
+| C# Method | WitSQL Function | Status |
+|-----------|-----------------|--------|
+| `string.ToUpper()` | `UPPER()` | Done |
+| `string.ToLower()` | `LOWER()` | Done |
+| `string.Trim()` | `TRIM()` | Done |
+| `string.TrimStart()` | `LTRIM()` | Done |
+| `string.TrimEnd()` | `RTRIM()` | Done |
+| `string.Substring()` | `SUBSTR()` | Done |
+| `string.Replace()` | `REPLACE()` | Done |
+| `string.Contains()` | `INSTR() > 0` | Done |
+| `string.StartsWith()` | `LIKE 'x%'` | Done |
+| `string.EndsWith()` | `LIKE '%x'` | Done |
+| `string.IndexOf()` | `INSTR() - 1` | Done |
+| `string.Concat()` | `\|\|` | Done |
+| `string.IsNullOrEmpty()` | `IS NULL OR = ''` | Done |
+| `string.IsNullOrWhiteSpace()` | `IS NULL OR TRIM() = ''` | Done |
 
-| C# Method | WitSQL Function |
-|-----------|-----------------|
-| `string.Length` | `LENGTH()` |
-| `string.ToUpper()` | `UPPER()` |
-| `string.ToLower()` | `LOWER()` |
-| `string.Trim()` | `TRIM()` |
-| `string.TrimStart()` | `LTRIM()` |
-| `string.TrimEnd()` | `RTRIM()` |
-| `string.Substring()` | `SUBSTR()` |
-| `string.Replace()` | `REPLACE()` |
-| `string.Contains()` | `INSTR() > 0` |
-| `string.StartsWith()` | `LIKE 'x%'` |
-| `string.EndsWith()` | `LIKE '%x'` |
-| `string.IndexOf()` | `INSTR()` |
-| `string.Concat()` | `\|\|` or `CONCAT()` |
-| `string.IsNullOrEmpty()` | `IS NULL OR = ''` |
-| `string.IsNullOrWhiteSpace()` | `IS NULL OR TRIM() = ''` |
+#### 9.2 WitMathMethodTranslator
 
-**Math Functions:**
+Implemented in: `Query/Translators/WitMathMethodTranslator.cs`
 
-| C# Method | WitSQL Function |
-|-----------|-----------------|
-| `Math.Abs()` | `ABS()` |
-| `Math.Ceiling()` | `CEIL()` |
-| `Math.Floor()` | `FLOOR()` |
-| `Math.Round()` | `ROUND()` |
-| `Math.Truncate()` | `TRUNC()` |
-| `Math.Pow()` | `POWER()` |
-| `Math.Sqrt()` | `SQRT()` |
-| `Math.Log()` | `LOG()` |
-| `Math.Log10()` | `LOG10()` |
-| `Math.Exp()` | `EXP()` |
-| `Math.Sin/Cos/Tan()` | `SIN/COS/TAN()` |
-| `Math.Max()` | `MAX()` |
-| `Math.Min()` | `MIN()` |
+| C# Method | WitSQL Function | Status |
+|-----------|-----------------|--------|
+| `Math.Abs()` | `ABS()` | Done |
+| `Math.Ceiling()` | `CEIL()` | Done |
+| `Math.Floor()` | `FLOOR()` | Done |
+| `Math.Round()` | `ROUND()` | Done |
+| `Math.Truncate()` | `TRUNC()` | Done |
+| `Math.Pow()` | `POWER()` | Done |
+| `Math.Sqrt()` | `SQRT()` | Done |
+| `Math.Log()` | `LN()` | Done |
+| `Math.Log10()` | `LOG10()` | Done |
+| `Math.Exp()` | `EXP()` | Done |
+| `Math.Sin/Cos/Tan()` | `SIN/COS/TAN()` | Done |
+| `Math.Asin/Acos/Atan()` | `ASIN/ACOS/ATAN()` | Done |
+| `Math.Atan2()` | `ATAN2()` | Done |
+| `Math.Max()` | `MAX()` | Done |
+| `Math.Min()` | `MIN()` | Done |
+| `Math.Sign()` | `SIGN()` | Done |
 
-**DateTime Functions:**
+#### 9.3 WitDateTimeMethodTranslator
 
-| C# Property/Method | WitSQL Function |
-|--------------------|-----------------|
-| `DateTime.Now` | `NOW()` |
-| `DateTime.UtcNow` | `NOW()` |
-| `DateTime.Today` | `DATE(NOW())` |
-| `DateTime.Year` | `YEAR()` |
-| `DateTime.Month` | `MONTH()` |
-| `DateTime.Day` | `DAY()` |
-| `DateTime.Hour` | `HOUR()` |
-| `DateTime.Minute` | `MINUTE()` |
-| `DateTime.Second` | `SECOND()` |
-| `DateTime.Date` | `DATE()` |
-| `DateTime.TimeOfDay` | `TIME()` |
-| `DateTime.AddDays()` | `DATEADD('day', ...)` |
-| `DateTime.AddMonths()` | `DATEADD('month', ...)` |
-| `DateTime.AddYears()` | `DATEADD('year', ...)` |
+Implemented in: `Query/Translators/WitDateTimeMethodTranslator.cs`
 
-**GUID Functions:**
+| C# Method | WitSQL Function | Status |
+|-----------|-----------------|--------|
+| `DateTime.AddDays()` | `DATEADD('day', ...)` | Done |
+| `DateTime.AddMonths()` | `DATEADD('month', ...)` | Done |
+| `DateTime.AddYears()` | `DATEADD('year', ...)` | Done |
+| `DateTime.AddHours()` | `DATEADD('hour', ...)` | Done |
+| `DateTime.AddMinutes()` | `DATEADD('minute', ...)` | Done |
+| `DateTime.AddSeconds()` | `DATEADD('second', ...)` | Done |
+| `DateTime.AddMilliseconds()` | `DATEADD('millisecond', ...)` | Done |
 
-| C# Method | WitSQL Function |
-|-----------|-----------------|
-| `Guid.NewGuid()` | `NEWGUID()` |
+#### 9.4 WitGuidMethodTranslator
 
-**Null Functions:**
+Implemented in: `Query/Translators/WitGuidMethodTranslator.cs`
 
-| C# Expression | WitSQL Function |
-|---------------|-----------------|
-| `??` | `COALESCE()` |
-| `EF.Functions.NullIf()` | `NULLIF()` |
+| C# Method | WitSQL Function | Status |
+|-----------|-----------------|--------|
+| `Guid.NewGuid()` | `NEWGUID()` | Done |
 
-#### 9.2 WitMemberTranslator
+#### 9.5 WitMemberTranslator
 
-```csharp
-public class WitMemberTranslator : IMemberTranslator
-```
+Implemented in: `Query/Translators/WitMemberTranslator.cs`
 
-| C# Member | Translation |
-|-----------|-------------|
-| `string.Length` | `LENGTH(column)` |
-| `DateTime.Year/Month/Day/etc.` | Extract functions |
-| `TimeSpan.TotalDays/etc.` | Interval calculations |
+| C# Member | WitSQL Translation | Status |
+|-----------|-------------------|--------|
+| `string.Length` | `LENGTH()` | Done |
+| `DateTime.Year` | `YEAR()` | Done |
+| `DateTime.Month` | `MONTH()` | Done |
+| `DateTime.Day` | `DAY()` | Done |
+| `DateTime.Hour` | `HOUR()` | Done |
+| `DateTime.Minute` | `MINUTE()` | Done |
+| `DateTime.Second` | `SECOND()` | Done |
+| `DateTime.Millisecond` | `MILLISECOND()` | Done |
+| `DateTime.DayOfWeek` | `DAYOFWEEK()` | Done |
+| `DateTime.DayOfYear` | `DAYOFYEAR()` | Done |
+| `DateTime.Date` | `DATE()` | Done |
+| `DateTime.TimeOfDay` | `TIME()` | Done |
+| `DateTime.Now` | `NOW()` | Done |
+| `DateTime.UtcNow` | `NOW()` | Done |
+| `DateTime.Today` | `DATE(NOW())` | Done |
+| `DateOnly.*` | Extract functions | Done |
+| `TimeOnly.*` | Extract functions | Done |
+| `TimeSpan.*` | Extract/calculations | Done |
+
+#### 9.6 Provider Registration
+
+Implemented in: `Query/WitMethodCallTranslatorProvider.cs` and `Query/WitMemberTranslatorProvider.cs`
 
 ---
 
@@ -416,6 +423,8 @@ builder
     
     // Query generation
     .TryAdd<IQuerySqlGeneratorFactory, WitQuerySqlGeneratorFactory>()
+    .TryAdd<IMethodCallTranslatorProvider, WitMethodCallTranslatorProvider>()
+    .TryAdd<IMemberTranslatorProvider, WitMemberTranslatorProvider>()
     
     // Update pipeline
     .TryAdd<IUpdateSqlGenerator, WitUpdateSqlGenerator>()
@@ -457,6 +466,14 @@ OutWit.Database.EntityFramework/
 +-- Query/
 |   +-- WitQuerySqlGenerator.cs           [Done]
 |   +-- WitQuerySqlGeneratorFactory.cs    [Done]
+|   +-- WitMethodCallTranslatorProvider.cs [Done]
+|   +-- WitMemberTranslatorProvider.cs    [Done]
+|   +-- Translators/
+|       +-- WitStringMethodTranslator.cs  [Done]
+|       +-- WitMathMethodTranslator.cs    [Done]
+|       +-- WitDateTimeMethodTranslator.cs [Done]
+|       +-- WitGuidMethodTranslator.cs    [Done]
+|       +-- WitMemberTranslator.cs        [Done]
 +-- Storage/
 |   +-- WitDatabaseCreator.cs             [Done]
 |   +-- WitRelationalConnection.cs        [Done]
@@ -504,6 +521,12 @@ OutWit.Database.EntityFramework.Tests/
 +-- Migrations/
 |   +-- WitHistoryRepositoryTests.cs                  [Done] (18 tests)
 |   +-- WitMigrationsSqlGeneratorTests.cs             [Done] (18 tests)
++-- Query/
+|   +-- WitStringMethodTranslatorTests.cs             [Done] (17 tests)
+|   +-- WitMathMethodTranslatorTests.cs               [Done] (30 tests)
+|   +-- WitDateTimeMethodTranslatorTests.cs           [Done] (7 tests)
+|   +-- WitMemberTranslatorTests.cs                   [Done] (39 tests)
+|   +-- WitGuidMethodTranslatorTests.cs               [Done] (1 test)
 +-- Storage/
 |   +-- WitDatabaseCreatorTests.cs                    [Done] (12 tests)
 |   +-- WitSqlGenerationHelperTests.cs                [Done] (17 tests)
@@ -514,14 +537,10 @@ OutWit.Database.EntityFramework.Tests/
 
 ## Next Steps
 
-1. **Phase 9:** Implement function translations
-   - WitMethodCallTranslator for string, math, datetime functions
-   - WitMemberTranslator for property access translations
-
-2. **Enable skipped integration tests**
+1. **Enable skipped integration tests**
    - Once full provider works, enable BasicDbContextTests
 
-3. **Phase 10:** Advanced features
+2. **Phase 10:** Advanced features (P2)
    - JSON support
    - Computed columns
    - Concurrency tokens

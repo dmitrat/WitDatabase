@@ -108,6 +108,31 @@ services.AddDbContext<AppDbContext>(options =>
 | `Guid` | `GUID` | |
 | `Enum` | `INT` | Stored as integer by default |
 
+## LINQ Method Translations
+
+The provider translates common LINQ methods to WitSQL:
+
+### String Methods
+- `ToUpper()`, `ToLower()`, `Trim()`, `TrimStart()`, `TrimEnd()`
+- `Substring()`, `Replace()`, `Contains()`, `StartsWith()`, `EndsWith()`
+- `IndexOf()`, `Length`, `Concat()`, `IsNullOrEmpty()`, `IsNullOrWhiteSpace()`
+
+### Math Methods
+- `Abs()`, `Ceiling()`, `Floor()`, `Round()`, `Truncate()`
+- `Pow()`, `Sqrt()`, `Log()`, `Log10()`, `Exp()`
+- `Sin()`, `Cos()`, `Tan()`, `Asin()`, `Acos()`, `Atan()`, `Atan2()`
+- `Max()`, `Min()`, `Sign()`
+
+### DateTime Methods
+- `AddDays()`, `AddMonths()`, `AddYears()`
+- `AddHours()`, `AddMinutes()`, `AddSeconds()`, `AddMilliseconds()`
+- `Year`, `Month`, `Day`, `Hour`, `Minute`, `Second`
+- `Date`, `TimeOfDay`, `DayOfWeek`, `DayOfYear`
+- `DateTime.Now`, `DateTime.UtcNow`, `DateTime.Today`
+
+### Other
+- `Guid.NewGuid()`
+
 ## Connection String Options
 
 All connection string options from `OutWit.Database.AdoNet` are supported:
@@ -127,16 +152,16 @@ All connection string options from `OutWit.Database.AdoNet` are supported:
 - [x] DbContext configuration with `UseWitDb()`
 - [x] In-memory database support
 - [x] Type mapping for all WitSQL types
-- [x] Basic SQL generation (SELECT, INSERT, UPDATE, DELETE)
+- [x] SQL generation (SELECT, INSERT, UPDATE, DELETE)
 - [x] Parameter handling with `@param` syntax
 - [x] LIMIT/OFFSET for pagination
 - [x] Model validation
 - [x] Migrations support (CREATE/DROP TABLE, ADD/DROP COLUMN, indexes)
 - [x] Database creation (EnsureCreated/EnsureDeleted)
+- [x] LINQ method translations (string, math, datetime, guid)
 
-### In Progress
+### Planned
 
-- [ ] LINQ method translations (string, math, datetime functions)
 - [ ] JSON column support
 - [ ] Computed columns
 - [ ] Concurrency tokens

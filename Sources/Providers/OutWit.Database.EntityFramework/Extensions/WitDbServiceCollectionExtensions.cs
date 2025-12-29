@@ -46,6 +46,8 @@ public static class WitDbServiceCollectionExtensions
             
             // Query generation
             .TryAdd<IQuerySqlGeneratorFactory, WitQuerySqlGeneratorFactory>()
+            .TryAdd<IMethodCallTranslatorProvider, WitMethodCallTranslatorProvider>()
+            .TryAdd<IMemberTranslatorProvider, WitMemberTranslatorProvider>()
             
             // Update pipeline
             .TryAdd<IUpdateSqlGenerator, WitUpdateSqlGenerator>()
