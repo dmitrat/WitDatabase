@@ -10,6 +10,15 @@ namespace OutWit.Database.EntityFramework.Metadata;
 /// </summary>
 public sealed class WitModelValidator : RelationalModelValidator
 {
+    #region Constants
+
+    /// <summary>
+    /// The only schema supported by WitDatabase.
+    /// </summary>
+    private const string SUPPORTED_SCHEMA = "public";
+
+    #endregion
+
     #region Constructors
 
     /// <summary>
@@ -26,6 +35,34 @@ public sealed class WitModelValidator : RelationalModelValidator
 
     #endregion
 
-    // Use all default validation from base class
-    // WitDatabase supports all standard relational features
+    #region Validation
+
+    /// <inheritdoc />
+    public override void Validate(IModel model, IDiagnosticsLogger<DbLoggerCategory.Model.Validation> logger)
+    {
+        base.Validate(model, logger);
+
+        ValidateSchemas(model);
+    }
+
+    /// <summary>
+    /// Validates that no custom schemas are used (WitDatabase only supports the default 'public' schema).
+    /// </summary>
+    private static void ValidateSchemas(IModel model)
+    {
+        foreach (var entityType in model.GetEntityTypes())
+        {
+            var schema = entityType.GetSchema();
+            if (schema != null && 
+                !string.Equals(schema, SUPPORTED_SCHEMA, StringComparison.OrdinalIgnoreCase))
+            {
+                throw new InvalidOperationException(
+                    $"WitDatabase does not support custom schemas. Entity '{entityType.DisplayName()}' " +
+                    $"uses schema '{schema}', but only the default schema is supported. " +
+                    $"Remove the schema specification or use 'public'.");
+            }
+        }
+    }
+
+    #endregion
 }
