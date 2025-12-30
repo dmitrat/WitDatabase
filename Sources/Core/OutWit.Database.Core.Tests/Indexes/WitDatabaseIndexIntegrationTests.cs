@@ -167,7 +167,8 @@ namespace OutWit.Database.Core.Tests.Indexes
             db.Flush();
 
             // Assert
-            var indexDir = Path.Combine(m_testDir, "_indexes");
+            // Index directory is now named after the database file: {filename}_indexes
+            var indexDir = Path.Combine(m_testDir, "test.db_indexes");
             Assert.That(Directory.Exists(indexDir), Is.True);
         }
 

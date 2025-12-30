@@ -45,6 +45,39 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
         m_schema = new SchemaCatalog(database.Store);
         m_planCache = new QueryPlanCache();
         m_ownsStore = ownsStore;
+        
+        // Ensure physical indexes are created/synced for all schema indexes
+        // This handles the case where schema indexes were persisted but physical indexes were not
+        EnsurePhysicalIndexesExist();
+    }
+
+    #endregion
+    
+    #region Index Synchronization
+
+    /// <summary>
+    /// Ensures physical indexes exist for all schema indexes.
+    /// Creates missing physical indexes but does NOT rebuild existing ones.
+    /// Rebuilding happens lazily when the index is first accessed.
+    /// </summary>
+    private void EnsurePhysicalIndexesExist()
+    {
+        if (!m_database.SupportsIndexes)
+            return;
+
+        foreach (var indexDef in m_schema.GetIndexes())
+        {
+            // Check if physical index exists
+            var physicalIndex = m_database.GetIndex(indexDef.Name);
+            if (physicalIndex == null)
+            {
+                // Physical index doesn't exist - create it and build from data
+                m_database.CreateIndex(indexDef.Name, indexDef.IsUnique);
+                BuildIndexFromExistingData(indexDef);
+            }
+            // If physical index exists (even if empty), don't rebuild
+            // The data should be persisted in the index files
+        }
     }
 
     #endregion
@@ -243,7 +276,19 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
         m_currentTransaction?.Dispose();
 
         if (m_ownsStore)
+        {
+            // Flush before dispose to ensure all data is persisted
+            try
+            {
+                m_database.Flush();
+            }
+            catch
+            {
+                // Best effort - don't fail dispose on flush errors
+            }
+            
             m_database.Dispose();
+        }
     }
 
     #endregion

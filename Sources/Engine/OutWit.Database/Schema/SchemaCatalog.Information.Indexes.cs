@@ -27,7 +27,7 @@ public sealed partial class SchemaCatalog
 
     /// <summary>
     /// Gets the INFORMATION_SCHEMA.INDEXES view data.
-    /// Returns information about all indexes (non-standard extension).
+    /// Returns information about all non-implicit indexes (implicit indexes are hidden).
     /// </summary>
     public IEnumerable<WitSqlRow> GetInformationSchemaIndexes()
     {
@@ -36,6 +36,11 @@ public sealed partial class SchemaCatalog
         {
             foreach (var index in m_indexes.Values)
             {
+                // Skip implicit indexes (auto-created for PRIMARY KEY)
+                // These are internal implementation details not meant to be exposed to users
+                if (index.IsImplicit)
+                    continue;
+                
                 int position = 1;
                 foreach (var columnName in index.Columns)
                 {

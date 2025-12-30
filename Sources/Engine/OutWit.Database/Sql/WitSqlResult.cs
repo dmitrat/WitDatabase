@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Text;
 using System.Threading.Tasks;
+using OutWit.Database.Interfaces;
 
 namespace OutWit.Database.Sql;
 
@@ -23,11 +24,27 @@ public sealed class WitSqlResult : IDisposable
     #region Fields
 
     private readonly IEnumerator<WitSqlRow>? m_rowEnumerator;
+    private readonly IResultIterator? m_iterator;
+    private readonly Action? m_onDispose;
     private bool m_disposed;
 
     #endregion
 
     #region Constructors
+
+    /// <summary>
+    /// Creates a result for queries that return rows (SELECT) with streaming support.
+    /// This is the preferred constructor for SELECT queries as it does not materialize all rows.
+    /// </summary>
+    /// <param name="iterator">The result iterator (will be disposed when result is disposed).</param>
+    /// <param name="onDispose">Optional cleanup action to run on dispose.</param>
+    public WitSqlResult(IResultIterator iterator, Action? onDispose = null)
+    {
+        m_iterator = iterator ?? throw new ArgumentNullException(nameof(iterator));
+        Columns = iterator.Schema;
+        HasRows = true;
+        m_onDispose = onDispose;
+    }
 
     /// <summary>
     /// Creates a result for queries that return rows (SELECT).
@@ -85,7 +102,22 @@ public sealed class WitSqlResult : IDisposable
     /// <returns>True if there is another row; false when no more rows are available.</returns>
     public bool Read()
     {
-        if (m_disposed || m_rowEnumerator == null)
+        if (m_disposed)
+            return false;
+
+        // Streaming mode - use iterator directly
+        if (m_iterator != null)
+        {
+            if (m_iterator.MoveNext())
+            {
+                CurrentRow = m_iterator.Current;
+                return true;
+            }
+            return false;
+        }
+
+        // Legacy mode - use enumerator
+        if (m_rowEnumerator == null)
             return false;
 
         if (m_rowEnumerator.MoveNext())
@@ -134,6 +166,10 @@ public sealed class WitSqlResult : IDisposable
         
         m_disposed = true;
         m_rowEnumerator?.Dispose();
+        m_iterator?.Dispose();
+        
+        // Run cleanup action (e.g., clear CTE cache)
+        m_onDispose?.Invoke();
     }
 
     #endregion

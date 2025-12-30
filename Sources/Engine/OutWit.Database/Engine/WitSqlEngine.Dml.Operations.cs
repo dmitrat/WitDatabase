@@ -11,6 +11,46 @@ namespace OutWit.Database.Engine;
 /// </summary>
 public sealed partial class WitSqlEngine
 {
+    #region Get Row
+
+    /// <summary>
+    /// Get a single row by its row ID. This is a direct key-value lookup, much faster than scanning.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="rowId">The row ID to fetch.</param>
+    /// <returns>The row if found, null otherwise.</returns>
+    public WitSqlRow? GetRowById(string tableName, long rowId)
+    {
+        var table = m_schema.GetTable(tableName);
+        if (table == null)
+            return null;
+
+        var key = SchemaCatalog.CreateRowKey(tableName, rowId);
+        var value = GetFromStore(key);
+        
+        if (value == null)
+            return null;
+
+        var dataRow = table.DeserializeRow(value);
+        
+        // Build row with _rowid prepended
+        var values = new WitSqlValue[dataRow.ColumnCount + 1];
+        var names = new string[dataRow.ColumnCount + 1];
+        
+        values[0] = WitSqlValue.FromInt(rowId);
+        names[0] = "_rowid";
+        
+        for (int i = 0; i < dataRow.ColumnCount; i++)
+        {
+            values[i + 1] = dataRow[i];
+            names[i + 1] = dataRow.ColumnNames[i];
+        }
+        
+        return new WitSqlRow(values, names);
+    }
+
+    #endregion
+
     #region Insert
 
     /// <summary>

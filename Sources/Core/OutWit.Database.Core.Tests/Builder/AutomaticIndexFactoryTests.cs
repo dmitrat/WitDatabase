@@ -52,14 +52,15 @@ namespace OutWit.Database.Core.Tests.Builder
                 .WithTransactions()
                 .Build())
             {
-                // Create index - should create file in _indexes directory
+                // Create index - should create file in {filename}_indexes directory
                 var index = db.CreateIndex("idx_test", isUnique: true);
                 index.Add(GetBytes("key"), GetBytes("pk"));
                 db.Flush();
             }
             
             // Verify index file was created
-            var indexDir = Path.Combine(m_testDir, "_indexes");
+            // Index directory is now named after the database file: {filename}_indexes
+            var indexDir = Path.Combine(m_testDir, "btree.db_indexes");
             Assert.That(Directory.Exists(indexDir), Is.True, "Index directory should be created");
             Assert.That(File.Exists(Path.Combine(indexDir, "idx_test.idx")), Is.True, 
                 "Index file should be created");

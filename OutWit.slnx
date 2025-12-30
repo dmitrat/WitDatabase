@@ -26,6 +26,7 @@
     <Project Path="Samples/OutWit.Database.Samples.BlazorWasm/OutWit.Database.Samples.BlazorWasm.csproj" />
   </Folder>
   <Folder Name="/Benchmarks/">
+    <Project Path="Benchmarks/OutWit.Database.Comparison.Benchmarks/OutWit.Database.Comparison.Benchmarks.csproj" />
     <Project Path="Benchmarks/OutWit.Database.Core.Tests.Benchmarks/OutWit.Database.Core.Tests.Benchmarks.csproj" Id="218fe20c-91ee-4980-98ce-332906c1db1a" />
   </Folder>
   <Folder Name="/Sources/Providers/">

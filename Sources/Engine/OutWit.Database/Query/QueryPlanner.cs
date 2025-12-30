@@ -92,13 +92,28 @@ public sealed partial class QueryPlanner
 
     private IResultIterator PlanAggregateQuery(IResultIterator iterator, WitSqlStatementSelect select)
     {
-        // GROUP BY aggregation with integrated HAVING clause
-        iterator = new IteratorGroupBy(
-            iterator, 
-            select.GroupByClause, 
-            select.SelectList, 
-            m_context,
-            select.HavingClause);
+        // Check if we can use streaming aggregation (more efficient)
+        // Requirements: no GROUP BY, no HAVING, simple aggregates only
+        bool canUseStreaming = 
+            (select.GroupByClause == null || select.GroupByClause.Count == 0) &&
+            select.HavingClause == null &&
+            IteratorStreamingAggregate.CanUseStreamingAggregation(select.SelectList);
+
+        if (canUseStreaming)
+        {
+            // Use streaming aggregation - O(1) memory
+            iterator = new IteratorStreamingAggregate(iterator, select.SelectList, m_context);
+        }
+        else
+        {
+            // Use full GROUP BY aggregation - stores all rows
+            iterator = new IteratorGroupBy(
+                iterator, 
+                select.GroupByClause, 
+                select.SelectList, 
+                m_context,
+                select.HavingClause);
+        }
 
         // ORDER BY (after aggregation)
         iterator = ApplyOrderByClause(iterator, select.OrderByClause);

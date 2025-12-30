@@ -441,8 +441,8 @@ public class QueryPlannerTests
         var planner = new QueryPlanner(m_context);
         var iterator = planner.Plan(select);
 
-        // Should detect aggregate function and use GroupBy path
-        Assert.That(iterator, Is.InstanceOf<IteratorGroupBy>());
+        // For simple aggregates without GROUP BY, uses IteratorStreamingAggregate
+        Assert.That(iterator, Is.InstanceOf<IteratorStreamingAggregate>());
     }
 
     [Test]

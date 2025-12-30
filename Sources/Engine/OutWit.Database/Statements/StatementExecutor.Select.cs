@@ -10,32 +10,31 @@ public sealed partial class StatementExecutor
 
     private WitSqlResult ExecuteSelect(WitSqlStatementSelect select)
     {
-        try
-        {
-            var iterator = m_planner.Plan(select);
-            iterator.Open();
+        var iterator = m_planner.Plan(select);
+        iterator.Open();
 
-            // Materialize rows to a list before clearing CTE state
-            // This is necessary because EnumerateRows uses yield return (lazy evaluation)
-            var rows = EnumerateRows(iterator).ToList();
-            return new WitSqlResult(rows, iterator.Schema);
-        }
-        finally
+        // Create cleanup action for CTE state
+        // This will be called when the result is disposed
+        var context = m_context;
+        Action cleanupAction = () =>
         {
             // Clear CTE definitions and cache after query execution
             // CTEs are scoped to a single statement
-            m_context.CteDefinitions.Clear();
-            m_context.CteCache.Clear();
+            context.CteDefinitions.Clear();
+            context.CteCache.Clear();
             
             // Clean up any CTE-related state
-            var keysToRemove = m_context.State.Keys
+            var keysToRemove = context.State.Keys
                 .Where(k => k.StartsWith("CTE_"))
                 .ToList();
             foreach (var key in keysToRemove)
             {
-                m_context.State.Remove(key);
+                context.State.Remove(key);
             }
-        }
+        };
+
+        // Return streaming result - rows are read on demand, not materialized
+        return new WitSqlResult(iterator, cleanupAction);
     }
 
     #endregion

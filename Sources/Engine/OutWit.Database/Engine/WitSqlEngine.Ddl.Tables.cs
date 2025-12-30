@@ -27,7 +27,56 @@ public sealed partial class WitSqlEngine
     public void CreateTable(DefinitionTable table)
     {
         m_schema.CreateTable(table);
+        
+        // Create implicit unique index for PRIMARY KEY columns if:
+        // 1. Table has explicit PRIMARY KEY
+        // 2. PK is not a single AUTOINCREMENT column (uniqueness guaranteed by sequence generator)
+        // This enables O(log n) uniqueness checks instead of O(n) full table scans
+        CreateImplicitPrimaryKeyIndex(table);
+        
         InvalidatePlanCacheForTable(table.Name);
+    }
+
+    /// <summary>
+    /// Creates an implicit unique index for PRIMARY KEY columns.
+    /// Skipped for single-column AUTOINCREMENT PKs (uniqueness is guaranteed by the sequence generator).
+    /// </summary>
+    /// <remarks>
+    /// This creates an implicit unique index to enable O(log n) uniqueness checks instead of O(n) full table scans.
+    /// The index is marked as implicit (IsImplicit=true) and won't be shown in INFORMATION_SCHEMA.INDEXES.
+    /// </remarks>
+    private void CreateImplicitPrimaryKeyIndex(DefinitionTable table)
+    {
+        // No primary key - no index needed
+        if (table.PrimaryKey == null || table.PrimaryKey.Count == 0)
+            return;
+        
+        // Single-column AUTOINCREMENT PK - skip index (uniqueness guaranteed by sequence)
+        if (table.PrimaryKey.Count == 1)
+        {
+            var pkColumn = table.GetColumn(table.PrimaryKey[0]);
+            if (pkColumn is { IsAutoIncrement: true })
+                return;
+        }
+        
+        var indexName = $"_PK_{table.Name}";
+        
+        // Check if index already exists in schema (e.g., restored from disk after restart)
+        if (GetIndex(indexName) != null)
+            return;
+        
+        // Create new implicit unique index for PK
+        var newPkIndex = new DefinitionIndex
+        {
+            Name = indexName,
+            TableName = table.Name,
+            Columns = table.PrimaryKey.ToList(),
+            IsUnique = true,
+            IsPrimaryKey = true,
+            IsImplicit = true
+        };
+        
+        CreateIndex(newPkIndex);
     }
 
     #endregion
@@ -40,6 +89,13 @@ public sealed partial class WitSqlEngine
     /// <param name="tableName">The table name to drop.</param>
     public void DropTable(string tableName)
     {
+        // Drop implicit PK index if exists
+        var implicitPkIndexName = $"_PK_{tableName}";
+        if (GetIndex(implicitPkIndexName) != null)
+        {
+            DropIndex(implicitPkIndexName);
+        }
+        
         m_schema.DropTable(tableName);
         InvalidatePlanCacheForTable(tableName);
     }

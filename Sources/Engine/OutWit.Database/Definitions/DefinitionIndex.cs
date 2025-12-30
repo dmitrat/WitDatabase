@@ -23,6 +23,7 @@ namespace OutWit.Database.Definitions
                 && Columns.Is(other.Columns)
                 && IsUnique.Is(other.IsUnique)
                 && IsPrimaryKey.Is(other.IsPrimaryKey)
+                && IsImplicit.Is(other.IsImplicit)
                 && WhereExpression.Is(other.WhereExpression)
                 && ExpressionColumns.Is(other.ExpressionColumns)
                 && IncludeColumns.Is(other.IncludeColumns)
@@ -38,6 +39,7 @@ namespace OutWit.Database.Definitions
                 Columns = Columns.ToArray(),
                 IsUnique = IsUnique,
                 IsPrimaryKey = IsPrimaryKey,
+                IsImplicit = IsImplicit,
                 WhereExpression = WhereExpression,
                 ExpressionColumns = ExpressionColumns?.ToArray(),
                 IncludeColumns = IncludeColumns?.ToArray(),
@@ -165,6 +167,13 @@ namespace OutWit.Database.Definitions
         /// </summary>
         [MemoryPackOrder(8)]
         public IReadOnlyList<bool>? ColumnDescending { get; init; }
+
+        /// <summary>
+        /// Gets whether this is an implicit index (auto-created for PRIMARY KEY).
+        /// Implicit indexes are not shown in INFORMATION_SCHEMA.
+        /// </summary>
+        [MemoryPackOrder(9)]
+        public bool IsImplicit { get; init; }
 
         /// <summary>
         /// Gets whether this is a partial/filtered index.

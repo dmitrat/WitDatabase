@@ -33,6 +33,14 @@ public interface IDatabase
         WitSqlValue? startKey, bool startInclusive, WitSqlValue? endKey, bool endInclusive);
 
     /// <summary>
+    /// Get a single row by its row ID. This is a direct key-value lookup, much faster than scanning.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="rowId">The row ID to fetch.</param>
+    /// <returns>The row if found, null otherwise.</returns>
+    WitSqlRow? GetRowById(string tableName, long rowId);
+
+    /// <summary>
     /// Insert a row into a table.
     /// </summary>
     void InsertRow(string tableName, WitSqlRow row);

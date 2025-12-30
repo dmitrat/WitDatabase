@@ -564,10 +564,25 @@ public sealed class WitDatabaseBuilder
         if (!string.IsNullOrEmpty(Options.IndexDirectory))
             return Options.IndexDirectory;
 
-        var mainDir = Options.LsmDirectory
-            ?? (Options.FilePath != null ? Path.GetDirectoryName(Options.FilePath) : null);
+        // For LSM-Tree, use directory + _indexes
+        if (!string.IsNullOrEmpty(Options.LsmDirectory))
+            return Path.Combine(Options.LsmDirectory, "_indexes");
 
-        return mainDir != null ? Path.Combine(mainDir, "_indexes") : null;
+        // For BTree file, create index directory based on database filename
+        // e.g., "data.db" -> "data.db_indexes" (sibling to database file)
+        if (!string.IsNullOrEmpty(Options.FilePath))
+        {
+            var directory = Path.GetDirectoryName(Options.FilePath);
+            var filename = Path.GetFileName(Options.FilePath);
+            
+            // Create index directory named after the database file
+            // e.g., /tmp/mydb.db -> /tmp/mydb.db_indexes/
+            return directory != null 
+                ? Path.Combine(directory, filename + "_indexes")
+                : filename + "_indexes";
+        }
+
+        return null;
     }
 
     private static ISecondaryIndexFactory CreateInMemoryIndexFactory()

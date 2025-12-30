@@ -554,8 +554,101 @@ MIT License - see LICENSE file for details.
 
 ---
 
+## Performance Considerations
+
+### INSERT Performance with PRIMARY KEY
+
+WitDatabase does **not** automatically create indexes on PRIMARY KEY columns. This is by design to give you full control over your database schema.
+
+#### AUTOINCREMENT Primary Keys (Fast ?)
+
+When using `AUTOINCREMENT`, uniqueness is guaranteed by the internal sequence generator, so no validation scan is needed:
+
+```sql
+CREATE TABLE Users (
+    Id BIGINT PRIMARY KEY AUTOINCREMENT,
+    Name VARCHAR(100)
+);
+
+-- Fast: ~0.02ms per insert (no uniqueness check needed)
+INSERT INTO Users (Name) VALUES ('Alice');
+```
+
+#### Explicit Primary Keys (Slow Without Index ??)
+
+When you explicitly provide PK values, the engine must validate uniqueness. **Without an index**, this requires a full table scan per insert (O(n) per insert = O(n²) total for batch inserts):
+
+```sql
+CREATE TABLE Items (
+    Id INT PRIMARY KEY,  -- NOT AUTOINCREMENT
+    Name VARCHAR(100)
+);
+
+-- Slow: ~0.35ms per insert with full table scan
+INSERT INTO Items (Id, Name) VALUES (1, 'Item1');
+```
+
+#### Solution: Create Explicit Index (Fast ?)
+
+For explicit PK values, create a UNIQUE index to enable O(log n) validation:
+
+```sql
+CREATE TABLE Items (
+    Id INT PRIMARY KEY,
+    Name VARCHAR(100)
+);
+
+-- Add explicit unique index for fast uniqueness checks
+CREATE UNIQUE INDEX IX_Items_Id ON Items(Id);
+
+-- Now fast: ~0.07ms per insert (uses index seek)
+INSERT INTO Items (Id, Name) VALUES (1, 'Item1');
+```
+
+### Performance Summary
+
+| Scenario | Without Index | With Index | Speedup |
+|----------|---------------|------------|---------|
+| INSERT with AUTOINCREMENT | 0.02 ms/row | N/A | ? Already fast |
+| INSERT with explicit PK (500 rows) | ~175 ms | ~35 ms | **5x faster** |
+| INSERT with explicit PK (10000 rows) | ~70 sec | ~1.4 sec | **50x faster** |
+
+### Recommendation
+
+For best INSERT performance:
+
+1. **Prefer AUTOINCREMENT** - Let the database generate unique IDs
+2. **Create explicit indexes** - If you must use explicit PKs, add a UNIQUE index
+3. **Use prepared statements** - Reuse parsed statements via `engine.Prepare()`
+4. **Batch in transactions** - Wrap multiple INSERTs in a transaction
+
+```csharp
+// Best practice for explicit PK scenario
+engine.Execute(@"
+    CREATE TABLE Products (
+        SKU VARCHAR(50) PRIMARY KEY,
+        Name VARCHAR(200),
+        Price DECIMAL(10,2)
+    )
+");
+
+// Create index for fast uniqueness validation
+engine.Execute("CREATE UNIQUE INDEX IX_Products_SKU ON Products(SKU)");
+
+// Now bulk inserts are fast
+engine.Execute("BEGIN TRANSACTION");
+for (int i = 0; i < 10000; i++)
+{
+    engine.Execute($"INSERT INTO Products (SKU, Name, Price) VALUES ('SKU{i}', 'Product {i}', {i * 1.5})");
+}
+engine.Execute("COMMIT");
+```
+
+---
+
 ## See Also
 
 - [WitSql.md](../../WitSql.md) - Full WitSQL language specification
 - [Roadmap.Engine.md](../../Roadmap.Engine.md) - Engine roadmap
 - [STATUS.md](STATUS.md) - Implementation status
+- [PERFORMANCE_ANALYSIS.md](../../Docs/PERFORMANCE_ANALYSIS.md) - Detailed performance analysis
