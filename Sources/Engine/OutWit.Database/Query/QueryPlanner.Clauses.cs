@@ -78,6 +78,210 @@ public sealed partial class QueryPlanner
         return new IteratorSort(iterator, orderByClause, m_context);
     }
 
+    /// <summary>
+    /// Applies ORDER BY for aggregate queries, resolving aggregate expressions to result columns.
+    /// </summary>
+    /// <param name="iterator">The source iterator (after GROUP BY).</param>
+    /// <param name="orderByClause">The ORDER BY clause.</param>
+    /// <param name="selectList">The SELECT list (contains computed aggregate columns).</param>
+    /// <returns>Iterator with ORDER BY applied.</returns>
+    private IResultIterator ApplyOrderByClauseForAggregate(
+        IResultIterator iterator, 
+        IReadOnlyList<ClauseOrderByItem>? orderByClause,
+        IReadOnlyList<ClauseSelectItem> selectList)
+    {
+        if (orderByClause == null || orderByClause.Count == 0)
+            return iterator;
+
+        // Transform ORDER BY expressions: replace aggregate functions with column references
+        // to the result columns from GROUP BY
+        var resolvedOrderBy = ResolveAggregateOrderBy(orderByClause, selectList);
+        
+        return new IteratorSort(iterator, resolvedOrderBy, m_context);
+    }
+
+    /// <summary>
+    /// Resolves aggregate expressions in ORDER BY to column references from the SELECT list.
+    /// For example: ORDER BY SUM(Amount) DESC -> ORDER BY column_index_2 DESC
+    /// </summary>
+    private static List<ClauseOrderByItem> ResolveAggregateOrderBy(
+        IReadOnlyList<ClauseOrderByItem> orderByClause,
+        IReadOnlyList<ClauseSelectItem> selectList)
+    {
+        var resolved = new List<ClauseOrderByItem>(orderByClause.Count);
+
+        foreach (var orderItem in orderByClause)
+        {
+            var resolvedExpr = ResolveAggregateExpression(orderItem.Expression, selectList);
+            
+            resolved.Add(new ClauseOrderByItem
+            {
+                Expression = resolvedExpr,
+                Descending = orderItem.Descending,
+                NullsOrder = orderItem.NullsOrder
+            });
+        }
+
+        return resolved;
+    }
+
+    /// <summary>
+    /// Resolves an expression that may contain aggregates to use result column references.
+    /// </summary>
+    private static WitSqlExpression ResolveAggregateExpression(
+        WitSqlExpression expr,
+        IReadOnlyList<ClauseSelectItem> selectList)
+    {
+        // If expression is aggregate function, find matching column in SELECT
+        if (expr is WitSqlExpressionFunctionCall func && IsAggregateFunction(func))
+        {
+            // Find matching aggregate in SELECT list by index
+            for (int i = 0; i < selectList.Count; i++)
+            {
+                var selectItem = selectList[i];
+                if (selectItem.Expression is WitSqlExpressionFunctionCall selectFunc &&
+                    AggregateExpressionsMatch(func, selectFunc))
+                {
+                    // Return column reference by position (use 0-based index marker)
+                    return new WitSqlExpressionOrderByColumnIndex { ColumnIndex = i };
+                }
+            }
+            
+            // Aggregate not found in SELECT - return the original expression
+            // This will cause a runtime error, but allows for debugging
+            return expr;
+        }
+
+        // If expression is column reference, check if it matches a SELECT column
+        if (expr is WitSqlExpressionColumnRef colRef)
+        {
+            // Try to find by alias or column name
+            for (int i = 0; i < selectList.Count; i++)
+            {
+                var selectItem = selectList[i];
+                
+                // Match by alias
+                if (selectItem.Alias != null &&
+                    string.Equals(selectItem.Alias, colRef.ColumnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WitSqlExpressionOrderByColumnIndex { ColumnIndex = i };
+                }
+                
+                // Match by column expression
+                if (selectItem.Expression is WitSqlExpressionColumnRef selectCol &&
+                    string.Equals(selectCol.ColumnName, colRef.ColumnName, StringComparison.OrdinalIgnoreCase))
+                {
+                    return new WitSqlExpressionOrderByColumnIndex { ColumnIndex = i };
+                }
+            }
+            
+            // Column might be a GROUP BY key that's in the result - check schema names
+            return expr;
+        }
+
+        // For binary/unary expressions, recursively resolve
+        if (expr is WitSqlExpressionBinary binary)
+        {
+            return new WitSqlExpressionBinary
+            {
+                Left = ResolveAggregateExpression(binary.Left, selectList),
+                Operator = binary.Operator,
+                Right = ResolveAggregateExpression(binary.Right, selectList)
+            };
+        }
+
+        if (expr is WitSqlExpressionUnary unary)
+        {
+            return new WitSqlExpressionUnary
+            {
+                Operand = ResolveAggregateExpression(unary.Operand, selectList),
+                Operator = unary.Operator
+            };
+        }
+
+        // Other expressions (literals, etc.) pass through
+        return expr;
+    }
+
+    /// <summary>
+    /// Checks if two aggregate function calls are equivalent.
+    /// </summary>
+    private static bool AggregateExpressionsMatch(WitSqlExpressionFunctionCall a, WitSqlExpressionFunctionCall b)
+    {
+        // Must have same function name
+        if (!string.Equals(a.FunctionName, b.FunctionName, StringComparison.OrdinalIgnoreCase))
+            return false;
+
+        // Both must be star or both not
+        if (a.IsStar != b.IsStar)
+            return false;
+
+        // Check DISTINCT modifier
+        if (a.IsDistinct != b.IsDistinct)
+            return false;
+
+        // COUNT(*) matches COUNT(*)
+        if (a.IsStar)
+            return true;
+
+        // Compare arguments
+        var argsA = a.Arguments ?? [];
+        var argsB = b.Arguments ?? [];
+
+        if (argsA.Count != argsB.Count)
+            return false;
+
+        for (int i = 0; i < argsA.Count; i++)
+        {
+            if (!ExpressionsMatch(argsA[i], argsB[i]))
+                return false;
+        }
+
+        return true;
+    }
+
+    /// <summary>
+    /// Checks if two expressions are structurally equivalent.
+    /// </summary>
+    private static bool ExpressionsMatch(WitSqlExpression a, WitSqlExpression b)
+    {
+        if (a.GetType() != b.GetType())
+            return false;
+
+        return (a, b) switch
+        {
+            (WitSqlExpressionColumnRef colA, WitSqlExpressionColumnRef colB) =>
+                string.Equals(colA.ColumnName, colB.ColumnName, StringComparison.OrdinalIgnoreCase) &&
+                string.Equals(colA.TableName ?? "", colB.TableName ?? "", StringComparison.OrdinalIgnoreCase),
+
+            (WitSqlExpressionLiteral litA, WitSqlExpressionLiteral litB) =>
+                litA.Type == litB.Type && Equals(litA.Value, litB.Value),
+
+            (WitSqlExpressionFunctionCall funcA, WitSqlExpressionFunctionCall funcB) =>
+                AggregateExpressionsMatch(funcA, funcB),
+
+            _ => false
+        };
+    }
+
+    /// <summary>
+    /// Gets the generated column name for an aggregate function.
+    /// </summary>
+    private static string GetAggregateColumnName(WitSqlExpressionFunctionCall func, int index)
+    {
+        // This should match the naming in IteratorGroupBy.BuildSchema()
+        return func.FunctionName;
+    }
+
+    /// <summary>
+    /// Checks if a function call is an aggregate function.
+    /// </summary>
+    private static bool IsAggregateFunction(WitSqlExpressionFunctionCall func)
+    {
+        var name = func.FunctionName.ToUpperInvariant();
+        return name is "COUNT" or "SUM" or "AVG" or "MIN" or "MAX" or "GROUP_CONCAT" or "STRING_AGG" or "ARRAY_AGG";
+    }
+
     #endregion
 
     #region LIMIT/OFFSET Clause

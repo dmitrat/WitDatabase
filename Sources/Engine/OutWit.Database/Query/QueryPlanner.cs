@@ -115,8 +115,8 @@ public sealed partial class QueryPlanner
                 select.HavingClause);
         }
 
-        // ORDER BY (after aggregation)
-        iterator = ApplyOrderByClause(iterator, select.OrderByClause);
+        // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
+        iterator = ApplyOrderByClauseForAggregate(iterator, select.OrderByClause, select.SelectList);
 
         // LIMIT/OFFSET
         iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);

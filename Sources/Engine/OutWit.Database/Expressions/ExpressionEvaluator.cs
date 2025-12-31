@@ -52,8 +52,23 @@ public sealed partial class ExpressionEvaluator
             WitSqlExpressionExists exists => EvaluateExists(exists, row),
             WitSqlExpressionQuantified quantified => EvaluateQuantified(quantified, row),
             WitSqlExpressionSubquery subquery => EvaluateSubquery(subquery, row),
+            WitSqlExpressionOrderByColumnIndex colIndex => EvaluateOrderByColumnIndex(colIndex, row),
             _ => throw new NotSupportedException($"Expression type not supported: {expression.GetType().Name}")
         };
+    }
+
+    /// <summary>
+    /// Evaluates a column index expression for ORDER BY on aggregate results.
+    /// </summary>
+    private static WitSqlValue EvaluateOrderByColumnIndex(WitSqlExpressionOrderByColumnIndex colIndex, WitSqlRow row)
+    {
+        if (colIndex.ColumnIndex < 0 || colIndex.ColumnIndex >= row.ColumnCount)
+        {
+            throw new InvalidOperationException(
+                $"Column index {colIndex.ColumnIndex} is out of range. Row has {row.ColumnCount} columns.");
+        }
+
+        return row[colIndex.ColumnIndex];
     }
 
     #endregion

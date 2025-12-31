@@ -557,5 +557,82 @@ public class StatementExecutorSelectTests : StatementExecutorTestsBase
         Assert.That(rows[0]["Category"].AsString(), Is.EqualTo("A"));
     }
 
+    [Test]
+    public void SelectWithGroupByOrderByAggregateTest()
+    {
+        // This is the query that fails in benchmarks:
+        // SELECT Region, COUNT(*), SUM(Amount) FROM Sales GROUP BY Region ORDER BY SUM(Amount) DESC
+        var table = CreateTableDef("Sales",
+            ("Id", WitDataType.Int64, true),
+            ("Region", WitDataType.StringVariable, false),
+            ("Amount", WitDataType.Float64, false),
+            ("Quantity", WitDataType.Int32, false));
+        m_database.GetTable("Sales").Returns(table);
+        m_database.CreateTableScan("Sales").Returns(CreateMockIterator(
+            CreateRow(("_rowid", WitSqlValue.FromInt(1)), ("Id", WitSqlValue.FromInt(1)), ("Region", WitSqlValue.FromText("North")), ("Amount", WitSqlValue.FromReal(100.0)), ("Quantity", WitSqlValue.FromInt(5))),
+            CreateRow(("_rowid", WitSqlValue.FromInt(2)), ("Id", WitSqlValue.FromInt(2)), ("Region", WitSqlValue.FromText("South")), ("Amount", WitSqlValue.FromReal(300.0)), ("Quantity", WitSqlValue.FromInt(10))),
+            CreateRow(("_rowid", WitSqlValue.FromInt(3)), ("Id", WitSqlValue.FromInt(3)), ("Region", WitSqlValue.FromText("North")), ("Amount", WitSqlValue.FromReal(200.0)), ("Quantity", WitSqlValue.FromInt(8))),
+            CreateRow(("_rowid", WitSqlValue.FromInt(4)), ("Id", WitSqlValue.FromInt(4)), ("Region", WitSqlValue.FromText("East")), ("Amount", WitSqlValue.FromReal(50.0)), ("Quantity", WitSqlValue.FromInt(2)))
+        ));
+
+        var executor = new StatementExecutor(m_context);
+        var stmt = WitSql.ParseStatement(@"
+            SELECT Region, COUNT(*), SUM(Amount) 
+            FROM Sales 
+            GROUP BY Region 
+            ORDER BY SUM(Amount) DESC") as WitSqlStatementSelect;
+
+        var result = executor.Execute(stmt!);
+        var rows = result.ReadAll();
+
+        // North: 100 + 200 = 300
+        // South: 300
+        // East: 50
+        // ORDER BY SUM(Amount) DESC: South (300), North (300), East (50)
+        Assert.That(rows, Has.Count.EqualTo(3));
+        Assert.That(rows[0]["Region"].AsString(), Is.EqualTo("South").Or.EqualTo("North")); // Both have 300
+        Assert.That(rows[2]["Region"].AsString(), Is.EqualTo("East")); // Lowest sum
+    }
+
+    [Test]
+    public void SelectComplexAggregationWithOrderByTest()
+    {
+        // Full benchmark query that fails
+        var table = CreateTableDef("Sales",
+            ("Id", WitDataType.Int64, true),
+            ("Region", WitDataType.StringVariable, false),
+            ("Amount", WitDataType.Float64, false),
+            ("Quantity", WitDataType.Int32, false));
+        m_database.GetTable("Sales").Returns(table);
+        m_database.CreateTableScan("Sales").Returns(CreateMockIterator(
+            CreateRow(("_rowid", WitSqlValue.FromInt(1)), ("Id", WitSqlValue.FromInt(1)), ("Region", WitSqlValue.FromText("North")), ("Amount", WitSqlValue.FromReal(100.0)), ("Quantity", WitSqlValue.FromInt(5))),
+            CreateRow(("_rowid", WitSqlValue.FromInt(2)), ("Id", WitSqlValue.FromInt(2)), ("Region", WitSqlValue.FromText("South")), ("Amount", WitSqlValue.FromReal(300.0)), ("Quantity", WitSqlValue.FromInt(10))),
+            CreateRow(("_rowid", WitSqlValue.FromInt(3)), ("Id", WitSqlValue.FromInt(3)), ("Region", WitSqlValue.FromText("North")), ("Amount", WitSqlValue.FromReal(200.0)), ("Quantity", WitSqlValue.FromInt(8)))
+        ));
+
+        var executor = new StatementExecutor(m_context);
+        var stmt = WitSql.ParseStatement(@"
+            SELECT 
+                Region,
+                COUNT(*),
+                SUM(Amount),
+                AVG(Amount),
+                MIN(Quantity),
+                MAX(Quantity)
+            FROM Sales
+            GROUP BY Region
+            ORDER BY SUM(Amount) DESC") as WitSqlStatementSelect;
+
+        var result = executor.Execute(stmt!);
+        var rows = result.ReadAll();
+
+        Assert.That(rows, Has.Count.EqualTo(2));
+        // North has SUM(Amount) = 300, South has 300 - order may vary for equal values
+        // But both should be present
+        var regions = rows.Select(r => r["Region"].AsString()).ToList();
+        Assert.That(regions, Does.Contain("North"));
+        Assert.That(regions, Does.Contain("South"));
+    }
+
     #endregion
 }

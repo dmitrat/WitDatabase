@@ -105,7 +105,7 @@ Comprehensive analysis of WitDb performance compared to SQLite (native C) and Li
 
 ## Failed Benchmarks Analysis
 
-### 1. Complex aggregation - WitDb (All engine modes)
+### 1. Complex aggregation - WitDb ? FIXED
 
 **Query**:
 ```sql
@@ -115,9 +115,22 @@ GROUP BY Region
 ORDER BY SUM(Amount) DESC
 ```
 
-**Cause**: Not a crash - likely timeout or Windows Defender interference. The `ORDER BY SUM(Amount)` requires re-evaluation of aggregate in ORDER BY clause.
+**Previous Issue**: `KeyNotFoundException` when evaluating `ORDER BY SUM(Amount)` - the aggregate expression was being re-evaluated against the result row which didn't contain the original columns.
 
-**Recommendation**: Implement P0.3 - cache aggregate results for ORDER BY.
+**Fix Applied**: Created `WitSqlExpressionOrderByColumnIndex` expression type and modified `QueryPlanner.ApplyOrderByClauseForAggregate()` to resolve ORDER BY aggregate expressions to result column indices at query planning time.
+
+**Current Results** (after fix):
+| Size | WitDb | SQLite | LiteDB | vs SQLite | vs LiteDB |
+|------|-------|--------|--------|-----------|-----------|
+| 1000 | 1.08ms | 0.27ms | 1.49ms | 4x slower | **1.4x faster** ? |
+| 10000 | 13.5ms | 2.04ms | 16.9ms | 6.6x slower | **1.25x faster** ? |
+
+**Files Changed**:
+- `Sources/Engine/OutWit.Database.Parser/Expressions/WitSqlExpressionOrderByColumnIndex.cs` (new)
+- `Sources/Engine/OutWit.Database/Query/QueryPlanner.Clauses.cs`
+- `Sources/Engine/OutWit.Database/Expressions/ExpressionEvaluator.cs`
+
+See `Docs/TODO_ORDERBY_AGGREGATE_BUG.md` for full details.
 
 ### 2. Index Seek (unique) x100 - LiteDB (All table sizes, all modes)
 
