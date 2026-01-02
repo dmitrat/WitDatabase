@@ -1,0 +1,208 @@
+@page "/about"
+
+<PageTitle>About - WitDatabase WASM</PageTitle>
+
+<MudText Typo="Typo.h4" Class="mb-4">About</MudText>
+
+<MudGrid>
+    <MudItem xs="12" md="8">
+        <MudCard Class="mb-4">
+            <MudCardHeader>
+                <CardHeaderAvatar>
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Large" Color="Color.Primary" />
+                </CardHeaderAvatar>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">WitDatabase Blazor WASM Sample</MudText>
+                    <MudText Typo="Typo.body2" Color="Color.Secondary">
+                        Demonstrating WitDatabase with IndexedDB storage
+                    </MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body1" Class="mb-4">
+                    This sample application demonstrates using <strong>WitDatabase</strong> in a Blazor WebAssembly application
+                    with full IndexedDB persistence. All data is stored locally in your browser using the B+Tree storage engine.
+                </MudText>
+
+                <MudText Typo="Typo.h6" Class="mb-2">Features Demonstrated</MudText>
+                <MudList T="string" Dense="true">
+                    <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">
+                        IndexedDB storage with async operations
+                    </MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">
+                        B+Tree storage engine
+                    </MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">
+                        ACID transactions support
+                    </MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">
+                        Key-value store with range queries
+                    </MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">
+                        Data persistence across page refreshes
+                    </MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">
+                        MVVM architecture with CommunityToolkit.Mvvm
+                    </MudListItem>
+                    <MudListItem Icon="@Icons.Material.Filled.Check" IconColor="Color.Success">
+                        MudBlazor UI components
+                    </MudListItem>
+                </MudList>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Class="mb-4">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Architecture</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudSimpleTable Dense="true" Hover="true" Bordered="true">
+                    <thead>
+                        <tr>
+                            <th>Layer</th>
+                            <th>Component</th>
+                            <th>Description</th>
+                        </tr>
+                    </thead>
+                    <tbody>
+                        <tr>
+                            <td>UI</td>
+                            <td><code>MudBlazor</code></td>
+                            <td>Material Design components for Blazor</td>
+                        </tr>
+                        <tr>
+                            <td>ViewModel</td>
+                            <td><code>CommunityToolkit.Mvvm</code></td>
+                            <td>MVVM pattern with source generators</td>
+                        </tr>
+                        <tr>
+                            <td>Repository</td>
+                            <td><code>ContactRepository</code>, <code>NoteRepository</code></td>
+                            <td>Data access abstraction</td>
+                        </tr>
+                        <tr>
+                            <td>Service</td>
+                            <td><code>DatabaseService</code></td>
+                            <td>Generic CRUD operations wrapper</td>
+                        </tr>
+                        <tr>
+                            <td>Core</td>
+                            <td><code>WitDatabase.Core</code></td>
+                            <td>Key-value store with async API</td>
+                        </tr>
+                        <tr>
+                            <td>Storage</td>
+                            <td><code>IndexedDB</code></td>
+                            <td>Browser storage via JS interop</td>
+                        </tr>
+                    </tbody>
+                </MudSimpleTable>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Code Example</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body2" Class="mb-2">Initialize database with IndexedDB:</MudText>
+                <pre class="pa-4 mud-background-gray rounded" style="overflow-x:auto"><code>// Create database with IndexedDB storage
+var db = await new WitDatabaseBuilder()
+    .WithIndexedDbStorage("MyDatabase", JSRuntime)
+    .WithBTree()
+    .WithTransactions()
+    .BuildAsync();
+
+// Store data
+var key = Encoding.UTF8.GetBytes("user:1");
+var value = JsonSerializer.SerializeToUtf8Bytes(user);
+await db.PutAsync(key, value);
+
+// Retrieve data
+var data = await db.GetAsync(key);
+var user = JsonSerializer.Deserialize&lt;User&gt;(data);
+
+// Range scan
+await foreach (var (k, v) in db.ScanAsync(startKey, endKey))
+{
+    // Process each key-value pair
+}</code></pre>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+
+    <MudItem xs="12" md="4">
+        <MudCard Class="mb-4">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Browser Support</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudStack Spacing="2">
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Language" />
+                        <MudText>Edge 80+</MudText>
+                    </MudStack>
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Custom.Brands.Google" />
+                        <MudText>Chrome 80+</MudText>
+                    </MudStack>
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Material.Filled.Language" />
+                        <MudText>Firefox 75+</MudText>
+                    </MudStack>
+                    <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                        <MudIcon Icon="@Icons.Custom.Brands.Apple" />
+                        <MudText>Safari 14+</MudText>
+                    </MudStack>
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard Class="mb-4">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Links</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudStack Spacing="2">
+                    <MudButton Variant="Variant.Outlined" FullWidth="true" StartIcon="@Icons.Custom.Brands.GitHub"
+                               Href="https://github.com/dmitrat/WitDatabase" Target="_blank">
+                        GitHub Repository
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" FullWidth="true" StartIcon="@Icons.Material.Filled.Description"
+                               Href="https://github.com/dmitrat/WitDatabase#readme" Target="_blank">
+                        Documentation
+                    </MudButton>
+                    <MudButton Variant="Variant.Outlined" FullWidth="true" StartIcon="@Icons.Material.Filled.Code"
+                               Href="https://www.nuget.org/packages/OutWit.Database.Core.IndexedDb" Target="_blank">
+                        NuGet Package
+                    </MudButton>
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+
+        <MudCard>
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.h6">Tech Stack</MudText>
+                </CardHeaderContent>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudStack Spacing="1">
+                    <MudChip T="string" Icon="@Icons.Material.Filled.Code" Color="Color.Primary">.NET 9/10</MudChip>
+                    <MudChip T="string" Icon="@Icons.Material.Filled.Web" Color="Color.Secondary">Blazor WASM</MudChip>
+                    <MudChip T="string" Icon="@Icons.Material.Filled.Palette" Color="Color.Tertiary">MudBlazor 8.x</MudChip>
+                    <MudChip T="string" Icon="@Icons.Material.Filled.Architecture" Color="Color.Info">MVVM Toolkit</MudChip>
+                    <MudChip T="string" Icon="@Icons.Material.Filled.Storage" Color="Color.Success">WitDatabase</MudChip>
+                </MudStack>
+            </MudCardContent>
+        </MudCard>
+    </MudItem>
+</MudGrid>

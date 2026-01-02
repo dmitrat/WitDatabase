@@ -1,176 +1,142 @@
 @page "/"
+@inject DashboardViewModel ViewModel
 
-<PageTitle>WitDatabase Blazor WASM Sample</PageTitle>
+<PageTitle>Dashboard - WitDatabase WASM</PageTitle>
 
-<div class="card">
-    <h1>&#128190; WitDatabase Blazor WASM Sample</h1>
-    <p>
-        This sample demonstrates using <strong>WitDatabase</strong> in a Blazor WebAssembly application
-        with full IndexedDB persistence support.
-    </p>
-</div>
+<MudText Typo="Typo.h4" Class="mb-4">Dashboard</MudText>
 
-<div class="card" style="background: #d4edda; border-color: #28a745;">
-    <h3>? Full Async Support Complete!</h3>
-    <p>
-        <strong>IndexedDB storage is now fully functional!</strong> All BTree operations have been refactored 
-        to support async I/O, enabling seamless persistence in Blazor WebAssembly.
-    </p>
-    <p>
-        <strong>What works:</strong>
-    </p>
-    <ul>
-        <li>? In-memory storage (full functionality)</li>
-        <li>? IndexedDB persistence (full functionality)</li>
-        <li>? BTree async operations (Search, Insert, Update, Delete, Range Scan)</li>
-        <li>? Transactions with async commit/rollback</li>
-        <li>? Encryption (AES-GCM)</li>
-        <li>? Automatic async-only storage detection</li>
-    </ul>
-</div>
+@if (!string.IsNullOrEmpty(ViewModel.ErrorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true" CloseIconClicked="@(() => ViewModel.ErrorMessage = null)">
+        @ViewModel.ErrorMessage
+    </MudAlert>
+}
 
-<div class="card">
-    <h3>Features Demonstrated</h3>
-    
-    <ul>
-        <li><strong><a href="crud">CRUD Operations</a></strong> - Basic Create, Read, Update, Delete operations with IndexedDB</li>
-        <li><strong><a href="transactions">Transactions</a></strong> - Transaction support with async commit/rollback</li>
-        <li><strong><a href="encryption">Encryption</a></strong> - AES-GCM encryption at rest</li>
-    </ul>
-</div>
+@if (!ViewModel.IsDatabaseInitialized)
+{
+    <MudCard Class="mb-4">
+        <MudCardContent>
+            <MudStack AlignItems="AlignItems.Center" Spacing="4">
+                @if (ViewModel.IsLoading)
+                {
+                    <MudProgressCircular Indeterminate="true" Color="Color.Primary" Size="Size.Large" />
+                }
+                else
+                {
+                    <MudIcon Icon="@Icons.Material.Filled.Storage" Size="Size.Large" Color="Color.Primary" />
+                }
+                <MudText Typo="Typo.h6">@ViewModel.StatusMessage</MudText>
+                <MudText Typo="Typo.body2" Color="Color.Secondary">
+                    Initializing WitDatabase with IndexedDB storage...
+                </MudText>
+            </MudStack>
+        </MudCardContent>
+    </MudCard>
+}
+else
+{
+    <!-- Statistics Cards -->
+    <MudGrid Class="mb-4">
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Contacts" Size="Size.Large" Color="Color.Primary" />
+                        <MudText Typo="Typo.h4">@ViewModel.ContactCount</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Total Contacts</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Star" Size="Size.Large" Color="Color.Warning" />
+                        <MudText Typo="Typo.h4">@ViewModel.FavoriteContactCount</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Favorite Contacts</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.Note" Size="Size.Large" Color="Color.Info" />
+                        <MudText Typo="Typo.h4">@ViewModel.NoteCount</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Total Notes</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+        <MudItem xs="12" sm="6" md="3">
+            <MudCard>
+                <MudCardContent>
+                    <MudStack AlignItems="AlignItems.Center">
+                        <MudIcon Icon="@Icons.Material.Filled.PushPin" Size="Size.Large" Color="Color.Success" />
+                        <MudText Typo="Typo.h4">@ViewModel.PinnedNoteCount</MudText>
+                        <MudText Typo="Typo.body2" Color="Color.Secondary">Pinned Notes</MudText>
+                    </MudStack>
+                </MudCardContent>
+            </MudCard>
+        </MudItem>
+    </MudGrid>
 
-<div class="card">
-    <h3>Storage Options</h3>
-    
-    <table class="data-table">
-        <thead>
-            <tr>
-                <th>Storage</th>
-                <th>Status</th>
-                <th>Persistence</th>
-                <th>Notes</th>
-            </tr>
-        </thead>
-        <tbody>
-            <tr>
-                <td><code>WithMemoryStorage()</code></td>
-                <td>? Full Support</td>
-                <td>No (lost on refresh)</td>
-                <td>Good for testing</td>
-            </tr>
-            <tr>
-                <td><code>WithIndexedDbStorage()</code></td>
-                <td>? Full Support</td>
-                <td>Yes (browser storage)</td>
-                <td>Recommended for production</td>
-            </tr>
-        </tbody>
-    </table>
-</div>
+    <!-- Info Card -->
+    <MudCard Class="mb-4">
+        <MudCardHeader>
+            <CardHeaderContent>
+                <MudText Typo="Typo.h6">
+                    <MudIcon Icon="@Icons.Material.Filled.CheckCircle" Color="Color.Success" Class="mr-2" />
+                    Database Connected
+                </MudText>
+            </CardHeaderContent>
+        </MudCardHeader>
+        <MudCardContent>
+            <MudText Typo="Typo.body1" Class="mb-2">
+                WitDatabase is running with <strong>IndexedDB</strong> storage in your browser.
+                All data is persisted locally and survives page refreshes.
+            </MudText>
+            <MudText Typo="Typo.body2" Color="Color.Secondary">
+                Storage engine: <code>B+Tree</code> | Transactions: <code>Enabled</code>
+            </MudText>
+        </MudCardContent>
+    </MudCard>
 
-<div class="card">
-    <h3>Quick Start</h3>
-    
-    <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">
-@@inject IJSRuntime JSRuntime
-@@implements IAsyncDisposable
+    <!-- Actions -->
+    <MudPaper Elevation="0" Class="pa-4 mud-background-gray rounded">
+        <MudText Typo="Typo.h6" Class="mb-3">Quick Actions</MudText>
+        <MudStack Row Spacing="2" Wrap="Wrap.Wrap">
+            <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.Add" 
+                       OnClick="@(() => ViewModel.SeedSampleDataCommand.Execute(null))"
+                       Disabled="@ViewModel.IsLoading">
+                Seed Sample Data
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Error" StartIcon="@Icons.Material.Filled.DeleteSweep" 
+                       OnClick="@(() => ViewModel.ClearAllDataCommand.Execute(null))"
+                       Disabled="@ViewModel.IsLoading">
+                Clear All Data
+            </MudButton>
+            <MudButton Variant="Variant.Outlined" Color="Color.Default" StartIcon="@Icons.Material.Filled.Refresh" 
+                       OnClick="@(() => ViewModel.LoadStatisticsCommand.Execute(null))"
+                       Disabled="@ViewModel.IsLoading">
+                Refresh Stats
+            </MudButton>
+        </MudStack>
+        @if (!string.IsNullOrEmpty(ViewModel.StatusMessage) && ViewModel.StatusMessage != "Database ready!")
+        {
+            <MudText Typo="Typo.caption" Color="Color.Secondary" Class="mt-2">
+                @ViewModel.StatusMessage
+            </MudText>
+        }
+    </MudPaper>
+}
 
-@@code {
-    private WitDatabase? _db;
-    
+@code {
     protected override async Task OnInitializedAsync()
     {
-        // IndexedDB storage (persistent, recommended)
-        _db = await new WitDatabaseBuilder()
-            .WithIndexedDbStorage("MyDatabase", JSRuntime)
-            .WithBTree()
-            .WithTransactions()
-            .BuildAsync();  // Required for WASM
-            
-        // Or use in-memory storage (not persistent)
-        // _db = await new WitDatabaseBuilder()
-        //     .WithMemoryStorage()
-        //     .BuildAsync();
-    }
-    
-    private async Task SaveData(string key, string value)
-    {
-        var keyBytes = Encoding.UTF8.GetBytes(key);
-        var valueBytes = Encoding.UTF8.GetBytes(value);
-        
-        await _db!.PutAsync(keyBytes, valueBytes);
-        await _db.FlushAsync();
-    }
-    
-    private async Task&lt;string?&gt; LoadData(string key)
-    {
-        var keyBytes = Encoding.UTF8.GetBytes(key);
-        var value = await _db!.GetAsync(keyBytes);
-        return value != null ? Encoding.UTF8.GetString(value) : null;
-    }
-    
-    public async ValueTask DisposeAsync()
-    {
-        if (_db != null)
-            await _db.DisposeAsync();
+        ViewModel.PropertyChanged += (_, _) => InvokeAsync(StateHasChanged);
+        await ViewModel.InitializeCommand.ExecuteAsync(null);
     }
 }
-    </pre>
-</div>
-
-<div class="card">
-    <h3>Async API</h3>
-    
-    <p>All database operations support async patterns for WASM compatibility:</p>
-    
-    <pre style="background: #f8f9fa; padding: 15px; border-radius: 4px; overflow-x: auto;">
-// Async initialization (required for WASM with IndexedDB)
-var db = await builder.BuildAsync();
-
-// Async CRUD operations
-await db.PutAsync(key, value);
-var value = await db.GetAsync(key);
-var deleted = await db.DeleteAsync(key);
-
-// Async iteration over all records
-await foreach (var (k, v) in db.ScanAsync(null, null))
-{
-    Console.WriteLine($"Key: {Encoding.UTF8.GetString(k)}");
-}
-
-// Transactions with async operations
-await using var tx = await db.BeginTransactionAsync();
-await tx.PutAsync(key1, value1);
-await tx.PutAsync(key2, value2);
-await tx.CommitAsync();
-
-// Async flush &amp; dispose
-await db.FlushAsync();
-await db.DisposeAsync();
-    </pre>
-</div>
-
-<div class="card">
-    <h3>Supported Features</h3>
-    
-    <ul>
-        <li>? B+Tree storage engine with full async support</li>
-        <li>? IndexedDB persistence (browser storage)</li>
-        <li>? ACID transactions with async commit/rollback</li>
-        <li>? MVCC (Multi-Version Concurrency Control)</li>
-        <li>? AES-GCM encryption</li>
-        <li>? Secondary indexes</li>
-        <li>? Range queries with IAsyncEnumerable</li>
-        <li>? LSM-Tree (requires file system, not available in browser)</li>
-    </ul>
-</div>
-
-<div class="card">
-    <h3>Browser Support</h3>
-    <ul>
-        <li>Chrome 80+</li>
-        <li>Firefox 75+</li>
-        <li>Edge 80+</li>
-        <li>Safari 14+</li>
-    </ul>
-</div>

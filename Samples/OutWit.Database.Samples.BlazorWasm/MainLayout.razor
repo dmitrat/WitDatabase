@@ -1,20 +1,54 @@
 @inherits LayoutComponentBase
 
-<div class="page">
-    <header>
-        <nav>
-            <NavLink class="nav-link" href="" Match="NavLinkMatch.All">Home</NavLink>
-            <NavLink class="nav-link" href="crud">CRUD Demo</NavLink>
-            <NavLink class="nav-link" href="transactions">Transactions</NavLink>
-            <NavLink class="nav-link" href="encryption">Encryption</NavLink>
-        </nav>
-    </header>
+<MudLayout>
+    <MudAppBar Elevation="1" Color="Color.Primary">
+        <MudIconButton Icon="@Icons.Material.Filled.Menu" Color="Color.Inherit" Edge="Edge.Start" OnClick="@ToggleDrawer" />
+        <MudText Typo="Typo.h6" Class="ml-3">WitDatabase Blazor WASM</MudText>
+        <MudSpacer />
+        <MudTooltip Text="Theme">
+            <MudIconButton Icon="@Icons.Material.Filled.BrightnessAuto" Color="Color.Inherit" />
+        </MudTooltip>
+        <MudTooltip Text="GitHub">
+            <MudIconButton Icon="@Icons.Custom.Brands.GitHub" Color="Color.Inherit" Href="https://github.com/dmitrat/WitDatabase" Target="_blank" />
+        </MudTooltip>
+    </MudAppBar>
+    
+    <MudDrawer @bind-Open="_drawerOpen" ClipMode="DrawerClipMode.Always" Elevation="2">
+        <MudDrawerHeader>
+            <MudStack Row AlignItems="AlignItems.Center" Spacing="2">
+                <MudIcon Icon="@Icons.Material.Filled.Storage" Color="Color.Primary" Size="Size.Large" />
+                <MudText Typo="Typo.h6">WitDB Sample</MudText>
+            </MudStack>
+        </MudDrawerHeader>
+        <MudNavMenu>
+            <MudNavLink Href="/" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Dashboard">
+                Dashboard
+            </MudNavLink>
+            <MudNavLink Href="/contacts" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Contacts">
+                Contacts
+            </MudNavLink>
+            <MudNavLink Href="/notes" Match="NavLinkMatch.Prefix" Icon="@Icons.Material.Filled.Note">
+                Notes
+            </MudNavLink>
+            <MudDivider Class="my-2" />
+            <MudNavLink Href="/about" Match="NavLinkMatch.All" Icon="@Icons.Material.Filled.Info">
+                About
+            </MudNavLink>
+        </MudNavMenu>
+    </MudDrawer>
+    
+    <MudMainContent>
+        <MudContainer MaxWidth="MaxWidth.Large" Class="py-4">
+            @Body
+        </MudContainer>
+    </MudMainContent>
+</MudLayout>
 
-    <main>
-        @Body
-    </main>
+@code {
+    private bool _drawerOpen = true;
 
-    <footer style="margin-top: 40px; padding-top: 20px; border-top: 1px solid #ddd; color: #666; font-size: 12px;">
-        <p>WitDatabase Blazor WASM Sample - IndexedDB Storage Provider</p>
-    </footer>
-</div>
+    private void ToggleDrawer()
+    {
+        _drawerOpen = !_drawerOpen;
+    }
+}

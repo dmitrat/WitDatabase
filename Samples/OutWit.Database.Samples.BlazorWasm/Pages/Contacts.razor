@@ -1,0 +1,226 @@
+@page "/contacts"
+@inject ContactsViewModel ViewModel
+@inject DatabaseService DatabaseService
+@inject ISnackbar Snackbar
+
+<PageTitle>Contacts - WitDatabase WASM</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4">Contacts</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.PersonAdd"
+               OnClick="@(() => ViewModel.OpenNewDialogCommand.Execute(null))">
+        Add Contact
+    </MudButton>
+</MudStack>
+
+@if (!string.IsNullOrEmpty(ViewModel.ErrorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true" CloseIconClicked="@(() => ViewModel.ErrorMessage = null)">
+        @ViewModel.ErrorMessage
+    </MudAlert>
+}
+
+<!-- Filters -->
+<MudPaper Elevation="0" Class="pa-4 mb-4 mud-background-gray rounded">
+    <MudGrid>
+        <MudItem xs="12" sm="4">
+            <MudTextField T="string" Value="@ViewModel.SearchText" ValueChanged="@((string v) => ViewModel.SearchText = v)" 
+                          Label="Search" Variant="Variant.Outlined" 
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true" Clearable="true" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudSelect T="ContactCategory?" Value="@ViewModel.SelectedCategory" ValueChanged="@((ContactCategory? v) => ViewModel.SelectedCategory = v)" 
+                       Label="Category" Variant="Variant.Outlined" Clearable="true" Margin="Margin.Dense">
+                @foreach (var category in Enum.GetValues<ContactCategory>())
+                {
+                    <MudSelectItem T="ContactCategory?" Value="@((ContactCategory?)category)">@category</MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="3">
+            <MudCheckBox T="bool" Value="@ViewModel.ShowFavoritesOnly" ValueChanged="@((bool v) => ViewModel.ShowFavoritesOnly = v)" 
+                         Label="Favorites only" Color="Color.Warning" />
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center">
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" 
+                       OnClick="@(() => ViewModel.ClearFiltersCommand.Execute(null))">
+                Clear
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<!-- Stats -->
+<MudStack Row="true" Spacing="4" Class="mb-4">
+    <MudChip T="string" Icon="@Icons.Material.Filled.People" Color="Color.Primary">
+        @ViewModel.FilteredContacts.Count / @ViewModel.TotalCount contacts
+    </MudChip>
+    <MudChip T="string" Icon="@Icons.Material.Filled.Star" Color="Color.Warning">
+        @ViewModel.FavoritesCount favorites
+    </MudChip>
+</MudStack>
+
+<!-- Contact List -->
+@if (ViewModel.IsLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (ViewModel.FilteredContacts.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        @if (ViewModel.TotalCount == 0)
+        {
+            <span>No contacts yet. Click "Add Contact" to create your first contact!</span>
+        }
+        else
+        {
+            <span>No contacts match your filters.</span>
+        }
+    </MudAlert>
+}
+else
+{
+    <MudGrid>
+        @foreach (var contact in ViewModel.FilteredContacts)
+        {
+            <MudItem xs="12" sm="6" md="4">
+                <MudCard Elevation="2" Class="contact-card">
+                    <MudCardHeader>
+                        <CardHeaderAvatar>
+                            <MudAvatar Color="@GetCategoryColor(contact.Category)">@contact.Initials</MudAvatar>
+                        </CardHeaderAvatar>
+                        <CardHeaderContent>
+                            <MudText Typo="Typo.body1"><strong>@contact.FullName</strong></MudText>
+                            <MudText Typo="Typo.body2" Color="Color.Secondary">@contact.Company</MudText>
+                        </CardHeaderContent>
+                        <CardHeaderActions>
+                            <MudIconButton Icon="@(contact.IsFavorite ? Icons.Material.Filled.Star : Icons.Material.Outlined.StarBorder)" 
+                                           Color="@(contact.IsFavorite ? Color.Warning : Color.Default)"
+                                           OnClick="@(() => ViewModel.ToggleFavoriteCommand.Execute(contact))" />
+                        </CardHeaderActions>
+                    </MudCardHeader>
+                    <MudCardContent>
+                        <MudStack Spacing="1">
+                            @if (!string.IsNullOrEmpty(contact.Email))
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudIcon Icon="@Icons.Material.Filled.Email" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@contact.Email</MudText>
+                                </MudStack>
+                            }
+                            @if (!string.IsNullOrEmpty(contact.Phone))
+                            {
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <MudIcon Icon="@Icons.Material.Filled.Phone" Size="Size.Small" Color="Color.Secondary" />
+                                    <MudText Typo="Typo.body2">@contact.Phone</MudText>
+                                </MudStack>
+                            }
+                            <MudChip T="string" Size="Size.Small" Color="@GetCategoryColor(contact.Category)" Variant="Variant.Outlined">
+                                @contact.Category
+                            </MudChip>
+                        </MudStack>
+                    </MudCardContent>
+                    <MudCardActions>
+                        <MudButton Variant="Variant.Text" Color="Color.Primary" Size="Size.Small"
+                                   OnClick="@(() => ViewModel.OpenEditDialogCommand.Execute(contact))">
+                            Edit
+                        </MudButton>
+                        <MudButton Variant="Variant.Text" Color="Color.Error" Size="Size.Small"
+                                   OnClick="@(() => ConfirmDelete(contact))">
+                            Delete
+                        </MudButton>
+                    </MudCardActions>
+                </MudCard>
+            </MudItem>
+        }
+    </MudGrid>
+}
+
+<!-- Edit Dialog -->
+<MudDialog Visible="@ViewModel.IsDialogOpen" VisibleChanged="@((bool v) => { if (!v) ViewModel.CloseDialogCommand.Execute(null); })" 
+           Options="@(new DialogOptions { MaxWidth = MaxWidth.Small, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(ViewModel.IsNewContact ? "Add Contact" : "Edit Contact")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (ViewModel.EditingContact != null)
+        {
+            <MudGrid>
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" Value="@ViewModel.EditingContact.FirstName" ValueChanged="@((string v) => ViewModel.EditingContact.FirstName = v)" 
+                                  Label="First Name" Required="true" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudTextField T="string" Value="@ViewModel.EditingContact.LastName" ValueChanged="@((string v) => ViewModel.EditingContact.LastName = v)" 
+                                  Label="Last Name" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField T="string" Value="@ViewModel.EditingContact.Email" ValueChanged="@((string v) => ViewModel.EditingContact.Email = v)" 
+                                  Label="Email" InputType="InputType.Email" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField T="string" Value="@ViewModel.EditingContact.Phone" ValueChanged="@((string v) => ViewModel.EditingContact.Phone = v)" 
+                                  Label="Phone" InputType="InputType.Telephone" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField T="string" Value="@ViewModel.EditingContact.Company" ValueChanged="@((string v) => ViewModel.EditingContact.Company = v)" 
+                                  Label="Company" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="ContactCategory" Value="@ViewModel.EditingContact.Category" ValueChanged="@((ContactCategory v) => ViewModel.EditingContact.Category = v)" 
+                               Label="Category" Variant="Variant.Outlined">
+                        @foreach (var category in Enum.GetValues<ContactCategory>())
+                        {
+                            <MudSelectItem T="ContactCategory" Value="@category">@category</MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox T="bool" Value="@ViewModel.EditingContact.IsFavorite" ValueChanged="@((bool v) => ViewModel.EditingContact.IsFavorite = v)" 
+                                 Label="Favorite" Color="Color.Warning" />
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => ViewModel.CloseDialogCommand.Execute(null))">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" 
+                   OnClick="@(() => ViewModel.SaveCommand.Execute(null))"
+                   Disabled="@(string.IsNullOrWhiteSpace(ViewModel.EditingContact?.FirstName))">
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        ViewModel.PropertyChanged += (_, _) => InvokeAsync(StateHasChanged);
+        
+        if (!DatabaseService.IsInitialized)
+        {
+            await DatabaseService.InitializeAsync();
+        }
+        
+        await ViewModel.LoadCommand.ExecuteAsync(null);
+    }
+
+    private Color GetCategoryColor(ContactCategory category) => category switch
+    {
+        ContactCategory.Work => Color.Primary,
+        ContactCategory.Family => Color.Error,
+        ContactCategory.Friend => Color.Success,
+        ContactCategory.Personal => Color.Info,
+        _ => Color.Default
+    };
+
+    private async Task ConfirmDelete(Contact contact)
+    {
+        // Simple delete with snackbar notification
+        await ViewModel.DeleteCommand.ExecuteAsync(contact);
+        Snackbar.Add($"{contact.FullName} deleted", Severity.Success);
+    }
+}

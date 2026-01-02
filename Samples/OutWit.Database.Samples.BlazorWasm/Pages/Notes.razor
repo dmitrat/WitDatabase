@@ -1,0 +1,262 @@
+@page "/notes"
+@inject NotesViewModel ViewModel
+@inject DatabaseService DatabaseService
+@inject ISnackbar Snackbar
+
+<PageTitle>Notes - WitDatabase WASM</PageTitle>
+
+<MudStack Row="true" Justify="Justify.SpaceBetween" AlignItems="AlignItems.Center" Class="mb-4">
+    <MudText Typo="Typo.h4">Notes</MudText>
+    <MudButton Variant="Variant.Filled" Color="Color.Primary" StartIcon="@Icons.Material.Filled.NoteAdd"
+               OnClick="@(() => ViewModel.OpenNewDialogCommand.Execute(null))">
+        Add Note
+    </MudButton>
+</MudStack>
+
+@if (!string.IsNullOrEmpty(ViewModel.ErrorMessage))
+{
+    <MudAlert Severity="Severity.Error" Class="mb-4" ShowCloseIcon="true" CloseIconClicked="@(() => ViewModel.ErrorMessage = null)">
+        @ViewModel.ErrorMessage
+    </MudAlert>
+}
+
+<!-- Filters -->
+<MudPaper Elevation="0" Class="pa-4 mb-4 mud-background-gray rounded">
+    <MudGrid>
+        <MudItem xs="12" sm="5">
+            <MudTextField T="string" Value="@ViewModel.SearchText" ValueChanged="@((string v) => ViewModel.SearchText = v)" 
+                          Label="Search notes..." Variant="Variant.Outlined" 
+                          Adornment="Adornment.Start" AdornmentIcon="@Icons.Material.Filled.Search"
+                          Immediate="true" Clearable="true" Margin="Margin.Dense" />
+        </MudItem>
+        <MudItem xs="12" sm="5">
+            <MudSelect T="NoteColor?" Value="@ViewModel.SelectedColor" ValueChanged="@((NoteColor? v) => ViewModel.SelectedColor = v)" 
+                       Label="Filter by color" Variant="Variant.Outlined" Clearable="true" Margin="Margin.Dense">
+                @foreach (var color in Enum.GetValues<NoteColor>())
+                {
+                    <MudSelectItem T="NoteColor?" Value="@((NoteColor?)color)">
+                        <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                            <div style="width:16px;height:16px;border-radius:4px;background:@color.ToCssColor()"></div>
+                            <span>@color</span>
+                        </MudStack>
+                    </MudSelectItem>
+                }
+            </MudSelect>
+        </MudItem>
+        <MudItem xs="12" sm="2" Class="d-flex align-center">
+            <MudButton Variant="Variant.Text" StartIcon="@Icons.Material.Filled.FilterAltOff" 
+                       OnClick="@(() => ViewModel.ClearFiltersCommand.Execute(null))">
+                Clear
+            </MudButton>
+        </MudItem>
+    </MudGrid>
+</MudPaper>
+
+<!-- Stats -->
+<MudStack Row="true" Spacing="4" Class="mb-4">
+    <MudChip T="string" Icon="@Icons.Material.Filled.Note" Color="Color.Primary">
+        @ViewModel.FilteredNotes.Count / @ViewModel.TotalCount notes
+    </MudChip>
+    <MudChip T="string" Icon="@Icons.Material.Filled.PushPin" Color="Color.Success">
+        @ViewModel.PinnedCount pinned
+    </MudChip>
+</MudStack>
+
+@if (ViewModel.IsLoading)
+{
+    <MudProgressLinear Indeterminate="true" Color="Color.Primary" />
+}
+else if (ViewModel.FilteredNotes.Count == 0)
+{
+    <MudAlert Severity="Severity.Info">
+        @if (ViewModel.TotalCount == 0)
+        {
+            <span>No notes yet. Click "Add Note" to create your first note!</span>
+        }
+        else
+        {
+            <span>No notes match your filters.</span>
+        }
+    </MudAlert>
+}
+else
+{
+    <!-- Pinned Notes -->
+    @if (ViewModel.PinnedNotes.Count > 0)
+    {
+        <MudText Typo="Typo.subtitle1" Class="mb-2">
+            <MudIcon Icon="@Icons.Material.Filled.PushPin" Size="Size.Small" Class="mr-1" />
+            Pinned
+        </MudText>
+        <MudGrid Class="mb-4">
+            @foreach (var note in ViewModel.PinnedNotes)
+            {
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    @RenderNoteCard(note)
+                </MudItem>
+            }
+        </MudGrid>
+    }
+
+    <!-- Other Notes -->
+    @if (ViewModel.UnpinnedNotes.Count > 0)
+    {
+        @if (ViewModel.PinnedNotes.Count > 0)
+        {
+            <MudText Typo="Typo.subtitle1" Class="mb-2">Other Notes</MudText>
+        }
+        <MudGrid>
+            @foreach (var note in ViewModel.UnpinnedNotes)
+            {
+                <MudItem xs="12" sm="6" md="4" lg="3">
+                    @RenderNoteCard(note)
+                </MudItem>
+            }
+        </MudGrid>
+    }
+}
+
+<!-- Edit Dialog -->
+<MudDialog Visible="@ViewModel.IsDialogOpen" VisibleChanged="@((bool v) => { if (!v) ViewModel.CloseDialogCommand.Execute(null); })" 
+           Options="@(new DialogOptions { MaxWidth = MaxWidth.Medium, FullWidth = true })">
+    <TitleContent>
+        <MudText Typo="Typo.h6">
+            @(ViewModel.IsNewNote ? "Add Note" : "Edit Note")
+        </MudText>
+    </TitleContent>
+    <DialogContent>
+        @if (ViewModel.EditingNote != null)
+        {
+            <MudGrid>
+                <MudItem xs="12">
+                    <MudTextField T="string" Value="@ViewModel.EditingNote.Title" ValueChanged="@((string v) => ViewModel.EditingNote.Title = v)" 
+                                  Label="Title" Variant="Variant.Outlined" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudTextField T="string" Value="@ViewModel.EditingNote.Content" ValueChanged="@((string v) => ViewModel.EditingNote.Content = v)" 
+                                  Label="Content" Variant="Variant.Outlined" Lines="6" />
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudSelect T="NoteColor" Value="@ViewModel.EditingNote.Color" ValueChanged="@((NoteColor v) => ViewModel.EditingNote.Color = v)" 
+                               Label="Color" Variant="Variant.Outlined">
+                        @foreach (var color in Enum.GetValues<NoteColor>())
+                        {
+                            <MudSelectItem T="NoteColor" Value="@color">
+                                <MudStack Row="true" AlignItems="AlignItems.Center" Spacing="2">
+                                    <div style="width:20px;height:20px;border-radius:4px;background:@color.ToCssColor()"></div>
+                                    <span>@color</span>
+                                </MudStack>
+                            </MudSelectItem>
+                        }
+                    </MudSelect>
+                </MudItem>
+                <MudItem xs="12" sm="6">
+                    <MudCheckBox T="bool" Value="@ViewModel.EditingNote.IsPinned" ValueChanged="@((bool v) => ViewModel.EditingNote.IsPinned = v)" 
+                                 Label="Pin this note" Color="Color.Success" />
+                </MudItem>
+                <MudItem xs="12">
+                    <MudText Typo="Typo.subtitle2" Class="mb-2">Tags</MudText>
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mb-2">
+                        @foreach (var tag in ViewModel.EditingNote.Tags)
+                        {
+                            <MudChip T="string" Size="Size.Small" OnClose="@(() => ViewModel.RemoveTagCommand.Execute(tag))">
+                                @tag
+                            </MudChip>
+                        }
+                    </MudStack>
+                    <MudStack Row="true" Spacing="2">
+                        <MudTextField T="string" Value="@ViewModel.NewTag" ValueChanged="@((string v) => ViewModel.NewTag = v)" 
+                                      Label="Add tag" Variant="Variant.Outlined" Margin="Margin.Dense" 
+                                      OnKeyUp="@(e => { if (e.Key == "Enter") ViewModel.AddTagCommand.Execute(null); })" />
+                        <MudIconButton Icon="@Icons.Material.Filled.Add" Color="Color.Primary" 
+                                       OnClick="@(() => ViewModel.AddTagCommand.Execute(null))" />
+                    </MudStack>
+                </MudItem>
+            </MudGrid>
+        }
+    </DialogContent>
+    <DialogActions>
+        <MudButton OnClick="@(() => ViewModel.CloseDialogCommand.Execute(null))">Cancel</MudButton>
+        <MudButton Variant="Variant.Filled" Color="Color.Primary" 
+                   OnClick="@(() => ViewModel.SaveCommand.Execute(null))">
+            Save
+        </MudButton>
+    </DialogActions>
+</MudDialog>
+
+@code {
+    protected override async Task OnInitializedAsync()
+    {
+        ViewModel.PropertyChanged += (_, _) => InvokeAsync(StateHasChanged);
+        
+        if (!DatabaseService.IsInitialized)
+        {
+            await DatabaseService.InitializeAsync();
+        }
+        
+        await ViewModel.LoadCommand.ExecuteAsync(null);
+    }
+
+    private RenderFragment RenderNoteCard(Note note) => __builder =>
+    {
+        <MudCard Elevation="2" Style="@($"background:{note.Color.ToCssColor()}")">
+            <MudCardHeader>
+                <CardHeaderContent>
+                    <MudText Typo="Typo.subtitle1">
+                        @if (note.IsPinned)
+                        {
+                            <MudIcon Icon="@Icons.Material.Filled.PushPin" Size="Size.Small" Class="mr-1" />
+                        }
+                        @(string.IsNullOrWhiteSpace(note.Title) ? "Untitled" : note.Title)
+                    </MudText>
+                </CardHeaderContent>
+                <CardHeaderActions>
+                    <MudMenu Icon="@Icons.Material.Filled.MoreVert" Size="Size.Small" Dense="true">
+                        <MudMenuItem Icon="@Icons.Material.Filled.Edit" 
+                                     OnClick="@(() => ViewModel.OpenEditDialogCommand.Execute(note))">
+                            Edit
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@(note.IsPinned ? Icons.Material.Filled.PushPin : Icons.Material.Outlined.PushPin)"
+                                     OnClick="@(() => ViewModel.TogglePinCommand.Execute(note))">
+                            @(note.IsPinned ? "Unpin" : "Pin")
+                        </MudMenuItem>
+                        <MudMenuItem Icon="@Icons.Material.Filled.Delete" IconColor="Color.Error"
+                                     OnClick="@(() => ConfirmDelete(note))">
+                            Delete
+                        </MudMenuItem>
+                    </MudMenu>
+                </CardHeaderActions>
+            </MudCardHeader>
+            <MudCardContent>
+                <MudText Typo="Typo.body2" Style="white-space:pre-wrap;max-height:120px;overflow:hidden">
+                    @note.Preview
+                </MudText>
+                @if (note.Tags.Count > 0)
+                {
+                    <MudStack Row="true" Wrap="Wrap.Wrap" Spacing="1" Class="mt-2">
+                        @foreach (var tag in note.Tags.Take(3))
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Outlined">@tag</MudChip>
+                        }
+                        @if (note.Tags.Count > 3)
+                        {
+                            <MudChip T="string" Size="Size.Small" Variant="Variant.Text">+@(note.Tags.Count - 3)</MudChip>
+                        }
+                    </MudStack>
+                }
+            </MudCardContent>
+            <MudCardActions>
+                <MudText Typo="Typo.caption" Color="Color.Secondary">
+                    @note.CreatedAt.ToString("MMM d, yyyy")
+                </MudText>
+            </MudCardActions>
+        </MudCard>
+    };
+
+    private async Task ConfirmDelete(Note note)
+    {
+        // Simple delete with snackbar notification
+        await ViewModel.DeleteCommand.ExecuteAsync(note);
+        Snackbar.Add("Note deleted", Severity.Success);
+    }
+}
