@@ -1,0 +1,123 @@
+@{
+    ViewData["Title"] = "Home";
+}
+
+<div class="row">
+    <div class="col-lg-8 mx-auto">
+        <div class="text-center mb-5">
+            <h1 class="display-4">
+                <i class="bi bi-database-fill text-primary me-3"></i>WitDatabase Identity Server
+            </h1>
+            <p class="lead text-muted">
+                A demo Identity Server powered by WitDatabase and OpenIddict
+            </p>
+        </div>
+
+        <div class="row g-4 mb-5">
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-database display-4 text-primary mb-3"></i>
+                        <h5 class="card-title">WitDatabase</h5>
+                        <p class="card-text text-muted">
+                            High-performance embedded database engine for .NET applications.
+                            No external dependencies required.
+                        </p>
+                    </div>
+                </div>
+            </div>
+            <div class="col-md-6">
+                <div class="card h-100">
+                    <div class="card-body text-center">
+                        <i class="bi bi-shield-lock display-4 text-success mb-3"></i>
+                        <h5 class="card-title">OpenIddict</h5>
+                        <p class="card-text text-muted">
+                            OpenID Connect server framework implementing OAuth 2.0 and OpenID Connect protocols.
+                        </p>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        @if (User.Identity?.IsAuthenticated == true)
+        {
+            <div class="card bg-success text-white mb-4">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-auto">
+                            <i class="bi bi-check-circle display-6"></i>
+                        </div>
+                        <div class="col">
+                            <h5 class="card-title mb-1">Welcome, @User.Identity.Name!</h5>
+                            <p class="card-text mb-0">You are logged in successfully.</p>
+                        </div>
+                        <div class="col-auto">
+                            <a asp-controller="Users" asp-action="Index" class="btn btn-light">
+                                <i class="bi bi-people me-1"></i>Manage Users
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        }
+        else
+        {
+            <div class="card bg-light mb-4">
+                <div class="card-body">
+                    <div class="row align-items-center">
+                        <div class="col-auto">
+                            <i class="bi bi-person-circle display-6 text-muted"></i>
+                        </div>
+                        <div class="col">
+                            <h5 class="card-title mb-1">Not logged in</h5>
+                            <p class="card-text text-muted mb-0">Sign in to access user management features.</p>
+                        </div>
+                        <div class="col-auto">
+                            <a asp-controller="Account" asp-action="Login" class="btn btn-primary">
+                                <i class="bi bi-box-arrow-in-right me-1"></i>Login
+                            </a>
+                        </div>
+                    </div>
+                </div>
+            </div>
+
+            <div class="card border-info">
+                <div class="card-header bg-info text-white">
+                    <i class="bi bi-info-circle me-2"></i>Default Credentials
+                </div>
+                <div class="card-body">
+                    <p class="mb-2"><strong>Email:</strong> <code>admin@example.com</code></p>
+                    <p class="mb-0"><strong>Password:</strong> <code>Admin123!</code></p>
+                </div>
+            </div>
+        }
+
+        <div class="card mt-4">
+            <div class="card-header">
+                <i class="bi bi-gear me-2"></i>OpenIddict Endpoints
+            </div>
+            <div class="card-body">
+                <table class="table table-sm mb-0">
+                    <tbody>
+                        <tr>
+                            <td><strong>Authorization</strong></td>
+                            <td><code>/connect/authorize</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Token</strong></td>
+                            <td><code>/connect/token</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>UserInfo</strong></td>
+                            <td><code>/connect/userinfo</code></td>
+                        </tr>
+                        <tr>
+                            <td><strong>Logout</strong></td>
+                            <td><code>/connect/logout</code></td>
+                        </tr>
+                    </tbody>
+                </table>
+            </div>
+        </div>
+    </div>
+</div>

@@ -508,6 +508,117 @@ public sealed partial class SchemaCatalog : IDisposable
         }
     }
 
+    /// <summary>
+    /// Adjusts the in-memory row count cache without persisting to store.
+    /// Used for reverting row counts after ROLLBACK TO SAVEPOINT.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="delta">The adjustment (+/-).</param>
+    public void AdjustRowCountCache(string tableName, long delta)
+    {
+        m_lock.EnterWriteLock();
+        try
+        {
+            if (!m_tables.ContainsKey(tableName))
+                return;
+
+            if (!m_tableRowCounts.TryGetValue(tableName, out var count))
+                count = 0;
+
+            m_tableRowCounts[tableName] = Math.Max(0, count + delta);
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Reloads all row counts and row IDs from the store.
+    /// This should be called after a transaction rollback to ensure
+    /// the in-memory cache reflects the actual persisted state.
+    /// </summary>
+    public void ReloadMetadataFromStore()
+    {
+        m_lock.EnterWriteLock();
+        try
+        {
+            foreach (var tableName in m_tables.Keys)
+            {
+                LoadTableRowCount(tableName);
+                LoadTableRowId(tableName);
+            }
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Recalculates and updates the row count for a table by scanning the actual data.
+    /// This is used after ROLLBACK TO SAVEPOINT when the in-memory cache may be out of sync.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="transaction">The active transaction to use for scanning.</param>
+    public void RecalculateRowCount(string tableName, ITransaction transaction)
+    {
+        m_lock.EnterWriteLock();
+        try
+        {
+            if (!m_tables.ContainsKey(tableName))
+                return;
+
+            // Scan the table data through the transaction to count actual rows
+            var prefix = GetTableDataPrefix(tableName);
+            var endPrefix = GetTableDataEndPrefix(tableName);
+            
+            long count = 0;
+            foreach (var _ in transaction.Scan(prefix, endPrefix))
+            {
+                count++;
+            }
+
+            // Update both the in-memory cache and persist to store (through transaction)
+            m_tableRowCounts[tableName] = count;
+            SaveTableRowCount(tableName, count, transaction);
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Recalculates row counts for all tables by scanning the actual data.
+    /// </summary>
+    /// <param name="transaction">The active transaction to use for scanning.</param>
+    public void RecalculateAllRowCounts(ITransaction transaction)
+    {
+        m_lock.EnterWriteLock();
+        try
+        {
+            foreach (var tableName in m_tables.Keys)
+            {
+                var prefix = GetTableDataPrefix(tableName);
+                var endPrefix = GetTableDataEndPrefix(tableName);
+                
+                long count = 0;
+                foreach (var _ in transaction.Scan(prefix, endPrefix))
+                {
+                    count++;
+                }
+
+                m_tableRowCounts[tableName] = count;
+                SaveTableRowCount(tableName, count, transaction);
+            }
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
     private void SaveTableRowCount(string tableName, long count, ITransaction? transaction)
     {
         var tableNameBytes = Encoding.UTF8.GetBytes(tableName);

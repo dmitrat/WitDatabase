@@ -1,7 +1,4 @@
-<MudThemeProvider @ref="_themeProvider" @bind-IsDarkMode="_isDarkMode" />
-<MudPopoverProvider />
-<MudDialogProvider />
-<MudSnackbarProvider />
+@using Microsoft.AspNetCore.Components.Web
 
 <Router AppAssembly="typeof(Program).Assembly">
     <Found Context="routeData">
@@ -34,17 +31,3 @@
         </LayoutView>
     </NotFound>
 </Router>
-
-@code {
-    private MudThemeProvider _themeProvider = null!;
-    private bool _isDarkMode;
-
-    protected override async Task OnAfterRenderAsync(bool firstRender)
-    {
-        if (firstRender)
-        {
-            _isDarkMode = await _themeProvider.GetSystemDarkModeAsync();
-            await InvokeAsync(StateHasChanged);
-        }
-    }
-}

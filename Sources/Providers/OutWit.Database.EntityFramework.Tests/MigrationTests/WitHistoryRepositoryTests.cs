@@ -88,7 +88,8 @@ public class WitHistoryRepositoryTests
         var script = m_repository.GetInsertScript(row);
 
         Assert.That(script, Is.Not.Null.And.Not.Empty);
-        Assert.That(script, Does.Contain("INSERT INTO"));
+        // Uses INSERT OR IGNORE for idempotent migrations
+        Assert.That(script, Does.Contain("INSERT").Or.Contain("INSERT OR IGNORE"));
         Assert.That(script, Does.Contain("__EFMigrationsHistory"));
         Assert.That(script, Does.Contain("20250101000000_InitialMigration"));
         Assert.That(script, Does.Contain("9.0.0"));

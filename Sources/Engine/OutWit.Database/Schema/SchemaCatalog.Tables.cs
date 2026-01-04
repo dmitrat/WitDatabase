@@ -40,6 +40,7 @@ public sealed partial class SchemaCatalog
 
             m_tables[table.Name] = table;
             m_tableRowCounts[table.Name] = 0; // Initialize row count to 0
+            SaveTableRowCount(table.Name, 0, transaction: null); // Persist initial row count
             SaveSchema();
         }
         finally

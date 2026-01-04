@@ -27,6 +27,7 @@
     <Project Path="Samples/OutWit.Database.Samples.BlazorServer/OutWit.Database.Samples.BlazorServer.csproj" />
     <Project Path="Samples/OutWit.Database.Samples.BlazorWasm/OutWit.Database.Samples.BlazorWasm.csproj" />
     <Project Path="Samples/OutWit.Database.Samples.ConsoleApp/OutWit.Database.Samples.ConsoleApp.csproj" />
+    <Project Path="Samples/OutWit.Database.Samples.IdentityServer/OutWit.Database.Samples.IdentityServer.csproj" />
     <Project Path="Samples/OutWit.Database.Samples.WebApi/OutWit.Database.Samples.WebApi.csproj" />
     <Project Path="Samples/OutWit.Database.Samples.WebApiEF/OutWit.Database.Samples.WebApiEF.csproj" />
   </Folder>

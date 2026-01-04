@@ -159,6 +159,8 @@ public sealed class WitDbConnection : DbConnection
             throw new InvalidOperationException("A transaction is already in progress.");
 
         var witIsolation = isolationLevel.ToIsolationLevel();
+        
+        // Use SQL command to start transaction - this properly coordinates with statement execution
         m_engine!.Execute("BEGIN TRANSACTION");
 
         if (witIsolation != WitIsolationLevel.ReadCommitted)

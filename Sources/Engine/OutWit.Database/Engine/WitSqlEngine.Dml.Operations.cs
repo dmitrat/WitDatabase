@@ -81,10 +81,10 @@ public sealed partial class WitSqlEngine
             hasRowId = true;
         }
 
-        // If no row ID found, generate one
+        // If no row ID found, generate one (use transaction if active)
         if (!hasRowId)
         {
-            rowId = m_schema.GetNextRowId(tableName);
+            rowId = m_schema.GetNextRowId(tableName, m_currentTransaction);
         }
 
         var key = SchemaCatalog.CreateRowKey(tableName, rowId);
@@ -97,6 +97,9 @@ public sealed partial class WitSqlEngine
         
         // Update row count
         m_schema.IncrementRowCount(tableName, 1, m_currentTransaction);
+        
+        // Track for savepoint rollback
+        TrackRowCountDelta(tableName, +1);
     }
 
     #endregion
@@ -185,6 +188,9 @@ public sealed partial class WitSqlEngine
         
         // Update row count
         m_schema.DecrementRowCount(tableName, 1, m_currentTransaction);
+        
+        // Track for savepoint rollback
+        TrackRowCountDelta(tableName, -1);
     }
 
     #endregion
@@ -201,6 +207,9 @@ public sealed partial class WitSqlEngine
     {
         var table = m_schema.GetTable(tableName)
             ?? throw new InvalidOperationException($"Table '{tableName}' not found");
+
+        // Get current row count before truncate for delta tracking
+        var currentCount = m_schema.GetRowCount(tableName);
 
         // Get all indexes for this table
         var indexes = m_schema.GetTableIndexes(tableName).ToList();
@@ -233,6 +242,12 @@ public sealed partial class WitSqlEngine
         
         // Reset row count to 0
         m_schema.ResetRowCount(tableName, 0, m_currentTransaction);
+        
+        // Track for savepoint rollback (negative delta = all rows deleted)
+        if (currentCount > 0)
+        {
+            TrackRowCountDelta(tableName, -currentCount);
+        }
     }
 
     #endregion

@@ -111,6 +111,13 @@ public sealed partial class QueryPlanner
     /// Tries to optimize simple COUNT(*) queries without WHERE clause.
     /// Returns true if optimization was applied.
     /// </summary>
+    /// <remarks>
+    /// This optimization is disabled when a transaction is active because
+    /// the cached row count may not reflect uncommitted changes from the transaction.
+    /// The row count cache is updated immediately on INSERT/DELETE, but the actual
+    /// data is only committed when the transaction commits. If the transaction is
+    /// rolled back, the row count cache would be stale.
+    /// </remarks>
     private bool TryOptimizeSimpleCountStar(WitSqlStatementSelect select, out IResultIterator? iterator)
     {
         iterator = null;
@@ -122,6 +129,13 @@ public sealed partial class QueryPlanner
         // 4. No GROUP BY
         // 5. No HAVING
         // 6. No CTEs used
+        // 7. No active transaction (row count cache may be stale during transactions)
+
+        // IMPORTANT: Skip optimization if there's an active transaction.
+        // The row count cache is updated immediately on INSERT/DELETE,
+        // but if the transaction is rolled back, the cache would be wrong.
+        if (m_context.Database is Engine.WitSqlEngine engine && engine.CurrentTransaction != null)
+            return false;
 
         // Check for WHERE clause
         if (select.WhereClause != null)
@@ -197,6 +211,10 @@ public sealed partial class QueryPlanner
     /// Tries to optimize simple MIN/MAX queries when an index exists on the column.
     /// Returns true if optimization was applied.
     /// </summary>
+    /// <remarks>
+    /// This optimization is disabled when a transaction is active because
+    /// the index may not reflect uncommitted changes from the transaction.
+    /// </remarks>
     private bool TryOptimizeSimpleMinMax(WitSqlStatementSelect select, out IResultIterator? iterator)
     {
         iterator = null;
@@ -209,6 +227,12 @@ public sealed partial class QueryPlanner
         // 5. No HAVING
         // 6. No CTEs used
         // 7. Index exists on the column
+        // 8. No active transaction (index may not reflect uncommitted changes)
+
+        // IMPORTANT: Skip optimization if there's an active transaction.
+        // Index updates may not be transactional.
+        if (m_context.Database is Engine.WitSqlEngine engine && engine.CurrentTransaction != null)
+            return false;
 
         // Check for WHERE clause
         if (select.WhereClause != null)
@@ -249,10 +273,8 @@ public sealed partial class QueryPlanner
             return false;
 
         // Check if we can access the physical index via WitSqlEngine
-        if (m_context.Database is not Engine.WitSqlEngine engine)
-            return false;
-
-        var physicalIndex = engine.GetPhysicalIndex(matchingIndex.Name);
+        // Already checked above that it's WitSqlEngine
+        var physicalIndex = ((Engine.WitSqlEngine)m_context.Database).GetPhysicalIndex(matchingIndex.Name);
         if (physicalIndex == null)
             return false;
 

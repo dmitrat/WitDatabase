@@ -1,0 +1,119 @@
+@model List<UserViewModel>
+@{
+    ViewData["Title"] = "Users";
+}
+
+<div class="d-flex justify-content-between align-items-center mb-4">
+    <h1><i class="bi bi-people me-2"></i>Users</h1>
+    <div>
+        <span class="badge bg-secondary fs-6 me-2">@Model.Count users</span>
+        <a asp-action="Create" class="btn btn-primary">
+            <i class="bi bi-person-plus me-1"></i>Add User
+        </a>
+    </div>
+</div>
+
+<div class="card">
+    <div class="card-body p-0">
+        <div class="table-responsive">
+            <table class="table table-hover mb-0">
+                <thead class="table-light">
+                    <tr>
+                        <th>User</th>
+                        <th>Email</th>
+                        <th>Roles</th>
+                        <th>Status</th>
+                        <th>Created</th>
+                        <th>Last Login</th>
+                        <th class="text-end">Actions</th>
+                    </tr>
+                </thead>
+                <tbody>
+                    @foreach (var user in Model)
+                    {
+                        <tr>
+                            <td>
+                                <div class="d-flex align-items-center">
+                                    <div class="bg-primary text-white rounded-circle d-flex align-items-center justify-content-center me-2" 
+                                         style="width: 36px; height: 36px;">
+                                        @(string.IsNullOrEmpty(user.DisplayName) ? "?" : user.DisplayName[0].ToString().ToUpper())
+                                    </div>
+                                    <div>
+                                        <strong>@(string.IsNullOrEmpty(user.DisplayName) ? "N/A" : user.DisplayName)</strong>
+                                    </div>
+                                </div>
+                            </td>
+                            <td>@user.Email</td>
+                            <td>
+                                @foreach (var role in user.Roles)
+                                {
+                                    <span class="badge bg-secondary me-1">@role</span>
+                                }
+                            </td>
+                            <td>
+                                @if (user.IsActive)
+                                {
+                                    <span class="badge bg-success">Active</span>
+                                }
+                                else
+                                {
+                                    <span class="badge bg-danger">Inactive</span>
+                                }
+                            </td>
+                            <td>
+                                <small class="text-muted">@user.CreatedAt.ToString("yyyy-MM-dd HH:mm")</small>
+                            </td>
+                            <td>
+                                @if (user.LastLoginAt.HasValue)
+                                {
+                                    <small class="text-muted">@user.LastLoginAt.Value.ToString("yyyy-MM-dd HH:mm")</small>
+                                }
+                                else
+                                {
+                                    <small class="text-muted">Never</small>
+                                }
+                            </td>
+                            <td class="text-end">
+                                <form asp-action="ToggleStatus" asp-route-id="@user.Id" method="post" class="d-inline">
+                                    @if (user.IsActive)
+                                    {
+                                        <button type="submit" class="btn btn-sm btn-outline-warning" 
+                                                title="Deactivate user"
+                                                onclick="return confirm('Are you sure you want to deactivate this user?');">
+                                            <i class="bi bi-pause-circle"></i>
+                                        </button>
+                                    }
+                                    else
+                                    {
+                                        <button type="submit" class="btn btn-sm btn-outline-success" 
+                                                title="Activate user">
+                                            <i class="bi bi-play-circle"></i>
+                                        </button>
+                                    }
+                                </form>
+                                <form asp-action="Delete" asp-route-id="@user.Id" method="post" class="d-inline">
+                                    <button type="submit" class="btn btn-sm btn-outline-danger" 
+                                            title="Delete user"
+                                            onclick="return confirm('Are you sure you want to delete this user? This action cannot be undone.');">
+                                        <i class="bi bi-trash"></i>
+                                    </button>
+                                </form>
+                            </td>
+                        </tr>
+                    }
+                </tbody>
+            </table>
+        </div>
+    </div>
+</div>
+
+@if (Model.Count == 0)
+{
+    <div class="text-center py-5">
+        <i class="bi bi-people display-1 text-muted"></i>
+        <p class="lead text-muted mt-3">No users found</p>
+        <a asp-action="Create" class="btn btn-primary">
+            <i class="bi bi-person-plus me-1"></i>Add Your First User
+        </a>
+    </div>
+}
