@@ -1,0 +1,204 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        xmlns:views="using:OutWit.Database.Studio.Views"
+        xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
+        x:Class="OutWit.Database.Studio.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Title="{Binding Title}"
+        Width="1200"
+        Height="800">
+
+	<Design.DataContext>
+		<vm:MainWindowViewModel/>
+	</Design.DataContext>
+
+	<Grid RowDefinitions="Auto,*,Auto">
+		<!-- Menu -->
+		<Menu Grid.Row="0">
+			<MenuItem Header="_File">
+				<MenuItem Header="_New Database..."
+                          Command="{Binding NewDatabaseCommand}">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_NEW_DATABASE}" />
+					</MenuItem.Icon>
+				</MenuItem>
+
+				<MenuItem Header="_Open Database..."
+                          Command="{Binding OpenDatabaseCommand}">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_OPEN_DATABASE}" />
+					</MenuItem.Icon>
+				</MenuItem>
+
+				<MenuItem Header="_Close Database"
+                          Command="{Binding CloseDatabaseCommand}">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_CLOSE_DATABASE}" />
+					</MenuItem.Icon>
+				</MenuItem>
+
+				<Separator />
+
+				<MenuItem Header="Recent Files">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_RECENT_FILES}" />
+					</MenuItem.Icon>
+				</MenuItem>
+
+				<Separator />
+
+				<MenuItem Header="E_xit"
+                          Command="{Binding ExitCommand}">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_EXIT}" />
+					</MenuItem.Icon>
+				</MenuItem>
+			</MenuItem>
+
+			<MenuItem Header="_Edit">
+				<MenuItem Header="_Copy" InputGesture="Ctrl+C">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_COPY}" />
+					</MenuItem.Icon>
+				</MenuItem>
+				<MenuItem Header="_Paste" InputGesture="Ctrl+V">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_PASTE}" />
+					</MenuItem.Icon>
+				</MenuItem>
+			</MenuItem>
+
+			<MenuItem Header="_View">
+				<MenuItem Header="Refresh"
+                          Command="{Binding RefreshCommand}"
+                          InputGesture="F5">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_REFRESH}" />
+					</MenuItem.Icon>
+				</MenuItem>
+			</MenuItem>
+
+			<MenuItem Header="_Tools">
+				<MenuItem Header="Export...">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_EXPORT}" />
+					</MenuItem.Icon>
+				</MenuItem>
+				<MenuItem Header="Import...">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_IMPORT}" />
+					</MenuItem.Icon>
+				</MenuItem>
+			</MenuItem>
+
+			<MenuItem Header="_Help">
+				<MenuItem Header="_About">
+					<MenuItem.Icon>
+						<PathIcon Data="{x:Static ui:StudioIcons.MENU_ABOUT}" />
+					</MenuItem.Icon>
+				</MenuItem>
+			</MenuItem>
+		</Menu>
+
+		<!-- Основной контент с разделителем -->
+		<Grid Grid.Row="1" ColumnDefinitions="250,Auto,*">
+			<!-- Обозреватель баз данных -->
+			<Border Grid.Column="0"
+                    BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    BorderThickness="0,0,1,0">
+				<views:DatabaseExplorer DataContext="{x:Static vm:ApplicationViewModel.Instance}"/>
+			</Border>
+
+			<!-- Разделитель -->
+			<GridSplitter Grid.Column="1"
+                         Width="4"
+                         Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                         ResizeDirection="Columns"/>
+
+			<!-- Основная область контента -->
+			<Grid Grid.Column="2">
+				<!-- Welcome message (when not connected) -->
+				<Grid IsVisible="{Binding !IsConnected}">
+					<StackPanel HorizontalAlignment="Center"
+                               VerticalAlignment="Center"
+                               Spacing="20">
+						<!-- DB Icon -->
+						<Border Width="64" Height="64"
+                                Background="{DynamicResource SystemAccentColor}"
+                                CornerRadius="32"
+                                HorizontalAlignment="Center"
+                                Margin="0,0,0,8">
+							<TextBlock Text="DB"
+                                       FontSize="24"
+                                       FontWeight="Bold"
+                                       Foreground="White"
+                                       HorizontalAlignment="Center"
+                                       VerticalAlignment="Center"/>
+						</Border>
+
+						<!-- Title -->
+						<TextBlock Text="Welcome to WitDatabase Studio"
+                                   HorizontalAlignment="Center"
+                                   FontSize="24"
+                                   FontWeight="SemiBold"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseHighBrush}"/>
+
+						<!-- Instructions -->
+						<StackPanel HorizontalAlignment="Center" Spacing="8">
+							<TextBlock Text="Connect to a database to get started"
+                                       HorizontalAlignment="Center"
+                                       FontSize="14"
+                                       Foreground="Gray"/>
+							<TextBlock Text="Use File → Open Database or create a new one"
+                                       HorizontalAlignment="Center"
+                                       FontSize="13"
+                                       Foreground="Gray"
+                                       Opacity="0.8"/>
+						</StackPanel>
+					</StackPanel>
+				</Grid>
+
+				<!-- Table Structure Panel (when connected) -->
+				<views:TableStructure IsVisible="{Binding $parent[views:MainWindow].((vm:MainWindowViewModel)DataContext).IsConnected}" />
+			</Grid>
+		</Grid>
+
+		<!-- Статус-бар -->
+		<Border Grid.Row="2"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="8,4">
+			<Grid ColumnDefinitions="*,Auto,Auto">
+				<TextBlock Grid.Column="0"
+                           Text="{Binding StatusText}"
+                           VerticalAlignment="Center" />
+
+				<TextBlock Grid.Column="1"
+                           VerticalAlignment="Center"
+                           Margin="16,0,0,0"
+                           Text="{Binding IsConnected, StringFormat='Connected: {0}'}"/>
+
+				<StackPanel Grid.Column="2"
+                           Orientation="Horizontal"
+                           Spacing="8"
+                           Margin="16,0,0,0"
+                           IsVisible="{Binding IsConnected}">
+					<TextBlock Text="[ENC]"
+                               IsVisible="{Binding CurrentConnection.IsEncrypted}"
+                               ToolTip.Tip="Database is encrypted"
+                               Foreground="Orange"
+                               FontWeight="Bold"/>
+					<TextBlock Text="{Binding CurrentConnection.FilePath}"
+                               VerticalAlignment="Center"
+                               Foreground="Gray"/>
+				</StackPanel>
+			</Grid>
+		</Border>
+	</Grid>
+
+</Window>

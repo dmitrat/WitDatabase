@@ -6,6 +6,7 @@
     <File Path="Docs/COMPLETION_PLAN.md" />
     <File Path="Docs/PROJECT_STATUS.md" />
     <File Path="Docs/AUDIT-WitDatabase-Core.md" />
+    <File Path="Docs/WITDATABASE_STUDIO_PLAN.md" />
     <File Path="Docs/WitSQL.md" />
     <File Path="README.md" />
   </Folder>
@@ -40,5 +41,9 @@
     <Project Path="Sources/Providers/OutWit.Database.AdoNet/OutWit.Database.AdoNet.csproj" Id="f2f4a444-28b5-412a-a7c3-a3fcef303cf3" />
     <Project Path="Sources/Providers/OutWit.Database.EntityFramework.Tests/OutWit.Database.EntityFramework.Tests.csproj" Id="09badd84-f5a3-4310-b672-3c8a8c1a04d3" />
     <Project Path="Sources/Providers/OutWit.Database.EntityFramework/OutWit.Database.EntityFramework.csproj" Id="a9ae5e40-63e3-4f7a-9b64-03ad4397ab00" />
+  </Folder>
+  <Folder Name="/Sources/Studio/">
+    <Project Path="Tools/OutWit.Database.Studio.Tests/OutWit.Database.Studio.Tests.csproj" />
+    <Project Path="Tools/OutWit.Database.Studio/OutWit.Database.Studio.csproj" />
   </Folder>
 </Solution>
