@@ -1,0 +1,134 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="500"
+        x:Class="OutWit.Database.Studio.Views.CreateViewDialog"
+        x:DataType="vm:CreateViewViewModel"
+        Title="Create View"
+        Width="700" Height="500"
+        MinWidth="600" MinHeight="400"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+        
+        <!-- Header -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16">
+            <TextBlock Text="Create New View"
+                       FontSize="18"
+                       FontWeight="SemiBold"/>
+        </Border>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1" Padding="16">
+            <StackPanel Spacing="16">
+                
+                <!-- View Name -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="View Name:" FontWeight="SemiBold"/>
+                    <TextBox Text="{Binding ViewName}"
+                             Watermark="Enter view name"
+                             Width="400"
+                             HorizontalAlignment="Left"/>
+                </StackPanel>
+
+                <!-- SELECT Statement -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="SELECT Statement:" FontWeight="SemiBold"/>
+                    <TextBlock Text="Enter the SELECT query for the view (without CREATE VIEW...)"
+                               FontSize="12"
+                               Foreground="Gray"
+                               Margin="0,-4,0,0"/>
+                    
+                    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            MinHeight="250">
+                        <TextBox Text="{Binding SelectStatement}"
+                                 TextWrapping="NoWrap"
+                                 AcceptsReturn="True"
+                                 FontFamily="Consolas,Courier New"
+                                 FontSize="13"
+                                 Padding="8"
+                                 BorderThickness="0"
+                                 Background="Transparent"
+                                 Watermark="SELECT * FROM TableName WHERE ..."/>
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Error Message -->
+        <Border Grid.Row="2"
+                Background="#FFF3CD"
+                BorderBrush="#FFC107"
+                BorderThickness="1"
+                Padding="12"
+                Margin="16,0"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="4">
+                <TextBlock Text="[!] Error"
+                           FontWeight="Bold"
+                           Foreground="#856404"/>
+                <TextBlock Text="{Binding ErrorMessage}"
+                           TextWrapping="Wrap"
+                           Foreground="#856404"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Buttons -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="8">
+                
+                <Button Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        Width="100"
+                        HorizontalContentAlignment="Center"/>
+                
+                <Button Content="Create View"
+                        Command="{Binding CreateViewCommand}"
+                        Width="120"
+                        HorizontalContentAlignment="Center"
+                        Classes="accent"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Loading Overlay -->
+        <Border Grid.Row="0" Grid.RowSpan="4"
+                Background="#80000000"
+                IsVisible="{Binding IsCreating}">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="12">
+                <Border Width="48" Height="48"
+                        Background="White"
+                        CornerRadius="24">
+                    <TextBlock Text="..."
+                               FontSize="24"
+                               Foreground="Black"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Text="Creating view..."
+                           Foreground="White"
+                           FontSize="16"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+    </Grid>
+
+</Window>

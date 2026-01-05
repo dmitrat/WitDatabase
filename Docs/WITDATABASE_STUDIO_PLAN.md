@@ -53,7 +53,9 @@ WitDatabase Studio is a cross-platform desktop application for managing WitDatab
 | Triggers list | P1 | Triggers node |
 | Sequences list | P1 | Sequences node |
 | Table structure | P0 | Columns, types, constraints |
-| Refresh | P0 | Update tree |
+| View definition | P0 | Show `VIEW_DEFINITION` for views |
+| Index details | P0 | Show index columns, unique flag, filter condition |
+| Schema refresh | P0 | Update tree + open panels |
 | Search/Filter | P1 | Search by name |
 
 ### 2.3 Query Execution (Query Editor)
@@ -106,7 +108,6 @@ WitDatabase Studio is a cross-platform desktop application for managing WitDatab
 | Export table to CSV | P0 | With options |
 | Export table to JSON | P1 | Array of objects |
 | Export table to SQL | P1 | INSERT statements |
-| Export schema (DDL) | P1 | CREATE statements |
 | Import from CSV | P1 | With mapping |
 | Import from JSON | P2 | Array of objects |
 | Backup database | P1 | Copy .witdb file |
@@ -124,6 +125,18 @@ WitDatabase Studio is a cross-platform desktop application for managing WitDatab
 | ER Diagram | P3 | Visual schema |
 | Query formatter | P2 | SQL beautifier |
 | Encryption indicator | P1 | Show lock icon |
+
+### 2.8 Schema Editing (DDL / Designer)
+
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| Create table (GUI) | P0 | Add table with column grid (name/type/null/default/pk) |
+| Drop table | P0 | Drop table from context menu |
+| Create view | P0 | Create view via DDL wizard |
+| Drop view | P0 | Drop view from context menu |
+| Create index | P0 | Create index via DDL wizard |
+| Drop index | P0 | Drop index from context menu |
+| Export schema (DDL) | P1 | Generate CREATE statements |
 
 ---
 
@@ -388,16 +401,18 @@ Tools/
 | Settings service | JSON settings persistence | 2h |
 | **Total** | | **16h** |
 
-### Phase 2: Database Explorer (Week 2-3)
+### Phase 2: Database Explorer + Schema Designer (Week 2-4)
 
 | Task | Description | Estimate |
 |------|-------------|----------|
 | TreeView component | Hierarchical view | 4h |
 | Schema loading | Tables, views, indexes | 4h |
-| Table structure view | Columns, types, constraints | 4h |
-| Context menu | Right-click actions | 3h |
+| Structure panels | Table/View/Index structure details | 6h |
+| Context menu actions | Create/Drop table/view/index | 6h |
+| Create Table designer (GUI) | Column grid + DDL generation | 8h |
+| DDL wizard (index/view) | Simple editor + validation + execute | 6h |
 | Refresh functionality | Update tree | 1h |
-| **Total** | | **16h** |
+| **Total** | | **35h** |
 
 ### Phase 3: Query Editor (Week 3-4)
 
@@ -432,17 +447,17 @@ Tools/
 | Validation | Type validation | 2h |
 | **Total** | | **16h** |
 
-### Phase 6: Export/Import (Week 6-7)
+### Phase 6: Export/Import
 
-| Task | Description | Estimate |
-|------|-------------|----------|
-| Export dialog | UI for export options | 4h |
-| CSV export | Export to CSV | 3h |
-| JSON export | Export to JSON | 3h |
-| SQL export | Generate INSERT statements | 3h |
-| Schema export | Generate DDL | 2h |
-| CSV import | Basic import | 4h |
-| **Total** | | **19h** |
+| Feature | Priority | Description |
+|---------|----------|-------------|
+| Export table to CSV | P0 | With options |
+| Export table to JSON | P1 | Array of objects |
+| Export table to SQL | P1 | INSERT statements |
+| Import from CSV | P1 | With mapping |
+| Import from JSON | P2 | Array of objects |
+| Backup database | P1 | Copy .witdb file |
+| Restore database | P1 | Open backup |
 
 ### Phase 7: Polish (Week 7-8)
 
@@ -461,13 +476,13 @@ Tools/
 | Phase | Hours |
 |-------|-------|
 | Foundation | 16h |
-| Database Explorer | 16h |
+| Database Explorer | 35h |
 | Query Editor | 20h |
 | Result Grid | 14h |
 | Table Editor | 16h |
 | Export/Import | 19h |
 | Polish | 24h |
-| **Total** | **125h** |
+| **Total** | **124h** |
 
 **Time estimate:** 4-6 weeks (at 25-30h/week)
 
@@ -585,92 +600,3 @@ public interface IDatabaseService
 - ER Diagram generation
 - Schema comparison (diff)
 - DDL generation wizard
-- Table designer (GUI)
-
-### 7.3 Data Features
-
-- Data comparison between tables
-- Find & Replace in data
-- Import wizard (CSV mapping)
-- Scheduled exports
-
-### 7.4 Administration
-
-- Database statistics
-- Index analysis
-- Query performance analyzer
-- Backup/Restore wizard
-
-### 7.5 Integration
-
-- Plugin system
-- Command-line interface
-- Connection sharing
-- Cloud storage integration
-
----
-
-## 8. Alternative Solutions
-
-### 8.1 Why Avalonia?
-
-| Framework | Pros | Cons |
-|-----------|------|------|
-| **Avalonia** | Cross-platform, .NET native, Modern UI | Smaller ecosystem |
-| WPF | Mature, Rich ecosystem | Windows only |
-| MAUI | Microsoft backed | Not great for desktop |
-| Electron | Web tech, Rich ecosystem | Performance, Memory |
-| Qt/.NET | Proven, Native look | Complex setup |
-
-**Conclusion:** Avalonia is the best choice for cross-platform .NET desktop applications.
-
-### 8.2 Why Not Web?
-
-- Desktop application is better for working with local files
-- No server dependency
-- Offline work
-- Better OS integration (file dialogs, drag-drop)
-
----
-
-## 9. Risks and Mitigation
-
-| Risk | Probability | Impact | Mitigation |
-|------|-------------|--------|------------|
-| AvaloniaEdit doesn't support all features | Medium | Medium | Fallback to basic TextBox |
-| Performance on large data | Medium | High | Virtualization, paging |
-| Cross-platform differences | Low | Medium | CI testing on all platforms |
-| Syntax highlighting complexity | Low | Low | Simplified highlighting initially |
-
----
-
-## 10. Conclusion
-
-WitDatabase Studio is a logical addition to the WitDatabase ecosystem that will significantly simplify working with the database for developers and administrators.
-
-### MVP Scope
-
-- Open/create databases
-- Schema navigation
-- Execute SQL queries
-- View and edit data
-- Export to CSV/JSON/SQL
-
-### Timeline
-
-- **MVP:** 4-6 weeks
-- **v1.0 (with polish):** 6-8 weeks
-- **v2.0 (advanced features):** +4-6 weeks
-
-### Next Steps
-
-1. Create Avalonia project
-2. Implement Connection management
-3. Integrate WitDatabase.AdoNet
-4. Build Database Explorer
-5. Add Query Editor
-6. Iteratively add features
-
----
-
-*Document prepared for WitDatabase Studio development planning*

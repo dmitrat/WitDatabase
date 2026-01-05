@@ -1,0 +1,249 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="600"
+        x:Class="OutWit.Database.Studio.Views.CreateIndexDialog"
+        x:DataType="vm:CreateIndexViewModel"
+        Title="Create Index"
+        Width="700" Height="600"
+        MinWidth="600" MinHeight="500"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+        
+        <!-- Header -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16">
+            <TextBlock Text="Create New Index"
+                       FontSize="18"
+                       FontWeight="SemiBold"/>
+        </Border>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1" Padding="16">
+            <StackPanel Spacing="16">
+                
+                <!-- Index Name -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Index Name:" FontWeight="SemiBold"/>
+                    <TextBox Text="{Binding IndexName}"
+                             Watermark="Enter index name (e.g., IX_TableName_ColumnName)"
+                             Width="500"
+                             HorizontalAlignment="Left"/>
+                </StackPanel>
+
+                <!-- Table Name -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Table Name:" FontWeight="SemiBold"/>
+                    <ComboBox ItemsSource="{Binding AvailableTables}"
+                              SelectedItem="{Binding TableName}"
+                              Width="500"
+                              HorizontalAlignment="Left"
+                              IsEditable="True"
+                              PlaceholderText="Select or enter table name">
+                        <ComboBox.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"/>
+                            </DataTemplate>
+                        </ComboBox.ItemTemplate>
+                    </ComboBox>
+                    <Button Content="Load Tables"
+                            Command="{Binding LoadTablesCommand}"
+                            Width="120"
+                            HorizontalAlignment="Left"
+                            Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <!-- Unique Checkbox -->
+                <CheckBox Content="Create UNIQUE index"
+                          IsChecked="{Binding IsUnique}"
+                          Margin="0,8,0,0"/>
+
+                <!-- Columns -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Index Columns:" FontWeight="SemiBold"/>
+                    <TextBlock Text="Select columns to include in the index (order matters)"
+                               FontSize="12"
+                               Foreground="Gray"
+                               Margin="0,-4,0,0"/>
+                    
+                    <Grid ColumnDefinitions="*,Auto,*" Height="200">
+                        
+                        <!-- Available Columns -->
+                        <Border Grid.Column="0"
+                                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top"
+                                           Text="Available Columns"
+                                           Padding="8"
+                                           Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"/>
+                                <ListBox ItemsSource="{Binding AvailableColumns}"
+                                         SelectionMode="Multiple"
+                                         Name="AvailableColumnsList"/>
+                            </DockPanel>
+                        </Border>
+
+                        <!-- Buttons -->
+                        <StackPanel Grid.Column="1"
+                                    VerticalAlignment="Center"
+                                    Spacing="8"
+                                    Margin="8">
+                            <Button Content="&gt;"
+                                    Width="40"
+                                    Click="AddColumn_Click"/>
+                            <Button Content="&lt;"
+                                    Width="40"
+                                    Click="RemoveColumn_Click"/>
+                            <Button Content="?"
+                                    Width="40"
+                                    Margin="0,16,0,0"
+                                    Click="MoveUp_Click"/>
+                            <Button Content="?"
+                                    Width="40"
+                                    Click="MoveDown_Click"/>
+                        </StackPanel>
+
+                        <!-- Selected Columns -->
+                        <Border Grid.Column="2"
+                                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                BorderThickness="1"
+                                CornerRadius="4">
+                            <DockPanel>
+                                <TextBlock DockPanel.Dock="Top"
+                                           Text="Index Columns (in order)"
+                                           Padding="8"
+                                           Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"/>
+                                <ListBox ItemsSource="{Binding SelectedColumns}"
+                                         Name="SelectedColumnsList"/>
+                            </DockPanel>
+                        </Border>
+                    </Grid>
+                    
+                    <Button Content="Load Columns for Selected Table"
+                            Command="{Binding LoadColumnsCommand}"
+                            Width="250"
+                            HorizontalAlignment="Left"
+                            Margin="0,4,0,0"/>
+                </StackPanel>
+
+                <!-- Filter Condition (Partial Index) -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Filter Condition (Optional - for partial indexes):" FontWeight="SemiBold"/>
+                    <TextBlock Text="WHERE clause expression (e.g., Status = 'Active')"
+                               FontSize="12"
+                               Foreground="Gray"
+                               Margin="0,-4,0,0"/>
+                    <TextBox Text="{Binding FilterCondition}"
+                             Watermark="Leave empty for full index"
+                             Width="500"
+                             HorizontalAlignment="Left"/>
+                </StackPanel>
+
+                <!-- Generated DDL -->
+                <StackPanel Spacing="8">
+                    <DockPanel>
+                        <TextBlock Text="Generated DDL:"
+                                   FontWeight="SemiBold"
+                                   DockPanel.Dock="Left"
+                                   VerticalAlignment="Center"/>
+                        
+                        <Button Content="Generate DDL"
+                                Command="{Binding GenerateDdlCommand}"
+                                DockPanel.Dock="Right"
+                                HorizontalAlignment="Right"
+                                Margin="8,0,0,0"/>
+                    </DockPanel>
+
+                    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8"
+                            MinHeight="80"
+                            IsVisible="{Binding GeneratedDdl, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <TextBox Text="{Binding GeneratedDdl}"
+                                 IsReadOnly="True"
+                                 TextWrapping="Wrap"
+                                 FontFamily="Consolas,Courier New"
+                                 Background="Transparent"
+                                 BorderThickness="0"/>
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Error Message -->
+        <Border Grid.Row="2"
+                Background="#FFF3CD"
+                BorderBrush="#FFC107"
+                BorderThickness="1"
+                Padding="12"
+                Margin="16,0"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="4">
+                <TextBlock Text="[!] Error"
+                           FontWeight="Bold"
+                           Foreground="#856404"/>
+                <TextBlock Text="{Binding ErrorMessage}"
+                           TextWrapping="Wrap"
+                           Foreground="#856404"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Buttons -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="8">
+                
+                <Button Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        Width="100"
+                        HorizontalContentAlignment="Center"/>
+                
+                <Button Content="Create Index"
+                        Command="{Binding CreateIndexCommand}"
+                        Width="120"
+                        HorizontalContentAlignment="Center"
+                        Classes="accent"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Loading Overlay -->
+        <Border Grid.Row="0" Grid.RowSpan="4"
+                Background="#80000000"
+                IsVisible="{Binding IsCreating}">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="12">
+                <Border Width="48" Height="48"
+                        Background="White"
+                        CornerRadius="24">
+                    <TextBlock Text="..."
+                               FontSize="24"
+                               Foreground="Black"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Text="Creating index..."
+                           Foreground="White"
+                           FontSize="16"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+    </Grid>
+
+</Window>

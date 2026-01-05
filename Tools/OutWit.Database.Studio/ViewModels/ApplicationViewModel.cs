@@ -84,6 +84,12 @@ public sealed class ApplicationViewModel
     public DatabaseExplorerViewModel DatabaseExplorerVm { get; private set; } = null!;
     public QueryEditorViewModel QueryEditorVm { get; private set; } = null!;
     public TableStructureViewModel TableStructureVm { get; private set; } = null!;
+    
+    /// <summary>
+    /// Gets or sets the main window instance.
+    /// Used for showing dialogs with proper parent window.
+    /// </summary>
+    public Avalonia.Controls.Window? MainWindow { get; set; }
 
     #endregion
 }

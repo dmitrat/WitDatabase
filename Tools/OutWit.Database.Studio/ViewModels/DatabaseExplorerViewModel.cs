@@ -51,6 +51,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         BrowseDataCommand = new DelegateCommand<object>(_ => BrowseData(), _ => CanBrowseData());
         ViewDefinitionCommand = new DelegateCommand<object>(_ => ViewDefinition(), _ => CanViewDefinition());
         DropObjectCommand = new DelegateCommand<object>(async _ => await DropObjectAsync(), _ => CanDropObject());
+        CreateTableCommand = new DelegateCommand<object>(async _ => await CreateTableAsync(), _ => m_databaseService.IsConnected);
+        CreateViewCommand = new DelegateCommand<object>(async _ => await CreateViewAsync(), _ => m_databaseService.IsConnected);
+        CreateIndexCommand = new DelegateCommand<object>(async _ => await CreateIndexAsync(), _ => m_databaseService.IsConnected);
     }
 
     private void InitEvents()
@@ -66,6 +69,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     public DelegateCommand<object> BrowseDataCommand { get; private set; } = null!;
     public DelegateCommand<object> ViewDefinitionCommand { get; private set; } = null!;
     public DelegateCommand<object> DropObjectCommand { get; private set; } = null!;
+    public DelegateCommand<object> CreateTableCommand { get; private set; } = null!;
+    public DelegateCommand<object> CreateViewCommand { get; private set; } = null!;
+    public DelegateCommand<object> CreateIndexCommand { get; private set; } = null!;
 
     private void BrowseData()
     {
@@ -154,6 +160,49 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             || SelectedNode?.NodeType == DatabaseNodeType.Index
             || SelectedNode?.NodeType == DatabaseNodeType.Trigger
             || SelectedNode?.NodeType == DatabaseNodeType.Sequence;
+    }
+
+    private async Task CreateTableAsync()
+    {
+        var createTableVm = new CreateTableViewModel(ApplicationVm, m_databaseService);
+        var dialog = new Views.CreateTableDialog(createTableVm);
+        
+        var result = await dialog.ShowDialog<bool?>(ApplicationVm.MainWindow);
+        
+        if (result == true)
+        {
+            m_logger.LogInformation("Table created successfully");
+        }
+    }
+
+    private async Task CreateViewAsync()
+    {
+        var createViewVm = new CreateViewViewModel(ApplicationVm, m_databaseService);
+        var dialog = new Views.CreateViewDialog(createViewVm);
+        
+        var result = await dialog.ShowDialog<bool?>(ApplicationVm.MainWindow);
+        
+        if (result == true)
+        {
+            m_logger.LogInformation("View created successfully");
+        }
+    }
+
+    private async Task CreateIndexAsync()
+    {
+        var createIndexVm = new CreateIndexViewModel(ApplicationVm, m_databaseService);
+        
+        // Load tables on dialog open
+        createIndexVm.LoadTablesCommand.Execute(null);
+        
+        var dialog = new Views.CreateIndexDialog(createIndexVm);
+        
+        var result = await dialog.ShowDialog<bool?>(ApplicationVm.MainWindow);
+        
+        if (result == true)
+        {
+            m_logger.LogInformation("Index created successfully");
+        }
     }
 
     public async Task RefreshAsync()

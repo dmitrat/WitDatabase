@@ -1,0 +1,238 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+        x:Class="OutWit.Database.Studio.Views.CreateTableDialog"
+        x:DataType="vm:CreateTableViewModel"
+        Title="Create Table"
+        Width="900" Height="700"
+        MinWidth="800" MinHeight="600"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+        
+        <!-- Header -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16">
+            <TextBlock Text="Create New Table"
+                       FontSize="18"
+                       FontWeight="SemiBold"/>
+        </Border>
+
+        <!-- Content -->
+        <ScrollViewer Grid.Row="1" Padding="16">
+            <StackPanel Spacing="16">
+                
+                <!-- Table Name -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="Table Name:" FontWeight="SemiBold"/>
+                    <TextBox Text="{Binding TableName}"
+                             Watermark="Enter table name"
+                             Width="400"
+                             HorizontalAlignment="Left"/>
+                </StackPanel>
+
+                <!-- Columns Grid -->
+                <StackPanel Spacing="8">
+                    <DockPanel>
+                        <TextBlock Text="Columns:" 
+                                   FontWeight="SemiBold"
+                                   DockPanel.Dock="Left"
+                                   VerticalAlignment="Center"/>
+                        
+                        <Button Content="+ Add Column"
+                                Command="{Binding AddColumnCommand}"
+                                DockPanel.Dock="Right"
+                                HorizontalAlignment="Right"
+                                Margin="8,0,0,0"/>
+                    </DockPanel>
+
+                    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4">
+                        <DataGrid ItemsSource="{Binding Columns}"
+                                  AutoGenerateColumns="False"
+                                  CanUserReorderColumns="False"
+                                  CanUserResizeColumns="True"
+                                  GridLinesVisibility="Horizontal"
+                                  HeadersVisibility="Column"
+                                  IsReadOnly="False"
+                                  MinHeight="200"
+                                  MaxHeight="400">
+                            
+                            <DataGrid.Columns>
+                                
+                                <!-- Column Name -->
+                                <DataGridTextColumn Header="Name"
+                                                    Binding="{Binding Name}"
+                                                    Width="150"
+                                                    IsReadOnly="False"/>
+
+                                <!-- Data Type -->
+                                <DataGridTemplateColumn Header="Data Type" Width="150">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <ComboBox ItemsSource="{Binding $parent[Window].((vm:CreateTableViewModel)DataContext).AvailableDataTypes}"
+                                                      SelectedItem="{Binding DataType}"
+                                                      HorizontalAlignment="Stretch"
+                                                      IsEditable="True"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <!-- Nullable -->
+                                <DataGridCheckBoxColumn Header="Nullable"
+                                                        Binding="{Binding IsNullable}"
+                                                        Width="80"/>
+
+                                <!-- Primary Key -->
+                                <DataGridCheckBoxColumn Header="PK"
+                                                        Binding="{Binding IsPrimaryKey}"
+                                                        Width="60"/>
+
+                                <!-- Auto Increment -->
+                                <DataGridCheckBoxColumn Header="Auto Inc"
+                                                        Binding="{Binding IsAutoIncrement}"
+                                                        Width="80"/>
+
+                                <!-- Unique -->
+                                <DataGridCheckBoxColumn Header="Unique"
+                                                        Binding="{Binding IsUnique}"
+                                                        Width="70"/>
+
+                                <!-- Default Value -->
+                                <DataGridTextColumn Header="Default Value"
+                                                    Binding="{Binding DefaultValue}"
+                                                    Width="120"
+                                                    IsReadOnly="False"/>
+
+                                <!-- Actions -->
+                                <DataGridTemplateColumn Header="Actions" Width="80">
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <Button Content="Remove"
+                                                    Command="{Binding $parent[Window].((vm:CreateTableViewModel)DataContext).RemoveColumnCommand}"
+                                                    CommandParameter="{Binding}"
+                                                    HorizontalAlignment="Center"
+                                                    Padding="8,4"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                                
+                            </DataGrid.Columns>
+                        </DataGrid>
+                    </Border>
+                </StackPanel>
+
+                <!-- Generated DDL -->
+                <StackPanel Spacing="8">
+                    <DockPanel>
+                        <TextBlock Text="Generated DDL:"
+                                   FontWeight="SemiBold"
+                                   DockPanel.Dock="Left"
+                                   VerticalAlignment="Center"/>
+                        
+                        <Button Content="Generate DDL"
+                                Command="{Binding GenerateDdlCommand}"
+                                IsEnabled="{Binding CanGenerateDdlProperty}"
+                                DockPanel.Dock="Right"
+                                HorizontalAlignment="Right"
+                                Margin="8,0,0,0"/>
+                    </DockPanel>
+
+                    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8"
+                            MinHeight="150"
+                            MaxHeight="200"
+                            IsVisible="{Binding GeneratedDdl, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <ScrollViewer HorizontalScrollBarVisibility="Auto"
+                                      VerticalScrollBarVisibility="Auto">
+                            <TextBox Text="{Binding GeneratedDdl}"
+                                     IsReadOnly="True"
+                                     TextWrapping="NoWrap"
+                                     FontFamily="Consolas,Courier New"
+                                     Background="Transparent"
+                                     BorderThickness="0"/>
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Error Message -->
+        <Border Grid.Row="2"
+                Background="#FFF3CD"
+                BorderBrush="#FFC107"
+                BorderThickness="1"
+                Padding="12"
+                Margin="16,0"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <StackPanel Spacing="4">
+                <TextBlock Text="[!] Error"
+                           FontWeight="Bold"
+                           Foreground="#856404"/>
+                <TextBlock Text="{Binding ErrorMessage}"
+                           TextWrapping="Wrap"
+                           Foreground="#856404"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Buttons -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16">
+            <StackPanel Orientation="Horizontal"
+                        HorizontalAlignment="Right"
+                        Spacing="8">
+                
+                <Button Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        Width="100"
+                        HorizontalContentAlignment="Center"/>
+                
+                <Button Content="Create Table"
+                        Command="{Binding CreateTableCommand}"
+                        IsEnabled="{Binding CanCreateTableProperty}"
+                        Width="120"
+                        HorizontalContentAlignment="Center"
+                        Classes="accent"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Loading Overlay -->
+        <Border Grid.Row="0" Grid.RowSpan="4"
+                Background="#80000000"
+                IsVisible="{Binding IsCreating}">
+            <StackPanel HorizontalAlignment="Center"
+                        VerticalAlignment="Center"
+                        Spacing="12">
+                <Border Width="48" Height="48"
+                        Background="White"
+                        CornerRadius="24">
+                    <TextBlock Text="..."
+                               FontSize="24"
+                               Foreground="Black"
+                               HorizontalAlignment="Center"
+                               VerticalAlignment="Center"/>
+                </Border>
+                <TextBlock Text="Creating table..."
+                           Foreground="White"
+                           FontSize="16"
+                           HorizontalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+    </Grid>
+
+</Window>
