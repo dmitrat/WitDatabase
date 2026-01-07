@@ -14,6 +14,20 @@ public sealed class ConnectionInfo : ModelBase
 
     #endregion
 
+    #region Functions
+
+    public void Reset()
+    {
+        FilePath = string.Empty;
+        IsEncrypted = false;
+        Password = null;
+        IsReadOnly = false;
+        StorageEngine = DEFAULT_STORAGE_ENGINE;
+        DisplayName = null;
+    }
+
+    #endregion
+
     #region Model Base
 
     public override bool Is(ModelBase modelBase, double tolerance = 1E-07)

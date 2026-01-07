@@ -1,5 +1,6 @@
 using System.ComponentModel;
 using System.Windows.Input;
+using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using Microsoft.Extensions.Logging;
 using OutWit.Common.Aspects;
@@ -46,14 +47,21 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         // Initialize page size options
         PageSizeOptions = [512, 1024, 2048, 4096, 8192, 16384, 32768];
 
+        StorageType = 0; // File-based by default
+
+        CacheSize = 1000;
+        EnableTransactions = true;
+        EnableMvcc = true;
+        EnableFileLocking = true;
+
         UseAutoDetectedSettings = true;
     }
 
     private void InitCommands()
     {
-        BrowseFileCommand = new DelegateCommand<object>(async _ => await BrowseFileAsync());
-        ConnectCommand = new DelegateCommand<object>(async _ => await ConnectAsync());
-        CancelCommand = new DelegateCommand<object>(_ => Cancel());
+        BrowseFileCommand = new RelayCommand(async void (_) => await BrowseFileAsync());
+        ConnectCommand = new RelayCommand(async void (_) => await ConnectAsync());
+        CancelCommand = new RelayCommand(_ => Cancel());
     }
 
     private void InitEvents()
@@ -63,7 +71,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     #endregion
 
-    #region Commands
+    #region Command Functions
 
     private async Task BrowseFileAsync()
     {
@@ -87,8 +95,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         {
             Title = "Open Database",
             AllowMultiple = false,
-            FileTypeFilter = new[]
-            {
+            FileTypeFilter =
+            [
                 new FilePickerFileType("WitDatabase Files")
                 {
                     Patterns = ["*.witdb", "*.db"]
@@ -97,7 +105,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                 {
                     Patterns = ["*.*"]
                 }
-            }
+            ]
         };
 
         IReadOnlyList<IStorageFile> files = await storageProvider.OpenFilePickerAsync(openOptions);
@@ -195,7 +203,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                 // Storage
                 if (IsFileBased)
                 {
-                    builder.WithFilePath(ConnectionInfo.FilePath!);
+                    builder.WithFilePath(ConnectionInfo.FilePath);
                 }
                 else
                 {
@@ -312,7 +320,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
             CanConnect = !IsConnecting && (!ConnectionInfo.IsEncrypted || !string.IsNullOrWhiteSpace(ConnectionInfo.Password));
 
         // For file-based database, file path is required
-        CanConnect = !string.IsNullOrWhiteSpace(ConnectionInfo?.FilePath) 
+        CanConnect = !string.IsNullOrWhiteSpace(ConnectionInfo.FilePath) 
             && !IsConnecting
             && (!ConnectionInfo.IsEncrypted || !string.IsNullOrWhiteSpace(ConnectionInfo.Password));
     }
@@ -325,15 +333,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private void CloseDialog()
     {
-        var dialog = System.Linq.Enumerable.FirstOrDefault(
-            Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop 
-                ? desktop.Windows.Where(w => w is Views.CreateDatabaseDialog || w is Views.OpenDatabaseDialog) 
-                : System.Array.Empty<Avalonia.Controls.Window>());
-
-        dialog?.Close();
+        Dialog?.Close();
     }
-
-
 
     #region Event Handlers
 
@@ -347,13 +348,6 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         else if (e.IsProperty((ConnectionViewModel vm) => vm.ConnectionInfo))
         {
             UpdateStatus();
-
-            // Subscribe to ConnectionInfo property changes
-            if (ConnectionInfo != null)
-            {
-                ConnectionInfo.PropertyChanged -= OnConnectionInfoPropertyChanged;
-                ConnectionInfo.PropertyChanged += OnConnectionInfoPropertyChanged;
-            }
         }
         else if (e.IsProperty((ConnectionViewModel vm) => vm.IsConnecting))
         {
@@ -376,8 +370,6 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     #endregion
 
-  
-
     #region Public Methods
 
     public async Task<bool> ShowCreateDialogAsync()
@@ -387,33 +379,16 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         SelectedConnection = null;
 
         // Reset to defaults for Create dialog
-        ConnectionInfo = new ConnectionInfo();
-        ConnectionInfo.PropertyChanged += OnConnectionInfoPropertyChanged;
-        StorageType = 0; // File-based by default
-        PageSizeOptions = [512, 1024, 2048, 4096, 8192, 16384, 32768];
-        SelectedPageSize = 4096;
-        CacheSize = 1000;
-        EnableTransactions = true;
-        EnableMvcc = true;
-        EnableFileLocking = true;
-        SelectedStorageEngine = "btree";
+        InitDefault();
 
-        UseAutoDetectedSettings = true;
-
-        var dialog = new Views.CreateDatabaseDialog
+        Dialog = new Views.CreateDatabaseDialog
         {
             DataContext = this
         };
+        
+        await Dialog.ShowDialog(ApplicationVm.MainWindow!);
 
-        var mainWindow = System.Linq.Enumerable.FirstOrDefault(
-            Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop 
-                ? desktop.Windows 
-                : System.Array.Empty<Avalonia.Controls.Window>());
-
-        if (mainWindow != null)
-        {
-            await dialog.ShowDialog(mainWindow);
-        }
+        Dialog = null;
 
         return DialogResult;
     }
@@ -424,40 +399,18 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         DialogResult = false;
         SelectedConnection = null;
 
-        // Reset ConnectionInfo for Open dialog
-        ConnectionInfo ??= new ConnectionInfo();
-        ConnectionInfo.PropertyChanged -= OnConnectionInfoPropertyChanged;
-        ConnectionInfo.PropertyChanged += OnConnectionInfoPropertyChanged;
+        InitDefault();
 
-        UseAutoDetectedSettings = true;
-
-        var dialog = new Views.OpenDatabaseDialog
+        Dialog = new Views.OpenDatabaseDialog
         {
             DataContext = this
         };
 
-        var mainWindow = System.Linq.Enumerable.FirstOrDefault(
-            Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop 
-                ? desktop.Windows 
-                : System.Array.Empty<Avalonia.Controls.Window>());
+        await Dialog.ShowDialog(ApplicationVm.MainWindow!);
 
-        if (mainWindow != null)
-        {
-            await dialog.ShowDialog(mainWindow);
-        }
+        Dialog = null;
 
         return DialogResult;
-    }
-
-    /// <summary>
-    /// Legacy method for backward compatibility - redirects to ShowOpenDialogAsync
-    /// </summary>
-    public async Task<bool> ShowDialogAsync()
-    {
-        if (IsNewDatabase)
-            return await ShowCreateDialogAsync();
-        else
-            return await ShowOpenDialogAsync();
     }
 
     #endregion
@@ -517,6 +470,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public bool CanConnect { get; set; }
+
+    private Window? Dialog { get; set; }
 
     #endregion
 
