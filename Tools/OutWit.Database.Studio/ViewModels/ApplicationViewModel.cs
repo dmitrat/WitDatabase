@@ -49,16 +49,11 @@ public sealed class ApplicationViewModel
     private void InitViewModels()
     {
         MainWindowVm = new MainWindowViewModel(this);
-
         ConnectionVm = new ConnectionViewModel(this);
-
         DatabaseExplorerVm = new DatabaseExplorerViewModel(this);
-
         QueryEditorVm = new QueryEditorViewModel(this);
-
         QueryTabsVm = new QueryTabsViewModel(this,
             Database);
-
         TableStructureVm = new TableStructureViewModel(this,
             Database);
     }

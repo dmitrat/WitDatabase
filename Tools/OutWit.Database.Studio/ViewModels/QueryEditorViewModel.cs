@@ -1,13 +1,12 @@
-using OutWit.Common.MVVM.ViewModels;
-using OutWit.Common.MVVM.Commands;
+using System.Data;
+using System.Windows.Input;
+using Microsoft.Extensions.Logging;
 using OutWit.Common.Aspects;
+using OutWit.Common.MVVM.Commands;
+using OutWit.Common.MVVM.ViewModels;
+using OutWit.Common.Utils;
 using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
-using Microsoft.Extensions.Logging;
-using System.Data;
-using System.Dynamic;
-using System.Windows.Input;
-using OutWit.Common.Utils;
 
 namespace OutWit.Database.Studio.ViewModels;
 
@@ -16,11 +15,6 @@ namespace OutWit.Database.Studio.ViewModels;
 /// </summary>
 public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
 {
-    #region Fields
-    private string m_selectedText = string.Empty;
-
-    #endregion
-
     #region Constructors
 
     public QueryEditorViewModel(ApplicationViewModel applicationVm)
@@ -65,8 +59,7 @@ public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task ExecuteSelectionAsync()
     {
-        var textToExecute = string.IsNullOrWhiteSpace(m_selectedText) ? SqlText : m_selectedText;
-        await ExecuteQueryAsync(textToExecute);
+        await ExecuteQueryAsync(SqlText);
     }
 
     private async Task ExecuteQueryAsync(string sql)
@@ -145,19 +138,6 @@ public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
                           && Database.IsConnected;
 
         CanExecuteSelection = !IsExecuting && Database.IsConnected;
-    }
-
-    #endregion
-
-    #region Public Methods
-
-    /// <summary>
-    /// Sets the selected text from the editor.
-    /// </summary>
-    public void SetSelectedText(string selectedText)
-    {
-        m_selectedText = selectedText;
-        //ExecuteSelectionCommand.RaiseCanExecuteChanged();
     }
 
     #endregion
