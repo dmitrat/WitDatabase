@@ -54,8 +54,7 @@ public sealed class ApplicationViewModel
 
         DatabaseExplorerVm = new DatabaseExplorerViewModel(this);
 
-        QueryEditorVm = new QueryEditorViewModel(this,
-            Database);
+        QueryEditorVm = new QueryEditorViewModel(this);
 
         QueryTabsVm = new QueryTabsViewModel(this,
             Database);

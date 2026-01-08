@@ -42,11 +42,11 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
-        NewDatabaseCommand = new RelayCommand(_ => NewDatabaseAsync());
-        OpenDatabaseCommand = new RelayCommand(_ => OpenDatabaseAsync());
-        CloseDatabaseCommand = new RelayCommand(_ => CloseDatabaseAsync(), _ => CanCloseDatabase());
-        RefreshCommand = new RelayCommand(_ => RefreshAsync(), _ => IsConnected);
-        ExitCommand = new RelayCommand(_ => Exit());
+        NewDatabaseCommand = new RelayCommand(NewDatabaseAsync);
+        OpenDatabaseCommand = new RelayCommand(OpenDatabaseAsync);
+        CloseDatabaseCommand = new RelayCommand(CloseDatabaseAsync, CanCloseDatabase);
+        RefreshCommand = new RelayCommand(RefreshAsync, () => IsConnected);
+        ExitCommand = new RelayCommand(Exit);
     }
 
     #endregion

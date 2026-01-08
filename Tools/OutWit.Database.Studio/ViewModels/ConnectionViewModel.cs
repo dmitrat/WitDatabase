@@ -59,9 +59,9 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
-        BrowseFileCommand = new RelayCommand(async void (_) => await BrowseFileAsync());
-        ConnectCommand = new RelayCommand(async void (_) => await ConnectAsync());
-        CancelCommand = new RelayCommand(_ => Cancel());
+        BrowseFileCommand = new RelayCommandAsync(BrowseFileAsync);
+        ConnectCommand = new RelayCommandAsync(ConnectAsync);
+        CancelCommand = new RelayCommand(Cancel);
     }
 
     private void InitEvents()

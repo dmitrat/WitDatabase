@@ -46,11 +46,11 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
-        LoadTablesCommand = new RelayCommand(async void (_) => await LoadTablesAsync());
-        LoadColumnsCommand = new RelayCommand(async void (_) => await LoadColumnsAsync());
-        GenerateDdlCommand = new RelayCommand(_ => GenerateDdl());
-        CreateIndexCommand = new RelayCommand(async void (_) => await CreateIndexAsync());
-        CancelCommand = new RelayCommand(_ => Cancel());
+        LoadTablesCommand = new RelayCommandAsync(LoadTablesAsync);
+        LoadColumnsCommand = new RelayCommandAsync(LoadColumnsAsync);
+        GenerateDdlCommand = new RelayCommand(GenerateDdl);
+        CreateIndexCommand = new RelayCommandAsync(CreateIndexAsync);
+        CancelCommand = new RelayCommand(Cancel);
     }
 
     private void InitEvents()

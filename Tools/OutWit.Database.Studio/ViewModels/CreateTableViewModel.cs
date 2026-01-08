@@ -64,11 +64,11 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
-        AddColumnCommand = new RelayCommand(_ => AddColumn());
-        RemoveColumnCommand = new RelayCommand(_ => RemoveColumn());
-        GenerateDdlCommand = new RelayCommand(_ => GenerateDdl());
-        CreateTableCommand = new RelayCommand(async _ => await CreateTableAsync());
-        CancelCommand = new RelayCommand(_ => Cancel());
+        AddColumnCommand = new RelayCommand(AddColumn);
+        RemoveColumnCommand = new RelayCommand(RemoveColumn);
+        GenerateDdlCommand = new RelayCommand(GenerateDdl);
+        CreateTableCommand = new RelayCommandAsync(CreateTableAsync);
+        CancelCommand = new RelayCommand(Cancel);
     }
 
     private void InitEvents()

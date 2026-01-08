@@ -35,13 +35,13 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
-        RefreshCommand = new RelayCommand(async void (_) => await RefreshAsync());
-        BrowseDataCommand = new RelayCommand(_ => BrowseData(), _ => CanBrowseData());
-        ViewDefinitionCommand = new RelayCommand(_ => ViewDefinition(), _ => CanViewDefinition());
-        DropObjectCommand = new RelayCommand(async void (_) => await DropObjectAsync(), _ => CanDropObject());
-        CreateTableCommand = new RelayCommand(async void (_) => await CreateTableAsync(), _ => Database.IsConnected);
-        CreateViewCommand = new RelayCommand(async void (_) => await CreateViewAsync(), _ => Database.IsConnected);
-        CreateIndexCommand = new RelayCommand(async void (_) => await CreateIndexAsync(), _ => Database.IsConnected);
+        RefreshCommand = new RelayCommandAsync(RefreshAsync);
+        BrowseDataCommand = new RelayCommand(BrowseData, CanBrowseData);
+        ViewDefinitionCommand = new RelayCommand(ViewDefinition, CanViewDefinition);
+        DropObjectCommand = new RelayCommandAsync(DropObjectAsync, CanDropObject);
+        CreateTableCommand = new RelayCommandAsync(CreateTableAsync, () => Database.IsConnected);
+        CreateViewCommand = new RelayCommandAsync(CreateViewAsync, () => Database.IsConnected);
+        CreateIndexCommand = new RelayCommandAsync(CreateIndexAsync, () => Database.IsConnected);
     }
 
     private void InitEvents()

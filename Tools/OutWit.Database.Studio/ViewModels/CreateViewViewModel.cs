@@ -42,8 +42,8 @@ public class CreateViewViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
-        CreateViewCommand = new RelayCommand(async void (_) => await CreateViewAsync());
-        CancelCommand = new RelayCommand(_ => Cancel());
+        CreateViewCommand = new RelayCommandAsync(CreateViewAsync);
+        CancelCommand = new RelayCommand(Cancel);
     }
 
     private void InitEvents()

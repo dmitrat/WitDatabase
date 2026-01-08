@@ -5,6 +5,9 @@ using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
 using Microsoft.Extensions.Logging;
 using System.Data;
+using System.Dynamic;
+using System.Windows.Input;
+using OutWit.Common.Utils;
 
 namespace OutWit.Database.Studio.ViewModels;
 
@@ -14,25 +17,18 @@ namespace OutWit.Database.Studio.ViewModels;
 public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
 {
     #region Fields
-
-    private readonly IDatabaseService m_databaseService;
-    private readonly ILogger<QueryEditorViewModel> m_logger;
     private string m_selectedText = string.Empty;
 
     #endregion
 
     #region Constructors
 
-    public QueryEditorViewModel(
-        ApplicationViewModel applicationVm,
-        IDatabaseService databaseService)
+    public QueryEditorViewModel(ApplicationViewModel applicationVm)
         : base(applicationVm)
     {
-        m_databaseService = databaseService;
-        m_logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<QueryEditorViewModel>.Instance;
-
         InitDefault();
         InitCommands();
+        InitEvents();
     }
 
     #endregion
@@ -47,19 +43,21 @@ public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
-        ExecuteCommand = new DelegateCommand<object>(async _ => await ExecuteAsync(), _ => CanExecute());
-        ExecuteSelectionCommand = new DelegateCommand<object>(async _ => await ExecuteSelectionAsync(), _ => CanExecuteSelection());
-        ClearCommand = new DelegateCommand<object>(_ => Clear());
+        ExecuteCommand = new RelayCommandAsync(ExecuteAsync);
+        ExecuteSelectionCommand = new RelayCommandAsync(ExecuteSelectionAsync);
+        ClearCommand = new RelayCommand(Clear);
     }
+
+    private void InitEvents()
+    {
+        this.PropertyChanged += OnPropertyChanged;
+    }
+
 
     #endregion
 
     #region Commands
-
-    public DelegateCommand<object> ExecuteCommand { get; private set; } = null!;
-    public DelegateCommand<object> ExecuteSelectionCommand { get; private set; } = null!;
-    public DelegateCommand<object> ClearCommand { get; private set; } = null!;
-
+    
     private async Task ExecuteAsync()
     {
         await ExecuteQueryAsync(SqlText);
@@ -83,7 +81,7 @@ public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
 
         try
         {
-            var result = await m_databaseService.ExecuteQueryAsync(sql);
+            var result = await Database.ExecuteQueryAsync(sql);
             
             Result = result;
             
@@ -109,7 +107,7 @@ public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
                 ApplicationVm.MainWindowVm.StatusText = "Query execution failed";
             }
 
-            m_logger.LogInformation("Query executed: {Time}ms, {Rows} rows", 
+            Logger.LogInformation("Query executed: {Time}ms, {Rows} rows", 
                 result.ExecutionTimeMs, result.RowsAffected);
         }
         catch (Exception ex)
@@ -117,24 +115,12 @@ public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
             ErrorMessage = $"Execution error: {ex.Message}";
             StatusText = "Query execution error";
             ApplicationVm.MainWindowVm.StatusText = "Query execution error";
-            m_logger.LogError(ex, "Query execution failed");
+            Logger.LogError(ex, "Query execution failed");
         }
         finally
         {
             IsExecuting = false;
         }
-    }
-
-    private bool CanExecute()
-    {
-        return !string.IsNullOrWhiteSpace(SqlText) 
-            && !IsExecuting 
-            && m_databaseService.IsConnected;
-    }
-
-    private bool CanExecuteSelection()
-    {
-        return !IsExecuting && m_databaseService.IsConnected;
     }
 
     private void Clear()
@@ -148,6 +134,19 @@ public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
         ExecutionTimeMs = 0;
     }
 
+    private void UpdateStatus()
+    {
+        HasResults = ResultDataView != null && ResultDataView.Count > 0;
+        IsSuccess = Result != null && Result.IsSuccess;
+        HasMessages = IsSuccess || ErrorMessage != null;
+
+        CanExecute = !string.IsNullOrWhiteSpace(SqlText)
+                          && !IsExecuting
+                          && Database.IsConnected;
+
+        CanExecuteSelection = !IsExecuting && Database.IsConnected;
+    }
+
     #endregion
 
     #region Public Methods
@@ -158,7 +157,29 @@ public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
     public void SetSelectedText(string selectedText)
     {
         m_selectedText = selectedText;
-        ExecuteSelectionCommand.RaiseCanExecuteChanged();
+        //ExecuteSelectionCommand.RaiseCanExecuteChanged();
+    }
+
+    #endregion
+
+    #region Event Handlers
+
+    private void OnPropertyChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if(e.IsProperty((QueryEditorViewModel vm)=>vm.ResultDataView))
+            UpdateStatus();
+
+        if (e.IsProperty((QueryEditorViewModel vm) => vm.Result))
+            UpdateStatus();
+
+        if (e.IsProperty((QueryEditorViewModel vm) => vm.ErrorMessage))
+            UpdateStatus();
+
+        if (e.IsProperty((QueryEditorViewModel vm) => vm.IsExecuting))
+            UpdateStatus();
+
+        if (e.IsProperty((QueryEditorViewModel vm) => vm.SqlText))
+            UpdateStatus();
     }
 
     #endregion
@@ -189,9 +210,40 @@ public class QueryEditorViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public double ExecutionTimeMs { get; set; }
 
-    public bool HasResults => ResultDataView != null && ResultDataView.Count > 0;
-    public bool IsSuccess => Result != null && Result.IsSuccess;
-    public bool HasMessages => IsSuccess || ErrorMessage != null;
+    [Notify]
+    public bool HasResults { get; private set; }
+
+    [Notify]
+    public bool IsSuccess { get; private set; }
+
+    [Notify]
+    public bool HasMessages { get; private set; }
+
+    [Notify]
+    public bool CanExecute { get; private set; }
+
+    [Notify]
+    public bool CanExecuteSelection { get; private set; }
+
+    #endregion
+
+    #region Commands
+
+    public ICommand ExecuteCommand { get; private set; } = null!;
+
+    public ICommand ExecuteSelectionCommand { get; private set; } = null!;
+
+    public ICommand ClearCommand { get; private set; } = null!;
+
+    #endregion
+
+    #region Services
+
+    public IDatabaseService Database => ApplicationVm.Database;
+
+    public ISettingsService Settings => ApplicationVm.Settings;
+
+    public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 
     #endregion
 }

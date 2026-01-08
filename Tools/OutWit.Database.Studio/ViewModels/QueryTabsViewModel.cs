@@ -5,6 +5,7 @@ using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
 using Microsoft.Extensions.Logging;
 using System.Collections.ObjectModel;
+using System.Windows.Input;
 
 namespace OutWit.Database.Studio.ViewModels;
 
@@ -49,28 +50,28 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
-        NewTabCommand = new DelegateCommand<object>(_ => AddNewTab());
-        CloseTabCommand = new DelegateCommand<QueryTab>(CloseTab, CanCloseTab);
-        CloseAllTabsCommand = new DelegateCommand<object>(_ => CloseAllTabs(), _ => CanCloseAllTabs());
-        CloseOtherTabsCommand = new DelegateCommand<QueryTab>(CloseOtherTabs, CanCloseOtherTabs);
-        SaveTabCommand = new DelegateCommand<QueryTab>(async tab => await SaveTabAsync(tab), CanSaveTab);
-        SaveTabAsCommand = new DelegateCommand<QueryTab>(async tab => await SaveTabAsAsync(tab), CanSaveTab);
-        ExecuteQueryCommand = new DelegateCommand<QueryTab>(async tab => await ExecuteQueryAsync(tab), CanExecuteQuery);
-        ClearResultsCommand = new DelegateCommand<QueryTab>(ClearResults, tab => tab != null);
+        NewTabCommand = new RelayCommand(_ => AddNewTab());
+        CloseTabCommand = new RelayCommand<QueryTab>(CloseTab, CanCloseTab);
+        CloseAllTabsCommand = new RelayCommand<object>(_ => CloseAllTabs(), _ => CanCloseAllTabs());
+        CloseOtherTabsCommand = new RelayCommand<QueryTab>(CloseOtherTabs, CanCloseOtherTabs);
+        SaveTabCommand = new RelayCommand<QueryTab>(async tab => await SaveTabAsync(tab), CanSaveTab);
+        SaveTabAsCommand = new RelayCommand<QueryTab>(async tab => await SaveTabAsAsync(tab), CanSaveTab);
+        ExecuteQueryCommand = new RelayCommand<QueryTab>(async tab => await ExecuteQueryAsync(tab), CanExecuteQuery);
+        ClearResultsCommand = new RelayCommand<QueryTab>(ClearResults, tab => tab != null);
     }
 
     #endregion
 
     #region Commands
 
-    public DelegateCommand<object> NewTabCommand { get; private set; } = null!;
-    public DelegateCommand<QueryTab> CloseTabCommand { get; private set; } = null!;
-    public DelegateCommand<object> CloseAllTabsCommand { get; private set; } = null!;
-    public DelegateCommand<QueryTab> CloseOtherTabsCommand { get; private set; } = null!;
-    public DelegateCommand<QueryTab> SaveTabCommand { get; private set; } = null!;
-    public DelegateCommand<QueryTab> SaveTabAsCommand { get; private set; } = null!;
-    public DelegateCommand<QueryTab> ExecuteQueryCommand { get; private set; } = null!;
-    public DelegateCommand<QueryTab> ClearResultsCommand { get; private set; } = null!;
+    public ICommand NewTabCommand { get; private set; } = null!;
+    public ICommand CloseTabCommand { get; private set; } = null!;
+    public ICommand CloseAllTabsCommand { get; private set; } = null!;
+    public ICommand CloseOtherTabsCommand { get; private set; } = null!;
+    public ICommand SaveTabCommand { get; private set; } = null!;
+    public ICommand SaveTabAsCommand { get; private set; } = null!;
+    public ICommand ExecuteQueryCommand { get; private set; } = null!;
+    public ICommand ClearResultsCommand { get; private set; } = null!;
 
     private void AddNewTab()
     {

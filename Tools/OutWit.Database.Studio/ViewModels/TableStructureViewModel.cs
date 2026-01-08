@@ -1,3 +1,4 @@
+using System.Windows.Input;
 using OutWit.Common.MVVM.ViewModels;
 using OutWit.Common.MVVM.Commands;
 using OutWit.Common.Aspects;
@@ -44,14 +45,14 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
-        RefreshCommand = new DelegateCommand<object>(async _ => await RefreshAsync(), _ => CanRefresh());
+        RefreshCommand = new RelayCommandAsync(async _ => await RefreshAsync(), _ => CanRefresh());
     }
 
     #endregion
 
     #region Commands
 
-    public DelegateCommand<object> RefreshCommand { get; private set; } = null!;
+    public ICommand RefreshCommand { get; private set; } = null!;
 
     public async Task RefreshAsync()
     {
@@ -297,7 +298,7 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
         IndexTableName = null;
         IndexIsUnique = null;
         IndexFilterCondition = null;
-        RefreshCommand?.RaiseCanExecuteChanged();
+        //RefreshCommand?.RaiseCanExecuteChanged();
     }
 
     public bool IsStructureSelected => SelectedObjectType != null;
