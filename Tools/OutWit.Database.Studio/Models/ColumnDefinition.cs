@@ -1,5 +1,6 @@
 using OutWit.Common.Abstract;
 using OutWit.Common.Aspects;
+using OutWit.Common.Values;
 
 namespace OutWit.Database.Studio.Models;
 
@@ -15,14 +16,14 @@ public sealed class ColumnDefinition : ModelBase
         if (modelBase is not ColumnDefinition other)
             return false;
 
-        return Name == other.Name
-            && DataType == other.DataType
-            && IsNullable == other.IsNullable
-            && IsPrimaryKey == other.IsPrimaryKey
-            && IsAutoIncrement == other.IsAutoIncrement
-            && IsUnique == other.IsUnique
-            && DefaultValue == other.DefaultValue
-            && CheckConstraint == other.CheckConstraint;
+        return Name.Is(other.Name)
+            && DataType.Is(other.DataType)
+            && IsNullable.Is(other.IsNullable)
+            && IsPrimaryKey.Is(other.IsPrimaryKey)
+            && IsAutoIncrement.Is(other.IsAutoIncrement)
+            && IsUnique.Is(other.IsUnique)
+            && DefaultValue.Is(other.DefaultValue)
+            && CheckConstraint.Is(other.CheckConstraint);
     }
 
     public override ColumnDefinition Clone()

@@ -1,5 +1,6 @@
 using OutWit.Common.Abstract;
 using OutWit.Common.MVVM.Table;
+using OutWit.Common.Values;
 
 namespace OutWit.Database.Studio.Models;
 
@@ -15,9 +16,10 @@ public sealed class QueryResult : ModelBase
         if (modelBase is not QueryResult other)
             return false;
 
-        return RowsAffected == other.RowsAffected
-            && ExecutionTimeMs == other.ExecutionTimeMs
-            && ErrorMessage == other.ErrorMessage;
+        return RowsAffected.Is(other.RowsAffected)
+            && ExecutionTimeMs.Is(other.ExecutionTimeMs)
+            && ErrorMessage.Is(other.ErrorMessage)
+            && Data.Check(other.Data);
     }
 
     public override QueryResult Clone()

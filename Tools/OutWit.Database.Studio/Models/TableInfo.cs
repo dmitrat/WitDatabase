@@ -1,4 +1,5 @@
 using OutWit.Common.Abstract;
+using OutWit.Common.Values;
 
 namespace OutWit.Database.Studio.Models;
 
@@ -14,8 +15,8 @@ public sealed class TableInfo : ModelBase
         if (modelBase is not TableInfo other)
             return false;
 
-        return Name == other.Name
-            && RowCount == other.RowCount;
+        return Name.Is(other.Name)
+            && RowCount.Is(other.RowCount);
     }
 
     public override TableInfo Clone()

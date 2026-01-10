@@ -4,7 +4,7 @@ using OutWit.Common.Aspects;
 using OutWit.Common.MVVM.Commands;
 using OutWit.Common.MVVM.Table;
 
-namespace OutWit.Database.Studio.Models;
+namespace OutWit.Database.Studio.ViewModels;
 
 /// <summary>
 /// Represents a query editor tab with its content and state.

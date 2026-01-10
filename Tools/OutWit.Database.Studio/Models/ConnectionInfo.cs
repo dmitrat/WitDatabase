@@ -1,5 +1,6 @@
 using OutWit.Common.Abstract;
 using OutWit.Common.Aspects;
+using OutWit.Common.Values;
 
 namespace OutWit.Database.Studio.Models;
 
@@ -35,11 +36,12 @@ public sealed class ConnectionInfo : ModelBase
         if (modelBase is not ConnectionInfo other)
             return false;
 
-        return FilePath == other.FilePath
-            && IsEncrypted == other.IsEncrypted
-            && Password == other.Password
-            && IsReadOnly == other.IsReadOnly
-            && StorageEngine == other.StorageEngine;
+        return FilePath.Is(other.FilePath)
+            && IsEncrypted.Is(other.IsEncrypted)
+            && Password.Is(other.Password)
+            && IsReadOnly.Is(other.IsReadOnly)
+            && StorageEngine.Is(other.StorageEngine)
+            && DisplayName.Is(other.DisplayName);
     }
 
     public override ConnectionInfo Clone()

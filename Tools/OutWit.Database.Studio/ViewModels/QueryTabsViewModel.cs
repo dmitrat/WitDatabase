@@ -6,7 +6,6 @@ using OutWit.Common.Aspects;
 using OutWit.Common.MVVM.Commands;
 using OutWit.Common.MVVM.ViewModels;
 using OutWit.Common.Utils;
-using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
 
 namespace OutWit.Database.Studio.ViewModels;

@@ -1,5 +1,6 @@
 using OutWit.Common.Abstract;
-using System.Collections.Generic;
+using OutWit.Common.Values;
+using OutWit.Common.Collections;
 
 namespace OutWit.Database.Studio.Models;
 
@@ -15,11 +16,11 @@ public sealed class Settings : ModelBase
         if (modelBase is not Settings other)
             return false;
 
-        return Theme == other.Theme
-            && RecentFiles.SequenceEqual(other.RecentFiles)
-            && MaxRecentFiles == other.MaxRecentFiles
-            && AutoSaveQueries == other.AutoSaveQueries
-            && EditorFontSize == other.EditorFontSize;
+        return Theme.Is(other.Theme)
+            && RecentFiles.Is(other.RecentFiles)
+            && MaxRecentFiles.Is(other.MaxRecentFiles)
+            && AutoSaveQueries.Is(other.AutoSaveQueries)
+            && EditorFontSize.Is(other.EditorFontSize);
     }
 
     public override Settings Clone()
@@ -27,7 +28,7 @@ public sealed class Settings : ModelBase
         return new Settings
         {
             Theme = Theme,
-            RecentFiles = new List<string>(RecentFiles),
+            RecentFiles = RecentFiles.ToList(),
             MaxRecentFiles = MaxRecentFiles,
             AutoSaveQueries = AutoSaveQueries,
             EditorFontSize = EditorFontSize

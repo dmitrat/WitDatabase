@@ -1,24 +1,8 @@
 using OutWit.Common.Abstract;
+using OutWit.Common.Values;
+using OutWit.Common.Collections;
 
 namespace OutWit.Database.Studio.Models;
-
-/// <summary>
-/// Types of nodes in the database tree.
-/// </summary>
-public enum DatabaseNodeType
-{
-    Database,
-    TablesFolder,
-    Table,
-    ViewsFolder,
-    View,
-    IndexesFolder,
-    Index,
-    TriggersFolder,
-    Trigger,
-    SequencesFolder,
-    Sequence
-}
 
 /// <summary>
 /// Represents a node in the database explorer tree.
@@ -32,9 +16,10 @@ public sealed class DatabaseNode : ModelBase
         if (modelBase is not DatabaseNode other)
             return false;
 
-        return Name == other.Name
-            && NodeType == other.NodeType
-            && IsExpanded == other.IsExpanded;
+        return Name.Is(other.Name)
+            && NodeType.Is(other.NodeType)
+            && IsExpanded.Is(other.IsExpanded)
+            && Children.Is(other.Children);
     }
 
     public override DatabaseNode Clone()
@@ -44,7 +29,7 @@ public sealed class DatabaseNode : ModelBase
             Name = Name,
             NodeType = NodeType,
             IsExpanded = IsExpanded,
-            Children = Children.Select(c => c.Clone()).ToList()
+            Children = Children.Select(node => node.Clone()).ToList()
         };
     }
 
@@ -73,4 +58,22 @@ public sealed class DatabaseNode : ModelBase
     public List<DatabaseNode> Children { get; set; } = [];
 
     #endregion
+}
+
+/// <summary>
+/// Types of nodes in the database tree.
+/// </summary>
+public enum DatabaseNodeType
+{
+    Database,
+    TablesFolder,
+    Table,
+    ViewsFolder,
+    View,
+    IndexesFolder,
+    Index,
+    TriggersFolder,
+    Trigger,
+    SequencesFolder,
+    Sequence
 }

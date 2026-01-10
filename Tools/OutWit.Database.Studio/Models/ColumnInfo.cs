@@ -1,4 +1,5 @@
 using OutWit.Common.Abstract;
+using OutWit.Common.Values;
 
 namespace OutWit.Database.Studio.Models;
 
@@ -14,11 +15,12 @@ public sealed class ColumnInfo : ModelBase
         if (modelBase is not ColumnInfo other)
             return false;
 
-        return Name == other.Name
-            && DataType == other.DataType
-            && IsNullable == other.IsNullable
-            && IsPrimaryKey == other.IsPrimaryKey
-            && DefaultValue == other.DefaultValue;
+        return Name.Is(other.Name)
+               && OrdinalPosition.Is(other.OrdinalPosition)
+               && DataType.Is(other.DataType)
+               && IsNullable.Is(other.IsNullable)
+               && IsPrimaryKey.Is(other.IsPrimaryKey)
+               && DefaultValue.Is(other.DefaultValue);
     }
 
     public override ColumnInfo Clone()
