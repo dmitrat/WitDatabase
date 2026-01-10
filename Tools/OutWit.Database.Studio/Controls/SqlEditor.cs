@@ -66,6 +66,9 @@ public partial class SqlEditor : TextEditor
     {
         TextChanged += OnEditorTextChanged;
         
+        // Subscribe to selection changes
+        TextArea.SelectionChanged += OnSelectionChanged;
+        
         // Subscribe to theme changes
         if (Application.Current != null)
         {
@@ -82,6 +85,19 @@ public partial class SqlEditor : TextEditor
         Background = SqlEditorTheme.BackgroundBrush;
         Foreground = SqlEditorTheme.ForegroundBrush;
         LineNumbersForeground = SqlEditorTheme.LineNumbersBrush;
+    }
+
+    private void UpdateSelectedText()
+    {
+        var selection = TextArea.Selection;
+        if (selection.IsEmpty)
+        {
+            SelectedText = null;
+        }
+        else
+        {
+            SelectedText = selection.GetText();
+        }
     }
 
     #endregion
@@ -108,6 +124,11 @@ public partial class SqlEditor : TextEditor
         SqlText = Text;
     }
 
+    private void OnSelectionChanged(object? sender, EventArgs e)
+    {
+        UpdateSelectedText();
+    }
+
     private void OnThemeChanged(object? sender, EventArgs e)
     {
         // Re-apply colors when theme changes
@@ -125,6 +146,8 @@ public partial class SqlEditor : TextEditor
     {
         base.OnDetachedFromVisualTree(e);
 
+        TextArea.SelectionChanged -= OnSelectionChanged;
+
         if (Application.Current != null)
         {
             Application.Current.ActualThemeVariantChanged -= OnThemeChanged;
@@ -136,10 +159,16 @@ public partial class SqlEditor : TextEditor
     #region Properties
 
     /// <summary>
-    /// Gets or sets the SQL text content (bindable).
+    /// Gets or sets the SQL text content (bindable, two-way).
     /// </summary>
     [StyledProperty]
     public string? SqlText { get; set; }
+
+    /// <summary>
+    /// Gets the currently selected text (bindable, one-way to source).
+    /// </summary>
+    [StyledProperty]
+    public string? SelectedText { get; set; }
 
     protected override Type StyleKeyOverride => typeof(TextEditor);
 

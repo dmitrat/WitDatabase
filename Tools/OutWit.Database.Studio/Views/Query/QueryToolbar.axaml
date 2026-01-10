@@ -28,7 +28,8 @@
                 </StackPanel>
             </Button>
 
-            <Button Click="OnExecuteSelectionClick"
+            <Button Command="{Binding ExecuteSelectionCommand}"
+                    IsEnabled="{Binding CanExecuteQuery}"
                     ToolTip.Tip="Execute Selection (Ctrl+Enter)"
                     Width="130">
                 <StackPanel Orientation="Horizontal" Spacing="4">

@@ -261,6 +261,12 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
     public string SqlText { get; set; } = string.Empty;
 
     /// <summary>
+    /// Currently selected text in the SQL editor.
+    /// </summary>
+    [Notify]
+    public string? SelectedText { get; set; }
+
+    /// <summary>
     /// File path if the query is saved to a file.
     /// </summary>
     [Notify]

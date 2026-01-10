@@ -15,7 +15,8 @@
         
         <!-- SQL Editor -->
         <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="8">
-            <c:SqlEditor  SqlText="{Binding SqlText, Mode=TwoWay}"/>
+            <c:SqlEditor  SqlText="{Binding SqlText, Mode=TwoWay}"
+                         SelectedText="{Binding SelectedText, Mode=OneWayToSource}"/>
         </Border>
 
         <!-- Splitter -->

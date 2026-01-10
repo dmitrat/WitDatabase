@@ -71,7 +71,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         SaveTabCommand = new RelayCommand<QueryTabViewModel>(async tab => await SaveTabAsync(tab));
         SaveTabAsCommand = new RelayCommand<QueryTabViewModel>(async tab => await SaveTabAsAsync(tab));
         ExecuteQueryCommand = new RelayCommand<QueryTabViewModel>(async tab => await ExecuteQueryAsync(tab));
-        ExecuteSelectionCommand = new RelayCommand<string>(async sql => await ExecuteSelectionAsync(sql));
+        ExecuteSelectionCommand = new RelayCommand(async _ => await ExecuteSelectionAsync());
         ClearResultsCommand = new RelayCommand<QueryTabViewModel>(ClearResults);
     }
 
@@ -243,14 +243,15 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         await ExecuteSqlAsync(tab, tab.SqlText);
     }
 
-    private async Task ExecuteSelectionAsync(string? selectedText)
+    private async Task ExecuteSelectionAsync()
     {
         if (SelectedTab == null)
             return;
 
-        var sqlToExecute = string.IsNullOrWhiteSpace(selectedText) 
-            ? SelectedTab.SqlText 
-            : selectedText;
+        // Use selected text if available, otherwise use full SQL text
+        var sqlToExecute = !string.IsNullOrWhiteSpace(SelectedTab.SelectedText) 
+            ? SelectedTab.SelectedText 
+            : SelectedTab.SqlText;
 
         if (string.IsNullOrWhiteSpace(sqlToExecute))
             return;
