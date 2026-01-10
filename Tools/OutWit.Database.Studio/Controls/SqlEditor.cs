@@ -4,11 +4,13 @@ using AvaloniaEdit;
 using OutWit.Common.Locker;
 using OutWit.Common.MVVM.Attributes;
 using OutWit.Database.Studio.Syntax;
+using OutWit.Database.Studio.Themes;
 
 namespace OutWit.Database.Studio.Controls;
 
 /// <summary>
 /// SQL Editor control with syntax highlighting based on AvaloniaEdit.
+/// Supports theme-aware colors through application resources.
 /// </summary>
 public partial class SqlEditor : TextEditor
 {
@@ -25,8 +27,7 @@ public partial class SqlEditor : TextEditor
 
     public SqlEditor()
     {
-       InitDefaults();
-
+        InitDefaults();
         InitEvents();
     }
 
@@ -40,13 +41,13 @@ public partial class SqlEditor : TextEditor
         FontFamily = new FontFamily("Consolas, Courier New, monospace");
         FontSize = 13;
         ShowLineNumbers = true;
-        Background = new SolidColorBrush(Color.Parse("#1E1E1E"));
-        Foreground = new SolidColorBrush(Color.Parse("#D4D4D4"));
-        LineNumbersForeground = new SolidColorBrush(Color.Parse("#858585"));
         HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
         VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
         WordWrap = false;
         Padding = new Thickness(4);
+
+        // Apply theme-aware colors
+        ApplyThemeColors();
 
         // Apply WitSQL syntax highlighting
         SyntaxHighlighting = WitSqlHighlighting.Definition;
@@ -64,6 +65,23 @@ public partial class SqlEditor : TextEditor
     private void InitEvents()
     {
         TextChanged += OnEditorTextChanged;
+        
+        // Subscribe to theme changes
+        if (Application.Current != null)
+        {
+            Application.Current.ActualThemeVariantChanged += OnThemeChanged;
+        }
+    }
+
+    #endregion
+
+    #region Functions
+
+    private void ApplyThemeColors()
+    {
+        Background = SqlEditorTheme.BackgroundBrush;
+        Foreground = SqlEditorTheme.ForegroundBrush;
+        LineNumbersForeground = SqlEditorTheme.LineNumbersBrush;
     }
 
     #endregion
@@ -72,7 +90,7 @@ public partial class SqlEditor : TextEditor
 
     private void OnSqlTextPropertyChanged(AvaloniaPropertyChangedEventArgs e)
     {
-        if(GlobalLocker.IsLocked(nameof(SqlEditor)))
+        if (GlobalLocker.IsLocked(nameof(SqlEditor)))
             return;
 
         using var locker = GlobalLocker.Lock(nameof(SqlEditor));
@@ -90,6 +108,29 @@ public partial class SqlEditor : TextEditor
         SqlText = Text;
     }
 
+    private void OnThemeChanged(object? sender, EventArgs e)
+    {
+        // Re-apply colors when theme changes
+        ApplyThemeColors();
+        
+        // Re-apply syntax highlighting to refresh colors
+        SyntaxHighlighting = WitSqlHighlighting.CreateDefinition();
+    }
+
+    #endregion
+
+    #region Cleanup
+
+    protected override void OnDetachedFromVisualTree(VisualTreeAttachmentEventArgs e)
+    {
+        base.OnDetachedFromVisualTree(e);
+
+        if (Application.Current != null)
+        {
+            Application.Current.ActualThemeVariantChanged -= OnThemeChanged;
+        }
+    }
+
     #endregion
 
     #region Properties
@@ -103,5 +144,4 @@ public partial class SqlEditor : TextEditor
     protected override Type StyleKeyOverride => typeof(TextEditor);
 
     #endregion
-
 }

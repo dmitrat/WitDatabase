@@ -19,7 +19,8 @@
                             HorizontalScrollBarVisibility="Auto"
                             VerticalScrollBarVisibility="Disabled">
                 <ListBox ItemsSource="{Binding Tabs}"
-                            SelectedItem="{Binding SelectedTab, Mode=TwoWay}">
+                         SelectedItem="{Binding SelectedTab, Mode=TwoWay}"
+                         x:Name="TabsList">
 
                     <ListBox.Styles>
                         <Style Selector="ListBoxItem">
@@ -40,7 +41,7 @@
                         <DataTemplate DataType="vm:QueryTabViewModel">
                             <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                     BorderThickness="0,0,1,0" Padding="12,8" Cursor="Hand"
-                                    Tag="{Binding}">
+                                    x:DataType="vm:QueryTabViewModel">
 
                                 <Border.Styles>
                                     <Style Selector="Border:pointerover">
@@ -64,8 +65,8 @@
                                             Padding="0"
                                             Background="Transparent"
                                             BorderThickness="0"
-                                            Command="{Binding ((vm:QueryTabsViewModel)DataContext).CloseTabCommand, ElementName=Root}"
-                                            CommandParameter="{Binding }"
+                                            Command="{Binding $parent[UserControl].((vm:QueryTabsViewModel)DataContext).CloseTabCommand}"
+                                            CommandParameter="{Binding}"
                                             ToolTip.Tip="Close tab">
                                         <PathIcon Data="{x:Static ui:StudioIcons.TAB_CLOSE}"
                                                     Width="10" Height="10"/>

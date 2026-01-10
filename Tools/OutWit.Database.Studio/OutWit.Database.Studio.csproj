@@ -15,6 +15,7 @@
 
   <ItemGroup>
     <EmbeddedResource Include="Syntax\WitSql.xshd" />
+    <EmbeddedResource Include="Syntax\WitSqlLight.xshd" />
   </ItemGroup>
 
   <ItemGroup>

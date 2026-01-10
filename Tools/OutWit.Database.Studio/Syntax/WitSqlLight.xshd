@@ -1,18 +1,18 @@
 <?xml version="1.0"?>
 <SyntaxDefinition name="WitSQL" extensions=".sql;.witsql" xmlns="http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008">
   
-  <!-- Colors - Dark Theme (VS Code Dark+ style) -->
-  <Color name="Comment" foreground="#6A9955" fontStyle="italic" />
-  <Color name="String" foreground="#CE9178" />
-  <Color name="Keyword" foreground="#569CD6" fontWeight="bold" />
-  <Color name="DataType" foreground="#4EC9B0" />
-  <Color name="Function" foreground="#DCDCAA" />
-  <Color name="Number" foreground="#B5CEA8" />
-  <Color name="Null" foreground="#569CD6" fontStyle="italic" />
-  <Color name="Boolean" foreground="#569CD6" />
-  <Color name="Parameter" foreground="#9CDCFE" />
-  <Color name="Operator" foreground="#D4D4D4" />
-  <Color name="BuiltinLiteral" foreground="#4FC1FF" />
+  <!-- Colors - Light Theme (Visual Studio style) -->
+  <Color name="Comment" foreground="#008000" fontStyle="italic" />
+  <Color name="String" foreground="#A31515" />
+  <Color name="Keyword" foreground="#0000FF" fontWeight="bold" />
+  <Color name="DataType" foreground="#2B91AF" />
+  <Color name="Function" foreground="#795E26" />
+  <Color name="Number" foreground="#098658" />
+  <Color name="Null" foreground="#0000FF" fontStyle="italic" />
+  <Color name="Boolean" foreground="#0000FF" />
+  <Color name="Parameter" foreground="#001080" />
+  <Color name="Operator" foreground="#1E1E1E" />
+  <Color name="BuiltinLiteral" foreground="#0070C1" />
   
   <RuleSet ignoreCase="true">
     

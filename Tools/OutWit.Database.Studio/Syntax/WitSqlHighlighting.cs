@@ -1,5 +1,7 @@
 using System.Reflection;
 using System.Xml;
+using Avalonia;
+using Avalonia.Styling;
 using AvaloniaEdit.Highlighting;
 using AvaloniaEdit.Highlighting.Xshd;
 
@@ -7,34 +9,46 @@ namespace OutWit.Database.Studio.Syntax;
 
 /// <summary>
 /// Provides WitSQL syntax highlighting for AvaloniaEdit.
+/// Supports light and dark themes through separate xshd files.
 /// </summary>
 public static class WitSqlHighlighting
 {
+    #region Constants
+
+    private const string RESOURCE_NAME_DARK = "OutWit.Database.Studio.Syntax.WitSql.xshd";
+    private const string RESOURCE_NAME_LIGHT = "OutWit.Database.Studio.Syntax.WitSqlLight.xshd";
+
+    #endregion
+
     #region Fields
 
-    private static IHighlightingDefinition? s_definition;
-    private static readonly object s_lock = new();
+    private static IHighlightingDefinition? m_definition;
+    private static bool m_isDarkTheme;
+    private static readonly Lock LOCK = new();
 
     #endregion
 
     #region Properties
 
     /// <summary>
-    /// Gets the WitSQL syntax highlighting definition.
+    /// Gets the WitSQL syntax highlighting definition for the current theme.
     /// </summary>
     public static IHighlightingDefinition Definition
     {
         get
         {
-            if (s_definition != null)
-                return s_definition;
-
-            lock (s_lock)
+            var isDark = IsDarkTheme();
+            
+            lock (LOCK)
             {
-                s_definition ??= CreateDefinition();
+                if (m_definition == null || m_isDarkTheme != isDark)
+                {
+                    m_isDarkTheme = isDark;
+                    m_definition = LoadDefinition(isDark);
+                }
             }
 
-            return s_definition;
+            return m_definition;
         }
     }
 
@@ -42,71 +56,36 @@ public static class WitSqlHighlighting
 
     #region Functions
 
-    private static IHighlightingDefinition CreateDefinition()
+    /// <summary>
+    /// Creates a new highlighting definition for the current theme.
+    /// Call this when theme changes to refresh colors.
+    /// </summary>
+    public static IHighlightingDefinition CreateDefinition()
     {
-        // Try to load from embedded resource first
-        var assembly = Assembly.GetExecutingAssembly();
-        var resourceName = "OutWit.Database.Studio.Syntax.WitSql.xshd";
-        
-        using var stream = assembly.GetManifestResourceStream(resourceName);
-        if (stream != null)
-        {
-            using var reader = XmlReader.Create(stream);
-            return HighlightingLoader.Load(reader, HighlightingManager.Instance);
-        }
-
-        // Fallback: create programmatically
-        return CreateProgrammaticDefinition();
+        InvalidateCache();
+        return Definition;
     }
 
-    private static IHighlightingDefinition CreateProgrammaticDefinition()
+    private static IHighlightingDefinition LoadDefinition(bool isDarkTheme)
     {
-        var xshd = @"<?xml version=""1.0""?>
-<SyntaxDefinition name=""WitSQL"" extensions="".sql;.witsql"" xmlns=""http://icsharpcode.net/sharpdevelop/syntaxdefinition/2008"">
-  <Color name=""Comment"" foreground=""#6A9955"" fontStyle=""italic"" />
-  <Color name=""String"" foreground=""#CE9178"" />
-  <Color name=""Keyword"" foreground=""#569CD6"" fontWeight=""bold"" />
-  <Color name=""DataType"" foreground=""#4EC9B0"" />
-  <Color name=""Function"" foreground=""#DCDCAA"" />
-  <Color name=""Number"" foreground=""#B5CEA8"" />
-  <Color name=""Null"" foreground=""#569CD6"" fontStyle=""italic"" />
-  <Color name=""Boolean"" foreground=""#569CD6"" />
-  
-  <RuleSet ignoreCase=""true"">
-    <Span color=""Comment"" begin=""--"" />
-    <Span color=""Comment"" multiline=""true"" begin=""/\*"" end=""\*/"" />
-    <Span color=""String"" begin=""'"" end=""'"" escapeCharacter=""'"" />
-    <Rule color=""Number"">\b\d+\.?\d*\b</Rule>
-    <Keywords color=""Null""><Word>NULL</Word></Keywords>
-    <Keywords color=""Boolean""><Word>TRUE</Word><Word>FALSE</Word></Keywords>
-    <Keywords color=""Keyword"">
-      <Word>SELECT</Word><Word>FROM</Word><Word>WHERE</Word><Word>INSERT</Word><Word>INTO</Word>
-      <Word>VALUES</Word><Word>UPDATE</Word><Word>SET</Word><Word>DELETE</Word><Word>CREATE</Word>
-      <Word>TABLE</Word><Word>VIEW</Word><Word>INDEX</Word><Word>DROP</Word><Word>ALTER</Word>
-      <Word>PRIMARY</Word><Word>KEY</Word><Word>FOREIGN</Word><Word>REFERENCES</Word><Word>UNIQUE</Word>
-      <Word>AS</Word><Word>ON</Word><Word>AND</Word><Word>OR</Word><Word>NOT</Word><Word>IN</Word>
-      <Word>JOIN</Word><Word>INNER</Word><Word>LEFT</Word><Word>RIGHT</Word><Word>OUTER</Word>
-      <Word>ORDER</Word><Word>BY</Word><Word>ASC</Word><Word>DESC</Word><Word>GROUP</Word><Word>HAVING</Word>
-      <Word>LIMIT</Word><Word>OFFSET</Word><Word>UNION</Word><Word>DISTINCT</Word><Word>ALL</Word>
-      <Word>CASE</Word><Word>WHEN</Word><Word>THEN</Word><Word>ELSE</Word><Word>END</Word>
-      <Word>BEGIN</Word><Word>COMMIT</Word><Word>ROLLBACK</Word><Word>TRANSACTION</Word>
-    </Keywords>
-    <Keywords color=""DataType"">
-      <Word>INT</Word><Word>INTEGER</Word><Word>BIGINT</Word><Word>SMALLINT</Word><Word>TINYINT</Word>
-      <Word>FLOAT</Word><Word>DOUBLE</Word><Word>DECIMAL</Word><Word>VARCHAR</Word><Word>TEXT</Word>
-      <Word>BOOLEAN</Word><Word>BOOL</Word><Word>DATE</Word><Word>DATETIME</Word><Word>TIMESTAMP</Word>
-      <Word>BLOB</Word><Word>GUID</Word><Word>UUID</Word><Word>JSON</Word>
-    </Keywords>
-    <Keywords color=""Function"">
-      <Word>COUNT</Word><Word>SUM</Word><Word>AVG</Word><Word>MIN</Word><Word>MAX</Word>
-      <Word>UPPER</Word><Word>LOWER</Word><Word>LENGTH</Word><Word>SUBSTR</Word><Word>TRIM</Word>
-      <Word>COALESCE</Word><Word>NULLIF</Word><Word>NOW</Word><Word>NEWGUID</Word>
-    </Keywords>
-  </RuleSet>
-</SyntaxDefinition>";
+        var resourceName = isDarkTheme ? RESOURCE_NAME_DARK : RESOURCE_NAME_LIGHT;
+        var assembly = Assembly.GetExecutingAssembly();
+        
+        using var stream = assembly.GetManifestResourceStream(resourceName);
+        if (stream == null)
+            throw new InvalidOperationException($"Embedded resource not found: {resourceName}");
 
-        using var reader = XmlReader.Create(new StringReader(xshd));
+        using var reader = XmlReader.Create(stream);
         return HighlightingLoader.Load(reader, HighlightingManager.Instance);
+    }
+
+    private static bool IsDarkTheme()
+    {
+        if (Application.Current == null)
+            return false;
+
+        var themeVariant = Application.Current.ActualThemeVariant;
+        return themeVariant == ThemeVariant.Dark;
     }
 
     /// <summary>
@@ -118,6 +97,18 @@ public static class WitSqlHighlighting
             "WitSQL",
             [".sql", ".witsql"],
             Definition);
+    }
+
+    /// <summary>
+    /// Clears the cached definition to force recreation on next access.
+    /// Call this when theme changes.
+    /// </summary>
+    public static void InvalidateCache()
+    {
+        lock (LOCK)
+        {
+            m_definition = null;
+        }
     }
 
     #endregion

@@ -1,6 +1,7 @@
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Input;
+using Avalonia.Platform.Storage;
 using Microsoft.Extensions.Logging;
 using OutWit.Common.Aspects;
 using OutWit.Common.MVVM.Commands;
@@ -178,9 +179,51 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         if (tab == null)
             return;
 
-        // TODO: Show save file dialog
-        Logger.LogInformation("Save As requested for tab: {Title}", tab.Title);
-        await Task.CompletedTask;
+        if (ApplicationVm.MainWindow == null)
+            return;
+
+        var storageProvider = ApplicationVm.MainWindow.StorageProvider;
+
+        var saveOptions = new FilePickerSaveOptions
+        {
+            Title = "Save Query As",
+            DefaultExtension = ".sql",
+            SuggestedFileName = $"{tab.Title}.sql",
+            FileTypeChoices =
+            [
+                new FilePickerFileType("SQL Files")
+                {
+                    Patterns = ["*.sql", "*.witsql"]
+                },
+                new FilePickerFileType("All Files")
+                {
+                    Patterns = ["*.*"]
+                }
+            ]
+        };
+
+        var file = await storageProvider.SaveFilePickerAsync(saveOptions);
+
+        if (file == null)
+            return;
+
+        try
+        {
+            var filePath = file.Path.LocalPath;
+            await File.WriteAllTextAsync(filePath, tab.SqlText);
+            
+            tab.FilePath = filePath;
+            tab.Title = Path.GetFileNameWithoutExtension(filePath);
+            tab.IsModified = false;
+
+            ApplicationVm.MainWindowVm.StatusText = $"Saved: {filePath}";
+            Logger.LogInformation("Saved query tab as: {FilePath}", filePath);
+        }
+        catch (Exception ex)
+        {
+            ApplicationVm.MainWindowVm.StatusText = $"Error saving file: {ex.Message}";
+            Logger.LogError(ex, "Failed to save query tab as new file");
+        }
     }
 
     private async Task ExecuteQueryAsync(QueryTabViewModel? tab)
