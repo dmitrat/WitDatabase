@@ -64,14 +64,14 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
     private void InitCommands()
     {
         NewTabCommand = new RelayCommand(_ => AddNewTab());
-        CloseTabCommand = new RelayCommand<QueryTab>(CloseTab);
+        CloseTabCommand = new RelayCommand<QueryTabViewModel>(CloseTab);
         CloseAllTabsCommand = new RelayCommand(_ => CloseAllTabs());
-        CloseOtherTabsCommand = new RelayCommand<QueryTab>(CloseOtherTabs);
-        SaveTabCommand = new RelayCommand<QueryTab>(async tab => await SaveTabAsync(tab));
-        SaveTabAsCommand = new RelayCommand<QueryTab>(async tab => await SaveTabAsAsync(tab));
-        ExecuteQueryCommand = new RelayCommand<QueryTab>(async tab => await ExecuteQueryAsync(tab));
+        CloseOtherTabsCommand = new RelayCommand<QueryTabViewModel>(CloseOtherTabs);
+        SaveTabCommand = new RelayCommand<QueryTabViewModel>(async tab => await SaveTabAsync(tab));
+        SaveTabAsCommand = new RelayCommand<QueryTabViewModel>(async tab => await SaveTabAsAsync(tab));
+        ExecuteQueryCommand = new RelayCommand<QueryTabViewModel>(async tab => await ExecuteQueryAsync(tab));
         ExecuteSelectionCommand = new RelayCommand<string>(async sql => await ExecuteSelectionAsync(sql));
-        ClearResultsCommand = new RelayCommand<QueryTab>(ClearResults);
+        ClearResultsCommand = new RelayCommand<QueryTabViewModel>(ClearResults);
     }
 
     #endregion
@@ -80,7 +80,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     private void AddNewTab()
     {
-        var tab = new QueryTab
+        var tab = new QueryTabViewModel(ApplicationVm)
         {
             Title = $"Query {m_nextQueryNumber++}",
             SqlText = string.Empty
@@ -94,7 +94,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         Logger.LogInformation("Created new query tab: {Title}", tab.Title);
     }
 
-    private void CloseTab(QueryTab? tab)
+    private void CloseTab(QueryTabViewModel? tab)
     {
         if (tab == null || !CanCloseTab)
             return;
@@ -131,7 +131,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         Logger.LogInformation("Closed all query tabs");
     }
 
-    private void CloseOtherTabs(QueryTab? tab)
+    private void CloseOtherTabs(QueryTabViewModel? tab)
     {
         if (tab == null || !CanCloseOtherTabs)
             return;
@@ -147,7 +147,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         Logger.LogInformation("Closed other query tabs, kept: {Title}", tab.Title);
     }
 
-    private async Task SaveTabAsync(QueryTab? tab)
+    private async Task SaveTabAsync(QueryTabViewModel? tab)
     {
         if (tab == null || !CanSaveTab)
             return;
@@ -173,7 +173,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         }
     }
 
-    private async Task SaveTabAsAsync(QueryTab? tab)
+    private async Task SaveTabAsAsync(QueryTabViewModel? tab)
     {
         if (tab == null)
             return;
@@ -183,7 +183,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         await Task.CompletedTask;
     }
 
-    private async Task ExecuteQueryAsync(QueryTab? tab)
+    private async Task ExecuteQueryAsync(QueryTabViewModel? tab)
     {
         if (tab == null)
             tab = SelectedTab;
@@ -221,7 +221,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         await ExecuteSqlAsync(SelectedTab, sqlToExecute);
     }
 
-    private async Task ExecuteSqlAsync(QueryTab tab, string sql)
+    private async Task ExecuteSqlAsync(QueryTabViewModel tab, string sql)
     {
         IsExecuting = true;
         CurrentExecutingTab = tab;
@@ -275,7 +275,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
         }
     }
 
-    private void ClearResults(QueryTab? tab)
+    private void ClearResults(QueryTabViewModel? tab)
     {
         if (tab == null)
             return;
@@ -312,7 +312,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
             var content = await File.ReadAllTextAsync(filePath);
             var fileName = Path.GetFileNameWithoutExtension(filePath);
 
-            var tab = new QueryTab
+            var tab = new QueryTabViewModel(ApplicationVm)
             {
                 Title = fileName,
                 SqlText = content,
@@ -376,7 +376,7 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     private void OnTabPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (sender == SelectedTab && e.PropertyName == nameof(QueryTab.SqlText))
+        if (sender == SelectedTab && e.PropertyName == nameof(QueryTabViewModel.SqlText))
         {
             UpdateStatus();
         }
@@ -391,16 +391,16 @@ public class QueryTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Properties
 
-    public ObservableCollection<QueryTab> Tabs { get; private set; } = null!;
+    public ObservableCollection<QueryTabViewModel> Tabs { get; private set; } = null!;
 
     [Notify]
-    public QueryTab? SelectedTab { get; set; }
+    public QueryTabViewModel? SelectedTab { get; set; }
 
     [Notify]
     public bool IsExecuting { get; set; }
 
     [Notify]
-    public QueryTab? CurrentExecutingTab { get; set; }
+    public QueryTabViewModel? CurrentExecutingTab { get; set; }
 
     public string CurrentSqlText
     {

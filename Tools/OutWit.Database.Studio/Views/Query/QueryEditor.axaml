@@ -3,19 +3,19 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:models="using:OutWit.Database.Studio.Models"
-             xmlns:controls="using:OutWit.Database.Studio.Controls"
+             xmlns:c="using:OutWit.Database.Studio.Controls"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
              xmlns:viewModels="clr-namespace:OutWit.Database.Studio.ViewModels"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="OutWit.Database.Studio.Views.Query.QueryEditor"
-             x:DataType="viewModels:QueryTab"
+             x:DataType="viewModels:QueryTabViewModel"
              x:Name="Root">
 
     <Grid RowDefinitions="*,Auto,*">
         
         <!-- SQL Editor -->
         <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="8">
-            <controls:SqlEditor  SqlText="{Binding SqlText, Mode=TwoWay}"/>
+            <c:SqlEditor  SqlText="{Binding SqlText, Mode=TwoWay}"/>
         </Border>
 
         <!-- Splitter -->
@@ -32,7 +32,7 @@
             <TabItem Header="Results">
                 <Grid RowDefinitions="*,Auto">
                     <!-- Custom Data Grid for Results -->
-                    <controls:ResultDataGrid Grid.Row="0"
+                    <c:ResultDataGrid Grid.Row="0"
                                              HeaderRow="{Binding HeaderRow}"
                                              ResultPage="{Binding ResultPage}"
                                              BorderThickness="0"

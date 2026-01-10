@@ -37,7 +37,7 @@
                     </ListBox.ItemsPanel>
                         
                     <ListBox.ItemTemplate>
-                        <DataTemplate DataType="vm:QueryTab">
+                        <DataTemplate DataType="vm:QueryTabViewModel">
                             <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                     BorderThickness="0,0,1,0" Padding="12,8" Cursor="Hand"
                                     Tag="{Binding}">

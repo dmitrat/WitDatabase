@@ -16,7 +16,7 @@ public partial class SqlEditor : TextEditor
 
     static SqlEditor()
     {
-        SqlTextProperty.Changed.AddClassHandler<SqlEditor>((x, e) => x.OnSqlTextPropertyChanged(e));
+        SqlTextProperty.Changed.AddClassHandler<SqlEditor>((editor, e) => editor.OnSqlTextPropertyChanged(e));
     }
 
     #endregion
