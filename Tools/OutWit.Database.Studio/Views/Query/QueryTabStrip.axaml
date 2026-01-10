@@ -4,96 +4,90 @@
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:OutWit.Database.Studio.ViewModels"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
-             xmlns:models="using:OutWit.Database.Studio.Models"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
              x:Class="OutWit.Database.Studio.Views.Query.QueryTabStrip"
              x:DataType="vm:QueryTabsViewModel"
-             x:Name="Local">
+             x:Name="Root">
     <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
             BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
             BorderThickness="0,0,0,1">
-
+		
         <Grid ColumnDefinitions="*,Auto">
 
-            <!-- Tab Headers -->
-                <ScrollViewer Grid.Column="0"
-                              HorizontalScrollBarVisibility="Auto"
-                              VerticalScrollBarVisibility="Disabled">
-                    <ListBox ItemsSource="{Binding Tabs}"
-                             SelectedItem="{Binding SelectedTab, Mode=TwoWay}">
+        <!-- Tab Headers -->
+            <ScrollViewer Grid.Column="0"
+                            HorizontalScrollBarVisibility="Auto"
+                            VerticalScrollBarVisibility="Disabled">
+                <ListBox ItemsSource="{Binding Tabs}"
+                            SelectedItem="{Binding SelectedTab, Mode=TwoWay}">
 
-                        <ListBox.Styles>
-                            <Style Selector="ListBoxItem">
-                                <Setter Property="Padding" Value="0"/>
-                                <Setter Property="Margin" Value="0"/>
-                                <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
-                                <Setter Property="VerticalContentAlignment" Value="Stretch"/>
-                            </Style>
-                        </ListBox.Styles>
+                    <ListBox.Styles>
+                        <Style Selector="ListBoxItem">
+                            <Setter Property="Padding" Value="0"/>
+                            <Setter Property="Margin" Value="0"/>
+                            <Setter Property="HorizontalContentAlignment" Value="Stretch"/>
+                            <Setter Property="VerticalContentAlignment" Value="Stretch"/>
+                        </Style>
+                    </ListBox.Styles>
 
-                        <ListBox.ItemsPanel>
-                            <ItemsPanelTemplate>
-                                <StackPanel Orientation="Horizontal"/>
-                            </ItemsPanelTemplate>
-                        </ListBox.ItemsPanel>
+                    <ListBox.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <StackPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ListBox.ItemsPanel>
                         
-                        <ListBox.ItemTemplate>
-                            <DataTemplate DataType="models:QueryTab">
-                                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                                        BorderThickness="0,0,1,0" Padding="12,8" Cursor="Hand"
-                                        Tag="{Binding}">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate DataType="vm:QueryTab">
+                            <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                    BorderThickness="0,0,1,0" Padding="12,8" Cursor="Hand"
+                                    Tag="{Binding}">
 
-                                    <Border.Styles>
-                                        <Style Selector="Border:pointerover">
-                                            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
-                                        </Style>
-                                    </Border.Styles>
+                                <Border.Styles>
+                                    <Style Selector="Border:pointerover">
+                                        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+                                    </Style>
+                                </Border.Styles>
                                     
-                                    <StackPanel Orientation="Horizontal" Spacing="8">
-                                        <!-- Modified indicator -->
-                                        <PathIcon Data="{x:Static ui:StudioIcons.TAB_MODIFIED}"
-                                                  Width="8" Height="8"
-                                                  Foreground="{DynamicResource SystemAccentColor}"
-                                                  IsVisible="{Binding IsModified}"
-                                                  VerticalAlignment="Center"/>
+                                <StackPanel Orientation="Horizontal" Spacing="8">
+                                    <!-- Modified indicator -->
+                                    <PathIcon Data="{x:Static ui:StudioIcons.TAB_MODIFIED}"
+                                                Width="8" Height="8"
+                                                Foreground="{DynamicResource SystemAccentColor}"
+                                                IsVisible="{Binding IsModified}"
+                                                VerticalAlignment="Center"/>
                                         
-                                        <TextBlock Text="{Binding Title}"
-                                                   VerticalAlignment="Center"/>
+                                    <TextBlock Text="{Binding Title}"
+                                                VerticalAlignment="Center"/>
                                         
-                                        <Button Width="20"
-                                                Height="20"
-                                                Padding="0"
-                                                Background="Transparent"
-                                                BorderThickness="0"
-                                                Command="{Binding ((vm:QueryTabsViewModel)DataContext).CloseTabCommand, ElementName=Local}"
-                                                CommandParameter="{Binding}"
-                                                ToolTip.Tip="Close tab">
-                                            <PathIcon Data="{x:Static ui:StudioIcons.TAB_CLOSE}"
-                                                      Width="10" Height="10"/>
-                                            <Button.Styles>
-                                                <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                                    <Setter Property="Background" Value="#22000000"/>
-                                                </Style>
-                                            </Button.Styles>
-                                        </Button>
-                                    </StackPanel>
-                                </Border>
-                            </DataTemplate>
-                        </ListBox.ItemTemplate>
-                    </ListBox>
-                </ScrollViewer>
+                                    <Button Width="20"
+                                            Height="20"
+                                            Padding="0"
+                                            Background="Transparent"
+                                            BorderThickness="0"
+                                            Command="{Binding ((vm:QueryTabsViewModel)DataContext).CloseTabCommand, ElementName=Root}"
+                                            CommandParameter="{Binding }"
+                                            ToolTip.Tip="Close tab">
+                                        <PathIcon Data="{x:Static ui:StudioIcons.TAB_CLOSE}"
+                                                    Width="10" Height="10"/>
+                                        <Button.Styles>
+                                            <Style Selector="Button:pointerover /template/ ContentPresenter">
+                                                <Setter Property="Background" Value="#22000000"/>
+                                            </Style>
+                                        </Button.Styles>
+                                    </Button>
+                                </StackPanel>
+                            </Border>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
+            </ScrollViewer>
 
-                <!-- New Tab Button -->
-                <Button Grid.Column="1"
-                        Width="32"
-                        Height="32"
-                        Padding="0"
-                        Margin="4"
-                        Command="{Binding NewTabCommand}"
-                        ToolTip.Tip="New Query Tab (Ctrl+N)">
-                    <PathIcon Data="{x:Static ui:StudioIcons.TAB_NEW}"
-                              Width="14" Height="14"/>
-                </Button>
-            </Grid>
-        </Border>
+            <!-- New Tab Button -->
+            <Button Grid.Column="1" Width="32" Height="32" Padding="0" Margin="4" ToolTip.Tip="New Query Tab (Ctrl+N)"
+                    Command="{Binding NewTabCommand}">
+                <PathIcon Data="{x:Static ui:StudioIcons.TAB_NEW}"
+                            Width="14" Height="14"/>
+            </Button>
+        </Grid>
+    </Border>
 </UserControl>

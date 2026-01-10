@@ -1,7 +1,8 @@
 using Avalonia;
-using Avalonia.Controls;
 using Avalonia.Media;
 using AvaloniaEdit;
+using OutWit.Common.Locker;
+using OutWit.Common.MVVM.Attributes;
 using OutWit.Database.Studio.Syntax;
 
 namespace OutWit.Database.Studio.Controls;
@@ -9,24 +10,31 @@ namespace OutWit.Database.Studio.Controls;
 /// <summary>
 /// SQL Editor control with syntax highlighting based on AvaloniaEdit.
 /// </summary>
-public class SqlEditor : TextEditor
+public partial class SqlEditor : TextEditor
 {
-    #region Dependency Properties
+    #region Static
 
-    public static readonly StyledProperty<string> SqlTextProperty =
-        AvaloniaProperty.Register<SqlEditor, string>(nameof(SqlText), string.Empty);
-
-    #endregion
-
-    #region Fields
-
-    private bool m_isUpdatingText;
+    static SqlEditor()
+    {
+        SqlTextProperty.Changed.AddClassHandler<SqlEditor>((x, e) => x.OnSqlTextPropertyChanged(e));
+    }
 
     #endregion
 
     #region Constructors
 
     public SqlEditor()
+    {
+       InitDefaults();
+
+        InitEvents();
+    }
+
+    #endregion
+
+    #region Initialization
+
+    private void InitDefaults()
     {
         // Set up appearance
         FontFamily = new FontFamily("Consolas, Courier New, monospace");
@@ -51,12 +59,35 @@ public class SqlEditor : TextEditor
         Options.ShowSpaces = false;
         Options.ShowTabs = false;
         Options.HighlightCurrentLine = true;
+    }
 
-        // Subscribe to text changes
+    private void InitEvents()
+    {
         TextChanged += OnEditorTextChanged;
+    }
 
-        // Handle property changes
-        SqlTextProperty.Changed.AddClassHandler<SqlEditor>((x, e) => x.OnSqlTextPropertyChanged(e));
+    #endregion
+
+    #region Event Handlers
+
+    private void OnSqlTextPropertyChanged(AvaloniaPropertyChangedEventArgs e)
+    {
+        if(GlobalLocker.IsLocked(nameof(SqlEditor)))
+            return;
+
+        using var locker = GlobalLocker.Lock(nameof(SqlEditor));
+
+        Text = e.NewValue as string ?? string.Empty;
+    }
+
+    private void OnEditorTextChanged(object? sender, EventArgs e)
+    {
+        if (GlobalLocker.IsLocked(nameof(SqlEditor)))
+            return;
+
+        using var locker = GlobalLocker.Lock(nameof(SqlEditor));
+
+        SqlText = Text;
     }
 
     #endregion
@@ -66,39 +97,11 @@ public class SqlEditor : TextEditor
     /// <summary>
     /// Gets or sets the SQL text content (bindable).
     /// </summary>
-    public string SqlText
-    {
-        get => GetValue(SqlTextProperty);
-        set => SetValue(SqlTextProperty, value);
-    }
+    [StyledProperty]
+    public string? SqlText { get; set; }
+
+    protected override Type StyleKeyOverride => typeof(TextEditor);
 
     #endregion
 
-    #region Event Handlers
-
-    private void OnSqlTextPropertyChanged(AvaloniaPropertyChangedEventArgs e)
-    {
-        if (m_isUpdatingText)
-            return;
-
-        var newText = e.NewValue as string ?? string.Empty;
-        if (Text != newText)
-        {
-            m_isUpdatingText = true;
-            Text = newText;
-            m_isUpdatingText = false;
-        }
-    }
-
-    private void OnEditorTextChanged(object? sender, EventArgs e)
-    {
-        if (m_isUpdatingText)
-            return;
-
-        m_isUpdatingText = true;
-        SqlText = Text;
-        m_isUpdatingText = false;
-    }
-
-    #endregion
 }

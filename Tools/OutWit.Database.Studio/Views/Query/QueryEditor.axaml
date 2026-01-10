@@ -5,27 +5,17 @@
              xmlns:models="using:OutWit.Database.Studio.Models"
              xmlns:controls="using:OutWit.Database.Studio.Controls"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
+             xmlns:viewModels="clr-namespace:OutWit.Database.Studio.ViewModels"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="OutWit.Database.Studio.Views.Query.QueryEditor"
-             x:DataType="models:QueryTab"
+             x:DataType="viewModels:QueryTab"
              x:Name="Root">
 
     <Grid RowDefinitions="*,Auto,*">
         
         <!-- SQL Editor -->
-        <Border Grid.Row="0"
-                Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                Padding="8">
-            <TextBox Name="SqlTextBox"
-                     Text="{Binding SqlText, Mode=TwoWay}"
-                     AcceptsReturn="True"
-                     AcceptsTab="True"
-                     TextWrapping="NoWrap"
-                     FontFamily="Consolas,Courier New"
-                     FontSize="13"
-                     Background="Transparent"
-                     BorderThickness="0"
-                     Watermark="Enter SQL query here... (F5 to execute)"/>
+        <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="8">
+            <controls:SqlEditor  SqlText="{Binding SqlText, Mode=TwoWay}"/>
         </Border>
 
         <!-- Splitter -->

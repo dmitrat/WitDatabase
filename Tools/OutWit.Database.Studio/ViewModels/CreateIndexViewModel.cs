@@ -214,6 +214,7 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public bool IsUnique { get; set; }
 
+    [Notify]
     public ObservableCollection<string> SelectedColumns { get; private set; } = null!;
 
     [Notify]

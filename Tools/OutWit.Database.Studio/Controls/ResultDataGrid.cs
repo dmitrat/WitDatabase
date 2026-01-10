@@ -1,6 +1,7 @@
 using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Data;
+using OutWit.Common.MVVM.Attributes;
 using OutWit.Common.MVVM.Table;
 
 namespace OutWit.Database.Studio.Controls;
@@ -9,15 +10,15 @@ namespace OutWit.Database.Studio.Controls;
 /// Custom DataGrid that displays TableView data.
 /// Automatically generates columns from TableView.HeaderRow.
 /// </summary>
-public class ResultDataGrid : DataGrid
+public partial class ResultDataGrid : DataGrid
 {
     #region Static
 
-    public static readonly StyledProperty<TableViewPage?> ResultPageProperty =
-        AvaloniaProperty.Register<ResultDataGrid, TableViewPage?>(nameof(ResultPage));
-
-    public static readonly StyledProperty<TableViewRow?> HeaderRowProperty =
-        AvaloniaProperty.Register<ResultDataGrid, TableViewRow?>(nameof(HeaderRow));
+    static ResultDataGrid()
+    {
+        HeaderRowProperty.Changed.AddClassHandler<ResultDataGrid>((grid, e) => grid.OnHeaderRowChanged(e));
+        ResultPageProperty.Changed.AddClassHandler<ResultDataGrid>((grid, e) => grid.OnResultPageChanged(e));
+    }
 
     #endregion
 
@@ -31,12 +32,6 @@ public class ResultDataGrid : DataGrid
         CanUserResizeColumns = true;
         CanUserReorderColumns = true;
         CanUserSortColumns = false;
-    }
-
-    static ResultDataGrid()
-    {
-        HeaderRowProperty.Changed.AddClassHandler<ResultDataGrid>((grid, e) => grid.OnHeaderRowChanged(e));
-        ResultPageProperty.Changed.AddClassHandler<ResultDataGrid>((grid, e) => grid.OnResultPageChanged(e));
     }
 
     #endregion
@@ -66,6 +61,7 @@ public class ResultDataGrid : DataGrid
 
             Columns.Add(dataGridColumn);
         }
+
     }
 
     private void OnResultPageChanged(AvaloniaPropertyChangedEventArgs e)
@@ -81,20 +77,17 @@ public class ResultDataGrid : DataGrid
     /// <summary>
     /// The header row with column names.
     /// </summary>
-    public TableViewRow? HeaderRow
-    {
-        get => GetValue(HeaderRowProperty);
-        set => SetValue(HeaderRowProperty, value);
-    }
+    [StyledProperty]
+    public TableViewRow? HeaderRow { get; set; }
 
     /// <summary>
     /// The page of results to display.
     /// </summary>
-    public TableViewPage? ResultPage
-    {
-        get => GetValue(ResultPageProperty);
-        set => SetValue(ResultPageProperty, value);
-    }
+    [StyledProperty]
+    public TableViewPage? ResultPage { get; set; }
+
+
+    protected override Type StyleKeyOverride => typeof(DataGrid);
 
     #endregion
 }

@@ -1,0 +1,29 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:OutWit.Database.Studio.ViewModels"
+             xmlns:ui="clr-namespace:OutWit.Database.Studio.Ui.Icons"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
+             x:Class="OutWit.Database.Studio.Views.Query.QueryLoadingOverlay"
+             x:DataType="vm:QueryTabsViewModel">
+
+    <Border Background="#80000000"
+            IsVisible="{Binding IsExecuting}">
+        <StackPanel HorizontalAlignment="Center"
+                    VerticalAlignment="Center"
+                    Spacing="12">
+            <Border Width="48" Height="48"
+                    Background="White"
+                    CornerRadius="24">
+                <PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}"
+                          Width="24" Height="24"
+                          Foreground="{DynamicResource SystemAccentColor}"/>
+            </Border>
+            <TextBlock Text="Executing query..."
+                       Foreground="White"
+                       FontSize="16"
+                       HorizontalAlignment="Center"/>
+        </StackPanel>
+    </Border>
+</UserControl>

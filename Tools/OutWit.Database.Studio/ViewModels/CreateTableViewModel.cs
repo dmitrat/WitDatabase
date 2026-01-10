@@ -259,11 +259,13 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public string TableName { get; set; } = null!;
 
+    [Notify]
     public ObservableCollection<ColumnDefinition> Columns { get; private set; } = null!;
 
     [Notify]
     public ColumnDefinition? SelectedColumn { get; set; }
 
+    [Notify]
     public string[] AvailableDataTypes { get; private set; } = null!;
 
     [Notify]
