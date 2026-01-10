@@ -57,7 +57,7 @@ public sealed class ApplicationViewModel
         ConnectionVm = new ConnectionViewModel(this);
         DatabaseExplorerVm = new DatabaseExplorerViewModel(this);
         QueryTabsVm = new QueryTabsViewModel(this);
-        TableStructureVm = new TableStructureViewModel(this, Database);
+        TableStructureVm = new TableStructureViewModel(this);
     }
 
     #endregion

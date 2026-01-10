@@ -4,7 +4,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:OutWit.Database.Studio.ViewModels"
         mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
-        x:Class="OutWit.Database.Studio.Views.OpenDatabaseDialog"
+        x:Class="OutWit.Database.Studio.Views.Dialogs.OpenDatabaseDialog"
         x:DataType="vm:ConnectionViewModel"
         Title="Open Database"
         Width="600"

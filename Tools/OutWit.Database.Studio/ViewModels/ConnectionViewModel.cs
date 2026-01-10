@@ -402,7 +402,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
         InitDefault();
 
-        Dialog = new Views.OpenDatabaseDialog
+        Dialog = new OpenDatabaseDialog
         {
             DataContext = this
         };

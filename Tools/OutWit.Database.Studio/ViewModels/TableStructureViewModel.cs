@@ -15,23 +15,11 @@ namespace OutWit.Database.Studio.ViewModels;
 /// </summary>
 public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
 {
-    #region Fields
-
-    private readonly IDatabaseService m_databaseService;
-    private readonly ILogger<TableStructureViewModel> m_logger;
-
-    #endregion
-
     #region Constructors
 
-    public TableStructureViewModel(
-        ApplicationViewModel applicationVm,
-        IDatabaseService databaseService)
+    public TableStructureViewModel(ApplicationViewModel applicationVm)
         : base(applicationVm)
     {
-        m_databaseService = databaseService;
-        m_logger = Microsoft.Extensions.Logging.Abstractions.NullLogger<TableStructureViewModel>.Instance;
-
         InitDefault();
         InitEvents();
         InitCommands();
@@ -49,12 +37,12 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
-        m_databaseService.ConnectionStatusChanged += OnConnectionStatusChanged;
+        Database.ConnectionStatusChanged += OnConnectionStatusChanged;
     }
 
     private void InitCommands()
     {
-        RefreshCommand = new RelayCommandAsync(async _ => await RefreshAsync());
+        RefreshCommand = new RelayCommandAsync(RefreshAsync);
     }
 
     #endregion
@@ -63,7 +51,7 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
 
     public async Task RefreshAsync()
     {
-        if (!m_databaseService.IsConnected)
+        if (!Database.IsConnected)
             return;
 
         if (SelectedObjectType == DatabaseNodeType.Index)
@@ -85,19 +73,19 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
 
             try
             {
-                var columns = await m_databaseService.GetColumnsAsync(SelectedObjectName);
+                var columns = await Database.GetColumnsAsync(SelectedObjectName);
                 Columns = columns.ToList();
 
                 ApplicationVm.MainWindowVm.StatusText = $"Loaded {columns.Count} columns from {SelectedObjectTypeDisplay.ToLowerInvariant()} \"{SelectedObjectName}\"";
 
-                m_logger.LogInformation("Loaded structure for {Type} {Name}: {Count} columns",
+                Logger.LogInformation("Loaded structure for {Type} {Name}: {Count} columns",
                     SelectedObjectTypeDisplay, SelectedObjectName, columns.Count);
             }
             catch (Exception ex)
             {
                 ErrorMessage = $"Failed to load structure: {ex.Message}";
                 ApplicationVm.MainWindowVm.StatusText = $"Error loading {SelectedObjectTypeDisplay.ToLowerInvariant()} structure";
-                m_logger.LogError(ex, "Failed to load structure for {Type} {Name}", SelectedObjectTypeDisplay, SelectedObjectName);
+                Logger.LogError(ex, "Failed to load structure for {Type} {Name}", SelectedObjectTypeDisplay, SelectedObjectName);
             }
             finally
             {
@@ -108,7 +96,7 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task LoadIndexStructureAsync(string indexName)
     {
-        if (!m_databaseService.IsConnected)
+        if (!Database.IsConnected)
             return;
 
         IsLoading = true;
@@ -136,7 +124,7 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
                 "WHERE i.INDEX_NAME = " + indexLiteral + " " +
                 "ORDER BY i.ORDINAL_POSITION";
 
-            var result = await m_databaseService.ExecuteQueryAsync(sql);
+            var result = await Database.ExecuteQueryAsync(sql);
 
             if (string.IsNullOrEmpty(result.ErrorMessage) && result.Data != null && result.Data.Pages.Count > 0)
             {
@@ -181,7 +169,7 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
             }
 
             // Fallback to PRAGMA index_info
-            var pragmaResult = await m_databaseService.ExecuteQueryAsync(
+            var pragmaResult = await Database.ExecuteQueryAsync(
                 $"PRAGMA index_info(\"{indexName.Replace("\"", "\"\"")}\")");
 
             if (!string.IsNullOrEmpty(pragmaResult.ErrorMessage) || pragmaResult.Data == null)
@@ -216,7 +204,7 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
         {
             ErrorMessage = $"Failed to load index structure: {ex.Message}";
             ApplicationVm.MainWindowVm.StatusText = "Error loading index structure";
-            m_logger.LogError(ex, "Failed to load index structure for {IndexName}", indexName);
+            Logger.LogError(ex, "Failed to load index structure for {IndexName}", indexName);
         }
         finally
         {
@@ -270,12 +258,12 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task LoadViewDefinitionAsync(string viewName)
     {
-        if (!m_databaseService.IsConnected)
+        if (!Database.IsConnected)
             return;
 
         try
         {
-            var result = await m_databaseService.ExecuteQueryAsync(
+            var result = await Database.ExecuteQueryAsync(
                 $"SELECT VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_NAME = '{viewName.Replace("'", "''")}'");
 
             if (!string.IsNullOrEmpty(result.ErrorMessage) || result.Data == null || result.Data.Pages.Count == 0)
@@ -314,7 +302,7 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
 
     private void UpdateStatus()
     {
-        CanRefresh = !string.IsNullOrWhiteSpace(SelectedObjectName) && !IsLoading && m_databaseService.IsConnected;
+        CanRefresh = !string.IsNullOrWhiteSpace(SelectedObjectName) && !IsLoading && Database.IsConnected;
     }
 
     #endregion
@@ -391,6 +379,16 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
     #region Commands
 
     public ICommand RefreshCommand { get; private set; } = null!;
+
+    #endregion
+
+    #region Services
+
+    public IDatabaseService Database => ApplicationVm.Database;
+
+    public ISettingsService Settings => ApplicationVm.Settings;
+
+    public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 
     #endregion
 }
