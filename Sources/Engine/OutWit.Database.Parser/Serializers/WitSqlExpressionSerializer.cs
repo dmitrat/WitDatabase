@@ -141,6 +141,10 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
 
     public string VisitExpressionColumnRef(WitSqlExpressionColumnRef node)
     {
+        // Handle EXCLUDED pseudo-table for ON CONFLICT DO UPDATE
+        if (node.IsExcluded)
+            return $"EXCLUDED.{QuoteIdentifier(node.ColumnName)}";
+
         if (node.TableName != null)
             return $"{QuoteIdentifier(node.TableName)}.{QuoteIdentifier(node.ColumnName)}";
         return QuoteIdentifier(node.ColumnName);
@@ -426,8 +430,25 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
         if (char.IsDigit(identifier[0]))
             return true;
 
+        // Check for reserved words (case-insensitive)
+        if (IsReservedWord(identifier))
+            return true;
+
         return false;
     }
+
+    private static readonly HashSet<string> RESERVED_WORDS = new(StringComparer.OrdinalIgnoreCase)
+    {
+        "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER",
+        "TABLE", "INDEX", "VIEW", "TRIGGER", "SEQUENCE", "INTO", "VALUES", "SET", "AND", "OR",
+        "NOT", "NULL", "IS", "IN", "LIKE", "BETWEEN", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER",
+        "ON", "AS", "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "UNION", "ALL", "DISTINCT",
+        "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "CHECK", "UNIQUE", "DEFAULT",
+        "ASC", "DESC", "TRUE", "FALSE", "CASE", "WHEN", "THEN", "ELSE", "END", "CAST", "EXISTS",
+        "ANY", "SOME", "IF", "BEGIN", "COMMIT", "ROLLBACK", "TRANSACTION", "RETURNING"
+    };
+
+    private static bool IsReservedWord(string identifier) => RESERVED_WORDS.Contains(identifier);
 
     #endregion
 }

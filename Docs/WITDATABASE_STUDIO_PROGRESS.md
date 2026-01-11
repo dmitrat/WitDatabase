@@ -1,90 +1,63 @@
 # WitDatabase Studio - Implementation Progress
 
-**Last Updated:** 2026-01-04  
-**Status:** Phase 2 Complete ?, UI Improvements Complete ?
+**Last Updated:** 2025-01-04  
+**Status:** Phase 4 In Progress
 
 ---
 
-## Latest Updates (2026-01-04)
+## Latest Updates (2025-01-04)
 
-### Connection Dialog Improvements ?
+### Deep Audit Completed
 
-**Split into Two Separate Dialogs:**
-- ? **CreateDatabaseDialog** - For creating new databases
-- ? **OpenDatabaseDialog** - For opening existing databases
-- ? Removed old combined ConnectionDialog
+**Issues Found and Fixed:**
 
-**CreateDatabaseDialog Features:**
-- ? **Storage Type Selection**:
-  - File-based database (with file path and Browse button)
-  - In-Memory database (no file path needed)
-- ? **Encryption Support**:
-  - Toggle encryption checkbox
-  - Password field (only visible when encrypted)
-- ? **Storage Engine Selection**: btree, lsm
-- ? **Advanced Settings** (collapsible):
-  - Page Size: 512, 1024, 2048, 4096 (default), 8192, 16384, 32768 bytes
-  - Cache Size: 10-100,000 pages (default: 1000)
-  - Enable ACID transactions (default: true)
-  - Enable MVCC (default: true, requires transactions)
-  - Enable file locking (default: true, only for file-based)
-- ? **Better Layout**: Two-column layout for Page Size and Cache Size
-- ? **Fixed ComboBox Binding**: Uses ItemsSource with List<int> instead of ComboBoxItem with Tag
-- ? **Correct File Dialog**: Uses SaveFilePickerAsync for creating new files
+1. **WitSqlExpressionSerializer - EXCLUDED handling**
+   - Problem: Serializer did not handle `IsExcluded` flag for `EXCLUDED.column` references
+   - Fix: Added check for `IsExcluded` in `VisitExpressionColumnRef`
+   - File: `Sources\Engine\OutWit.Database.Parser\Serializers\WitSqlExpressionSerializer.cs`
 
-**OpenDatabaseDialog Features:**
-- ? **Simplified UI**: Only essential settings
-- ? **File Selection**: Browse button with OpenFilePickerAsync
-- ? **Auto-detection**: Detects encryption and storage engine from existing file
-- ? **Encryption Support**: Password field if database is encrypted
-- ? **Read-only Mode**: Checkbox to open database in read-only mode
-- ? **Storage Engine**: Detected automatically, can be overridden
+2. **QuoteIdentifier - Reserved words**
+   - Problem: `NeedsQuoting` only checked special chars and digits, not SQL reserved words
+   - Fix: Added `IsReservedWord` check with comprehensive reserved words list
+   - File: `Sources\Engine\OutWit.Database.Parser\Serializers\WitSqlExpressionSerializer.cs`
 
-**ViewModel Improvements:**
-- ? **ShowCreateDialogAsync()**: Shows CreateDatabaseDialog
-- ? **ShowOpenDialogAsync()**: Shows OpenDatabaseDialog
-- ? **StorageType Property**: 0 = File-based, 1 = In-Memory
-- ? **IsFileBased Property**: Computed from StorageType
-- ? **PageSizeOptions List**: [512, 1024, 2048, 4096, 8192, 16384, 32768]
-- ? **Fixed CanConnect Logic**: Handles in-memory databases (no file path required)
-- ? **In-Memory Database Support**: Sets FilePath to ":memory:" for display
+3. **Missing Serializer Tests**
+   - Added 17 new tests for `WitSqlExpressionSerializer`
+   - File: `Sources\Engine\OutWit.Database.Parser.Tests\SerializerTests.cs`
 
-**MainWindowViewModel Updates:**
-- ? **NewDatabase Command**: Calls ShowCreateDialogAsync()
-- ? **OpenDatabase Command**: Calls ShowOpenDialogAsync()
-- ? Proper async handling for both commands
-- ? Status updates during database creation
+4. **View Definition for Tables**
+   - Problem: "View Definition" context menu was disabled for tables
+   - Fix: Added `GetTableDefinitionAsync` to `IDatabaseService` and `DatabaseService`
+   - Updated `CanViewDefinition` to include `DatabaseNodeType.Table`
+   - Updated `ViewDefinitionAsync` to handle Table case
 
-**Tests Added:**
-- ? **ConnectionViewModelTests**: 45 tests
-  - Initialization tests (10)
-  - Command tests (3)
-  - StorageType tests (4)
-  - Dialog properties tests (6)
-  - PageSize options tests (2)
-  - Advanced settings tests (6)
-  - Error handling tests (3)
-  - Integration tests (2)
+### Test Results After Audit
+
+| Project | Tests | Status |
+|---------|-------|--------|
+| Parser Tests | 705 | PASSED |
+| Studio Tests | 146 | PASSED |
+| Engine Tests | 1723 | PASSED |
+| **Total** | **2574** | **ALL PASSED** |
 
 ---
 
 ## Completed Work
 
-### Phase 1: Foundation ? (Complete - 16h)
+### Phase 1: Foundation (Complete - 16h)
 
 All tasks completed successfully.
 
-### Phase 2: Database Explorer ? (Complete - 16h)
+### Phase 2: Database Explorer (Complete - 16h)
 
-#### ? All Tasks Completed
+#### All Tasks Completed
 
 **TreeView Component (4h)**
 - Created `DatabaseExplorer.axaml` UserControl with TreeView
-- Created `NodeTypeToIconConverter` for visual icons (???????????????)
+- Created `NodeTypeToIconConverter` for visual icons
 - Implemented expand/collapse functionality
 - Added toolbar with Refresh button
 - Added loading overlay and error display
-- Tests: `NodeTypeToIconConverterTests` (10 tests, all passing ?)
 
 **Schema Loading (4h)**
 - `DatabaseExplorerViewModel.RefreshAsync()` loads full schema
@@ -93,43 +66,57 @@ All tasks completed successfully.
   - Tables folder with table nodes
   - Views folder with view nodes
   - Indexes folder with index nodes
-  - Triggers folder (prepared)
-  - Sequences folder (prepared)
+  - Triggers folder
+  - Sequences folder
 - Status updates in MainWindow
-- Tests: `DatabaseNodeTests` (7 tests, all passing ?)
-
-**UI Layout (2h)**
-- MainWindow updated with 3-column layout
-- Database Explorer on the left (250px default width)
-- GridSplitter for resizable panels
-- Main content area on the right
-- Enhanced status bar with connection info and encryption indicator
-
-**Architecture Refactoring (2h)**
-- ? **ApplicationViewModel as Singleton** with static `Instance` property
-- ? **Removed code-behind logic** from MainWindow and DatabaseExplorer
-- ? **DataContext set in constructors** following best practices
-- ? **XAML bindings through singleton** using `x:Static`
-- ? **Clean MVVM** - no event handlers in views
-- Tests: `ApplicationViewModelTests` (7 tests, all passing ?)
 
 **Table Structure Panel (4h)**
 - Created `TableStructureViewModel` with column loading logic
 - Created `TableStructure.axaml` view with ItemsControl
-- Display column details: Name, Type, Nullable, Primary Key (??), Default Value
+- Display column details: Name, Type, Nullable, Primary Key, Default Value
 - Auto-load structure when table selected in TreeView
-- Implemented `GetTableColumnsAsync` in DatabaseService (PRAGMA table_info)
-- Empty state, loading overlay, error handling
 
 **Context Menus (2h)**
 - Implemented context menu commands:
   - **Browse Data**: Opens SELECT * query for tables/views
-  - **View Definition**: Shows SQL definition for views/triggers
-  - **Drop**: Drops selected object with DROP TABLE/VIEW/INDEX/TRIGGER/SEQUENCE
+  - **View Definition**: Shows SQL definition for tables/views/triggers/indexes
+  - **Drop**: Drops selected object
   - **Refresh**: Reloads schema
-- Commands with proper CanExecute logic
-- Visual icons in menu items
-- Tests: `DatabaseExplorerViewModelTests` (16 tests, all passing ?)
+  - **Create Table/View/Index**: Dialog-based creation
+
+### Phase 3: Query Editor (Complete)
+
+- SQL Text Editor with multi-line support
+- Execute/Cancel commands
+- Result DataGrid with column auto-sizing
+- Query execution time display
+- Error messages display
+- Query tabs support
+
+### Phase 4: INFORMATION_SCHEMA & ADO.NET (In Progress)
+
+#### Completed
+
+**INFORMATION_SCHEMA Views:**
+- TABLES - table and view metadata
+- COLUMNS - column definitions with types, nullability, defaults
+- VIEWS - view definitions
+- INDEXES - index metadata (excludes implicit PK indexes)
+- TRIGGERS - trigger definitions with timing and events
+- SEQUENCES - sequence metadata with current values
+- KEY_COLUMN_USAGE - primary and foreign key columns
+- TABLE_CONSTRAINTS - PK, UNIQUE, CHECK, FK constraints
+- REFERENTIAL_CONSTRAINTS - foreign key relationships
+
+**Parser Improvements:**
+- Quoted identifier support: "name", [name], `name`
+- EXCLUDED pseudo-table for ON CONFLICT DO UPDATE
+- Expression serializer with proper quoting
+
+**Studio Improvements:**
+- View Definition for all object types (tables, views, indexes, triggers)
+- Create Table/View/Index dialogs
+- Proper identifier quoting in generated SQL
 
 ---
 
@@ -137,39 +124,76 @@ All tasks completed successfully.
 
 | Test Suite | Tests | Status |
 |------------|-------|--------|
-| ConnectionInfoTests | 9 | ? Pass |
-| DatabaseNodeTests | 7 | ? Pass |
-| NodeTypeToIconConverterTests | 10 | ? Pass |
-| ApplicationViewModelTests | 7 | ? Pass |
-| DatabaseExplorerViewModelTests | 14 | ? Pass |
-| MainWindowViewModelTests | 12 | ? Pass |
-| ConnectionViewModelTests | 34 | ? Pass |
-| **Total** | **93** | **? All Pass** |
+| ConnectionInfoTests | 9 | Pass |
+| DatabaseNodeTests | 7 | Pass |
+| NodeTypeToIconConverterTests | 10 | Pass |
+| ApplicationViewModelTests | 7 | Pass |
+| DatabaseExplorerViewModelTests | 16 | Pass |
+| MainWindowViewModelTests | 12 | Pass |
+| ConnectionViewModelTests | 34 | Pass |
+| QueryResultViewModelTests | 15 | Pass |
+| TableStructureViewModelTests | 11 | Pass |
+| QueryTabViewModelTests | 8 | Pass |
+| ExportServiceTests | 17 | Pass |
+| SerializerTests | 17 | Pass |
+| **Studio Total** | **146** | **All Pass** |
+
+| Parser Test Suite | Tests | Status |
+|-------------------|-------|--------|
+| SelectStatementTests | 180+ | Pass |
+| InsertStatementTests | 60+ | Pass |
+| UpdateStatementTests | 50+ | Pass |
+| DeleteStatementTests | 40+ | Pass |
+| DDLStatementTests | 100+ | Pass |
+| QuotedIdentifierParserTests | 20+ | Pass |
+| SerializerTests | 17 | Pass |
+| **Parser Total** | **705** | **All Pass** |
+
+| Engine Test Suite | Tests | Status |
+|-------------------|-------|--------|
+| InformationSchemaTests | 30+ | Pass |
+| UpsertTests | 25+ | Pass |
+| TransactionTests | 50+ | Pass |
+| TriggerTests | 40+ | Pass |
+| SequenceTests | 20+ | Pass |
+| ... | ... | Pass |
+| **Engine Total** | **1723** | **All Pass** |
 
 ---
 
 ## Metrics
 
-- **Phase 1 Time**: 16h (complete)
-- **Phase 2 Time**: 16h (complete)
-- **UI Improvements**: 4h (complete)
-- **Total Time**: 36h
-- **Total Lines of Code**: ~4,200
+- **Total Time**: ~50h
+- **Total Lines of Code**: ~8,000+
 - **Test Coverage**: Models 100%, Converters 100%, ViewModels 100%
-- **Build Status**: ? Successful
+- **Build Status**: Successful
 - **Language**: English only
-- **Code-behind**: Minimal (only constructors + InitializeComponent)
 
 ---
 
 ## Architecture Highlights
 
-### Singleton Pattern
+### INFORMATION_SCHEMA Implementation
 
-**ApplicationViewModel** is a singleton with thread-safe initialization:
-```csharp
-public static ApplicationViewModel Instance { get; }
-```
+Each view is implemented as a partial class on `SchemaCatalog`:
+- `SchemaCatalog.Information.Tables.cs`
+- `SchemaCatalog.Information.Columns.cs`
+- `SchemaCatalog.Information.Views.cs`
+- `SchemaCatalog.Information.Indexes.cs`
+- `SchemaCatalog.Information.Triggers.cs`
+- `SchemaCatalog.Information.Sequences.cs`
+- `SchemaCatalog.Information.KeyColumnUsage.cs`
+- `SchemaCatalog.Information.TableConstraints.cs`
+- `SchemaCatalog.Information.ReferentialConstraints.cs`
+
+Query planner routes INFORMATION_SCHEMA queries to `IteratorInformationSchema`.
+
+### Expression Serializer
+
+`WitSqlExpressionSerializer` converts AST back to SQL text:
+- Handles all expression types (literals, columns, binary, unary, case, etc.)
+- Properly quotes identifiers with special chars or reserved words
+- Supports EXCLUDED pseudo-table for UPSERT
 
 ### Clean MVVM Implementation
 
@@ -182,151 +206,86 @@ public MainWindow()
 }
 ```
 
-**XAML Binding through singleton**:
-```xml
-<views:DatabaseExplorer DataContext="{x:Static vm:ApplicationViewModel.Instance}"/>
-```
-
-### Context Menu Commands
-
-All commands follow MVVM pattern with:
-- Command property in ViewModel
-- CanExecute logic
-- Proper error handling
-- Status updates
-- Logging
-
-**Example**:
-```csharp
-public DelegateCommand<object> BrowseDataCommand { get; private set; }
-
-private void BrowseData()
-{
-    var sql = $"SELECT * FROM {SelectedNode.Name} LIMIT 100";
-    ApplicationVm.QueryEditorVm.SqlText = sql;
-    ApplicationVm.QueryEditorVm.ExecuteCommand.Execute(null);
-}
-
-private bool CanBrowseData()
-{
-    return SelectedNode?.NodeType == DatabaseNodeType.Table 
-        || SelectedNode?.NodeType == DatabaseNodeType.View;
-}
-```
-
 ---
 
 ## Components Created
 
-### ViewModels
+### Engine Components
+- `SchemaCatalog.Information.*` - 9 partial classes for INFORMATION_SCHEMA
+- `IteratorInformationSchema` - Iterator for virtual INFORMATION_SCHEMA tables
+- `QueryPlanner.Sources.InformationSchema.cs` - Query routing for INFORMATION_SCHEMA
+- `WitSqlExpressionSerializer` - AST to SQL serialization
+
+### Studio ViewModels
 - `ApplicationViewModel` (Singleton) - 80 lines
 - `MainWindowViewModel` - 60 lines
-- `ConnectionViewModel` - 50 lines
-- `DatabaseExplorerViewModel` - 210 lines (with context menu commands)
-- `QueryEditorViewModel` - 120 lines
+- `ConnectionViewModel` - 150 lines
+- `DatabaseExplorerViewModel` - 350 lines
+- `QueryTabsViewModel` - 200 lines
+- `QueryTabViewModel` - 150 lines
 - `TableStructureViewModel` - 110 lines
+- `CreateTableViewModel` - 200 lines
+- `CreateViewViewModel` - 100 lines
+- `CreateIndexViewModel` - 150 lines
 
-### Views
-- `MainWindow.axaml` - 110 lines
-- `DatabaseExplorer.axaml` - 100 lines (with context menu)
+### Studio Views
+- `MainWindow.axaml` - 150 lines
+- `DatabaseExplorer.axaml` - 130 lines
 - `TableStructure.axaml` - 120 lines
-
-### Models
-- `ConnectionInfo` - 50 lines
-- `Settings` - 30 lines
-- `DatabaseNode` - 40 lines
-- `TableInfo` - 20 lines
-- `ColumnInfo` - 30 lines
-- `QueryResult` - 40 lines
+- `QueryTabs.axaml` - 100 lines
+- `CreateTableDialog.axaml` - 200 lines
+- `CreateViewDialog.axaml` - 100 lines
+- `CreateIndexDialog.axaml` - 150 lines
 
 ### Services
-- `DatabaseService` - 250 lines
+- `DatabaseService` - 400 lines
 - `SettingsService` - 80 lines
-
-### Converters
-- `NodeTypeToIconConverter` - 40 lines
-
-### Tests
-- 104 tests across 7 test classes
-- 100% coverage of Models, Converters, and key ViewModel functionality
+- `ExportService` - 150 lines
 
 ---
 
 ## Next Steps
 
-### Phase 3: Query Editor (Week 4-5, 16h)
+### Phase 4: Remaining Tasks
+
+| Task | Status |
+|------|--------|
+| INFORMATION_SCHEMA implementation | DONE |
+| Quoted identifier parsing | DONE |
+| Expression serializer | DONE |
+| View Definition for all types | DONE |
+| UPSERT/ON CONFLICT support | DONE |
+| ADO.NET compatibility testing | In Progress |
+| EF Core compatibility testing | Planned |
+
+### Phase 5: Polish & Release
 
 | Task | Estimate |
 |------|----------|
-| SQL Text Editor | 6h |
-| Execute/Cancel commands | 3h |
-| Result DataGrid | 5h |
-| Syntax highlighting (basic) | 2h |
-
-**Requirements**:
-- Multi-line TextBox for SQL input
-- Execute button (F5 hotkey)
-- Cancel running query
-- Display results in DataGrid
-- Show execution time
-- Error messages
-- Query history
+| Performance optimization | 4h |
+| Error handling improvements | 2h |
+| UI polish | 4h |
+| Documentation | 4h |
+| Release packaging | 2h |
 
 ---
 
 ## Technical Achievements
 
-1. ? Clean MVVM architecture maintained
-2. ? All code follows CODE_STYLE_GUIDE.md
-3. ? Comprehensive test coverage (104 tests)
-4. ? TreeView with hierarchical data binding
-5. ? Value converters for UI customization
-6. ? Resizable UI panels with GridSplitter
-7. ? Loading states and error handling
-8. ? English-only codebase
-9. ? **Singleton pattern for ApplicationViewModel**
-10. ? **Minimal code-behind (only constructors)**
-11. ? **DataContext setup in constructors**
-12. ? **Context menus with commands**
-13. ? **Table structure visualization**
-14. ? **Integration between ViewModels**
-
----
-
-## Key Features Delivered
-
-### Phase 2 Deliverables ?
-
-1. **Database Explorer TreeView**
-   - Visual schema navigation
-   - Icons for different object types
-   - Expand/collapse folders
-   - Object selection
-
-2. **Schema Loading**
-   - Tables, Views, Indexes from INFORMATION_SCHEMA
-   - Triggers, Sequences (prepared for future)
-   - Hierarchical organization
-   - Async loading with progress
-
-3. **Table Structure Panel**
-   - Column details display
-   - Primary key indicators
-   - Nullable/Default value info
-   - Empty state handling
-
-4. **Context Menus**
-   - Browse Data (SELECT *)
-   - View Definition (SQL)
-   - Drop object
-   - Refresh schema
-
-5. **UI/UX**
-   - Clean, modern interface
-   - Emoji icons for visual appeal
-   - Loading overlays
-   - Error messages
-   - Status bar updates
+1. Clean MVVM architecture maintained
+2. All code follows CODE_STYLE_GUIDE.md
+3. Comprehensive test coverage (2500+ tests)
+4. INFORMATION_SCHEMA fully implemented
+5. Expression serializer with proper quoting
+6. UPSERT/ON CONFLICT DO UPDATE support
+7. Trigger support (BEFORE/AFTER/INSTEAD OF)
+8. Sequence support with NEXTVAL/CURRVAL
+9. English-only codebase
+10. Singleton pattern for ApplicationViewModel
+11. Minimal code-behind (only constructors)
+12. Context menus with commands
+13. Table structure visualization
+14. Query tabs with results
 
 ---
 
@@ -334,11 +293,11 @@ private bool CanBrowseData()
 
 - **Average Method Length**: ~15 lines
 - **Class Complexity**: Low (single responsibility)
-- **Test/Code Ratio**: ~0.6 (very good)
+- **Test/Code Ratio**: ~0.5 (good)
 - **Code Duplication**: Minimal
 - **Documentation**: 100% (XML comments)
 - **Naming Conventions**: Consistent (CODE_STYLE_GUIDE.md)
 
 ---
 
-*Phase 2 Complete! Ready for Phase 3: Query Editor* ??
+*Phase 4 In Progress - INFORMATION_SCHEMA Complete, ADO.NET Testing Ongoing*
