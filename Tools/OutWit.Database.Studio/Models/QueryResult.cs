@@ -1,5 +1,5 @@
+using System.Data;
 using OutWit.Common.Abstract;
-using OutWit.Common.MVVM.Table;
 using OutWit.Common.Values;
 
 namespace OutWit.Database.Studio.Models;
@@ -18,8 +18,7 @@ public sealed class QueryResult : ModelBase
 
         return RowsAffected.Is(other.RowsAffected)
             && ExecutionTimeMs.Is(other.ExecutionTimeMs)
-            && ErrorMessage.Is(other.ErrorMessage)
-            && Data.Check(other.Data);
+            && ErrorMessage.Is(other.ErrorMessage);
     }
 
     public override QueryResult Clone()
@@ -29,7 +28,7 @@ public sealed class QueryResult : ModelBase
             RowsAffected = RowsAffected,
             ExecutionTimeMs = ExecutionTimeMs,
             ErrorMessage = ErrorMessage,
-            Data = Data?.Clone() as TableView
+            Data = Data?.Copy()
         };
     }
 
@@ -55,7 +54,7 @@ public sealed class QueryResult : ModelBase
     /// <summary>
     /// Gets or sets the result data (for SELECT queries).
     /// </summary>
-    public TableView? Data { get; set; }
+    public DataTable? Data { get; set; }
 
     /// <summary>
     /// Gets whether the query was successful.

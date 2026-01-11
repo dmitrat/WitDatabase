@@ -31,10 +31,9 @@ public sealed class DatabaseServiceInformationSchemaTests
         var views = await harness.Service.ExecuteQueryAsync("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'VIEW'");
         Assert.That(views.ErrorMessage, Is.Null.Or.Empty);
         Assert.That(views.Data, Is.Not.Null);
-        Assert.That(views.Data!.Pages, Has.Count.GreaterThan(0));
+        Assert.That(views.Data!.Rows.Count, Is.GreaterThan(0));
 
-        var rows = views.Data.Pages.SelectMany(p => p.Rows).ToList();
-        var names = rows.Select(r => r[0]?.Text).ToList();
+        var names = views.Data.Rows.Cast<System.Data.DataRow>().Select(r => r[0] as string).ToList();
         Assert.That(names, Is.EquivalentTo(new[] { "ActiveUsers" }));
     }
 

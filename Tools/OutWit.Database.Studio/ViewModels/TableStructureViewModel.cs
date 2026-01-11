@@ -1,4 +1,5 @@
 using System.ComponentModel;
+using System.Data;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using OutWit.Common.Aspects;
@@ -126,46 +127,42 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
 
             var result = await Database.ExecuteQueryAsync(sql);
 
-            if (string.IsNullOrEmpty(result.ErrorMessage) && result.Data != null && result.Data.Pages.Count > 0)
+            if (string.IsNullOrEmpty(result.ErrorMessage) && result.Data != null && result.Data.Rows.Count > 0)
             {
-                var rows = result.Data.Pages.SelectMany(p => p.Rows).ToList();
-                if (rows.Count > 0)
+                var list = new List<ColumnInfo>();
+
+                foreach (DataRow row in result.Data.Rows)
                 {
-                    var list = new List<ColumnInfo>();
+                    var tableName = row[0] as string;
+                    var colName = row[1] as string ?? string.Empty;
+                    var ordinal = row[2] is int o ? o : 0;
+                    var isUniqueStr = row[3] as string;
+                    var filter = row[4] as string;
+                    var dataType = row[5] as string;
 
-                    foreach (var row in rows)
+                    if (string.IsNullOrEmpty(IndexTableName))
+                        IndexTableName = tableName;
+
+                    if (IndexIsUnique is null && !string.IsNullOrWhiteSpace(isUniqueStr))
+                        IndexIsUnique = isUniqueStr.Equals("YES", StringComparison.OrdinalIgnoreCase);
+
+                    if (IndexFilterCondition is null && !string.IsNullOrWhiteSpace(filter))
+                        IndexFilterCondition = filter;
+
+                    list.Add(new ColumnInfo
                     {
-                        var tableName = row[0]?.Text;
-                        var colName = row[1]?.Text ?? string.Empty;
-                        var ordinal = 0;
-                        _ = int.TryParse(row[2]?.Text, out ordinal);
-                        var isUniqueStr = row[3]?.Text;
-                        var filter = row[4]?.Text;
-                        var dataType = row[5]?.Text;
-
-                        IndexTableName ??= tableName;
-
-                        if (IndexIsUnique is null && !string.IsNullOrWhiteSpace(isUniqueStr))
-                            IndexIsUnique = isUniqueStr.Equals("YES", StringComparison.OrdinalIgnoreCase);
-
-                        if (IndexFilterCondition is null && !string.IsNullOrWhiteSpace(filter))
-                            IndexFilterCondition = filter;
-
-                        list.Add(new ColumnInfo
-                        {
-                            Name = colName,
-                            OrdinalPosition = ordinal == 0 ? list.Count + 1 : ordinal,
-                            DataType = string.IsNullOrWhiteSpace(dataType) ? string.Empty : dataType,
-                            IsNullable = true,
-                            IsPrimaryKey = false,
-                            DefaultValue = null
-                        });
-                    }
-
-                    Columns = list;
-                    ApplicationVm.MainWindowVm.StatusText = $"Loaded {Columns.Count} columns from index \"{indexName}\"";
-                    return;
+                        Name = colName,
+                        OrdinalPosition = ordinal == 0 ? list.Count + 1 : ordinal,
+                        DataType = string.IsNullOrWhiteSpace(dataType) ? string.Empty : dataType,
+                        IsNullable = true,
+                        IsPrimaryKey = false,
+                        DefaultValue = null
+                    });
                 }
+
+                Columns = list;
+                ApplicationVm.MainWindowVm.StatusText = $"Loaded {Columns.Count} columns from index \"{indexName}\"";
+                return;
             }
 
             // Fallback to PRAGMA index_info
@@ -179,10 +176,9 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
             }
 
             var fallbackColumns = new List<ColumnInfo>();
-            var pragmaRows = pragmaResult.Data.Pages.SelectMany(p => p.Rows).ToList();
-            foreach (var row in pragmaRows)
+            foreach (DataRow row in pragmaResult.Data.Rows)
             {
-                var colName = row.Values.Length > 2 ? row[2]?.Text ?? string.Empty : string.Empty;
+                var colName = row.ItemArray.Length > 2 ? row[2] as string ?? string.Empty : string.Empty;
                 if (string.IsNullOrWhiteSpace(colName))
                     continue;
 
@@ -266,16 +262,12 @@ public class TableStructureViewModel : ViewModelBase<ApplicationViewModel>
             var result = await Database.ExecuteQueryAsync(
                 $"SELECT VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_NAME = '{viewName.Replace("'", "''")}'");
 
-            if (!string.IsNullOrEmpty(result.ErrorMessage) || result.Data == null || result.Data.Pages.Count == 0)
+            if (!string.IsNullOrEmpty(result.ErrorMessage) || result.Data == null || result.Data.Rows.Count == 0)
             {
                 return;
             }
 
-            var rows = result.Data.Pages.SelectMany(p => p.Rows).ToList();
-            if (rows.Count > 0)
-            {
-                ViewDefinition = rows[0][0]?.Text;
-            }
+            ViewDefinition = result.Data.Rows[0][0] as string;
         }
         catch
         {

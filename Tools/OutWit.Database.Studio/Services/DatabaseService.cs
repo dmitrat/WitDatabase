@@ -1,5 +1,4 @@
 using Microsoft.Extensions.Logging;
-using OutWit.Common.MVVM.Table;
 using OutWit.Database.AdoNet;
 using OutWit.Database.Studio.Models;
 using System.Data;
@@ -303,37 +302,30 @@ public sealed class DatabaseService : IDatabaseService
 
             using var reader = await command.ExecuteReaderAsync(ct);
 
-            // Build header row with column names
-            var columnNames = new string[reader.FieldCount];
+            // Create DataTable with schema
+            var dataTable = new DataTable("QueryResult");
+
+            // Add columns with proper types
             for (var i = 0; i < reader.FieldCount; i++)
             {
-                columnNames[i] = reader.GetName(i);
+                var columnName = reader.GetName(i);
+                var columnType = reader.GetFieldType(i);
+                dataTable.Columns.Add(columnName, columnType);
             }
-
-            var headerRow = new TableViewRow(0, 0, columnNames, DbTableRowType.Header);
-            var tableView = new TableView("Query Result", "", headerRow);
-            var page = new TableViewPage(0);
 
             // Read rows
-            var rowIndex = 0;
             while (await reader.ReadAsync(ct))
             {
-                var values = new string[reader.FieldCount];
+                var row = dataTable.NewRow();
                 for (var i = 0; i < reader.FieldCount; i++)
                 {
-                    values[i] = reader.IsDBNull(i) ? "" : FormatValue(reader.GetValue(i));
+                    row[i] = reader.IsDBNull(i) ? DBNull.Value : reader.GetValue(i);
                 }
-
-                var rowType = rowIndex % 2 == 0 ? DbTableRowType.BodyEven : DbTableRowType.BodyOdd;
-                var row = new TableViewRow(0, rowIndex, values, rowType);
-                page.Add(row);
-                rowIndex++;
+                dataTable.Rows.Add(row);
             }
 
-            tableView.Add(page);
-
-            result.Data = tableView;
-            result.RowsAffected = rowIndex;
+            result.Data = dataTable;
+            result.RowsAffected = dataTable.Rows.Count;
             result.ExecutionTimeMs = sw.Elapsed.TotalMilliseconds;
 
             m_logger.LogInformation("Query executed successfully in {Time}ms, {Rows} rows, {Columns} columns",
@@ -381,26 +373,6 @@ public sealed class DatabaseService : IDatabaseService
     {
         if (!IsConnected)
             throw new InvalidOperationException("Not connected to a database");
-    }
-
-    private static string FormatValue(object value)
-    {
-        return value switch
-        {
-            DateTime dt => dt.ToString("yyyy-MM-dd HH:mm:ss"),
-            DateOnly d => d.ToString("yyyy-MM-dd"),
-            TimeOnly t => t.ToString("HH:mm:ss"),
-            TimeSpan ts => ts.ToString(@"hh\:mm\:ss"),
-            DateTimeOffset dto => dto.ToString("yyyy-MM-dd HH:mm:ss zzz"),
-            byte[] bytes => bytes.Length <= 32 
-                ? $"0x{BitConverter.ToString(bytes).Replace("-", "")}" 
-                : $"0x{BitConverter.ToString(bytes, 0, 32).Replace("-", "")}...",
-            bool b => b ? "true" : "false",
-            decimal dec => dec.ToString("G"),
-            double dbl => dbl.ToString("G"),
-            float flt => flt.ToString("G"),
-            _ => value.ToString() ?? string.Empty
-        };
     }
 
     private static string FormatErrorMessage(Exception ex)

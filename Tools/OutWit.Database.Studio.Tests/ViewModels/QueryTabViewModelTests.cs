@@ -45,6 +45,8 @@ public class QueryTabViewModelTests
         Assert.That(viewModel.TotalRowCount, Is.EqualTo(0));
         Assert.That(viewModel.HasResults, Is.False);
         Assert.That(viewModel.SelectedRows, Is.Null);
+        Assert.That(viewModel.ResultData, Is.Null);
+        Assert.That(viewModel.CurrentView, Is.Null);
     }
 
     [Test]
@@ -83,7 +85,8 @@ public class QueryTabViewModelTests
         // Assert
         Assert.That(viewModel.TotalRowCount, Is.EqualTo(0));
         Assert.That(viewModel.HasResults, Is.False);
-        Assert.That(viewModel.ResultPage, Is.Null);
+        Assert.That(viewModel.CurrentView, Is.Null);
+        Assert.That(viewModel.ResultData, Is.Null);
     }
 
     #endregion
@@ -103,9 +106,8 @@ public class QueryTabViewModelTests
         viewModel.ClearResults();
 
         // Assert
-        Assert.That(viewModel.ResultTable, Is.Null);
-        Assert.That(viewModel.HeaderRow, Is.Null);
-        Assert.That(viewModel.ResultPage, Is.Null);
+        Assert.That(viewModel.ResultData, Is.Null);
+        Assert.That(viewModel.CurrentView, Is.Null);
         Assert.That(viewModel.TotalRowCount, Is.EqualTo(0));
         Assert.That(viewModel.CurrentPage, Is.EqualTo(1));
         Assert.That(viewModel.ErrorMessage, Is.Null);

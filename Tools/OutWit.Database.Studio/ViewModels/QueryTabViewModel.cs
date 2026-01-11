@@ -1,5 +1,7 @@
+using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
+using System.Data;
 using System.Text;
 using System.Windows.Input;
 using Avalonia;
@@ -7,7 +9,6 @@ using Avalonia.Controls;
 using OutWit.Common.Aspects;
 using OutWit.Common.Locker;
 using OutWit.Common.MVVM.Commands;
-using OutWit.Common.MVVM.Table;
 using OutWit.Common.MVVM.ViewModels;
 using OutWit.Common.Utils;
 
@@ -124,7 +125,8 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
         if (!CanCopyRows)
             return;
 
-        var csv = RowsToCsv(GetSelectedOrAllRows(), includeHeaders: false);
+        var rows = GetSelectedOrVisibleRows();
+        var csv = RowsToCsv(rows, includeHeaders: false);
         await SetClipboardTextAsync(csv);
     }
 
@@ -133,7 +135,8 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
         if (!CanCopyRows)
             return;
 
-        var csv = RowsToCsv(GetSelectedOrAllRows(), includeHeaders: true);
+        var rows = GetSelectedOrVisibleRows();
+        var csv = RowsToCsv(rows, includeHeaders: true);
         await SetClipboardTextAsync(csv);
     }
 
@@ -142,27 +145,26 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
         if (!CanCopyRows)
             return;
 
-        var sql = RowsToInsertStatements(GetSelectedOrAllRows());
+        var rows = GetSelectedOrVisibleRows();
+        var sql = RowsToInsertStatements(rows);
         await SetClipboardTextAsync(sql);
     }
 
     private async Task CopyAllRowsAsync()
     {
-        if (!HasResults || ResultTable == null)
+        if (!HasResults || ResultData == null)
             return;
 
-        var allRows = ResultTable.Pages.SelectMany(p => p.Rows).ToList();
-        var csv = RowsToCsv(allRows, includeHeaders: true);
+        var csv = RowsToCsv(ResultData.Rows.Cast<DataRow>().ToList(), includeHeaders: true);
         await SetClipboardTextAsync(csv);
     }
 
     private async Task CopyAllRowsAsInsertAsync()
     {
-        if (!HasResults || ResultTable == null)
+        if (!HasResults || ResultData == null)
             return;
 
-        var allRows = ResultTable.Pages.SelectMany(p => p.Rows).ToList();
-        var sql = RowsToInsertStatements(allRows);
+        var sql = RowsToInsertStatements(ResultData.Rows.Cast<DataRow>().ToList());
         await SetClipboardTextAsync(sql);
     }
 
@@ -186,23 +188,21 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
     /// <summary>
     /// Sets the full result data and applies pagination.
     /// </summary>
-    public void SetResultData(TableView? data)
+    public void SetResultData(DataTable? data)
     {
         using var locker = GlobalLocker.Lock(nameof(QueryTabViewModel));
 
-        ResultTable = data;
+        ResultData = data;
 
-        if (data == null || data.Pages.Count == 0)
+        if (data == null || data.Rows.Count == 0)
         {
             TotalRowCount = 0;
             CurrentPage = 1;
-            HeaderRow = null;
-            ResultPage = null;
+            CurrentView = null;
             return;
         }
 
-        HeaderRow = data.HeaderRow;
-        TotalRowCount = data.Pages.Sum(page => page.Rows.Count);
+        TotalRowCount = data.Rows.Count;
 
         ResetPagination();
         UpdateStatus();
@@ -213,23 +213,18 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     private void ApplyPagination()
     {
-        if (ResultTable == null || ResultTable.Pages.Count == 0)
+        if (ResultData == null || ResultData.Rows.Count == 0)
         {
-            ResultPage = null;
+            CurrentView = null;
             return;
         }
 
-        var allRows = ResultTable.Pages.SelectMany(page => page.Rows).ToList();
-        var startIndex = (CurrentPage - 1) * PageSize;
-        var endIndex = Math.Min(startIndex + PageSize, allRows.Count);
-
-        var page = new TableViewPage(CurrentPage);
-        for (var i = startIndex; i < endIndex; i++)
-        {
-            page.Add(allRows[i]);
-        }
-
-        ResultPage = page;
+        // Create a DataView for the current page
+        var view = new DataView(ResultData);
+        
+        // We'll handle pagination in the grid by showing all and letting user scroll
+        // For very large datasets, we could implement virtual scrolling
+        CurrentView = view;
     }
 
     /// <summary>
@@ -239,9 +234,9 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
     {
         using var locker = GlobalLocker.Lock(nameof(QueryTabViewModel));
 
-        ResultTable = null;
-        HeaderRow = null;
-        ResultPage = null;
+        ResultData?.Dispose();
+        ResultData = null;
+        CurrentView = null;
         TotalRowCount = 0;
         CurrentPage = 1;
         RowsAffected = 0;
@@ -252,13 +247,13 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
         UpdateStatus();
     }
 
-    private IReadOnlyList<TableViewRow> GetSelectedOrAllRows()
+    private IReadOnlyList<DataRow> GetSelectedOrVisibleRows()
     {
         if (SelectedRows != null && SelectedRows.Count > 0)
-            return SelectedRows.ToList();
+            return SelectedRows.Cast<DataRowView>().Select(rv => rv.Row).ToList();
 
-        if (ResultPage != null)
-            return ResultPage.Rows.ToList();
+        if (CurrentView != null)
+            return CurrentView.Cast<DataRowView>().Select(rv => rv.Row).ToList();
 
         return [];
     }
@@ -275,46 +270,68 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Export Functions
 
-    private string RowsToCsv(IReadOnlyList<TableViewRow> rows, bool includeHeaders)
+    private string RowsToCsv(IReadOnlyList<DataRow> rows, bool includeHeaders)
     {
-        if (rows.Count == 0)
+        if (rows.Count == 0 || ResultData == null)
             return string.Empty;
 
         var sb = new StringBuilder();
 
         // Headers
-        if (includeHeaders && HeaderRow != null)
+        if (includeHeaders)
         {
-            var headers = HeaderRow.Values.Select(v => EscapeCsvField(v.Text ?? ""));
+            var headers = ResultData.Columns.Cast<DataColumn>().Select(c => EscapeCsvField(c.ColumnName));
             sb.AppendLine(string.Join(",", headers));
         }
 
         // Rows
         foreach (var row in rows)
         {
-            var values = row.Values.Select(v => EscapeCsvField(v.Text ?? ""));
+            var values = row.ItemArray.Select(v => EscapeCsvField(FormatValue(v)));
             sb.AppendLine(string.Join(",", values));
         }
 
         return sb.ToString();
     }
 
-    private string RowsToInsertStatements(IReadOnlyList<TableViewRow> rows)
+    private string RowsToInsertStatements(IReadOnlyList<DataRow> rows)
     {
-        if (rows.Count == 0 || HeaderRow == null)
+        if (rows.Count == 0 || ResultData == null)
             return string.Empty;
 
         var sb = new StringBuilder();
-        var tableName = "TableName"; // Placeholder since we don't know the table name from SELECT results
-        var columns = string.Join(", ", HeaderRow.Values.Select(v => v.Text ?? ""));
+        var tableName = "TableName";
+        var columns = string.Join(", ", ResultData.Columns.Cast<DataColumn>().Select(c => c.ColumnName));
 
         foreach (var row in rows)
         {
-            var values = row.Values.Select(v => FormatSqlValue(v.Text));
+            var values = new List<string>();
+            for (var i = 0; i < ResultData.Columns.Count; i++)
+            {
+                values.Add(FormatSqlValue(row[i], ResultData.Columns[i].DataType));
+            }
             sb.AppendLine($"INSERT INTO {tableName} ({columns}) VALUES ({string.Join(", ", values)});");
         }
 
         return sb.ToString();
+    }
+
+    private static string FormatValue(object? value)
+    {
+        if (value == null || value == DBNull.Value)
+            return string.Empty;
+
+        return value switch
+        {
+            DateTime dt => dt.ToString("yyyy-MM-dd HH:mm:ss"),
+            DateOnly d => d.ToString("yyyy-MM-dd"),
+            TimeOnly t => t.ToString("HH:mm:ss"),
+            byte[] bytes => bytes.Length <= 32
+                ? $"0x{BitConverter.ToString(bytes).Replace("-", "")}"
+                : $"0x{BitConverter.ToString(bytes, 0, 32).Replace("-", "")}...",
+            bool b => b ? "true" : "false",
+            _ => value.ToString() ?? string.Empty
+        };
     }
 
     private static string EscapeCsvField(string? field)
@@ -330,17 +347,32 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
         return field;
     }
 
-    private static string FormatSqlValue(string? value)
+    private static string FormatSqlValue(object? value, Type dataType)
     {
-        if (string.IsNullOrEmpty(value))
+        if (value == null || value == DBNull.Value)
             return NULL_DISPLAY;
 
-        // Check if it's a number
-        if (double.TryParse(value, out _))
-            return value;
+        // Numbers don't need quotes
+        if (IsNumericType(dataType))
+            return value.ToString() ?? NULL_DISPLAY;
+
+        // Boolean
+        if (dataType == typeof(bool))
+            return ((bool)value) ? "TRUE" : "FALSE";
 
         // Escape single quotes and wrap in quotes
-        return $"'{value.Replace("'", "''")}'";
+        var str = FormatValue(value);
+        return $"'{str.Replace("'", "''")}'";
+    }
+
+    private static bool IsNumericType(Type type)
+    {
+        return type == typeof(byte) || type == typeof(sbyte) ||
+               type == typeof(short) || type == typeof(ushort) ||
+               type == typeof(int) || type == typeof(uint) ||
+               type == typeof(long) || type == typeof(ulong) ||
+               type == typeof(float) || type == typeof(double) ||
+               type == typeof(decimal);
     }
 
     #endregion
@@ -370,7 +402,7 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
         DisplayTitle = IsModified ? $"{Title} *" : Title;
         
         var selectedCount = SelectedRows?.Count ?? 0;
-        CanCopyRows = HasResults && (selectedCount > 0 || ResultPage?.Rows.Count > 0);
+        CanCopyRows = HasResults && (selectedCount > 0 || CurrentView?.Count > 0);
     }
 
     #endregion
@@ -400,7 +432,7 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
         if (e.IsProperty((QueryTabViewModel vm) => vm.Title))
             UpdateStatus();
 
-        if (e.IsProperty((QueryTabViewModel vm) => vm.ResultPage))
+        if (e.IsProperty((QueryTabViewModel vm) => vm.CurrentView))
             UpdateStatus();
 
         if (e.IsProperty((QueryTabViewModel vm) => vm.SelectedRows))
@@ -454,22 +486,16 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
     public string DisplayTitle { get; private set; } = "";
 
     /// <summary>
-    /// Header row with column names.
+    /// Full result data as DataTable.
     /// </summary>
     [Notify]
-    public TableViewRow? HeaderRow { get; set; }
+    public DataTable? ResultData { get; private set; }
 
     /// <summary>
-    /// Current page of results for display.
+    /// Current view for display (supports sorting).
     /// </summary>
     [Notify]
-    public TableViewPage? ResultPage { get; set; }
-
-    /// <summary>
-    /// Result table with query results.
-    /// </summary>
-    [Notify]
-    public TableView? ResultTable { get; private set; }
+    public DataView? CurrentView { get; set; }
 
     /// <summary>
     /// Error message from query execution.
@@ -517,7 +543,7 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
     /// Currently selected rows in the DataGrid.
     /// </summary>
     [Notify]
-    public ObservableCollection<TableViewRow>? SelectedRows { get; set; }
+    public IList? SelectedRows { get; set; }
 
     #endregion
 

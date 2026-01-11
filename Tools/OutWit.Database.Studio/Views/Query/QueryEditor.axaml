@@ -34,8 +34,7 @@
                 <Grid RowDefinitions="*,Auto">
                     <!-- Custom Data Grid for Results -->
                     <c:ResultDataGrid Grid.Row="0"
-                                      HeaderRow="{Binding HeaderRow}"
-                                      ResultPage="{Binding ResultPage}"
+                                      ResultView="{Binding CurrentView}"
                                       SelectedRows="{Binding SelectedRows, Mode=OneWayToSource}"
                                       BorderThickness="0"
                                       Background="Transparent"
@@ -95,11 +94,7 @@
                             <!-- Row count info -->
                             <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
                                 <TextBlock VerticalAlignment="Center">
-                                    <Run Text="Showing"/>
-                                    <Run Text="{Binding DisplayedRowStart}" FontWeight="SemiBold"/>
-                                    <Run Text="-"/>
-                                    <Run Text="{Binding DisplayedRowEnd}" FontWeight="SemiBold"/>
-                                    <Run Text="of"/>
+                                    <Run Text="Total:"/>
                                     <Run Text="{Binding TotalRowCount}" FontWeight="SemiBold"/>
                                     <Run Text="rows"/>
                                 </TextBlock>
@@ -125,64 +120,15 @@
                                 </StackPanel>
                             </StackPanel>
                             
-                            <!-- Pagination controls -->
+                            <!-- Execution info -->
                             <StackPanel Grid.Column="2"
                                         Orientation="Horizontal"
-                                        Spacing="4">
-                                <Button Command="{Binding FirstPageCommand}"
-                                        IsEnabled="{Binding CanGoToPreviousPage}"
-                                        Width="28" Height="28"
-                                        Padding="0"
-                                        ToolTip.Tip="First page">
-                                    <PathIcon Data="{x:Static ui:StudioIcons.PAGE_FIRST}"
-                                              Width="12" Height="12"/>
-                                </Button>
-                                <Button Command="{Binding PreviousPageCommand}"
-                                        IsEnabled="{Binding CanGoToPreviousPage}"
-                                        Width="28" Height="28"
-                                        Padding="0"
-                                        ToolTip.Tip="Previous page">
-                                    <PathIcon Data="{x:Static ui:StudioIcons.PAGE_PREVIOUS}"
-                                              Width="12" Height="12"/>
-                                </Button>
-                                
-                                <TextBlock VerticalAlignment="Center"
-                                           Margin="8,0">
-                                    <Run Text="Page"/>
-                                    <Run Text="{Binding CurrentPage}" FontWeight="SemiBold"/>
-                                    <Run Text="of"/>
-                                    <Run Text="{Binding TotalPages}" FontWeight="SemiBold"/>
+                                        Spacing="16"
+                                        VerticalAlignment="Center">
+                                <TextBlock VerticalAlignment="Center">
+                                    <Run Text="Execution time:"/>
+                                    <Run Text="{Binding ExecutionTimeMs, StringFormat='{}{0:F2} ms'}" FontWeight="SemiBold"/>
                                 </TextBlock>
-                                
-                                <Button Command="{Binding NextPageCommand}"
-                                        IsEnabled="{Binding CanGoToNextPage}"
-                                        Width="28" Height="28"
-                                        Padding="0"
-                                        ToolTip.Tip="Next page">
-                                    <PathIcon Data="{x:Static ui:StudioIcons.PAGE_NEXT}"
-                                              Width="12" Height="12"/>
-                                </Button>
-                                <Button Command="{Binding LastPageCommand}"
-                                        IsEnabled="{Binding CanGoToNextPage}"
-                                        Width="28" Height="28"
-                                        Padding="0"
-                                        ToolTip.Tip="Last page">
-                                    <PathIcon Data="{x:Static ui:StudioIcons.PAGE_LAST}"
-                                              Width="12" Height="12"/>
-                                </Button>
-                                
-                                <Separator Width="1" Height="20" Margin="8,0"/>
-                                
-                                <TextBlock Text="Page size:" VerticalAlignment="Center"/>
-                                <ComboBox SelectedItem="{Binding PageSize}"
-                                          Width="80"
-                                          VerticalAlignment="Center">
-                                    <x:Int32>50</x:Int32>
-                                    <x:Int32>100</x:Int32>
-                                    <x:Int32>250</x:Int32>
-                                    <x:Int32>500</x:Int32>
-                                    <x:Int32>1000</x:Int32>
-                                </ComboBox>
                             </StackPanel>
                         </Grid>
                     </Border>

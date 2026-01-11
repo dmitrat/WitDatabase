@@ -1,19 +1,18 @@
 using System.Collections;
-using System.Collections.ObjectModel;
-using System.Text;
+using System.Data;
 using Avalonia;
 using Avalonia.Controls;
+using Avalonia.Controls.Primitives;
 using Avalonia.Data;
+using Avalonia.Styling;
 using OutWit.Common.MVVM.Attributes;
-using OutWit.Common.MVVM.Table;
 using OutWit.Database.Studio.Converters;
 
 namespace OutWit.Database.Studio.Controls;
 
 /// <summary>
-/// Custom DataGrid that displays TableView data.
-/// Automatically generates columns from TableView.HeaderRow.
-/// Supports NULL value display and selection tracking.
+/// Custom DataGrid that displays DataView results.
+/// Supports NULL value display and automatic column generation.
 /// </summary>
 public partial class ResultDataGrid : DataGrid
 {
@@ -21,15 +20,32 @@ public partial class ResultDataGrid : DataGrid
 
     static ResultDataGrid()
     {
-        HeaderRowProperty.Changed.AddClassHandler<ResultDataGrid>((grid, e) => grid.OnHeaderRowChanged(e));
-        ResultPageProperty.Changed.AddClassHandler<ResultDataGrid>((grid, e) => grid.OnResultPageChanged(e));
+        ResultViewProperty.Changed.AddClassHandler<ResultDataGrid>((grid, e) => grid.OnResultViewChanged(e));
     }
+
+    #endregion
+
+    #region Fields
+
+    private readonly List<IStyle> m_dynamicStyles = new ();
+
+    private readonly SqlValueBrushConverter m_valueBrushConverter = new ();
 
     #endregion
 
     #region Constructors
 
     public ResultDataGrid()
+    {
+        InitDefaults();
+        InitEvents();
+    }
+
+    #endregion
+
+    #region Initialization
+
+    private void InitDefaults()
     {
         AutoGenerateColumns = false;
         IsReadOnly = true;
@@ -38,7 +54,10 @@ public partial class ResultDataGrid : DataGrid
         CanUserReorderColumns = true;
         CanUserSortColumns = true;
         SelectionMode = DataGridSelectionMode.Extended;
+    }
 
+    private void InitEvents()
+    {
         SelectionChanged += OnSelectionChanged;
     }
 
@@ -46,53 +65,77 @@ public partial class ResultDataGrid : DataGrid
 
     #region Functions
 
-    private void OnHeaderRowChanged(AvaloniaPropertyChangedEventArgs e)
+    private void ClearDynamicStyles()
     {
-        var headerRow = e.NewValue as TableViewRow;
-        
-        Columns.Clear();
-        
-        if (headerRow == null || headerRow.Values.Length == 0)
-            return;
+        foreach (var s in m_dynamicStyles)
+            Styles.Remove(s);
 
-        // Generate columns from header row
-        for (var i = 0; i < headerRow.Values.Length; i++)
-        {
-            var cell = headerRow.Values[i];
-            var columnName = cell.Text ?? $"Column{i}";
-            
-            var dataGridColumn = new DataGridTextColumn
-            {
-                Header = columnName,
-                Binding = new Binding($"[{i}].Text") { Converter = new NullValueConverter() },
-                Width = new DataGridLength(1, DataGridLengthUnitType.Star),
-                MinWidth = 50,
-                Tag = i
-            };
-
-            Columns.Add(dataGridColumn);
-        }
+        m_dynamicStyles.Clear();
     }
 
-    private void OnResultPageChanged(AvaloniaPropertyChangedEventArgs e)
+
+    private void OnResultViewChanged(AvaloniaPropertyChangedEventArgs e)
     {
-        var page = e.NewValue as TableViewPage;
-        ItemsSource = page?.Rows;
+        Columns.Clear();
+        ClearDynamicStyles();
+
+        if (e.NewValue is not DataView view || view.Table == null )
+            ItemsSource = null;
+        else
+        {
+            foreach (DataColumn col in view.Table.Columns)
+            {
+
+                var ordinal = col.Ordinal;
+                var className = $"result-col-{ordinal}";
+
+                var dataGridColumn = new DataGridTextColumn
+                {
+                    Header = col.ColumnName,
+                    Binding = new Binding($"Row.ItemArray[{ordinal}]")
+                    {
+                        Converter = new SqlValueConverter(),
+                    },
+                    Width = new DataGridLength(1, DataGridLengthUnitType.Star),
+                    MinWidth = 50,
+                    CanUserSort = true,
+                    Tag = ordinal
+                };
+
+                dataGridColumn.CellStyleClasses.Add(className);
+
+                Columns.Add(dataGridColumn);
+
+                var cellStyle = new Style(x => x.OfType<DataGridCell>().Class(className));
+
+                var foregroundBinding = new Binding($"Row.ItemArray[{ordinal}]")
+                {
+                    Converter = m_valueBrushConverter,
+                };
+
+                cellStyle.Setters.Add(new Setter(TemplatedControl.ForegroundProperty, foregroundBinding));
+
+                Styles.Add(cellStyle);
+                m_dynamicStyles.Add(cellStyle);
+            }
+
+            ItemsSource = view;
+        }
     }
 
     private void OnSelectionChanged(object? sender, SelectionChangedEventArgs e)
     {
-        var selectedRows = new ObservableCollection<TableViewRow>();
+        var selected = new List<DataRowView>();
         
         foreach (var item in SelectedItems)
         {
-            if (item is TableViewRow row)
+            if (item is DataRowView rowView)
             {
-                selectedRows.Add(row);
+                selected.Add(rowView);
             }
         }
 
-        SelectedRows = selectedRows;
+        SetValue(SelectedRowsProperty, selected);
     }
 
     #endregion
@@ -100,22 +143,16 @@ public partial class ResultDataGrid : DataGrid
     #region Properties
 
     /// <summary>
-    /// The header row with column names.
+    /// The DataView to display.
     /// </summary>
     [StyledProperty]
-    public TableViewRow? HeaderRow { get; set; }
-
-    /// <summary>
-    /// The page of results to display.
-    /// </summary>
-    [StyledProperty]
-    public TableViewPage? ResultPage { get; set; }
+    public DataView? ResultView { get; set; }
 
     /// <summary>
     /// The currently selected rows.
     /// </summary>
     [StyledProperty]
-    public ObservableCollection<TableViewRow>? SelectedRows { get; set; }
+    public IList? SelectedRows { get; set; }
 
     protected override Type StyleKeyOverride => typeof(DataGrid);
 
