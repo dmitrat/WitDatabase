@@ -33,7 +33,10 @@ public abstract class DataGridBase : DataGrid
     #region Fields
 
     private readonly List<IStyle> m_dynamicStyles = [];
-    private readonly SqlValueBrushConverter m_valueBrushConverter = new();
+    
+    // Shared converter instances - thread-safe for read-only converters
+    private static readonly SqlValueConverter s_valueConverter = new();
+    private static readonly SqlValueBrushConverter s_brushConverter = new();
 
     #endregion
 
@@ -82,7 +85,7 @@ public abstract class DataGridBase : DataGrid
             Header = dataColumn.ColumnName,
             Binding = new Binding($"Row.ItemArray[{ordinal}]")
             {
-                Converter = new SqlValueConverter(),
+                Converter = s_valueConverter,
                 Mode = BindingMode.OneWay
             },
             Width = new DataGridLength(1, DataGridLengthUnitType.Star),
@@ -100,7 +103,7 @@ public abstract class DataGridBase : DataGrid
         var cellStyle = new Style(x => x.OfType<DataGridCell>().Class(className));
         var foregroundBinding = new Binding($"Row.ItemArray[{ordinal}]")
         {
-            Converter = m_valueBrushConverter,
+            Converter = s_brushConverter,
         };
         cellStyle.Setters.Add(new Setter(TemplatedControl.ForegroundProperty, foregroundBinding));
         return cellStyle;

@@ -9,6 +9,7 @@ using OutWit.Common.Locker;
 using OutWit.Common.MVVM.Commands;
 using OutWit.Common.MVVM.ViewModels;
 using OutWit.Common.Utils;
+using OutWit.Database.Studio.Converters;
 using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
 
@@ -116,7 +117,7 @@ public class TableEditorViewModel : ViewModelBase<ApplicationViewModel>
 
         try
         {
-            var sql = $"SELECT * FROM [{EscapeIdentifier(TableName)}] LIMIT {PageSize}";
+            var sql = $"SELECT * FROM [{SqlValueFormatter.EscapeIdentifier(TableName)}] LIMIT {PageSize}";
             var result = await Database.ExecuteQueryAsync(sql);
 
             if (!string.IsNullOrEmpty(result.ErrorMessage))
@@ -265,7 +266,7 @@ public class TableEditorViewModel : ViewModelBase<ApplicationViewModel>
                     continue;
                 }
 
-                var deleteSql = $"DELETE FROM [{EscapeIdentifier(TableName)}] WHERE {whereClause}";
+                var deleteSql = $"DELETE FROM [{SqlValueFormatter.EscapeIdentifier(TableName)}] WHERE {whereClause}";
                 Logger.LogDebug("Executing DELETE: {Sql}", deleteSql);
                 
                 try
@@ -486,7 +487,7 @@ public class TableEditorViewModel : ViewModelBase<ApplicationViewModel>
             foreach (var pkColumn in PrimaryKeyColumns)
             {
                 var value = row[pkColumn];
-                conditions.Add($"[{EscapeIdentifier(pkColumn)}] = {FormatSqlValue(value)}");
+                conditions.Add($"[{SqlValueFormatter.EscapeIdentifier(pkColumn)}] = {SqlValueFormatter.FormatForSql(value)}");
             }
         }
         else
@@ -496,9 +497,9 @@ public class TableEditorViewModel : ViewModelBase<ApplicationViewModel>
             {
                 var value = row[col];
                 if (value == DBNull.Value)
-                    conditions.Add($"[{EscapeIdentifier(col.ColumnName)}] IS NULL");
+                    conditions.Add($"[{SqlValueFormatter.EscapeIdentifier(col.ColumnName)}] IS NULL");
                 else
-                    conditions.Add($"[{EscapeIdentifier(col.ColumnName)}] = {FormatSqlValue(value)}");
+                    conditions.Add($"[{SqlValueFormatter.EscapeIdentifier(col.ColumnName)}] = {SqlValueFormatter.FormatForSql(value)}");
             }
         }
 
@@ -519,11 +520,11 @@ public class TableEditorViewModel : ViewModelBase<ApplicationViewModel>
             if (columnInfo?.IsAutoIncrement == true && (value == DBNull.Value || value == null))
                 continue;
 
-            columns.Add($"[{EscapeIdentifier(col.ColumnName)}]");
-            values.Add(FormatSqlValue(value));
+            columns.Add($"[{SqlValueFormatter.EscapeIdentifier(col.ColumnName)}]");
+            values.Add(SqlValueFormatter.FormatForSql(value));
         }
 
-        return $"INSERT INTO [{EscapeIdentifier(TableName!)}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)})";
+        return $"INSERT INTO [{SqlValueFormatter.EscapeIdentifier(TableName!)}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)})";
     }
 
     private string BuildUpdateStatement(DataRow row, string whereClause)
@@ -537,37 +538,10 @@ public class TableEditorViewModel : ViewModelBase<ApplicationViewModel>
                 continue;
 
             var value = row[col];
-            setClauses.Add($"[{EscapeIdentifier(col.ColumnName)}] = {FormatSqlValue(value)}");
+            setClauses.Add($"[{SqlValueFormatter.EscapeIdentifier(col.ColumnName)}] = {SqlValueFormatter.FormatForSql(value)}");
         }
 
-        return $"UPDATE [{EscapeIdentifier(TableName!)}] SET {string.Join(", ", setClauses)} WHERE {whereClause}";
-    }
-
-    private static string FormatSqlValue(object? value)
-    {
-        if (value == null || value == DBNull.Value)
-            return "NULL";
-
-        return value switch
-        {
-            string str => $"'{str.Replace("'", "''")}'",
-            DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-            DateOnly d => $"'{d:yyyy-MM-dd}'",
-            TimeOnly t => $"'{t:HH:mm:ss}'",
-            DateTimeOffset dto => $"'{dto:yyyy-MM-dd HH:mm:ss zzz}'",
-            bool b => b ? "TRUE" : "FALSE",
-            byte[] bytes => $"X'{BitConverter.ToString(bytes).Replace("-", "")}'",
-            Guid guid => $"'{guid}'",
-            float f => f.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            double d => d.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            decimal m => m.ToString(System.Globalization.CultureInfo.InvariantCulture),
-            _ => value.ToString() ?? "NULL"
-        };
-    }
-
-    private static string EscapeIdentifier(string identifier)
-    {
-        return identifier.Replace("]", "]]");
+        return $"UPDATE [{SqlValueFormatter.EscapeIdentifier(TableName!)}] SET {string.Join(", ", setClauses)} WHERE {whereClause}";
     }
 
     private static object? ParseDefaultValue(string defaultValue, Type targetType)

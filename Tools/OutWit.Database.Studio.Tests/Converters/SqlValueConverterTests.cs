@@ -82,46 +82,61 @@ public class SqlValueConverterTests
 
     #endregion
 
-    #region DateTime Tests
+    #region DateTime Tests - Return original values for DataGrid culture-aware formatting
 
     [Test]
-    public void ConvertDateTimeReturnsFormattedStringTest()
+    public void ConvertDateTimeReturnsOriginalValueTest()
     {
         var dateTime = new DateTime(2025, 6, 15, 14, 30, 45);
 
         var result = m_converter.Convert(dateTime, typeof(string), null, CultureInfo.InvariantCulture);
 
-        Assert.That(result, Is.EqualTo("2025-06-15 14:30:45"));
+        // DateTime returned as-is - DataGrid handles culture-aware formatting
+        Assert.That(result, Is.EqualTo(dateTime));
     }
 
     [Test]
-    public void ConvertDateOnlyReturnsFormattedStringTest()
+    public void ConvertDateOnlyReturnsOriginalValueTest()
     {
         var date = new DateOnly(2025, 6, 15);
 
         var result = m_converter.Convert(date, typeof(string), null, CultureInfo.InvariantCulture);
 
-        Assert.That(result, Is.EqualTo("2025-06-15"));
+        // DateOnly returned as-is - DataGrid handles culture-aware formatting
+        Assert.That(result, Is.EqualTo(date));
     }
 
     [Test]
-    public void ConvertTimeOnlyReturnsFormattedStringTest()
+    public void ConvertTimeOnlyReturnsOriginalValueTest()
     {
         var time = new TimeOnly(14, 30, 45);
 
         var result = m_converter.Convert(time, typeof(string), null, CultureInfo.InvariantCulture);
 
-        Assert.That(result, Is.EqualTo("14:30:45"));
+        // TimeOnly returned as-is - DataGrid handles culture-aware formatting
+        Assert.That(result, Is.EqualTo(time));
     }
 
     [Test]
-    public void ConvertTimeSpanReturnsFormattedStringTest()
+    public void ConvertTimeSpanReturnsOriginalValueTest()
     {
         var timeSpan = new TimeSpan(2, 30, 45);
 
         var result = m_converter.Convert(timeSpan, typeof(string), null, CultureInfo.InvariantCulture);
 
-        Assert.That(result, Is.EqualTo("02:30:45"));
+        // TimeSpan returned as-is - DataGrid handles culture-aware formatting
+        Assert.That(result, Is.EqualTo(timeSpan));
+    }
+
+    [Test]
+    public void ConvertDateTimeOffsetReturnsOriginalValueTest()
+    {
+        var dto = new DateTimeOffset(2025, 6, 15, 14, 30, 45, TimeSpan.FromHours(2));
+
+        var result = m_converter.Convert(dto, typeof(string), null, CultureInfo.InvariantCulture);
+
+        // DateTimeOffset returned as-is - DataGrid handles culture-aware formatting
+        Assert.That(result, Is.EqualTo(dto));
     }
 
     #endregion
@@ -146,7 +161,7 @@ public class SqlValueConverterTests
 
     #endregion
 
-    #region Other Types Tests
+    #region Numeric Types Tests - Return original values
 
     [Test]
     public void ConvertStringReturnsOriginalValueTest()
@@ -165,11 +180,37 @@ public class SqlValueConverterTests
     }
 
     [Test]
+    public void ConvertLongReturnsOriginalValueTest()
+    {
+        var result = m_converter.Convert(123456789L, typeof(string), null, CultureInfo.InvariantCulture);
+
+        Assert.That(result, Is.EqualTo(123456789L));
+    }
+
+    [Test]
     public void ConvertDecimalReturnsOriginalValueTest()
     {
         var result = m_converter.Convert(123.45m, typeof(string), null, CultureInfo.InvariantCulture);
 
         Assert.That(result, Is.EqualTo(123.45m));
+    }
+
+    [Test]
+    public void ConvertDoubleReturnsOriginalValueTest()
+    {
+        var result = m_converter.Convert(3.14159d, typeof(string), null, CultureInfo.InvariantCulture);
+
+        Assert.That(result, Is.EqualTo(3.14159d));
+    }
+
+    [Test]
+    public void ConvertGuidReturnsOriginalValueTest()
+    {
+        var guid = Guid.NewGuid();
+
+        var result = m_converter.Convert(guid, typeof(string), null, CultureInfo.InvariantCulture);
+
+        Assert.That(result, Is.EqualTo(guid));
     }
 
     #endregion

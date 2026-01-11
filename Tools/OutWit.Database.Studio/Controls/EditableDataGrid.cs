@@ -25,6 +25,9 @@ public class EditableDataGrid : DataGridBase
 
     #region Static
 
+    // Shared converter instance
+    private static readonly SqlValueConverter s_valueConverter = new();
+
     static EditableDataGrid()
     {
         ColumnInfosProperty.Changed.AddClassHandler<EditableDataGrid>((grid, e) => grid.OnColumnInfosChanged(e));
@@ -57,7 +60,7 @@ public class EditableDataGrid : DataGridBase
             Header = dataColumn.ColumnName,
             Binding = new Binding($"Row.ItemArray[{ordinal}]")
             {
-                Converter = new SqlValueConverter(),
+                Converter = s_valueConverter,
                 Mode = BindingMode.OneWay // Display only, editing handled manually
             },
             Width = columnCount <= 5
