@@ -113,6 +113,18 @@ public class DatabaseExplorerViewModelTests
     #region CanViewDefinition Tests
 
     [Test]
+    public void CanViewDefinitionWithTableNodeTest()
+    {
+        m_explorerVm.SelectedNode = new DatabaseNode
+        {
+            Name = "TestTable",
+            NodeType = DatabaseNodeType.Table
+        };
+
+        Assert.That(m_explorerVm.CanViewDefinition, Is.True);
+    }
+
+    [Test]
     public void CanViewDefinitionWithViewNodeTest()
     {
         m_explorerVm.SelectedNode = new DatabaseNode
@@ -149,12 +161,12 @@ public class DatabaseExplorerViewModelTests
     }
 
     [Test]
-    public void CannotViewDefinitionWithTableNodeTest()
+    public void CannotViewDefinitionWithSequenceNodeTest()
     {
         m_explorerVm.SelectedNode = new DatabaseNode
         {
-            Name = "TestTable",
-            NodeType = DatabaseNodeType.Table
+            Name = "TestSequence",
+            NodeType = DatabaseNodeType.Sequence
         };
 
         Assert.That(m_explorerVm.CanViewDefinition, Is.False);

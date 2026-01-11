@@ -310,6 +310,57 @@ public sealed class DatabaseService : IDatabaseService
         }
     }
 
+    public async Task<string?> GetTableDefinitionAsync(string tableName, CancellationToken ct = default)
+    {
+        EnsureConnected();
+
+        try
+        {
+            // Get columns
+            var columns = await GetColumnsAsync(tableName, ct);
+            if (columns.Count == 0)
+                return null;
+
+            var sb = new System.Text.StringBuilder();
+            sb.AppendLine($"CREATE TABLE \"{tableName}\" (");
+
+            var columnDefs = new List<string>();
+            var pkColumns = new List<string>();
+
+            foreach (var col in columns)
+            {
+                var colDef = $"    \"{col.Name}\" {col.DataType}";
+                
+                if (!col.IsNullable)
+                    colDef += " NOT NULL";
+                
+                if (!string.IsNullOrEmpty(col.DefaultValue))
+                    colDef += $" DEFAULT {col.DefaultValue}";
+
+                columnDefs.Add(colDef);
+
+                if (col.IsPrimaryKey)
+                    pkColumns.Add($"\"{col.Name}\"");
+            }
+
+            sb.AppendLine(string.Join(",\n", columnDefs));
+
+            if (pkColumns.Count > 0)
+            {
+                sb.AppendLine($"    ,PRIMARY KEY ({string.Join(", ", pkColumns)})");
+            }
+
+            sb.Append(");");
+
+            return sb.ToString();
+        }
+        catch (Exception ex)
+        {
+            m_logger.LogDebug(ex, "Failed to get table definition for {TableName}", tableName);
+            return null;
+        }
+    }
+
     private async Task TryMarkPrimaryKeysAsync(string tableName, List<ColumnInfo> columns, CancellationToken ct)
     {
         // 1) Prefer INFORMATION_SCHEMA for PK metadata

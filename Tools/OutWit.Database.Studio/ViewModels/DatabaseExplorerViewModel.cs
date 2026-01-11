@@ -92,6 +92,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         {
             definition = objectType switch
             {
+                DatabaseNodeType.Table => await Database.GetTableDefinitionAsync(SelectedNode.Name),
                 DatabaseNodeType.View => await Database.GetViewDefinitionAsync(SelectedNode.Name),
                 DatabaseNodeType.Trigger => await Database.GetTriggerDefinitionAsync(SelectedNode.Name),
                 DatabaseNodeType.Index => await Database.GetIndexDefinitionAsync(SelectedNode.Name),
@@ -390,7 +391,8 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         var nodeType = SelectedNode?.NodeType;
 
         CanBrowseData = nodeType == DatabaseNodeType.Table || nodeType == DatabaseNodeType.View;
-        CanViewDefinition = nodeType == DatabaseNodeType.View 
+        CanViewDefinition = nodeType == DatabaseNodeType.Table
+                         || nodeType == DatabaseNodeType.View 
                          || nodeType == DatabaseNodeType.Trigger 
                          || nodeType == DatabaseNodeType.Index;
         CanDropObject = nodeType == DatabaseNodeType.Table

@@ -92,6 +92,11 @@ public interface IDatabaseService : IDisposable
     /// </summary>
     Task<string?> GetIndexDefinitionAsync(string indexName, CancellationToken ct = default);
 
+    /// <summary>
+    /// Gets the definition (DDL) for a table (CREATE TABLE statement).
+    /// </summary>
+    Task<string?> GetTableDefinitionAsync(string tableName, CancellationToken ct = default);
+
     #endregion
 
     #region Query

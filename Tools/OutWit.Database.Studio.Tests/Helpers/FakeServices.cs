@@ -60,6 +60,9 @@ internal class FakeDatabaseService : IDatabaseService
     public Task<string?> GetIndexDefinitionAsync(string indexName, CancellationToken ct = default) =>
         Task.FromResult<string?>(null);
 
+    public Task<string?> GetTableDefinitionAsync(string tableName, CancellationToken ct = default) =>
+        Task.FromResult<string?>(null);
+
     public void Dispose() { }
 
     #endregion
