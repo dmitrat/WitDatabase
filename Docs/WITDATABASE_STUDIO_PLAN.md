@@ -78,7 +78,6 @@ WitDatabase Studio is a cross-platform desktop application for managing WitDatab
 | Feature | Priority | Description |
 |---------|----------|-------------|
 | Results table | P0 | DataGrid |
-| Pagination | P0 | For large results |
 | Column sorting | P0 | Click on header |
 | Copy rows | P0 | Copy to clipboard |
 | Copy as INSERT | P1 | Generate INSERT statements |
@@ -87,12 +86,13 @@ WitDatabase Studio is a cross-platform desktop application for managing WitDatab
 | Export to SQL | P1 | INSERT statements |
 | NULL display | P0 | Visual NULL indicator |
 | BLOB preview | P2 | Hex/image preview |
+| Row count display | P0 | Show total rows in status bar |
 
 ### 2.5 Data Editing (Table Editor)
 
 | Feature | Priority | Description |
 |---------|----------|-------------|
-| Browse table data | P0 | SELECT * with pagination |
+| Browse table data | P0 | SELECT * with LIMIT |
 | Edit cell inline | P0 | Double-click to edit |
 | Add new row | P0 | Insert row |
 | Delete row | P0 | Delete selected |
@@ -245,7 +245,7 @@ Tools/
 |  |  |  |  +- Orders|  |  |  +------------------------------------+||  |
 |  |  |  +- Views    |  |  |  +------------------------------------+||  |
 |  |  |  +- Indexes  |  |  |  |         Result Grid                 |||  |
-|  |  +- Database 2  |  |  |  |  (DataGrid with pagination)         |||  |
+|  |  +- Database 2  |  |  |  |  (DataGrid with sorting)            |||  |
 |  |                 |  |  |  +------------------------------------+||  |
 |  |                 |  |  +----------------------------------------+|  |
 |  |                 |  +---------------------------------------------+  |
@@ -290,8 +290,8 @@ Tools/
 |  Databases   +------------------------------------------------------------+
 |              |  SELECT * FROM Users                                    |
 |  v demo.db   |  WHERE Age > 18                                         |
-|    v Tables  |  ORDER BY Name;                                         |
-|      Users   |  |                                                      |
+|    v Tables  |  ORDER BY Name                                          |
+|      Users   |  LIMIT 1000;                                            |
 |      Orders  |                                                         |
 |      Products+------------------------------------------------------------+
 |    > Views   |  Results  | Messages | Query Plan                       |
@@ -300,8 +300,8 @@ Tools/
 |              |  1  | John Doe  | 25   | john@example.com   | 2024-01-01|
 |              |  2  | Jane Smith| 30   | jane@example.com   | 2024-01-02|
 |              |  3  | Bob Wilson| 22   | bob@example.com    | 2024-01-03|
+|              |  ...                                                    |
 |              |                                                         |
-|              |  < 1 2 3 ... 10 >   Showing 1-100 of 1000               |
 +-----------------------------------------------------------------------+
 |  Connected: demo.witdb | Rows: 1000 | Time: 0.042s | [Lock] Encrypted |
 +-----------------------------------------------------------------------+
@@ -429,12 +429,19 @@ Tools/
 
 | Task | Description | Estimate |
 |------|-------------|----------|
-| DataGrid setup | Basic grid | 4h |
-| Pagination | Load on demand | 4h |
-| Sorting | Click-to-sort | 2h |
-| Copy functionality | Copy rows, copy as INSERT | 3h |
-| NULL display | Visual NULL indicator | 1h |
-| **Total** | | **14h** |
+| DataGrid setup | Basic grid with ResultDataGrid control | 4h |
+| Sorting | Click-to-sort via DataView | 2h |
+| Copy functionality | Copy rows, copy as CSV, copy as INSERT | 3h |
+| NULL display | Visual NULL indicator with SqlValueConverter | 1h |
+| **Total** | | **10h** |
+
+**Note:** Pagination was intentionally excluded. It adds significant complexity with DataTable/DataView for:
+- Select All operations across pages
+- Copy operations (selected vs visible)
+- Sorting (client-side vs server-side)
+- State management
+
+Instead, queries should use LIMIT clause to control result size. Status bar shows total row count.
 
 ### Phase 5: Table Editor (Week 5-6)
 
@@ -478,11 +485,11 @@ Tools/
 | Foundation | 16h |
 | Database Explorer | 35h |
 | Query Editor | 20h |
-| Result Grid | 14h |
+| Result Grid | 10h |
 | Table Editor | 16h |
 | Export/Import | 19h |
 | Polish | 24h |
-| **Total** | **124h** |
+| **Total** | **140h** |
 
 **Time estimate:** 4-6 weeks (at 25-30h/week)
 
