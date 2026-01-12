@@ -1,4 +1,5 @@
 using OutWit.Database.Core.Builder;
+using OutWit.Database.Engine;
 using OutWit.Database.Parser.Schema.TableSources;
 using OutWit.Database.Parser.Schema.Types;
 using OutWit.Database.Optimizers;
@@ -14,7 +15,7 @@ public sealed class OptimizerJoinOrderTests
 {
     #region Fields
 
-    private Engine.WitSqlEngine m_engine = null!;
+    private WitSqlEngine m_engine = null!;
     private OptimizerJoinOrder m_optimizer = null!;
 
     #endregion
@@ -28,7 +29,7 @@ public sealed class OptimizerJoinOrderTests
             .WithMemoryStorage()
             .WithBTree()
             .Build();
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
         m_optimizer = new OptimizerJoinOrder(m_engine);
     }
 

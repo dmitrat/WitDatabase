@@ -6,27 +6,87 @@
              xmlns:c="using:OutWit.Database.Studio.Controls"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
              xmlns:viewModels="clr-namespace:OutWit.Database.Studio.ViewModels"
+             xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="OutWit.Database.Studio.Views.Query.QueryEditor"
-             x:DataType="viewModels:QueryTabViewModel"
+             x:DataType="tabs:QueryTabViewModel"
              x:Name="Root">
 
-    <Grid RowDefinitions="*,Auto,*">
+    <Grid RowDefinitions="Auto,*,Auto,*">
+        
+        <!-- Query Toolbar -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+
+                <Button Command="{Binding ExecuteQueryCommand}"
+                        IsEnabled="{Binding CanExecuteQuery}"
+                        ToolTip.Tip="Execute Query (F5)"
+                        Width="100"
+                        Classes="accent">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}" 
+                                  Width="14" Height="14"/>
+                        <TextBlock Text="Execute" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <Button Command="{Binding ExecuteSelectionCommand}"
+                        IsEnabled="{Binding CanExecuteQuery}"
+                        ToolTip.Tip="Execute Selection (Ctrl+Enter)"
+                        Width="130">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}" 
+                                  Width="14" Height="14"/>
+                        <TextBlock Text="Execute Selection" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <Separator Width="1" Height="24"/>
+
+                <Button Command="{Binding StopQueryCommand}"
+                        IsEnabled="{Binding IsExecuting}"
+                        ToolTip.Tip="Stop Query"
+                        Width="70">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <PathIcon Data="{x:Static ui:StudioIcons.QUERY_STOP}" 
+                                  Width="14" Height="14"/>
+                        <TextBlock Text="Stop" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+                <Separator Width="1" Height="24"/>
+
+                <Button Command="{Binding ClearResultsCommand}"
+                        ToolTip.Tip="Clear Results"
+                        Width="80">
+                    <StackPanel Orientation="Horizontal" Spacing="4">
+                        <PathIcon Data="{x:Static ui:StudioIcons.QUERY_CLEAR}" 
+                                  Width="14" Height="14"/>
+                        <TextBlock Text="Clear" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Button>
+
+            </StackPanel>
+        </Border>
         
         <!-- SQL Editor -->
-        <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="8">
+        <Border Grid.Row="1" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="8">
             <c:SqlEditor  SqlText="{Binding SqlText, Mode=TwoWay}"
                          SelectedText="{Binding SelectedText, Mode=OneWayToSource}"/>
         </Border>
 
         <!-- Splitter -->
-        <GridSplitter Grid.Row="1"
+        <GridSplitter Grid.Row="2"
                       Height="4"
                       HorizontalAlignment="Stretch"
                       Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"/>
 
         <!-- Results Area -->
-        <TabControl Grid.Row="2"
+        <TabControl Grid.Row="3"
                     Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
             
             <!-- Results Tab -->

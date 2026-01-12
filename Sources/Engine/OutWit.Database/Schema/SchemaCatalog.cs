@@ -258,6 +258,56 @@ public sealed partial class SchemaCatalog : IDisposable
         }
     }
 
+    /// <summary>
+    /// Ensures the row ID counter is at least the specified value.
+    /// This is called when a row is inserted with an explicit ID value
+    /// to prevent future auto-increment values from colliding.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="minValue">The minimum value the counter should be at.</param>
+    /// <param name="transaction">The active transaction (if any).</param>
+    public void EnsureRowIdAtLeast(string tableName, long minValue, ITransaction? transaction)
+    {
+        // Fast path: check with read lock first to avoid write lock overhead
+        // in the common case where counter is already high enough
+        m_lock.EnterReadLock();
+        try
+        {
+            if (!m_tables.ContainsKey(tableName))
+                throw new InvalidOperationException($"Table '{tableName}' not found");
+
+            if (m_tableRowIds.TryGetValue(tableName, out var currentId) && minValue <= currentId)
+            {
+                // Counter is already >= minValue, no update needed
+                return;
+            }
+        }
+        finally
+        {
+            m_lock.ExitReadLock();
+        }
+
+        // Slow path: need to update - acquire write lock
+        m_lock.EnterWriteLock();
+        try
+        {
+            // Double-check after acquiring write lock (another thread may have updated)
+            if (!m_tableRowIds.TryGetValue(tableName, out var currentId))
+                currentId = 0;
+
+            // Only update if the new value is greater than current
+            if (minValue > currentId)
+            {
+                m_tableRowIds[tableName] = minValue;
+                SaveTableRowId(tableName, minValue, transaction);
+            }
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
     private void SaveTableRowId(string tableName, long rowId, ITransaction? transaction)
     {
         // Build key: "$schema:_rowid:{tableName}"

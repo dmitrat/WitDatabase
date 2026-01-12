@@ -3,6 +3,7 @@
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:vm="clr-namespace:OutWit.Database.Studio.ViewModels"
+             xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="450"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
              x:Class="OutWit.Database.Studio.Views.Query.QueryTabStrip"
@@ -50,13 +51,13 @@
                     </ListBox.ItemsPanel>
                     
                     <ListBox.ItemTemplate>
-                        <DataTemplate DataType="vm:QueryTabViewModel">
+                        <DataTemplate DataType="tabs:QueryTabViewModel">
                             <Border Classes="tab-header"
                                     BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                     BorderThickness="0,0,1,0" 
                                     Padding="12,8" 
                                     Cursor="Hand"
-                                    x:DataType="vm:QueryTabViewModel">
+                                    x:DataType="tabs:QueryTabViewModel">
 
                                 <!-- Context Menu -->
                                 <Border.ContextMenu>

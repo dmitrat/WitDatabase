@@ -1,0 +1,193 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
+             xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
+             xmlns:c="using:OutWit.Database.Studio.Controls"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="OutWit.Database.Studio.Views.Workspace.TableEditView"
+             x:DataType="tabs:TableEditTabViewModel">
+
+    <Grid RowDefinitions="Auto,*,Auto">
+        
+        <!-- Toolbar -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8">
+            <Grid ColumnDefinitions="*,Auto">
+                <!-- Table Info -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
+                                  Width="16" Height="16"
+                                  Foreground="{DynamicResource SystemAccentColor}"/>
+                        <TextBlock Text="{Binding TableName}"
+                                   FontWeight="SemiBold"
+                                   FontSize="14"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                    
+                    <!-- Row count -->
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="Gray">
+                        <Run Text="("/>
+                        <Run Text="{Binding TotalRowCount}"/>
+                        <Run Text="rows)"/>
+                    </TextBlock>
+                    
+                    <!-- Changes indicator -->
+                    <Border Background="#FFF3CD"
+                            BorderBrush="#FFC107"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8,4"
+                            IsVisible="{Binding HasChanges}">
+                        <StackPanel Orientation="Horizontal" Spacing="4">
+                            <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
+                                      Width="12" Height="12"
+                                      Foreground="#856404"/>
+                            <TextBlock Text="Unsaved changes"
+                                       FontSize="12"
+                                       Foreground="#856404"/>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+                <!-- Actions -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <Button Command="{Binding RefreshCommand}"
+                            IsEnabled="{Binding CanRefresh}"
+                            ToolTip.Tip="Refresh data"
+                            Width="32" Height="32"
+                            Padding="0">
+                        <PathIcon Data="{x:Static ui:StudioIcons.TABLE_STRUCTURE_REFRESH}"
+                                  Width="16" Height="16"/>
+                    </Button>
+
+                    <Rectangle Width="1"
+                               Fill="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                               Margin="4,4"/>
+
+                    <Button Command="{Binding AddRowCommand}"
+                            IsEnabled="{Binding CanAddRow}"
+                            ToolTip.Tip="Add new row"
+                            Width="32" Height="32"
+                            Padding="0">
+                        <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_ADD_ROW}"
+                                  Width="16" Height="16"/>
+                    </Button>
+
+                    <Button Command="{Binding DeleteRowCommand}"
+                            IsEnabled="{Binding CanDeleteRow}"
+                            ToolTip.Tip="Delete selected row"
+                            Width="32" Height="32"
+                            Padding="0">
+                        <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_DELETE_ROW}"
+                                  Width="16" Height="16"/>
+                    </Button>
+
+                    <Rectangle Width="1"
+                               Fill="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                               Margin="4,4"/>
+
+                    <Button Command="{Binding CommitCommand}"
+                            IsEnabled="{Binding CanCommit}"
+                            ToolTip.Tip="Commit changes"
+                            Width="32" Height="32"
+                            Padding="0"
+                            Classes="accent">
+                        <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_COMMIT}"
+                                  Width="16" Height="16"/>
+                    </Button>
+
+                    <Button Command="{Binding RollbackCommand}"
+                            IsEnabled="{Binding CanRollback}"
+                            ToolTip.Tip="Discard changes"
+                            Width="32" Height="32"
+                            Padding="0">
+                        <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_ROLLBACK}"
+                                  Width="16" Height="16"/>
+                    </Button>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Data Grid -->
+        <Grid Grid.Row="1">
+            <!-- Editable DataGrid -->
+            <c:EditableDataGrid ResultView="{Binding CurrentView}"
+                                SelectedRowView="{Binding SelectedRowView, Mode=TwoWay}"
+                                ColumnInfos="{Binding Columns}"
+                                CellEditedCommand="{Binding CellEditedCommand}"
+                                BorderThickness="0"
+                                Background="Transparent"/>
+
+            <!-- Loading Overlay -->
+            <Border Background="#80000000"
+                    IsVisible="{Binding IsLoading}">
+                <StackPanel HorizontalAlignment="Center"
+                            VerticalAlignment="Center"
+                            Spacing="8">
+                    <Border Width="32" Height="32"
+                            Background="White"
+                            CornerRadius="16">
+                        <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
+                                  Width="16" Height="16"
+                                  Foreground="{DynamicResource SystemAccentColor}"/>
+                    </Border>
+                    <TextBlock Text="Loading data..."
+                               Foreground="White"
+                               HorizontalAlignment="Center"/>
+                </StackPanel>
+            </Border>
+        </Grid>
+
+        <!-- Status Bar -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="8,4">
+            <Grid ColumnDefinitions="*,Auto">
+                <!-- Error Message -->
+                <StackPanel Grid.Column="0"
+                            Orientation="Horizontal"
+                            Spacing="8"
+                            IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
+                              Width="14" Height="14"
+                              Foreground="#DC3545"/>
+                    <TextBlock Text="{Binding ErrorMessage}"
+                               Foreground="#DC3545"
+                               TextTrimming="CharacterEllipsis"/>
+                </StackPanel>
+
+                <!-- Help text when no error -->
+                <TextBlock Grid.Column="0"
+                           Text="Double-click a cell to edit. Press Enter to confirm, Escape to cancel."
+                           Foreground="Gray"
+                           FontSize="12"
+                           VerticalAlignment="Center"
+                           IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNull}}"/>
+
+                <!-- Keyboard shortcuts help -->
+                <StackPanel Grid.Column="1"
+                            Orientation="Horizontal"
+                            Spacing="16">
+                    <TextBlock Text="Ctrl+S: Commit"
+                               Foreground="Gray"
+                               FontSize="11"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="Del: Delete row"
+                               Foreground="Gray"
+                               FontSize="11"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+    </Grid>
+
+</UserControl>

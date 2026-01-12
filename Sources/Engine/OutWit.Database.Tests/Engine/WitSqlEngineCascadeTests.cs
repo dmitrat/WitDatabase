@@ -1,6 +1,7 @@
 using System.Linq;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Definitions;
+using OutWit.Database.Engine;
 using NUnit.Framework;
 
 namespace OutWit.Database.Tests;
@@ -12,10 +13,10 @@ public class WitSqlEngineCascadeTests : WitSqlEngineTestsBase
 {
     #region Helper
 
-    private Engine.WitSqlEngine CreateEngine()
+    private WitSqlEngine CreateEngine()
     {
         var database = WitDatabase.CreateInMemory();
-        return new Engine.WitSqlEngine(database, ownsStore: true);
+        return new WitSqlEngine(database, ownsStore: true);
     }
 
     #endregion

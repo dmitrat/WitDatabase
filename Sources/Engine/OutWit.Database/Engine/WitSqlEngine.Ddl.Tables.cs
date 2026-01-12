@@ -881,6 +881,18 @@ public sealed partial class WitSqlEngine
         return m_schema.GetNextRowId(tableName, m_currentTransaction);
     }
 
+    /// <summary>
+    /// Ensures the auto-increment counter is at least the specified value.
+    /// This is called when a row is inserted with an explicit ID value
+    /// to prevent future auto-increment values from colliding.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="minValue">The minimum value the counter should be at.</param>
+    public void EnsureAutoIncrementAtLeast(string tableName, long minValue)
+    {
+        m_schema.EnsureRowIdAtLeast(tableName, minValue, m_currentTransaction);
+    }
+
     #endregion
 
     #region RowVersion

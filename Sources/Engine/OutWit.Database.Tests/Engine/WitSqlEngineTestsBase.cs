@@ -1,6 +1,7 @@
 using NSubstitute;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Definitions;
+using OutWit.Database.Engine;
 using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Values;
@@ -14,7 +15,7 @@ public abstract class WitSqlEngineTestsBase
 {
     #region Fields
 
-    protected Engine.WitSqlEngine m_engine = null!;
+    protected WitSqlEngine m_engine = null!;
 
     #endregion
 
@@ -24,7 +25,7 @@ public abstract class WitSqlEngineTestsBase
     public virtual void Setup()
     {
         var database = WitDatabase.CreateInMemory();
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
     }
 
     [TearDown]

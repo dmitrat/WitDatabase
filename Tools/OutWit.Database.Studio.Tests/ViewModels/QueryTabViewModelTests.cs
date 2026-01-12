@@ -1,5 +1,6 @@
 using NUnit.Framework;
 using OutWit.Database.Studio.ViewModels;
+using OutWit.Database.Studio.ViewModels.Tabs;
 using OutWit.Database.Studio.Tests.Helpers;
 
 namespace OutWit.Database.Studio.Tests.ViewModels;
@@ -48,13 +49,16 @@ public class QueryTabViewModelTests
     }
 
     [Test]
-    public void TitleDefaultsToNewQueryTest()
+    public void TitleCanBeSetTest()
     {
         // Arrange
         var viewModel = new QueryTabViewModel(m_applicationVm);
+        
+        // Act
+        viewModel.Title = "Query 1";
 
         // Assert
-        Assert.That(viewModel.Title, Is.EqualTo("New Query"));
+        Assert.That(viewModel.Title, Is.EqualTo("Query 1"));
     }
 
     [Test]
@@ -131,8 +135,8 @@ public class QueryTabViewModelTests
         // Act
         viewModel.IsModified = true;
 
-        // Assert - Shows * when modified
-        Assert.That(viewModel.DisplayTitle, Is.EqualTo("Query 1 *"));
+        // Assert - Shows • when modified
+        Assert.That(viewModel.DisplayTitle, Is.EqualTo("Query 1 •"));
     }
 
     #endregion

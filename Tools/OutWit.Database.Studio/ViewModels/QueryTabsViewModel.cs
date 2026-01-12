@@ -8,6 +8,7 @@ using OutWit.Common.MVVM.Commands;
 using OutWit.Common.MVVM.ViewModels;
 using OutWit.Common.Utils;
 using OutWit.Database.Studio.Services;
+using OutWit.Database.Studio.ViewModels.Tabs;
 
 namespace OutWit.Database.Studio.ViewModels;
 

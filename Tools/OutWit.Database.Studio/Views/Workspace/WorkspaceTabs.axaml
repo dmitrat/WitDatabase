@@ -1,0 +1,42 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:vm="clr-namespace:OutWit.Database.Studio.ViewModels"
+             xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
+             xmlns:workspace="clr-namespace:OutWit.Database.Studio.Views.Workspace"
+             xmlns:query="clr-namespace:OutWit.Database.Studio.Views.Query"
+             xmlns:views="clr-namespace:OutWit.Database.Studio.Views"
+             mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
+             x:Class="OutWit.Database.Studio.Views.Workspace.WorkspaceTabs"
+             x:DataType="vm:WorkspaceTabsViewModel">
+    
+    <Grid RowDefinitions="Auto,*">
+        
+        <!-- Tab Strip -->
+        <workspace:WorkspaceTabStrip Grid.Row="0" DataContext="{Binding}"/>
+        
+        <!-- Tab Content -->
+        <ContentControl Grid.Row="1" Content="{Binding SelectedTab}">
+            <ContentControl.DataTemplates>
+                
+                <!-- Query Tab Template -->
+                <DataTemplate DataType="tabs:QueryTabViewModel">
+                    <query:QueryEditor DataContext="{Binding}"/>
+                </DataTemplate>
+                
+                <!-- Table Edit Tab Template -->
+                <DataTemplate DataType="tabs:TableEditTabViewModel">
+                    <workspace:TableEditView DataContext="{Binding}"/>
+                </DataTemplate>
+                
+                <!-- Structure Tab Template -->
+                <DataTemplate DataType="tabs:StructureTabViewModel">
+                    <workspace:StructureView DataContext="{Binding}"/>
+                </DataTemplate>
+                
+            </ContentControl.DataTemplates>
+        </ContentControl>
+        
+    </Grid>
+</UserControl>

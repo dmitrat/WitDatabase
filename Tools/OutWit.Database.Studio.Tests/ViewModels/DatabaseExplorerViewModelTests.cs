@@ -37,15 +37,27 @@ public class DatabaseExplorerViewModelTests
     #region Command Tests
 
     [Test]
-    public void BrowseDataCommandIsNotNullTest()
+    public void SelectTop100CommandIsNotNullTest()
     {
-        Assert.That(m_explorerVm.BrowseDataCommand, Is.Not.Null);
+        Assert.That(m_explorerVm.SelectTop100Command, Is.Not.Null);
+    }
+
+    [Test]
+    public void SelectTop1000CommandIsNotNullTest()
+    {
+        Assert.That(m_explorerVm.SelectTop1000Command, Is.Not.Null);
     }
 
     [Test]
     public void ViewDefinitionCommandIsNotNullTest()
     {
         Assert.That(m_explorerVm.ViewDefinitionCommand, Is.Not.Null);
+    }
+
+    [Test]
+    public void ViewStructureCommandIsNotNullTest()
+    {
+        Assert.That(m_explorerVm.ViewStructureCommand, Is.Not.Null);
     }
 
     [Test]
@@ -106,6 +118,58 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = null;
 
         Assert.That(m_explorerVm.CanBrowseData, Is.False);
+    }
+
+    #endregion
+
+    #region CanViewStructure Tests
+
+    [Test]
+    public void CanViewStructureWithTableNodeTest()
+    {
+        m_explorerVm.SelectedNode = new DatabaseNode
+        {
+            Name = "TestTable",
+            NodeType = DatabaseNodeType.Table
+        };
+
+        Assert.That(m_explorerVm.CanViewStructure, Is.True);
+    }
+
+    [Test]
+    public void CanViewStructureWithViewNodeTest()
+    {
+        m_explorerVm.SelectedNode = new DatabaseNode
+        {
+            Name = "TestView",
+            NodeType = DatabaseNodeType.View
+        };
+
+        Assert.That(m_explorerVm.CanViewStructure, Is.True);
+    }
+
+    [Test]
+    public void CanViewStructureWithIndexNodeTest()
+    {
+        m_explorerVm.SelectedNode = new DatabaseNode
+        {
+            Name = "TestIndex",
+            NodeType = DatabaseNodeType.Index
+        };
+
+        Assert.That(m_explorerVm.CanViewStructure, Is.True);
+    }
+
+    [Test]
+    public void CannotViewStructureWithTriggerNodeTest()
+    {
+        m_explorerVm.SelectedNode = new DatabaseNode
+        {
+            Name = "TestTrigger",
+            NodeType = DatabaseNodeType.Trigger
+        };
+
+        Assert.That(m_explorerVm.CanViewStructure, Is.False);
     }
 
     #endregion

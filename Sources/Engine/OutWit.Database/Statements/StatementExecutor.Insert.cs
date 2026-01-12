@@ -1,4 +1,4 @@
-using OutWit.Database.Definitions;
+ using OutWit.Database.Definitions;
 using OutWit.Database.Expressions;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Clauses;
@@ -345,9 +345,12 @@ public sealed partial class StatementExecutor
                     values[colIndex] = value;
                     
                     // If auto-increment column was explicitly set, get rowId from value
+                    // AND update the auto-increment counter if needed
                     if (col.IsAutoIncrement && !value.IsNull)
                     {
                         rowId = value.AsInt64();
+                        // Ensure auto-increment counter is at least rowId+1 for next insert
+                        m_context.Database.EnsureAutoIncrementAtLeast(table.Name, rowId);
                     }
                 }
             }
@@ -371,6 +374,8 @@ public sealed partial class StatementExecutor
                         if (!value.IsNull)
                         {
                             rowId = value.AsInt64();
+                            // Ensure auto-increment counter is at least rowId for next insert
+                            m_context.Database.EnsureAutoIncrementAtLeast(table.Name, rowId);
                         }
                     }
                     

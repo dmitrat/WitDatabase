@@ -176,6 +176,15 @@ public interface IDatabase
     long GetNextAutoIncrement(string tableName);
 
     /// <summary>
+    /// Ensures the auto-increment counter is at least the specified value.
+    /// This is called when a row is inserted with an explicit ID value
+    /// to prevent future auto-increment values from colliding.
+    /// </summary>
+    /// <param name="tableName">The table name.</param>
+    /// <param name="minValue">The minimum value the counter should be at.</param>
+    void EnsureAutoIncrementAtLeast(string tableName, long minValue);
+
+    /// <summary>
     /// Get next value for a ROWVERSION column.
     /// ROWVERSION is a database-wide counter, not per-table.
     /// </summary>

@@ -1,5 +1,6 @@
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Stores;
+using OutWit.Database.Engine;
 using OutWit.Database.Types;
 
 namespace OutWit.Database.Tests;
@@ -11,13 +12,13 @@ namespace OutWit.Database.Tests;
 [TestFixture]
 public class WitSqlEngineRowVersionTests
 {
-    private Engine.WitSqlEngine m_engine = null!;
+    private WitSqlEngine m_engine = null!;
 
     [SetUp]
     public void SetUp()
     {
         var database = WitDatabase.CreateInMemory();
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
     }
 
     [TearDown]

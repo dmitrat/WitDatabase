@@ -1,4 +1,5 @@
 using OutWit.Database.Core.Builder;
+using OutWit.Database.Engine;
 
 namespace OutWit.Database.Tests;
 
@@ -8,13 +9,13 @@ namespace OutWit.Database.Tests;
 [TestFixture]
 public class WitSqlEngineDeleteUsingTests
 {
-    private Engine.WitSqlEngine m_engine = null!;
+    private WitSqlEngine m_engine = null!;
 
     [SetUp]
     public void SetUp()
     {
         var database = WitDatabase.CreateInMemory();
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
 
         // Create test tables
         m_engine.Execute(@"

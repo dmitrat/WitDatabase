@@ -7,6 +7,7 @@ using OutWit.Common.MVVM.Commands;
 using OutWit.Common.MVVM.ViewModels;
 using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
+using OutWit.Database.Studio.ViewModels.Tabs;
 using OutWit.Database.Studio.Views.Dialogs;
 
 namespace OutWit.Database.Studio.ViewModels;
@@ -38,8 +39,10 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     private void InitCommands()
     {
         RefreshCommand = new RelayCommandAsync(RefreshAsync);
-        BrowseDataCommand = new RelayCommand(BrowseData);
+        SelectTop100Command = new RelayCommand(SelectTop100);
+        SelectTop1000Command = new RelayCommand(SelectTop1000);
         EditDataCommand = new RelayCommandAsync(EditDataAsync);
+        ViewStructureCommand = new RelayCommandAsync(ViewStructureAsync);
         ViewDefinitionCommand = new RelayCommandAsync(ViewDefinitionAsync);
         DropObjectCommand = new RelayCommandAsync(DropObjectAsync);
         CreateTableCommand = new RelayCommandAsync(CreateTableAsync);
@@ -56,29 +59,31 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Functions
 
-    private void BrowseData()
+    private void SelectTop100()
+    {
+        SelectTopRows(100);
+    }
+
+    private void SelectTop1000()
+    {
+        SelectTopRows(1000);
+    }
+
+    private void SelectTopRows(int limit)
     {
         if (SelectedNode == null || !CanBrowseData)
             return;
 
         var tableName = SelectedNode.Name;
-        var sql = $"SELECT * FROM [{tableName}] LIMIT 100";
+        var sql = $"SELECT * FROM [{tableName}] LIMIT {limit}";
         
-        // Create a new tab or use the selected one
-        var tab = ApplicationVm.QueryTabsVm.SelectedTab;
-        if (tab == null)
-        {
-            ApplicationVm.QueryTabsVm.NewTabCommand.Execute(null);
-            tab = ApplicationVm.QueryTabsVm.SelectedTab;
-        }
+        // Use new WorkspaceTabsViewModel
+        var tab = ApplicationVm.WorkspaceTabsVm.OpenQueryTab(sql, $"{tableName} - Top {limit}");
+        
+        // Execute the query
+        ApplicationVm.WorkspaceTabsVm.ExecuteQueryCommand.Execute(null);
 
-        if (tab != null)
-        {
-            tab.SqlText = sql;
-            ApplicationVm.QueryTabsVm.ExecuteQueryCommand.Execute(tab);
-        }
-
-        Logger.LogInformation("Browse data for {ObjectName}", SelectedNode.Name);
+        Logger.LogInformation("Select top {Limit} from {ObjectName}", limit, SelectedNode.Name);
     }
 
     private async Task EditDataAsync()
@@ -88,11 +93,22 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         var tableName = SelectedNode.Name;
         
-        // Load data into Table Editor
-        await ApplicationVm.TableEditorVm.LoadTableAsync(tableName);
+        // Use new WorkspaceTabsViewModel to open table edit tab
+        await ApplicationVm.WorkspaceTabsVm.OpenTableEditTabAsync(tableName);
         
         ApplicationVm.MainWindowVm.StatusText = $"Editing table: {tableName}";
         Logger.LogInformation("Edit data for table {TableName}", tableName);
+    }
+
+    private async Task ViewStructureAsync()
+    {
+        if (SelectedNode == null || !CanViewStructure)
+            return;
+
+        // Use new WorkspaceTabsViewModel to open structure tab
+        await ApplicationVm.WorkspaceTabsVm.OpenStructureTabAsync(SelectedNode.Name, SelectedNode.NodeType);
+        
+        Logger.LogInformation("View structure for {ObjectType} {ObjectName}", SelectedNode.NodeType, SelectedNode.Name);
     }
 
     private async Task ViewDefinitionAsync()
@@ -127,15 +143,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             return;
         }
 
-        // Open definition in a new query tab
-        ApplicationVm.QueryTabsVm.NewTabCommand.Execute(null);
-        var tab = ApplicationVm.QueryTabsVm.SelectedTab;
-
-        if (tab != null)
-        {
-            tab.Title = $"{SelectedNode.Name} - Definition";
-            tab.SqlText = $"-- Definition for {objectType}: {SelectedNode.Name}\n\n{definition}";
-        }
+        // Open definition in a new query tab using new WorkspaceTabsViewModel
+        var sql = $"-- Definition for {objectType}: {SelectedNode.Name}\n\n{definition}";
+        ApplicationVm.WorkspaceTabsVm.OpenQueryTab(sql, $"{SelectedNode.Name} - Definition");
 
         Logger.LogInformation("Viewed definition for {ObjectName}", SelectedNode.Name);
     }
@@ -158,20 +168,25 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         if (objectType == null)
             return;
 
-        var sql = $"DROP {objectType} IF EXISTS [{SelectedNode.Name}]";
+        var objectName = SelectedNode.Name;
+        var sql = $"DROP {objectType} IF EXISTS [{objectName}]";
 
         try
         {
             await Database.ExecuteNonQueryAsync(sql);
+            
+            // Clear selection before refresh to avoid stale reference
+            SelectedNode = null;
+            
             await RefreshAsync();
 
-            ApplicationVm.MainWindowVm.StatusText = $"Dropped {objectType.ToLower()}: {SelectedNode.Name}";
-            Logger.LogInformation("Dropped {ObjectType}: {ObjectName}", objectType, SelectedNode.Name);
+            ApplicationVm.MainWindowVm.StatusText = $"Dropped {objectType.ToLower()}: {objectName}";
+            Logger.LogInformation("Dropped {ObjectType}: {ObjectName}", objectType, objectName);
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Failed to drop {objectType.ToLower()}: {ex.Message}";
-            Logger.LogError(ex, "Failed to drop {ObjectType}: {ObjectName}", objectType, SelectedNode.Name);
+            Logger.LogError(ex, "Failed to drop {ObjectType}: {ObjectName}", objectType, objectName);
         }
     }
 
@@ -407,6 +422,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         CanBrowseData = nodeType == DatabaseNodeType.Table || nodeType == DatabaseNodeType.View;
         CanEditData = nodeType == DatabaseNodeType.Table;
+        CanViewStructure = nodeType == DatabaseNodeType.Table
+                        || nodeType == DatabaseNodeType.View 
+                        || nodeType == DatabaseNodeType.Index;
         CanViewDefinition = nodeType == DatabaseNodeType.Table
                          || nodeType == DatabaseNodeType.View 
                          || nodeType == DatabaseNodeType.Trigger 
@@ -428,27 +446,6 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             return;
 
         UpdateCommandStates();
-
-        if (SelectedNode == null)
-        {
-            ApplicationVm.TableStructureVm.Clear();
-            return;
-        }
-
-        if (SelectedNode.NodeType is DatabaseNodeType.Table or DatabaseNodeType.View or DatabaseNodeType.Index)
-        {
-            // Defer the async operation to not block the UI event handling
-            // This allows the TreeView to finish processing the click before we start loading
-            var nodeToLoad = SelectedNode;
-            Avalonia.Threading.Dispatcher.UIThread.Post(async () =>
-            {
-                await ApplicationVm.TableStructureVm.LoadObjectStructureAsync(nodeToLoad);
-            }, Avalonia.Threading.DispatcherPriority.Background);
-            return;
-        }
-
-        // Folders/others
-        ApplicationVm.TableStructureVm.Clear();
     }
 
     #endregion
@@ -476,6 +473,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     public bool CanEditData { get; private set; }
 
     [Notify]
+    public bool CanViewStructure { get; private set; }
+
+    [Notify]
     public bool CanViewDefinition { get; private set; }
 
     [Notify]
@@ -487,9 +487,13 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     public ICommand RefreshCommand { get; private set; } = null!;
 
-    public ICommand BrowseDataCommand { get; private set; } = null!;
+    public ICommand SelectTop100Command { get; private set; } = null!;
+
+    public ICommand SelectTop1000Command { get; private set; } = null!;
 
     public ICommand EditDataCommand { get; private set; } = null!;
+
+    public ICommand ViewStructureCommand { get; private set; } = null!;
 
     public ICommand ViewDefinitionCommand { get; private set; } = null!;
 

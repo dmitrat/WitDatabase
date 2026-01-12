@@ -27,6 +27,7 @@ public static class StudioIcons
     public const string PATH_COMMON_FOLDER = "M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z";
     public const string PATH_COMMON_DELETE = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z";
     public const string PATH_QUERY_EXECUTE = "M8,5.14V19.14L19,12.14L8,5.14Z";
+    public const string PATH_QUERY_STOP = "M6,6H18V18H6V6Z";
     public const string PATH_QUERY_SAVE = "M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z";
     public const string PATH_QUERY_CLEAR = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z";
     public const string PATH_TAB_CLOSE = "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z";
@@ -55,6 +56,13 @@ public static class StudioIcons
     public const string PATH_TABLE_EDITOR_DELETE_ROW = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z";
     public const string PATH_TABLE_EDITOR_COMMIT = "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z";
     public const string PATH_TABLE_EDITOR_ROLLBACK = "M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z";
+
+    // Workspace Tab icons
+    public const string PATH_TAB_QUERY = "M8,5.14V19.14L19,12.14L8,5.14Z";  // Same as execute
+    public const string PATH_TAB_TABLE_EDIT = "M21.7,13.35L20.7,14.35L18.65,12.3L19.65,11.3C19.86,11.08 20.21,11.08 20.42,11.3L21.7,12.58C21.92,12.79 21.92,13.14 21.7,13.35M12,18.94L18.07,12.88L20.12,14.93L14.06,21H12V18.94M4,2H18A2,2 0 0,1 20,4V8.17L16.17,12H12V16.17L10.17,18H4A2,2 0 0,1 2,16V4A2,2 0 0,1 4,2M4,6V10H10V6H4M12,6V10H18V6H12M4,12V16H10V12H4Z";
+    public const string PATH_TAB_STRUCTURE = "M12,3C7.58,3 4,4.79 4,7V17C4,19.21 7.59,21 12,21C16.42,21 20,19.21 20,17V7C20,4.79 16.42,3 12,3M12,5C15.87,5 18,6.5 18,7C18,7.5 15.87,9 12,9C8.13,9 6,7.5 6,7C6,6.5 8.13,5 12,5M18,17C18,17.5 15.87,19 12,19C8.13,19 6,17.5 6,17V14.77C7.61,15.55 9.72,16 12,16C14.28,16 16.39,15.55 18,14.77V17M18,12.45C16.7,13.4 14.42,14 12,14C9.58,14 7.3,13.4 6,12.45V9.64C7.47,10.47 9.61,11 12,11C14.39,11 16.53,10.47 18,9.64V12.45Z";
+    public const string PATH_TAB_PIN = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z";
+    public const string PATH_TAB_UNPIN = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12M8.8,14L10,12.8V4H14V12.8L15.2,14H8.8Z";
 
     #endregion
 
@@ -86,6 +94,7 @@ public static class StudioIcons
     #region Query Editor
 
     public static StreamGeometry QUERY_EXECUTE => StreamGeometry.Parse(PATH_QUERY_EXECUTE);
+    public static StreamGeometry QUERY_STOP => StreamGeometry.Parse(PATH_QUERY_STOP);
     public static StreamGeometry QUERY_SAVE => StreamGeometry.Parse(PATH_QUERY_SAVE);
     public static StreamGeometry QUERY_CLEAR => StreamGeometry.Parse(PATH_QUERY_CLEAR);
     public static StreamGeometry TAB_CLOSE => StreamGeometry.Parse(PATH_TAB_CLOSE);
@@ -139,6 +148,16 @@ public static class StudioIcons
     public static StreamGeometry TABLE_EDITOR_DELETE_ROW => StreamGeometry.Parse(PATH_TABLE_EDITOR_DELETE_ROW);
     public static StreamGeometry TABLE_EDITOR_COMMIT => StreamGeometry.Parse(PATH_TABLE_EDITOR_COMMIT);
     public static StreamGeometry TABLE_EDITOR_ROLLBACK => StreamGeometry.Parse(PATH_TABLE_EDITOR_ROLLBACK);
+
+    #endregion
+
+    #region Workspace Tabs
+
+    public static StreamGeometry TAB_QUERY => StreamGeometry.Parse(PATH_TAB_QUERY);
+    public static StreamGeometry TAB_TABLE_EDIT => StreamGeometry.Parse(PATH_TAB_TABLE_EDIT);
+    public static StreamGeometry TAB_STRUCTURE => StreamGeometry.Parse(PATH_TAB_STRUCTURE);
+    public static StreamGeometry TAB_PIN => StreamGeometry.Parse(PATH_TAB_PIN);
+    public static StreamGeometry TAB_UNPIN => StreamGeometry.Parse(PATH_TAB_UNPIN);
 
     #endregion
 

@@ -2,22 +2,29 @@ using System.Collections;
 using System.ComponentModel;
 using System.Data;
 using System.Windows.Input;
-using Avalonia;
 using Avalonia.Controls;
+using Microsoft.Extensions.Logging;
 using OutWit.Common.Aspects;
 using OutWit.Common.Locker;
 using OutWit.Common.MVVM.Commands;
-using OutWit.Common.MVVM.ViewModels;
 using OutWit.Common.Utils;
+using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
+using OutWit.Database.Studio.Ui.Icons;
 
-namespace OutWit.Database.Studio.ViewModels;
+namespace OutWit.Database.Studio.ViewModels.Tabs;
 
 /// <summary>
 /// Represents a query editor tab with its content and state.
 /// </summary>
-public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
+public class QueryTabViewModel : WorkspaceTabViewModel
 {
+    #region Fields
+
+    private CancellationTokenSource? m_executionCts;
+
+    #endregion
+
     #region Constructors
 
     public QueryTabViewModel(ApplicationViewModel applicationViewModel)
@@ -33,6 +40,10 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitCommands()
     {
+        ExecuteQueryCommand = new RelayCommandAsync(ExecuteQueryAsync);
+        ExecuteSelectionCommand = new RelayCommandAsync(ExecuteSelectionAsync);
+        StopQueryCommand = new RelayCommand(StopQuery);
+        ClearResultsCommand = new RelayCommand(ClearResults);
         CopyRowsCommand = new RelayCommandAsync(CopyRowsAsync);
         CopyRowsAsInsertCommand = new RelayCommandAsync(CopyRowsAsInsertAsync);
         CopyRowsAsCsvCommand = new RelayCommandAsync(CopyRowsAsCsvAsync);
@@ -43,6 +54,107 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
+        Database.ConnectionStatusChanged += OnConnectionStatusChanged;
+    }
+
+    #endregion
+
+    #region WorkspaceTabViewModel
+
+    public override WorkspaceTabType TabType => WorkspaceTabType.Query;
+
+    public override string IconPath => StudioIcons.PATH_QUERY_EXECUTE;
+
+    public override string? UniqueId => FilePath;
+
+    public override void OnClosed()
+    {
+        m_executionCts?.Cancel();
+        m_executionCts?.Dispose();
+        m_executionCts = null;
+        
+        ResultData?.Dispose();
+        ResultData = null;
+        CurrentView = null;
+    }
+
+    #endregion
+
+    #region Query Execution
+
+    private async Task ExecuteQueryAsync()
+    {
+        var sql = SqlText?.Trim();
+        if (string.IsNullOrEmpty(sql))
+            return;
+
+        await ExecuteSqlAsync(sql);
+    }
+
+    private async Task ExecuteSelectionAsync()
+    {
+        var sql = !string.IsNullOrWhiteSpace(SelectedText) ? SelectedText.Trim() : SqlText?.Trim();
+        if (string.IsNullOrEmpty(sql))
+            return;
+
+        await ExecuteSqlAsync(sql);
+    }
+
+    private async Task ExecuteSqlAsync(string sql)
+    {
+        if (!Database.IsConnected)
+        {
+            ErrorMessage = "Not connected to database";
+            return;
+        }
+
+        IsExecuting = true;
+        ErrorMessage = null;
+        m_executionCts?.Dispose();
+        m_executionCts = new CancellationTokenSource();
+
+        try
+        {
+            var result = await Database.ExecuteQueryAsync(sql, m_executionCts.Token);
+
+            if (!string.IsNullOrEmpty(result.ErrorMessage))
+            {
+                ErrorMessage = result.ErrorMessage;
+                SetResultData(null);
+            }
+            else
+            {
+                SetResultData(result.Data);
+                RowsAffected = result.RowsAffected;
+            }
+
+            ExecutionTimeMs = result.ExecutionTimeMs;
+            
+            ApplicationVm.MainWindowVm.StatusText = string.IsNullOrEmpty(ErrorMessage)
+                ? $"Query executed successfully in {ExecutionTimeMs:F2}ms"
+                : $"Query failed: {ErrorMessage}";
+        }
+        catch (OperationCanceledException)
+        {
+            ErrorMessage = "Query execution cancelled";
+            ApplicationVm.MainWindowVm.StatusText = "Query cancelled";
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            Logger.LogError(ex, "Query execution failed");
+            ApplicationVm.MainWindowVm.StatusText = $"Query failed: {ex.Message}";
+        }
+        finally
+        {
+            IsExecuting = false;
+            UpdateStatus();
+        }
+    }
+
+    private void StopQuery()
+    {
+        m_executionCts?.Cancel();
     }
 
     #endregion
@@ -171,9 +283,8 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
         HasResults = TotalRowCount > 0;
         IsSuccess = string.IsNullOrEmpty(ErrorMessage);
         HasMessages = !string.IsNullOrEmpty(ErrorMessage) || RowsAffected > 0;
+        CanExecuteQuery = Database.IsConnected && !IsExecuting;
 
-        DisplayTitle = IsModified ? $"{Title} *" : Title;
-        
         var selectedCount = SelectedRows?.Count ?? 0;
         CanCopyRows = HasResults && (selectedCount > 0 || CurrentView?.Count > 0);
     }
@@ -196,28 +307,24 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
         if (e.IsProperty((QueryTabViewModel vm) => vm.RowsAffected))
             UpdateStatus();
 
-        if (e.IsProperty((QueryTabViewModel vm) => vm.IsModified))
-            UpdateStatus();
-
-        if (e.IsProperty((QueryTabViewModel vm) => vm.Title))
-            UpdateStatus();
-
         if (e.IsProperty((QueryTabViewModel vm) => vm.CurrentView))
             UpdateStatus();
 
         if (e.IsProperty((QueryTabViewModel vm) => vm.SelectedRows))
             UpdateStatus();
+
+        if (e.IsProperty((QueryTabViewModel vm) => vm.IsExecuting))
+            UpdateStatus();
+    }
+
+    private void OnConnectionStatusChanged(object? sender, bool isConnected)
+    {
+        UpdateStatus();
     }
 
     #endregion
 
     #region Properties
-
-    /// <summary>
-    /// Display title of the tab.
-    /// </summary>
-    [Notify]
-    public string Title { get; set; } = "New Query";
 
     /// <summary>
     /// SQL text content of the query.
@@ -236,18 +343,6 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     [Notify]
     public string? FilePath { get; set; }
-
-    /// <summary>
-    /// Indicates if the tab has unsaved changes.
-    /// </summary>
-    [Notify]
-    public bool IsModified { get; set; }
-
-    /// <summary>
-    /// Gets the display title with modification indicator.
-    /// </summary>
-    [Notify]
-    public string DisplayTitle { get; private set; } = "";
 
     /// <summary>
     /// Full result data as DataTable.
@@ -302,12 +397,24 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     [Notify]
     public bool HasMessages { get; private set; }
-    
+
     /// <summary>
     /// Gets whether rows can be copied.
     /// </summary>
     [Notify]
     public bool CanCopyRows { get; private set; }
+
+    /// <summary>
+    /// Gets whether a query can be executed.
+    /// </summary>
+    [Notify]
+    public bool CanExecuteQuery { get; private set; }
+
+    /// <summary>
+    /// Gets whether query is currently executing.
+    /// </summary>
+    [Notify]
+    public bool IsExecuting { get; private set; }
 
     /// <summary>
     /// Currently selected rows in the DataGrid.
@@ -319,21 +426,33 @@ public class QueryTabViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Commands
 
+    public ICommand ExecuteQueryCommand { get; private set; } = null!;
+
+    public ICommand ExecuteSelectionCommand { get; private set; } = null!;
+
+    public ICommand StopQueryCommand { get; private set; } = null!;
+
+    public ICommand ClearResultsCommand { get; private set; } = null!;
+
     public ICommand CopyRowsCommand { get; private set; } = null!;
-    
+
     public ICommand CopyRowsAsCsvCommand { get; private set; } = null!;
-    
+
     public ICommand CopyRowsAsInsertCommand { get; private set; } = null!;
-    
+
     public ICommand CopyAllRowsCommand { get; private set; } = null!;
-    
+
     public ICommand CopyAllRowsAsInsertCommand { get; private set; } = null!;
 
     #endregion
 
     #region Services
 
+    private IDatabaseService Database => ApplicationVm.Database;
+
     private IExportService Export => ApplicationVm.Export;
+
+    private ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 
     #endregion
 }

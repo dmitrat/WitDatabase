@@ -5,7 +5,7 @@
         xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:query="clr-namespace:OutWit.Database.Studio.Views.Query"
+        xmlns:workspace="clr-namespace:OutWit.Database.Studio.Views.Workspace"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="OutWit.Database.Studio.Views.MainWindow"
         x:DataType="vm:ApplicationViewModel"
@@ -15,13 +15,13 @@
 
 	<!-- Keyboard Shortcuts -->
 	<Window.KeyBindings>
-		<KeyBinding Gesture="Ctrl+N" Command="{Binding QueryTabsVm.NewTabCommand}"/>
-		<KeyBinding Gesture="Ctrl+W" Command="{Binding QueryTabsVm.CloseTabCommand}" CommandParameter="{Binding QueryTabsVm.SelectedTab}"/>
+		<KeyBinding Gesture="Ctrl+N" Command="{Binding WorkspaceTabsVm.NewQueryTabCommand}"/>
+		<KeyBinding Gesture="Ctrl+W" Command="{Binding WorkspaceTabsVm.CloseTabCommand}" CommandParameter="{Binding WorkspaceTabsVm.SelectedTab}"/>
 		<KeyBinding Gesture="Ctrl+O" Command="{Binding MainWindowVm.OpenDatabaseCommand}"/>
-		<KeyBinding Gesture="F5" Command="{Binding QueryTabsVm.ExecuteQueryCommand}"/>
-		<KeyBinding Gesture="Ctrl+Return" Command="{Binding QueryTabsVm.ExecuteSelectionCommand}"/>
-		<KeyBinding Gesture="Ctrl+S" Command="{Binding QueryTabsVm.SaveTabCommand}"/>
-		<KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding QueryTabsVm.SaveTabAsCommand}"/>
+		<KeyBinding Gesture="F5" Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"/>
+		<KeyBinding Gesture="Ctrl+Return" Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"/>
+		<KeyBinding Gesture="Ctrl+S" Command="{Binding WorkspaceTabsVm.SaveTabCommand}"/>
+		<KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding WorkspaceTabsVm.SaveTabAsCommand}"/>
 	</Window.KeyBindings>
 
 	<Grid RowDefinitions="Auto,*,Auto">
@@ -29,7 +29,7 @@
 		<Menu Grid.Row="0">
 			<MenuItem Header="_File">
 				<MenuItem Header="_New Query Tab"
-				          Command="{Binding QueryTabsVm.NewTabCommand}"
+				          Command="{Binding WorkspaceTabsVm.NewQueryTabCommand}"
 				          InputGesture="Ctrl+N">
 					<MenuItem.Icon>
 						<PathIcon Data="{x:Static ui:StudioIcons.TAB_NEW}" />
@@ -63,7 +63,7 @@
 				<Separator />
 
 				<MenuItem Header="_Save Query"
-				          Command="{Binding QueryTabsVm.SaveTabCommand}"
+				          Command="{Binding WorkspaceTabsVm.SaveTabCommand}"
 				          InputGesture="Ctrl+S">
 					<MenuItem.Icon>
 						<PathIcon Data="{x:Static ui:StudioIcons.QUERY_SAVE}" />
@@ -71,7 +71,7 @@
 				</MenuItem>
 
 				<MenuItem Header="Save Query _As..."
-				          Command="{Binding QueryTabsVm.SaveTabAsCommand}"
+				          Command="{Binding WorkspaceTabsVm.SaveTabAsCommand}"
 				          InputGesture="Ctrl+Shift+S">
 					<MenuItem.Icon>
 						<PathIcon Data="{x:Static ui:StudioIcons.QUERY_SAVE}" />
@@ -112,7 +112,7 @@
 
 			<MenuItem Header="_Query">
 				<MenuItem Header="_Execute"
-				          Command="{Binding QueryTabsVm.ExecuteQueryCommand}"
+				          Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
 				          InputGesture="F5">
 					<MenuItem.Icon>
 						<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}" />
@@ -120,7 +120,7 @@
 				</MenuItem>
 
 				<MenuItem Header="Execute _Selection"
-				          Command="{Binding QueryTabsVm.ExecuteSelectionCommand}"
+				          Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"
 				          InputGesture="Ctrl+Enter">
 					<MenuItem.Icon>
 						<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}" />
@@ -130,7 +130,7 @@
 				<Separator />
 
 				<MenuItem Header="_Clear Results"
-				          Command="{Binding QueryTabsVm.ClearResultsCommand}">
+				          Command="{Binding WorkspaceTabsVm.ClearResultsCommand}">
 					<MenuItem.Icon>
 						<PathIcon Data="{x:Static ui:StudioIcons.QUERY_CLEAR}" />
 					</MenuItem.Icon>
@@ -139,8 +139,8 @@
 				<Separator />
 
 				<MenuItem Header="Close _Tab"
-				          Command="{Binding QueryTabsVm.CloseTabCommand}"
-				          CommandParameter="{Binding QueryTabsVm.SelectedTab}"
+				          Command="{Binding WorkspaceTabsVm.CloseTabCommand}"
+				          CommandParameter="{Binding WorkspaceTabsVm.SelectedTab}"
 				          InputGesture="Ctrl+W">
 					<MenuItem.Icon>
 						<PathIcon Data="{x:Static ui:StudioIcons.TAB_CLOSE}" />
@@ -148,7 +148,7 @@
 				</MenuItem>
 
 				<MenuItem Header="Close _All Tabs"
-				          Command="{Binding QueryTabsVm.CloseAllTabsCommand}">
+				          Command="{Binding WorkspaceTabsVm.CloseAllTabsCommand}">
 					<MenuItem.Icon>
 						<PathIcon Data="{x:Static ui:StudioIcons.TAB_CLOSE}" />
 					</MenuItem.Icon>
@@ -263,25 +263,9 @@
 					</StackPanel>
 				</Grid>
 
-				<!-- Main Content Tabs (when connected) -->
-				<TabControl IsVisible="{Binding MainWindowVm.IsConnected}"
-                            Background="Transparent">
-					
-					<!-- Query Editor Tab -->
-					<TabItem Header="Query">
-						<query:QueryTabs DataContext="{Binding QueryTabsVm}"/>
-					</TabItem>
-
-					<!-- Table Editor Tab -->
-					<TabItem Header="Data">
-						<views:TableEditor/>
-					</TabItem>
-
-					<!-- Table Structure Tab -->
-					<TabItem Header="Structure">
-						<views:TableStructure/>
-					</TabItem>
-				</TabControl>
+				<!-- Unified Workspace Tabs (when connected) -->
+				<workspace:WorkspaceTabs DataContext="{Binding WorkspaceTabsVm}"
+				                         IsVisible="{Binding $parent[Window].((vm:ApplicationViewModel)DataContext).MainWindowVm.IsConnected}"/>
 			</Grid>
 		</Grid>
 

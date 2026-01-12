@@ -1,5 +1,6 @@
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Definitions;
+using OutWit.Database.Engine;
 
 namespace OutWit.Database.Tests;
 
@@ -13,7 +14,7 @@ public sealed class WitSqlEngineAlterTableIntegrationTests
     #region Fields
 
     private string m_testDbPath = null!;
-    private Engine.WitSqlEngine m_engine = null!;
+    private WitSqlEngine m_engine = null!;
 
     #endregion
 
@@ -31,7 +32,7 @@ public sealed class WitSqlEngineAlterTableIntegrationTests
         }
         
         var database = WitDatabase.Create(m_testDbPath);
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
     }
 
     [TearDown]
@@ -73,7 +74,7 @@ public sealed class WitSqlEngineAlterTableIntegrationTests
         // Dispose and recreate engine
         m_engine.Dispose();
         var database = WitDatabase.Open(m_testDbPath);
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
         
         // Verify constraint still exists
         var table = m_engine.GetTable("Users");
@@ -102,7 +103,7 @@ public sealed class WitSqlEngineAlterTableIntegrationTests
         // Dispose and recreate engine
         m_engine.Dispose();
         var database = WitDatabase.Open(m_testDbPath);
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
         
         // Verify constraint still exists
         var table = m_engine.GetTable("Users");
@@ -131,7 +132,7 @@ public sealed class WitSqlEngineAlterTableIntegrationTests
         // Restart engine
         m_engine.Dispose();
         var database = WitDatabase.Open(m_testDbPath);
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
         
         // Verify FK constraint persisted
         var table = m_engine.GetTable("Products");
@@ -165,7 +166,7 @@ public sealed class WitSqlEngineAlterTableIntegrationTests
         // Restart engine
         m_engine.Dispose();
         var database = WitDatabase.Open(m_testDbPath);
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
         
         // Verify computed values persisted
         var rows = m_engine.Query("SELECT * FROM OrderItems ORDER BY Id");
@@ -197,7 +198,7 @@ public sealed class WitSqlEngineAlterTableIntegrationTests
         // Restart engine
         m_engine.Dispose();
         var database = WitDatabase.Open(m_testDbPath);
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
         
         // Verify virtual column is still evaluated correctly
         var rows = m_engine.Query("SELECT * FROM Employees WHERE Id = 1");
@@ -227,7 +228,7 @@ public sealed class WitSqlEngineAlterTableIntegrationTests
         // Restart engine
         m_engine.Dispose();
         var database = WitDatabase.Open(m_testDbPath);
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
         
         // Verify default values persisted
         var rows = m_engine.Query("SELECT * FROM Products ORDER BY Id");
@@ -283,7 +284,7 @@ public sealed class WitSqlEngineAlterTableIntegrationTests
         // Restart engine (simulate app restart)
         m_engine.Dispose();
         var database = WitDatabase.Open(m_testDbPath);
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
         
         // Verify everything works
         var products = m_engine.Query("SELECT * FROM Products ORDER BY Id");

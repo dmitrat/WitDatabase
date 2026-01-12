@@ -1,4 +1,5 @@
 using OutWit.Database.Core.Builder;
+using OutWit.Database.Engine;
 using OutWit.Database.Query;
 
 namespace OutWit.Database.Tests.Query;
@@ -11,7 +12,7 @@ public sealed class QueryPlanCacheTests
 {
     #region Fields
 
-    private Engine.WitSqlEngine m_engine = null!;
+    private WitSqlEngine m_engine = null!;
 
     #endregion
 
@@ -24,7 +25,7 @@ public sealed class QueryPlanCacheTests
             .WithMemoryStorage()
             .WithBTree()
             .Build();
-        m_engine = new Engine.WitSqlEngine(database, ownsStore: true);
+        m_engine = new WitSqlEngine(database, ownsStore: true);
 
         // Create test table
         m_engine.Execute(@"

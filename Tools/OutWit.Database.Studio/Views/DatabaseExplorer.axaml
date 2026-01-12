@@ -90,19 +90,31 @@
                             
                             <Separator/>
                             
-                            <MenuItem Header="Browse Data"
-                                      Command="{Binding DatabaseExplorerVm.BrowseDataCommand}"
+                            <!-- Select data submenu -->
+                            <MenuItem Header="Select Data"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanBrowseData}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"/>
                                 </MenuItem.Icon>
+                                <MenuItem Header="Select Top 100"
+                                          Command="{Binding DatabaseExplorerVm.SelectTop100Command}"/>
+                                <MenuItem Header="Select Top 1000"
+                                          Command="{Binding DatabaseExplorerVm.SelectTop1000Command}"/>
                             </MenuItem>
                             
                             <MenuItem Header="Edit Data..."
                                       Command="{Binding DatabaseExplorerVm.EditDataCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanEditData}">
                                 <MenuItem.Icon>
-                                    <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_ADD_ROW}"/>
+                                    <PathIcon Data="{x:Static ui:StudioIcons.TAB_TABLE_EDIT}"/>
+                                </MenuItem.Icon>
+                            </MenuItem>
+                            
+                            <MenuItem Header="View Structure..."
+                                      Command="{Binding DatabaseExplorerVm.ViewStructureCommand}"
+                                      IsEnabled="{Binding DatabaseExplorerVm.CanViewStructure}">
+                                <MenuItem.Icon>
+                                    <PathIcon Data="{x:Static ui:StudioIcons.TAB_STRUCTURE}"/>
                                 </MenuItem.Icon>
                             </MenuItem>
                             

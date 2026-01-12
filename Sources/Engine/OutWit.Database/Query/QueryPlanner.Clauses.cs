@@ -308,9 +308,16 @@ public sealed partial class QueryPlanner
 
     private IResultIterator ApplyProjection(IResultIterator iterator, IReadOnlyList<ClauseSelectItem> selectList)
     {
-        // Skip projection for SELECT *
+        // For SELECT *, we need to exclude internal columns like _rowid
         if (IsSelectStar(selectList))
+        {
+            // Only wrap if the source contains internal columns
+            if (IteratorExcludeInternal.NeedsFiltering(iterator.Schema))
+            {
+                return new IteratorExcludeInternal(iterator);
+            }
             return iterator;
+        }
 
         return new IteratorProject(iterator, selectList, m_context);
     }

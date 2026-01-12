@@ -552,4 +552,119 @@ public class DmlPerformanceTests
     }
 
     #endregion
+
+    #region INSERT Performance Tests
+
+    [Test]
+    public void InsertAutoIncrementPerformanceTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "test.witdb");
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithBTree()
+            .WithTransactions()
+            .Build();
+
+        using var engine = new WitSqlEngine(db);
+        
+        engine.Execute("CREATE TABLE T (Id BIGINT PRIMARY KEY AUTOINCREMENT, Value DOUBLE)");
+        
+        const int rowCount = 1000;
+        var sw = Stopwatch.StartNew();
+        
+        for (int i = 0; i < rowCount; i++)
+        {
+            engine.Execute($"INSERT INTO T (Value) VALUES ({i}.0)");
+        }
+        
+        sw.Stop();
+
+        var countAfter = engine.Query("SELECT COUNT(*) FROM T")[0][0].AsInt64();
+        Assert.That(countAfter, Is.EqualTo(rowCount));
+
+        var perRowMs = (double)sw.ElapsedMilliseconds / rowCount;
+        TestContext.WriteLine($"INSERT {rowCount} rows (auto-increment): {sw.ElapsedMilliseconds}ms ({perRowMs:F3}ms/row)");
+        
+        // Should be less than 1ms per row for auto-increment
+        Assert.That(perRowMs, Is.LessThan(1.0), $"INSERT auto-increment too slow: {perRowMs:F3}ms/row");
+    }
+
+    [Test]
+    public void InsertExplicitIdPerformanceTest()
+    {
+        var dbPath = Path.Combine(m_testDir, "test.witdb");
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithBTree()
+            .WithTransactions()
+            .Build();
+
+        using var engine = new WitSqlEngine(db);
+        
+        engine.Execute("CREATE TABLE T (Id BIGINT PRIMARY KEY AUTOINCREMENT, Value DOUBLE)");
+        
+        const int rowCount = 1000;
+        var sw = Stopwatch.StartNew();
+        
+        // Insert with explicit sequential IDs
+        for (int i = 1; i <= rowCount; i++)
+        {
+            engine.Execute($"INSERT INTO T (Id, Value) VALUES ({i}, {i}.0)");
+        }
+        
+        sw.Stop();
+
+        var countAfter = engine.Query("SELECT COUNT(*) FROM T")[0][0].AsInt64();
+        Assert.That(countAfter, Is.EqualTo(rowCount));
+
+        var perRowMs = (double)sw.ElapsedMilliseconds / rowCount;
+        TestContext.WriteLine($"INSERT {rowCount} rows (explicit ID): {sw.ElapsedMilliseconds}ms ({perRowMs:F3}ms/row)");
+        
+        // Explicit ID may be slightly slower due to EnsureAutoIncrementAtLeast call,
+        // but should still be less than 2ms per row
+        Assert.That(perRowMs, Is.LessThan(2.0), $"INSERT explicit ID too slow: {perRowMs:F3}ms/row");
+    }
+
+    [Test]
+    public void InsertExplicitIdWithReadLockOptimizationTest()
+    {
+        // Test that sequential explicit IDs benefit from read-lock optimization
+        // (only the first insert should need a write lock, subsequent ones use read-lock fast path)
+        
+        var dbPath = Path.Combine(m_testDir, "test.witdb");
+        using var db = new WitDatabaseBuilder()
+            .WithFilePath(dbPath)
+            .WithBTree()
+            .WithTransactions()
+            .Build();
+
+        using var engine = new WitSqlEngine(db);
+        
+        engine.Execute("CREATE TABLE T (Id BIGINT PRIMARY KEY AUTOINCREMENT, Value DOUBLE)");
+        
+        // First insert with explicit ID = 1000 (will update counter)
+        engine.Execute("INSERT INTO T (Id, Value) VALUES (1000, 1.0)");
+        
+        const int rowCount = 100;
+        var sw = Stopwatch.StartNew();
+        
+        // Subsequent inserts with lower IDs should be fast (read-lock only, no disk write)
+        for (int i = 1; i < rowCount; i++)
+        {
+            engine.Execute($"INSERT INTO T (Id, Value) VALUES ({i}, {i}.0)");
+        }
+        
+        sw.Stop();
+
+        var countAfter = engine.Query("SELECT COUNT(*) FROM T")[0][0].AsInt64();
+        Assert.That(countAfter, Is.EqualTo(rowCount));
+
+        var perRowMs = (double)sw.ElapsedMilliseconds / (rowCount - 1);
+        TestContext.WriteLine($"INSERT {rowCount - 1} rows (explicit ID < counter): {sw.ElapsedMilliseconds}ms ({perRowMs:F3}ms/row)");
+        
+        // These should be as fast as auto-increment since no counter update needed
+        Assert.That(perRowMs, Is.LessThan(1.0), $"INSERT explicit ID (below counter) too slow: {perRowMs:F3}ms/row");
+    }
+
+    #endregion
 }
