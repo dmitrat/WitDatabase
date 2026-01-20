@@ -108,31 +108,31 @@ var db = new WitDatabaseBuilder()
 
 | Engine | Compatible | Notes |
 |--------|-----------|-------|
-| B+Tree (`WithBTree`) | YES | Recommended, full support |
-| LSM-Tree (`WithLsmTree`) | NO | Requires file system |
-| In-Memory | YES | No persistence |
+| B+Tree (WithBTree) | Yes | Recommended, full support |
+| LSM-Tree (WithLsmTree) | No | Requires file system |
+| In-Memory | Yes | No persistence |
 
 ### Features
 
 | Feature | Compatible | Notes |
 |---------|-----------|-------|
-| Basic CRUD | YES | Full support |
-| Transactions | YES | Via TransactionalStore |
-| MVCC | YES | All isolation levels |
-| Savepoints | YES | Full support |
-| Encryption | YES | AES-GCM, BouncyCastle |
-| Secondary Indexes | YES | Full support via IndexedDB |
-| File Locking | NO | Not applicable |
-| WAL/Journal | NO | Single-file model |
+| Basic CRUD | Yes | Full support |
+| Transactions | Yes | Via TransactionalStore |
+| MVCC | Yes | All isolation levels |
+| Savepoints | Yes | Full support |
+| Encryption | Yes | AES-GCM, BouncyCastle |
+| Secondary Indexes | Yes | Full support via IndexedDB |
+| File Locking | No | Not applicable |
+| WAL/Journal | No | Single-file model |
 
 ### Browsers
 
 | Browser | Supported |
 |---------|-----------|
-| Chrome 80+ | YES |
-| Firefox 75+ | YES |
-| Edge 80+ | YES |
-| Safari 14+ | YES |
+| Chrome 80+ | Yes |
+| Firefox 75+ | Yes |
+| Edge 80+ | Yes |
+| Safari 14+ | Yes |
 
 ---
 
@@ -253,7 +253,7 @@ await interop.CloseAsync();
 
 2. **Single-Tab Access**
    - IndexedDB can be accessed from multiple tabs
-   - But WitDatabase doesn't coordinate between tabs
+   - But WitDatabase does not coordinate between tabs
    - Use single-tab or implement your own coordination
 
 3. **Storage Quota**
@@ -315,7 +315,7 @@ catch (InvalidOperationException ex)
 If you see errors about `witDb` or `witDbIndex` being undefined:
 
 1. Ensure both script tags are in `index.html`
-2. Make sure they're loaded before your Blazor app starts
+2. Make sure they are loaded before your Blazor app starts
 3. Check browser console for script loading errors
 
 ### IndexedDB Not Available
@@ -377,3 +377,5 @@ catch (JSException ex) when (ex.Message.Contains("quota"))
 - [OutWit.Database.Core.BouncyCastle](../OutWit.Database.Core.BouncyCastle/) - ChaCha20 encryption
 - [MDN: IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)
 - [Blazor JS Interop](https://learn.microsoft.com/en-us/aspnet/core/blazor/javascript-interoperability/)
+- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap

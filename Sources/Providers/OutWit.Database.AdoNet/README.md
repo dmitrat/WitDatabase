@@ -320,4 +320,9 @@ MIT License - see LICENSE file for details.
 ## Related Packages
 
 - `OutWit.Database.Core` - Core database engine
-- `OutWit.Database.EntityFramework` - Entity Framework Core provider (coming soon)
+- `OutWit.Database.EntityFramework` - Entity Framework Core provider
+
+## See Also
+
+- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap

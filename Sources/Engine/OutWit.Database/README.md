@@ -635,13 +635,6 @@ engine.Execute(@"
 // Create index for fast uniqueness validation
 engine.Execute("CREATE UNIQUE INDEX IX_Products_SKU ON Products(SKU)");
 
-// Now bulk inserts are fast
-engine.Execute("BEGIN TRANSACTION");
-for (int i = 0; i < 10000; i++)
-{
-    engine.Execute($"INSERT INTO Products (SKU, Name, Price) VALUES ('SKU{i}', 'Product {i}', {i * 1.5})");
-}
-engine.Execute("COMMIT");
 ```
 
 ---
@@ -649,6 +642,5 @@ engine.Execute("COMMIT");
 ## See Also
 
 - [WitSql.md](../../WitSql.md) - Full WitSQL language specification
-- [Roadmap.Engine.md](../../Roadmap.Engine.md) - Engine roadmap
-- [STATUS.md](STATUS.md) - Implementation status
-- [PERFORMANCE_ANALYSIS.md](../../Docs/PERFORMANCE_ANALYSIS.md) - Detailed performance analysis
+- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap

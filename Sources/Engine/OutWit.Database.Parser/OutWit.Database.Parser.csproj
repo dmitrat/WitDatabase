@@ -5,6 +5,10 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	<AntlrScriptPath>$(MSBuildProjectDirectory)\MakeInternal.ps1</AntlrScriptPath>
+    
+    <Version>1.0.0</Version>
+    <Description>SQL parser for WitDatabase. ANTLR4-based parser for WitSQL dialect with full SQL-92 compatibility and .NET type extensions.</Description>
+    <PackageTags>OutWit;database;sql;parser;antlr;witsql;query;syntax</PackageTags>
   </PropertyGroup>
 
   <ItemGroup>

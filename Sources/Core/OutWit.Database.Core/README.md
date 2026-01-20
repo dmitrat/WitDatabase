@@ -15,7 +15,7 @@ OutWit.Database.Core is a production-ready embedded database engine designed for
 - **Security** - Built-in AES-GCM encryption with pluggable crypto providers
 - **Extensibility** - Modular provider architecture for custom components
 - **Concurrency** - MVCC, row-level locking, deadlock detection
-- **Cross-Platform** - Works on Windows, Linux, macOS, and **Blazor WebAssembly**
+- **Cross-Platform** - Works on Windows, Linux, macOS, and Blazor WebAssembly
 
 ### Key Features
 
@@ -26,7 +26,7 @@ OutWit.Database.Core is a production-ready embedded database engine designed for
 - **Transactions**: Savepoints, rollback, concurrent transactions
 - **Encryption**: AES-GCM (built-in), ChaCha20-Poly1305 (via BouncyCastle)
 - **Secondary Indexes**: Unique and non-unique, with auto-persistence
-- **WAL & Recovery**: Write-ahead logging, crash recovery
+- **WAL and Recovery**: Write-ahead logging, crash recovery
 - **Blazor WASM**: IndexedDB storage provider for browser-based apps
 - **.NET 9/10**: Targets latest .NET versions
 
@@ -340,7 +340,7 @@ OutWit.Database.Core/
 
 ## Storage Engines
 
-### B+Tree (`StoreBTree`)
+### B+Tree (StoreBTree)
 
 Best for:
 - Read-heavy workloads
@@ -360,7 +360,7 @@ var db = new WitDatabaseBuilder()
     .Build();
 ```
 
-### LSM-Tree (`StoreLsm`)
+### LSM-Tree (StoreLsm)
 
 Best for:
 - Write-heavy workloads
@@ -530,12 +530,12 @@ var db = new WitDatabaseBuilder()
 
 | Feature | Compatible | Notes |
 |---------|-----------|-------|
-| B+Tree | ? Yes | Full support |
-| LSM-Tree | ? No | Requires file system |
-| MVCC | ? Yes | All isolation levels |
-| Encryption | ? Yes | AES-GCM, BouncyCastle |
-| Secondary Indexes | ? Yes | Via IndexedDB |
-| Transactions | ? Yes | Full support |
+| B+Tree | Yes | Full support |
+| LSM-Tree | No | Requires file system |
+| MVCC | Yes | All isolation levels |
+| Encryption | Yes | AES-GCM, BouncyCastle |
+| Secondary Indexes | Yes | Via IndexedDB |
+| Transactions | Yes | Full support |
 
 See [OutWit.Database.Core.IndexedDb](../OutWit.Database.Core.IndexedDb/) for full documentation.
 
@@ -548,19 +548,22 @@ See [OutWit.Database.Core.IndexedDb](../OutWit.Database.Core.IndexedDb/) for ful
 | OutWit.Database | SQL execution engine |
 | OutWit.Database.Parser | SQL parser |
 | OutWit.Database.Core.BouncyCastle | ChaCha20-Poly1305 encryption |
-| **OutWit.Database.Core.IndexedDb** | **IndexedDB storage for Blazor WASM** |
-
----
-
-## License
-
-MIT License - see LICENSE file for details.
+| OutWit.Database.Core.IndexedDb | IndexedDB storage for Blazor WASM |
 
 ---
 
 ## See Also
 
-- [STATUS.md](STATUS.md) - Implementation status
 - [EXTENSIBILITY.md](EXTENSIBILITY.md) - Extension guide
-- [../Roadmap.Core.md](../Roadmap.Core.md) - Full roadmap
-- [../WitSql.md](../WitSql.md) - SQL specification
+- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap
+
+## License
+
+This software is licensed under the **Non-Commercial License (NCL)**.
+
+- Free for personal, educational, and research purposes
+- Commercial use requires a separate license agreement
+- Contact licensing@ratner.io for commercial licensing inquiries
+
+See the full [LICENSE](LICENSE) file for details.

@@ -2,7 +2,7 @@
   <PropertyGroup Condition="'$(IsTestProject)' != 'true' AND '$(IsPackable)' != 'false'">
 
 	<PackageId>$(MSBuildProjectName)</PackageId>
-	<Product>OutWit.Web</Product>
+	<Product>OutWit.Database</Product>
   
 	<LangVersion>latest</LangVersion>
 	<SignAssembly>False</SignAssembly>
@@ -11,6 +11,8 @@
 	<Company>OutWit</Company>	
 	<Copyright>Copyright © $([System.DateTime]::UtcNow.Year) Dmitry Ratner</Copyright>
 	
+	<RepositoryUrl>https://github.com/dmitrat/WitDatabase</RepositoryUrl>
+	<RepositoryType>git</RepositoryType>
 	<PublishRepositoryUrl>true</PublishRepositoryUrl>
 	<IncludeSymbols>true</IncludeSymbols>
 	<SymbolPackageFormat>snupkg</SymbolPackageFormat>
@@ -35,11 +37,6 @@
 		<None Include="WitDatabase-logo.png" Pack="true" PackagePath="\" />
 		<None Include="README.md" Pack="true" PackagePath="\" />
 	</ItemGroup>
-
-	<ItemGroup Condition="'$(IsTestProject)' != 'true'">
-		<NuGetFiles Include="$(TargetDir)*$(TargetName)*.nupkg" />
-		<NuGetFiles Include="$(TargetDir)*$(TargetName)*.snupkg" />
-	</ItemGroup>
   
   	<ItemGroup>
 	  <PackageReference Include="Microsoft.SourceLink.GitHub" Version="8.0.0">
@@ -47,9 +44,5 @@
 	    <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
 	  </PackageReference>
 	</ItemGroup>
-
-	<Target Name="PostBuild" AfterTargets="Pack" Condition="'$(Configuration)' == 'Release' AND '$(IsTestProject)' != 'true'">
-		<Copy SourceFiles="@(NuGetFiles)" DestinationFolder="$(SolutionDir)@NuGet\" SkipUnchangedFiles="true" OverwriteReadOnlyFiles="true" />
-	</Target>
 	
 </Project>

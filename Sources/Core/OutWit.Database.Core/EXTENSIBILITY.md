@@ -39,7 +39,7 @@ WitDatabase.Core uses a modular architecture where major components are defined 
 | +-----------+          +--------------+                           |
 | |StoreBTree |          |MvccTransact  |                           |
 | |StoreLsm   |          |ionalStore    |                           |
-| |YourStore  |<---------|              |                           |
+| |YourStore  |          |              |                           |
 | +-----------+          +--------------+                           |
 |      |                                                            |
 |      v                                                            |
@@ -170,7 +170,6 @@ public sealed class XChaCha20CryptoProvider : ICryptoProvider
     {
         ThrowIfDisposed();
         // Your encryption implementation here
-        // ...
     }
     
     public bool Decrypt(ReadOnlySpan<byte> nonce, ReadOnlySpan<byte> ciphertext, 
@@ -180,7 +179,6 @@ public sealed class XChaCha20CryptoProvider : ICryptoProvider
         try
         {
             // Your decryption implementation here
-            // ...
             return true;
         }
         catch
@@ -235,7 +233,7 @@ public static class XChaCha20ProviderRegistration
     }
     
     /// <summary>
-    /// Explicit registration for scenarios where ModuleInitializer doesn't work.
+    /// Explicit registration for scenarios where ModuleInitializer does not work.
     /// </summary>
     public static void EnsureRegistered() => Initialize();
 }
@@ -282,7 +280,6 @@ public static class WitDatabaseBuilderXChaCha20Extensions
     
     private static byte[] DerivePasswordSalt(string password)
     {
-        // Use SHA-256 to derive salt from password
         using var sha256 = System.Security.Cryptography.SHA256.Create();
         var input = System.Text.Encoding.UTF8.GetBytes(password + "_WitDB_XChaCha_Salt");
         var hash = sha256.ComputeHash(input);
@@ -349,8 +346,6 @@ public sealed class StorageCloud : IStorage
         _client = client ?? throw new ArgumentNullException(nameof(client));
         _containerName = containerName;
         _pageSize = pageSize;
-        
-        // Initialize from existing container or create new
         _pageCount = GetExistingPageCount();
     }
     
@@ -402,13 +397,11 @@ public sealed class StorageCloud : IStorage
     public void SetSize(long pageCount)
     {
         _pageCount = pageCount;
-        // Optionally pre-allocate or trim blobs
     }
     
     public void Flush()
     {
         // Cloud storage typically auto-flushes
-        // Could implement local write cache here
     }
     
     public ValueTask FlushAsync(CancellationToken cancellationToken = default)
@@ -426,7 +419,6 @@ public sealed class StorageCloud : IStorage
     
     private long GetExistingPageCount()
     {
-        // Query container for existing pages
         return _client.ListBlobs(_containerName)
             .Where(b => b.StartsWith("page_"))
             .Count();
@@ -461,7 +453,7 @@ var cloudClient = new AzureBlobClient(connectionString);
 var db = new WitDatabaseBuilder()
     .WithCloudStorage(cloudClient, "my-database")
     .WithBTree()
-    .WithEncryption("password")  // Encrypt before sending to cloud
+    .WithEncryption("password")
     .Build();
 ```
 
@@ -482,8 +474,6 @@ namespace MyCompany.WitDatabase.SpecializedStore;
 public sealed class StoreTimeSeries : IKeyValueStore, IKeyValueStoreStatistics
 {
     public const string PROVIDER_KEY = "timeseries";
-    
-    // Implementation details...
     
     public string ProviderKey => PROVIDER_KEY;
     
@@ -527,9 +517,6 @@ public sealed class PageCacheArc : IPageCache
     
     private readonly IStorage _storage;
     private readonly int _capacity;
-    
-    // T1, T2, B1, B2 lists for ARC algorithm
-    // ...
     
     public PageCacheArc(IStorage storage, int capacity)
     {
@@ -615,7 +602,6 @@ public sealed class DistributedTransactionJournal : ITransactionJournal
     
     public int Recover(IKeyValueStore store)
     {
-        // Replay committed transactions from consensus log
         return _consensusClient.Replay(store);
     }
     
@@ -670,7 +656,6 @@ public sealed class FullTextIndexFactory : ISecondaryIndexFactory
 public sealed class FullTextIndex : ISecondaryIndex
 {
     // Lucene.NET or similar implementation
-    // ...
 }
 ```
 
@@ -717,7 +702,6 @@ MyCompany.WitDatabase.MyCrypto/
 
   <ItemGroup>
     <PackageReference Include="OutWit.Database.Core" Version="1.0.0" />
-    <!-- Your crypto library if needed -->
   </ItemGroup>
 </Project>
 ```
@@ -756,7 +740,7 @@ public sealed class MyCryptoProvider : ICryptoProvider
 
 ### 2. Proper Disposal
 
-Always implement `IDisposable` correctly:
+Always implement IDisposable correctly:
 
 ```csharp
 public void Dispose()
@@ -792,7 +776,7 @@ public bool Decrypt(...)
     }
     catch (AuthenticationTagMismatchException)
     {
-        // Don't throw - return false for auth failures
+        // Do not throw - return false for auth failures
         return false;
     }
     catch (Exception ex)
@@ -811,7 +795,7 @@ Crypto providers must support cloning for index encryption:
 public ICryptoProvider Clone()
 {
     ThrowIfDisposed();
-    // Create new instance with same key (copy, don't share)
+    // Create new instance with same key (copy, do not share)
     return new MyCryptoProvider((byte[])_key.Clone());
 }
 ```
@@ -867,5 +851,4 @@ public void Encrypt_Decrypt_RoundTrip()
 ## See Also
 
 - [README.md](README.md) - Project documentation
-- [STATUS.md](STATUS.md) - Implementation status
 - [OutWit.Database.Core.BouncyCastle](../OutWit.Database.Core.BouncyCastle/) - Reference implementation

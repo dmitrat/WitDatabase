@@ -187,6 +187,32 @@ modelBuilder.Entity<Task>(entity =>
 });
 ```
 
+## Bulk Operations
+
+High-performance bulk operations are available via extension methods:
+
+```csharp
+using OutWit.Database.EntityFramework.Extensions;
+
+// Bulk Insert - 3x faster than AddRange + SaveChanges
+var users = Enumerable.Range(1, 10000)
+    .Select(i => new User { Name = $"User{i}", Email = $"user{i}@test.com" });
+int inserted = await context.BulkInsertAsync(users);
+
+// Bulk Update
+var usersToUpdate = context.Users.AsNoTracking().Take(1000).ToList();
+foreach (var user in usersToUpdate)
+    user.Status = "Active";
+int updated = await context.BulkUpdateAsync(usersToUpdate);
+
+// Bulk Delete
+var usersToDelete = context.Users.Where(u => u.Status == "Inactive").ToList();
+int deleted = await context.BulkDeleteAsync(usersToDelete);
+
+// Bulk InsertOrUpdate (Upsert)
+int affected = await context.BulkInsertOrUpdateAsync(mixedUsers);
+```
+
 ## Supported Data Types
 
 | C# Type | WitSQL Type | Notes |
@@ -255,25 +281,6 @@ All connection string options from `OutWit.Database.AdoNet` are supported:
 | `Password` | Encryption password | `Password=secret` |
 | `Store` | Storage engine | `Store=btree` or `Store=lsm` |
 
-## Features
-
-### Completed
-
-- [x] DbContext configuration with `UseWitDb()`
-- [x] In-memory database support
-- [x] Type mapping for all WitSQL types
-- [x] SQL generation (SELECT, INSERT, UPDATE, DELETE)
-- [x] Parameter handling with `@param` syntax
-- [x] LIMIT/OFFSET for pagination
-- [x] Model validation
-- [x] Migrations support (CREATE/DROP TABLE, ADD/DROP COLUMN, indexes)
-- [x] Database creation (EnsureCreated/EnsureDeleted)
-- [x] LINQ method translations (string, math, datetime, guid, json)
-- [x] Computed columns support
-- [x] Concurrency tokens and row versioning
-- [x] JSON column support with query methods
-- [x] Enum to string conversion
-
 ## Requirements
 
 - .NET 9.0 or .NET 10.0
@@ -288,3 +295,8 @@ All connection string options from `OutWit.Database.AdoNet` are supported:
 ## License
 
 MIT License - see LICENSE file for details.
+
+## See Also
+
+- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap

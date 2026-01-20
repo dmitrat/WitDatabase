@@ -1,54 +1,99 @@
-# OutWit.Database.Core - v2 Roadmap
+# OutWit.Database.Core - Version 2.0 Roadmap
 
-**Version:** 2.0  
-**Last Updated:** 2025-02-05
+**Last Updated:** 2026-01-20
 
----
-
-## v1 Status: 100% Complete
-
-All v1 features are implemented. See [STATUS.md](STATUS.md) for details.
-
-**Test Coverage:** 1811+ tests passing
+This document outlines planned features for version 2.0 of OutWit.Database.Core.
 
 ---
 
-## v2 Planned Features
+## Version 2.0 - Planned Features
 
-### Cursor Support
+### Priority 0: Performance Critical
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| `ICursor` interface | P2 | Forward-only and scrollable cursors |
-| Fetch size (batching) | P2 | Batch retrieval for large result sets |
+| Feature | Description | Expected Improvement |
+|---------|-------------|---------------------|
+| Cursor Caching | Pool and reuse B-tree cursors | 3-5x faster seeks |
+| B-tree Seek Optimization | Optimize node traversal | 2-3x faster lookups |
+| Lazy Row Loading | Load row data on demand | 1.5-2x for projections |
 
-### Advanced Statistics
+### Priority 1: High Value
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| `ANALYZE` command support | P2 | Collect table/index statistics |
-| Column cardinality estimation | P2 | For query optimizer |
-| Histogram support | P2 | Value distribution statistics |
+| Feature | Description |
+|---------|-------------|
+| Cursor Support | ICursor interface with forward-only and scrollable cursors |
+| Fetch Batching | Batch retrieval for large result sets |
+| VACUUM API | Explicit Vacuum() method for B+Tree space reclamation |
+| Incremental Vacuum | Background space reclamation |
+| Compaction Progress | API to monitor LSM-Tree compaction status |
 
-### VACUUM / Compaction API
+### Priority 2: Enhancements
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| Explicit `Vacuum()` for BTree | P2 | Reclaim unused space |
-| Incremental vacuum | P2 | Background space reclamation |
-| Compaction progress API | P2 | Monitor compaction status |
+| Feature | Description |
+|---------|-------------|
+| Statistics Histograms | Better cardinality estimation for query optimization |
+| SIMD Operations | SIMD-accelerated comparisons and aggregations |
+| Memory-Mapped Files | Optional mmap support for large databases |
+| Leveled Compaction | Alternative LSM-Tree compaction strategy |
+| Page Compression | LZ4/Snappy compression for storage |
 
-### LSM-Tree Enhancements
+---
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| Leveled compaction | P2 | Alternative compaction strategy |
-| Compression support | P2 | Page-level compression |
+## Implementation Details
+
+### Cursor Caching (Priority 0)
+
+```csharp
+public interface ICursor : IDisposable
+{
+    bool MoveNext();
+    bool MovePrevious();
+    bool SeekTo(ReadOnlySpan<byte> key);
+    ReadOnlySpan<byte> CurrentKey { get; }
+    ReadOnlySpan<byte> CurrentValue { get; }
+    void Reset();
+}
+
+public class BTreeCursor : ICursor
+{
+    private uint[] _pathNodes;  // Cached node path
+    private int _pathDepth;
+    
+    public void SeekFrom(ReadOnlySpan<byte> key, bool fromLast = false);
+}
+```
+
+### VACUUM API (Priority 1)
+
+```csharp
+public interface IVacuumable
+{
+    void Vacuum();
+    Task VacuumAsync(CancellationToken cancellationToken = default);
+    VacuumProgress GetVacuumProgress();
+}
+
+public struct VacuumProgress
+{
+    public long PagesProcessed { get; }
+    public long TotalPages { get; }
+    public long BytesReclaimed { get; }
+}
+```
+
+---
+
+## Files to Modify
+
+| Feature | Files |
+|---------|-------|
+| Cursor Caching | `Tree/BTree.cs`, `Tree/BTreeNode.cs` |
+| VACUUM | `Tree/BTree.cs`, `Stores/StoreBTree.cs` |
+| Compaction Progress | `LSM/Compactor.cs`, `Stores/StoreLsm.cs` |
 
 ---
 
 ## See Also
 
-- [README.md](README.md) - Documentation
-- [STATUS.md](STATUS.md) - Implementation status
+- [README.md](README.md) - Project documentation
 - [EXTENSIBILITY.md](EXTENSIBILITY.md) - Extension guide
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap

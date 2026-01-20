@@ -5,12 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     
-    <!-- Package info -->
-    <PackageId>OutWit.Database.Core.IndexedDb</PackageId>
     <Version>1.0.0</Version>
-    <Description>IndexedDB storage provider for WitDatabase - enables Blazor WebAssembly support</Description>
-    <Authors>OutWit</Authors>
-    <PackageTags>database;indexeddb;blazor;wasm;webassembly;storage</PackageTags>
+    <Description>IndexedDB storage provider for WitDatabase. Enables running WitDatabase entirely in the browser with Blazor WebAssembly applications.</Description>
+    <PackageTags>OutWit;database;indexeddb;blazor;wasm;webassembly;storage;browser;client-side</PackageTags>
   </PropertyGroup>
 
   <!-- Blazor WASM support -->

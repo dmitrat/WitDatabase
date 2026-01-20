@@ -1,116 +1,147 @@
-# OutWit.Database (Engine) - v2 Roadmap
+# OutWit.Database - Version 2.0 Roadmap
 
-**Version:** 3.0  
-**Last Updated:** 2025-06-11
+**Last Updated:** 2026-01-20
 
----
-
-## v1 Status: 100% Complete
-
-All SQL execution features are implemented.
-
-See [STATUS.md](STATUS.md) for details.
-
-**Test Coverage:** 1395+ tests passing
+This document outlines planned features for version 2.0 of OutWit.Database (SQL Engine).
 
 ---
 
-## v2 Planned Features
+## Version 2.0 - Planned Features
 
-### Performance Optimization (P0 - Critical)
+### Priority 0: Performance Critical
 
-| Feature | Priority | Status | Description |
-|---------|----------|--------|-------------|
-| Prepared Statement Cache Integration | P0 | ? Done | Integrate QueryPlanCache with WitSqlEngineStatement |
-| Bulk INSERT API | P0 | ? Done | Insert multiple rows in single operation |
-| ExecuteBatch API | P0 | ? Done | Execute same statement with multiple parameter sets |
-| Statement Reuse | P0 | ? Done | Skip re-parsing for identical SQL |
+| Feature | Description | Expected Improvement |
+|---------|-------------|---------------------|
+| Index-Only Scans | Return data from index without row fetch | 2-5x for covered queries |
+| Query Plan Caching | Improved cache with parameterized plans | 2-5x for repeated queries |
+| Prepared Statement Pool | Reuse prepared statements | 2-3x for OLTP workloads |
 
-#### Performance APIs Implemented
+### Priority 1: High Value
 
-**`WitSqlEngineStatement.ExecuteBatch()`** - Execute prepared statement with multiple parameter sets:
+| Feature | Description |
+|---------|-------------|
+| Parallel Query Execution | Multi-threaded table scans |
+| SIMD Aggregation | SIMD-accelerated SUM/COUNT/AVG |
+| Lazy Result Materialization | Stream results without full materialization |
+| Adaptive Query Execution | Runtime plan adjustment based on statistics |
+
+### Priority 2: SQL Features
+
+**User-Defined Functions**
+
+| Feature | Description |
+|---------|-------------|
+| CREATE FUNCTION execution | Execute UDF definitions |
+| RETURNS TABLE support | Table-valued functions |
+| DETERMINISTIC handling | Optimization hints for UDFs |
+| DROP FUNCTION execution | Remove UDFs |
+
+**Stored Procedures**
+
+| Feature | Description |
+|---------|-------------|
+| CREATE PROCEDURE execution | Execute procedure definitions |
+| DROP PROCEDURE execution | Remove procedures |
+| CALL / EXECUTE execution | Invoke procedures |
+| Parameter handling | IN/OUT/INOUT parameters |
+
+**Query Analysis**
+
+| Feature | Description |
+|---------|-------------|
+| EXPLAIN ANALYZE | Actual execution statistics |
+| EXPLAIN (FORMAT JSON/TEXT) | Alternative output formats |
+| Query profiling | Per-operator timing and row counts |
+
+**Database Administration**
+
+| Feature | Description |
+|---------|-------------|
+| VACUUM execution | Reclaim unused space |
+| ANALYZE execution | Update statistics |
+| PRAGMA support | Database configuration |
+
+---
+
+## Implementation Details
+
+### Index-Only Scans (Priority 0)
+
+When all required columns are in the index, skip row fetch:
+
 ```csharp
-using var stmt = engine.Prepare("INSERT INTO Users (Name, Email) VALUES (@name, @email)");
-var users = new[]
+public class IteratorIndexOnlyScan : IteratorBase
 {
-    new Dictionary<string, object?> { ["name"] = "Alice", ["email"] = "alice@test.com" },
-    new Dictionary<string, object?> { ["name"] = "Bob", ["email"] = "bob@test.com" }
-};
-int rowsAffected = stmt.ExecuteBatch(users);
+    // For queries like: SELECT Name FROM Users WHERE Name LIKE 'A%'
+    // When index exists on (Name)
+    
+    private readonly ISecondaryIndex _index;
+    private readonly List<string> _projectedColumns;
+    
+    // Returns data directly from index entries
+    // without fetching full row from table
+}
 ```
 
-**`WitSqlEngine.BulkInsert()`** - High-level bulk insert API:
+### Parallel Query Execution (Priority 1)
+
 ```csharp
-// From objects
-var users = new[] { new { Name = "Alice", Email = "alice@test.com" } };
-engine.BulkInsert("Users", users);
-
-// From dictionaries
-var rows = new[] { new Dictionary<string, object?> { ["Name"] = "Alice" } };
-engine.BulkInsert("Users", rows);
-
-// From arrays
-engine.BulkInsert("Users", new[] { "Name", "Email" }, new[] { new object?[] { "Alice", "alice@test.com" } });
+public class IteratorParallelScan : IteratorBase
+{
+    private readonly int _degreeOfParallelism;
+    private readonly ConcurrentQueue<WitSqlRow> _resultQueue;
+    
+    // Partition table into ranges
+    // Scan partitions in parallel
+    // Merge results
+}
 ```
 
-**`WitSqlEngine.BulkUpdate()`** and **`BulkDelete()`** - Bulk modification APIs.
+### EXPLAIN ANALYZE (Priority 2)
 
-#### Performance Targets
+```csharp
+public class QueryExecutionStats
+{
+    public TimeSpan PlanningTime { get; }
+    public TimeSpan ExecutionTime { get; }
+    public List<OperatorStats> Operators { get; }
+}
 
-| Metric | Current | Target | Notes |
-|--------|---------|--------|-------|
-| INSERT 10K rows (BTree) | 115 ms | 50-70 ms | 2x improvement with batch/prepared |
-| vs LiteDB | 1.5x slower | 1.5x faster | Beat pure .NET competitor |
-| vs SQLite | 5x slower | 3x slower | Acceptable for embedded .NET |
+public class OperatorStats
+{
+    public string OperatorName { get; }
+    public long RowsProduced { get; }
+    public long RowsScanned { get; }
+    public TimeSpan ExecutionTime { get; }
+    public long MemoryUsed { get; }
+}
+```
 
-### User-Defined Functions
+---
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| `CREATE FUNCTION` execution | P2 | Execute UDF definitions |
-| `RETURNS TABLE` support | P2 | Table-valued functions |
-| `DETERMINISTIC` handling | P2 | Optimization hints |
-| `DROP FUNCTION` execution | P2 | Remove UDFs |
+## Performance Targets
 
-### Stored Procedures
+| Metric | Current | Target |
+|--------|---------|--------|
+| Index-covered queries | N/A | 2-5x faster |
+| Repeated parameterized queries | Plan rebuilt | Full reuse |
+| Large table scans | Single-threaded | 2-4x with parallel |
+| Aggregations | Standard | 2-3x with SIMD |
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| `CREATE PROCEDURE` execution | P2 | Execute procedure definitions |
-| `DROP PROCEDURE` execution | P2 | Remove procedures |
-| `CALL` / `EXECUTE` execution | P2 | Invoke procedures |
+---
 
-### Extended Query Analysis
+## Files to Modify
 
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| `EXPLAIN ANALYZE` | P2 | Actual execution statistics |
-| `EXPLAIN (FORMAT JSON/TEXT)` | P2 | Alternative output formats |
-
-### Database Administration
-
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| `CREATE DATABASE` | P2 | Create new database files |
-| `DROP DATABASE` | P2 | Delete database files |
-| `ATTACH DATABASE` | P2 | Attach external databases |
-| `DETACH DATABASE` | P2 | Detach attached databases |
-| `VACUUM` execution | P2 | Reclaim unused space |
-| `ANALYZE` execution | P2 | Update statistics |
-| `PRAGMA` support | P2 | Database configuration |
-
-### Advanced Optimization
-
-| Feature | Priority | Description |
-|---------|----------|-------------|
-| Statistics histograms | P2 | Better cardinality estimation |
-| Adaptive query execution | P2 | Runtime plan adjustment |
-| Predicate pushdown | P2 | Push filters to storage |
+| Feature | Files |
+|---------|-------|
+| Index-Only Scans | `Iterators/IteratorIndexOnlyScan.cs` (new), `Query/QueryPlanner.cs` |
+| Parallel Execution | `Iterators/IteratorParallelScan.cs` (new) |
+| EXPLAIN ANALYZE | `Statements/StatementExecutor.Explain.cs` |
+| UDF Execution | `Statements/StatementExecutor.Ddl.Function.cs` (new) |
 
 ---
 
 ## See Also
 
-- [README.md](README.md) - Documentation
-- [STATUS.md](STATUS.md) - Implementation status
-- [../../WitSQL.md](../../WitSQL.md) - Language specification
+- [README.md](README.md) - Project documentation
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap

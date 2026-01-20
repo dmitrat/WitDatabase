@@ -182,3 +182,5 @@ MIT License - see LICENSE file for details.
 - [OutWit.Database.Core](../OutWit.Database.Core/) - Core database library
 - [OutWit.Database.Core.IndexedDb](../OutWit.Database.Core.IndexedDb/) - Blazor WASM support
 - [BouncyCastle](https://www.bouncycastle.org/) - Cryptography library
+- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap

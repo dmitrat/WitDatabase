@@ -442,5 +442,5 @@ MIT License - see LICENSE file for details.
 ## See Also
 
 - [WitSql.md](../../WitSql.md) - Full WitSQL language specification
-- [Roadmap.Parser.md](../../Roadmap.Parser.md) - Parser roadmap
-- [STATUS.md](STATUS.md) - Implementation status
+- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap

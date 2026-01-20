@@ -1,61 +1,133 @@
-# OutWit.Database.Parser - v2 Roadmap
+# OutWit.Database.Parser - Version 2.0 Roadmap
 
-**Version:** 2.0  
-**Last Updated:** 2025-02-05
+**Last Updated:** 2026-01-20
 
----
-
-## v1 Status: 100% Complete
-
-All v1 features (298 features) are implemented. See [STATUS.md](STATUS.md) for details.
-
-**Test Coverage:** 1000+ tests passing
+This document outlines planned features for version 2.0 of OutWit.Database.Parser.
 
 ---
 
-## v2 Planned Features
+## Version 2.0 - Planned Features
+
+### Priority 2: SQL Enhancements
+
+**User-Defined Functions**
+
+| Feature | Syntax |
+|---------|--------|
+| CREATE FUNCTION | `CREATE FUNCTION name (params) RETURNS type AS BEGIN ... END` |
+| Table-valued functions | `RETURNS TABLE (col1 type, col2 type, ...)` |
+| DETERMINISTIC | `CREATE FUNCTION name (...) DETERMINISTIC RETURNS ...` |
+| DROP FUNCTION | `DROP FUNCTION [IF EXISTS] name` |
+
+**Stored Procedures**
+
+| Feature | Syntax |
+|---------|--------|
+| CREATE PROCEDURE | `CREATE PROCEDURE name (params) AS BEGIN ... END` |
+| DROP PROCEDURE | `DROP PROCEDURE [IF EXISTS] name` |
+| CALL | `CALL procedure_name(args)` |
+| EXECUTE | `EXECUTE procedure_name(args)` |
+| Parameters | `IN param_name type`, `OUT param_name type`, `INOUT param_name type` |
+
+**Extended EXPLAIN**
+
+| Feature | Syntax |
+|---------|--------|
+| EXPLAIN ANALYZE | `EXPLAIN ANALYZE SELECT ...` (actual execution stats) |
+| Format options | `EXPLAIN (FORMAT JSON) SELECT ...` |
+| Format options | `EXPLAIN (FORMAT TEXT) SELECT ...` |
+
+**Database Administration**
+
+| Feature | Syntax |
+|---------|--------|
+| CREATE DATABASE | `CREATE DATABASE name` |
+| DROP DATABASE | `DROP DATABASE [IF EXISTS] name` |
+| ATTACH DATABASE | `ATTACH DATABASE 'path' AS alias` |
+| DETACH DATABASE | `DETACH DATABASE alias` |
+| VACUUM | `VACUUM [table_name]` |
+| ANALYZE | `ANALYZE [table_name]` |
+| PRAGMA | `PRAGMA name [= value]` |
+
+---
+
+## Implementation Details
 
 ### User-Defined Functions
 
-| Feature | Priority | Spec |
-|---------|----------|------|
-| `CREATE FUNCTION ... RETURNS ... AS BEGIN END` | P2 | SS22.1 |
-| `RETURNS TABLE (...)` | P2 | SS22.2 |
-| `DETERMINISTIC` modifier | P2 | SS22.1 |
-| `DROP FUNCTION [IF EXISTS]` | P2 | SS22 |
+Grammar additions to `WitSqlParser.g4`:
+
+```antlr
+createFunctionStatement
+    : CREATE FUNCTION functionName
+      LPAREN parameterList? RPAREN
+      (DETERMINISTIC)?
+      RETURNS (dataType | tableType)
+      AS BEGIN statementList END
+    ;
+
+tableType
+    : TABLE LPAREN columnDefinition (COMMA columnDefinition)* RPAREN
+    ;
+
+dropFunctionStatement
+    : DROP FUNCTION (IF EXISTS)? functionName
+    ;
+```
 
 ### Stored Procedures
 
-| Feature | Priority | Spec |
-|---------|----------|------|
-| `CREATE PROCEDURE ... AS BEGIN END` | P2 | SS23 |
-| `DROP PROCEDURE [IF EXISTS]` | P2 | SS23 |
-| `CALL procedure(args)` | P2 | SS23 |
-| `EXECUTE procedure(args)` | P2 | SS23 |
+Grammar additions:
 
-### Extended EXPLAIN
+```antlr
+createProcedureStatement
+    : CREATE PROCEDURE procedureName
+      LPAREN procedureParameterList? RPAREN
+      AS BEGIN statementList END
+    ;
 
-| Feature | Priority | Spec |
-|---------|----------|------|
-| `EXPLAIN ANALYZE` | P2 | SS25.1 |
-| `EXPLAIN (FORMAT JSON/TEXT)` | P2 | SS25.1 |
+procedureParameter
+    : (IN | OUT | INOUT)? parameterName dataType
+    ;
 
-### Database Administration
+callStatement
+    : (CALL | EXECUTE) procedureName LPAREN expressionList? RPAREN
+    ;
+```
 
-| Feature | Priority | Spec |
-|---------|----------|------|
-| `CREATE DATABASE` | P2 | SS26.1 |
-| `DROP DATABASE [IF EXISTS]` | P2 | SS26.1 |
-| `ATTACH DATABASE 'path' AS alias` | P2 | SS26.1 |
-| `DETACH DATABASE alias` | P2 | SS26.1 |
-| `VACUUM [table_name]` | P2 | SS26.2 |
-| `ANALYZE [table_name]` | P2 | SS26.2 |
-| `PRAGMA name [= value]` | P2 | SS26.3 |
+### EXPLAIN ANALYZE
+
+```antlr
+explainStatement
+    : EXPLAIN (ANALYZE)? (LPAREN explainOption (COMMA explainOption)* RPAREN)?
+      selectStatement
+    ;
+
+explainOption
+    : FORMAT (JSON | TEXT)
+    | COSTS (TRUE | FALSE)
+    | BUFFERS (TRUE | FALSE)
+    ;
+```
+
+---
+
+## AST Classes to Add
+
+| Class | Purpose |
+|-------|---------|
+| `WitSqlStatementCreateFunction` | CREATE FUNCTION AST |
+| `WitSqlStatementDropFunction` | DROP FUNCTION AST |
+| `WitSqlStatementCreateProcedure` | CREATE PROCEDURE AST |
+| `WitSqlStatementDropProcedure` | DROP PROCEDURE AST |
+| `WitSqlStatementCall` | CALL/EXECUTE AST |
+| `WitSqlStatementVacuum` | VACUUM AST |
+| `WitSqlStatementAnalyze` | ANALYZE AST |
+| `WitSqlStatementPragma` | PRAGMA AST |
 
 ---
 
 ## See Also
 
-- [README.md](README.md) - Documentation
-- [STATUS.md](STATUS.md) - Implementation status
-- [../../WitSQL.md](../../WitSQL.md) - Language specification
+- [README.md](README.md) - Project documentation
+- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap
