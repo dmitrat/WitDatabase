@@ -40,6 +40,12 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      - name: Setup Java (required for ANTLR4)
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
       - name: Setup .NET SDKs (9/10)
         uses: actions/setup-dotnet@v4
         with:
