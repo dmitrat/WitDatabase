@@ -12,8 +12,9 @@
 # Mono Auto Generated Files
 mono_crash.*
 
-#NuGet Packages
-packages/
+#Nuget
+*.nupkg
+*.snupkg
 
 # Build results
 [Dd]ebug/
@@ -66,6 +67,8 @@ ScaffoldingReadMe.txt
 
 # Entity Framework Migrations
 Migrations/
+# Exception: EF provider implementation files (not auto-generated migrations)
+!Sources/Providers/OutWit.Database.EntityFramework/Migrations/
 
 # Rider specific folders
 .idea/
