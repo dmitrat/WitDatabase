@@ -22,7 +22,7 @@ jobs:
   build:
     name: Build ${{ matrix.os }}
     runs-on: ${{ matrix.os }}
-    timeout-minutes: 30
+    timeout-minutes: 45
     strategy:
       matrix:
         include:
@@ -48,7 +48,7 @@ jobs:
       - name: Setup .NET SDK
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          dotnet-version: 10.0.x
 
       - name: Cache NuGet
         uses: actions/cache@v4
@@ -57,6 +57,9 @@ jobs:
           key: nuget-${{ runner.os }}-${{ hashFiles('**/*.csproj') }}
           restore-keys: |
             nuget-${{ runner.os }}-
+
+      - name: Restore dependencies
+        run: dotnet restore Tools/OutWit.Database.Studio/OutWit.Database.Studio.csproj --runtime ${{ matrix.rid }}
 
       - name: Publish self-contained
         run: >
@@ -67,6 +70,7 @@ jobs:
           -p:PublishSingleFile=true
           -p:IncludeNativeLibrariesForSelfExtract=true
           -p:PublishTrimmed=false
+          --no-restore
           --output ./publish/${{ matrix.artifact }}
 
       - name: Create archive (Windows)
