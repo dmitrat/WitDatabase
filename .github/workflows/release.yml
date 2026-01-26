@@ -68,10 +68,15 @@ jobs:
           --runtime ${{ matrix.rid }}
           --self-contained true
           -p:PublishSingleFile=true
-          -p:IncludeNativeLibrariesForSelfExtract=true
+          -p:IncludeNativeLibrariesForSelfExtract=false
           -p:PublishTrimmed=false
-          --no-restore
+          -p:GeneratePackageOnBuild=false
           --output ./publish/${{ matrix.artifact }}
+
+      - name: List published files
+        run: |
+          echo "Published files:"
+          ls -la ./publish/${{ matrix.artifact }}/
 
       - name: Create archive (Windows)
         if: matrix.os == 'windows-latest'
