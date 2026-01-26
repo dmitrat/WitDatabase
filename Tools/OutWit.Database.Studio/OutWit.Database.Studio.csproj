@@ -9,6 +9,10 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AssemblyName>WitDatabaseStudio</AssemblyName>
     <ApplicationIcon>WitDatabase.ico</ApplicationIcon>
+    
+    <!-- Release info -->
+    <Version>1.0.0</Version>
+    <Product>WitDatabase Studio</Product>
   </PropertyGroup>
 
   <ItemGroup>
