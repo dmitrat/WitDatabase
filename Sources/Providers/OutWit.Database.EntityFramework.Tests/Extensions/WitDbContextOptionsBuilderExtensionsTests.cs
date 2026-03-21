@@ -161,6 +161,21 @@ public class WitDbContextOptionsBuilderExtensionsTests
     }
 
     [Test]
+    public void UseWitDbWithMigrationsAssemblyConfiguresRelationalOptionTest()
+    {
+        var builder = new DbContextOptionsBuilder();
+
+        builder.UseWitDb("Data Source=test.db", options =>
+        {
+            options.MigrationsAssembly("My.Migrations.Assembly");
+        });
+
+        var extension = builder.Options.FindExtension<WitDbContextOptionsExtension>();
+        Assert.That(extension, Is.Not.Null);
+        Assert.That(extension!.MigrationsAssembly, Is.EqualTo("My.Migrations.Assembly"));
+    }
+
+    [Test]
     public void UseWitDbInMemoryWithOptionsActionInvokesActionTest()
     {
         var builder = new DbContextOptionsBuilder();

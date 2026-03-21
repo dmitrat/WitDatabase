@@ -8,12 +8,8 @@ namespace OutWit.Database.EntityFramework.Infrastructure;
 /// Allows WitDatabase specific configuration to be performed on <see cref="DbContextOptions"/>.
 /// </summary>
 public sealed class WitDbContextOptionsBuilder
+    : RelationalDbContextOptionsBuilder<WitDbContextOptionsBuilder, WitDbContextOptionsExtension>
 {
-    #region Fields
-
-    private readonly DbContextOptionsBuilder m_optionsBuilder;
-
-    #endregion
 
     #region Constructors
 
@@ -22,8 +18,8 @@ public sealed class WitDbContextOptionsBuilder
     /// </summary>
     /// <param name="optionsBuilder">The underlying options builder.</param>
     public WitDbContextOptionsBuilder(DbContextOptionsBuilder optionsBuilder)
+        : base(optionsBuilder)
     {
-        m_optionsBuilder = optionsBuilder;
     }
 
     #endregion
@@ -37,7 +33,7 @@ public sealed class WitDbContextOptionsBuilder
     /// <returns>The same builder instance for method chaining.</returns>
     public WitDbContextOptionsBuilder CommandTimeout(int? commandTimeout)
     {
-        m_optionsBuilder.EnableDetailedErrors(commandTimeout.HasValue);
+        base.CommandTimeout(commandTimeout);
         return this;
     }
 
@@ -48,7 +44,7 @@ public sealed class WitDbContextOptionsBuilder
     /// <returns>The same builder instance for method chaining.</returns>
     public WitDbContextOptionsBuilder EnableSensitiveDataLogging(bool sensitiveDataLoggingEnabled = true)
     {
-        m_optionsBuilder.EnableSensitiveDataLogging(sensitiveDataLoggingEnabled);
+        OptionsBuilder.EnableSensitiveDataLogging(sensitiveDataLoggingEnabled);
         return this;
     }
 
@@ -59,7 +55,7 @@ public sealed class WitDbContextOptionsBuilder
     /// <returns>The same builder instance for method chaining.</returns>
     public WitDbContextOptionsBuilder EnableDetailedErrors(bool detailedErrorsEnabled = true)
     {
-        m_optionsBuilder.EnableDetailedErrors(detailedErrorsEnabled);
+        OptionsBuilder.EnableDetailedErrors(detailedErrorsEnabled);
         return this;
     }
 
@@ -71,7 +67,7 @@ public sealed class WitDbContextOptionsBuilder
     public WitDbContextOptionsBuilder UseQuerySplittingBehavior(QuerySplittingBehavior querySplittingBehavior)
     {
         var extension = GetOrCreateExtension();
-        ((IDbContextOptionsBuilderInfrastructure)m_optionsBuilder).AddOrUpdateExtension(extension);
+        ((IDbContextOptionsBuilderInfrastructure)OptionsBuilder).AddOrUpdateExtension(extension);
         return this;
     }
 
@@ -93,7 +89,7 @@ public sealed class WitDbContextOptionsBuilder
     public WitDbContextOptionsBuilder UseParallelWrites(WitDbParallelMode mode)
     {
         var extension = GetOrCreateExtension().WithParallelMode(mode);
-        ((IDbContextOptionsBuilderInfrastructure)m_optionsBuilder).AddOrUpdateExtension(extension);
+        ((IDbContextOptionsBuilderInfrastructure)OptionsBuilder).AddOrUpdateExtension(extension);
         return this;
     }
 
@@ -109,7 +105,7 @@ public sealed class WitDbContextOptionsBuilder
             throw new ArgumentOutOfRangeException(nameof(maxWriters), "Max writers must be at least 1");
 
         var extension = GetOrCreateExtension().WithMaxWriters(maxWriters);
-        ((IDbContextOptionsBuilderInfrastructure)m_optionsBuilder).AddOrUpdateExtension(extension);
+        ((IDbContextOptionsBuilderInfrastructure)OptionsBuilder).AddOrUpdateExtension(extension);
         return this;
     }
 
@@ -119,7 +115,7 @@ public sealed class WitDbContextOptionsBuilder
 
     private WitDbContextOptionsExtension GetOrCreateExtension()
     {
-        return m_optionsBuilder.Options.FindExtension<WitDbContextOptionsExtension>()
+        return OptionsBuilder.Options.FindExtension<WitDbContextOptionsExtension>()
             ?? new WitDbContextOptionsExtension();
     }
 
