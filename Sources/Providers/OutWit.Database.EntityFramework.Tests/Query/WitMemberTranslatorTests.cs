@@ -63,6 +63,21 @@ public class WitMemberTranslatorTests
 
     #endregion
 
+    #region DateTimeOffset Static Member Tests
+
+    [Test]
+    [TestCase(nameof(DateTimeOffset.UtcNow))]
+    [TestCase(nameof(DateTimeOffset.Now))]
+    public void DateTimeOffsetStaticPropertyExistsTest(string propertyName)
+    {
+        var property = typeof(DateTimeOffset).GetProperty(propertyName, BindingFlags.Public | BindingFlags.Static);
+
+        Assert.That(property, Is.Not.Null);
+        Assert.That(property!.Name, Is.EqualTo(propertyName));
+    }
+
+    #endregion
+
     #region DateOnly Member Tests
 
     [Test]
