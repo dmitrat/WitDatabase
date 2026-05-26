@@ -57,8 +57,19 @@ public sealed class WitMemberTranslator : IMemberTranslator
             {
                 return TranslateDateTimeMember(instance, member.Name);
             }
-            
+
             return TranslateStaticDateTimeMember(member.Name);
+        }
+
+        // DateTimeOffset properties (OAuth expiry, token TTL, etc.)
+        if (member.DeclaringType == typeof(DateTimeOffset))
+        {
+            if (instance != null)
+            {
+                return TranslateDateTimeOffsetMember(instance, member.Name);
+            }
+
+            return TranslateStaticDateTimeOffsetMember(member.Name);
         }
 
         // DateOnly properties
@@ -142,6 +153,45 @@ public sealed class WitMemberTranslator : IMemberTranslator
                 nullable: false,
                 argumentsPropagateNullability: [false],
                 typeof(DateTime)),
+            _ => null
+        };
+    }
+
+    #endregion
+
+    #region DateTimeOffset Translation
+
+    private SqlExpression? TranslateDateTimeOffsetMember(SqlExpression instance, string memberName)
+    {
+        return memberName switch
+        {
+            nameof(DateTimeOffset.UtcDateTime) => m_sqlExpressionFactory.Convert(
+                instance,
+                typeof(DateTime)),
+            nameof(DateTimeOffset.LocalDateTime) => m_sqlExpressionFactory.Convert(
+                instance,
+                typeof(DateTime)),
+            nameof(DateTimeOffset.Date) => m_sqlExpressionFactory.Function(
+                "DATE",
+                [instance],
+                nullable: true,
+                argumentsPropagateNullability: [true],
+                typeof(DateTimeOffset)),
+            nameof(DateTimeOffset.DateTime) => instance,
+            _ => null
+        };
+    }
+
+    private SqlExpression? TranslateStaticDateTimeOffsetMember(string memberName)
+    {
+        return memberName switch
+        {
+            nameof(DateTimeOffset.UtcNow) or nameof(DateTimeOffset.Now) => m_sqlExpressionFactory.Function(
+                "NOW",
+                Array.Empty<SqlExpression>(),
+                nullable: false,
+                argumentsPropagateNullability: Array.Empty<bool>(),
+                typeof(DateTimeOffset)),
             _ => null
         };
     }
