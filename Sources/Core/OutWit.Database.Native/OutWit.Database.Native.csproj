@@ -1,0 +1,36 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <TargetFramework>net10.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
+    <AllowUnsafeBlocks>true</AllowUnsafeBlocks>
+    <PublishAot>true</PublishAot>
+    <NativeLib>Shared</NativeLib>
+    <IsPackable>false</IsPackable>
+    <GeneratePackageOnBuild>false</GeneratePackageOnBuild>
+    <IsAotCompatible>true</IsAotCompatible>
+    <AssemblyName>witdb</AssemblyName>
+    <RootNamespace>OutWit.Database.Native</RootNamespace>
+    <Description>NativeAOT C ABI exports for WitDatabase (pywitdb).</Description>
+    <NoWarn>$(NoWarn);CA2255</NoWarn>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\OutWit.Database.Core\OutWit.Database.Core.csproj" />
+    <ProjectReference Include="..\OutWit.Database.Core.BouncyCastle\OutWit.Database.Core.BouncyCastle.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Include="include\witdb.h" Pack="false" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <InternalsVisibleTo Include="OutWit.Database.Native.Smoke" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <TrimmerRootDescriptor Include="trimming.xml" />
+  </ItemGroup>
+
+</Project>

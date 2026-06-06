@@ -21,6 +21,7 @@
     <Project Path="Sources/Core/OutWit.Database.Core.BouncyCastle/OutWit.Database.Core.BouncyCastle.csproj" Id="e244e45c-4d29-4c06-9bbb-68f33d803880" />
     <Project Path="Sources/Core/OutWit.Database.Core.IndexedDb/OutWit.Database.Core.IndexedDb.csproj" Id="0B08187A-589F-4B18-9840-F4F3940F9DA8" />
     <Project Path="Sources/Core/OutWit.Database.Core.IndexedDb.Tests/OutWit.Database.Core.IndexedDb.Tests.csproj" Id="6CB5FC26-DE05-488F-90AC-A6B7AA4955BC" />
+    <Project Path="Sources/Core/OutWit.Database.Native/OutWit.Database.Native.csproj" Id="A1B2C3D4-E5F6-7890-ABCD-EF1234567890" />
   </Folder>
   <Folder Name="/Sources/Engine/">
     <Project Path="Sources/Engine/OutWit.Database.Parser/OutWit.Database.Parser.csproj" Id="5d480879-e75e-4d6a-bd07-09be725177a5" />

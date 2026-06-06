@@ -1,0 +1,8 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<linker>
+  <!-- Bring-up roots: tighten once native contract tests pass. -->
+  <assembly fullname="OutWit.Database.Core" preserve="all" />
+  <assembly fullname="OutWit.Database.Core.BouncyCastle" preserve="all" />
+  <assembly fullname="witdb" preserve="all" />
+  <assembly fullname="System.Text.Json" preserve="all" />
+</linker>
