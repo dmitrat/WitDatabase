@@ -918,6 +918,7 @@ WitSQL supports named and positional parameters:
 -- Named parameters
 SELECT * FROM Users WHERE Id = @UserId;
 SELECT * FROM Users WHERE Name = :name;
+SELECT * FROM Users WHERE MigrationId = $id;
 
 -- Positional parameters  
 SELECT * FROM Users WHERE Id = ?;
