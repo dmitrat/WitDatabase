@@ -42,6 +42,9 @@ jobs:
           restore-keys: |
             nuget-${{ runner.os }}-
 
+      - name: Verify vendored ANTLR tool JAR
+        run: test -f build/antlr/antlr4-4.13.1-complete.jar
+
       - name: Restore
         run: dotnet restore OutWit.slnx
 
