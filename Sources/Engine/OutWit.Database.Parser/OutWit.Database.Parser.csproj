@@ -5,8 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	<AntlrScriptPath>$(MSBuildProjectDirectory)\MakeInternal.ps1</AntlrScriptPath>
-    <!-- Vendored jar avoids ANT02 race when net9/net10 download concurrently in CI (Antlr4BuildTasks #99). -->
-    <AntlrToolJar>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../build/antlr/antlr4-4.13.1-complete.jar'))</AntlrToolJar>
+    <_AntlrVendoredJar>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../build/antlr/antlr4-4.13.1-complete.jar'))</_AntlrVendoredJar>
     
     <Version>1.0.0</Version>
     <Description>SQL parser for WitDatabase. ANTLR4-based parser for WitSQL dialect with full SQL-92 compatibility and .NET type extensions.</Description>
@@ -25,6 +24,13 @@
 			<Package>OutWit.Database.Parser.Generated</Package>
 		</Antlr4>
 	</ItemGroup>
+
+	<!-- Antlr4BuildTasks reads AntlrToolJar from Antlr4 item metadata, not PropertyGroup. -->
+	<ItemDefinitionGroup>
+		<Antlr4>
+			<AntlrToolJar>$(_AntlrVendoredJar)</AntlrToolJar>
+		</Antlr4>
+	</ItemDefinitionGroup>
 
 	<Target Name="MakeAntlrGeneratedCodeInternal" AfterTargets="Antlr4Compile">
 		<PropertyGroup>
