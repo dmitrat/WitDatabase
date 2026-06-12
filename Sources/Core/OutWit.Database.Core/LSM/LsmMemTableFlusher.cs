@@ -270,10 +270,9 @@ public sealed class LsmMemTableFlusher : IDisposable, IAsyncDisposable
         m_disposed = true;
 
         m_flushChannel.Writer.Complete();
-        m_cts.Cancel();
-
         Task.WaitAll(m_flushTasks, TimeSpan.FromSeconds(10));
 
+        m_cts.Cancel();
         m_cts.Dispose();
     }
 
@@ -287,10 +286,9 @@ public sealed class LsmMemTableFlusher : IDisposable, IAsyncDisposable
         m_disposed = true;
 
         m_flushChannel.Writer.Complete();
-        await m_cts.CancelAsync();
-
         await Task.WhenAll(m_flushTasks).WaitAsync(TimeSpan.FromSeconds(10));
 
+        await m_cts.CancelAsync();
         m_cts.Dispose();
     }
 
