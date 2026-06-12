@@ -9,6 +9,7 @@ namespace OutWit.Database.Tests.Performance;
 /// These tests verify that implicit PK index provides O(n log n) UNIQUE constraint checking.
 /// </summary>
 [TestFixture]
+[Category("Performance")]
 public class Level3_ConstraintValidationTests
 {
     #region Fields
@@ -226,7 +227,7 @@ public class Level3_ConstraintValidationTests
         // With implicit index, should be much better than O(nù)
         // Allow up to 50x to account for variability and JIT warmup in CI environments
         // Key point: this was 76x+ before implicit index implementation
-        Assert.That(ratio, Is.LessThan(150), "INSERT with implicit PK index should scale as O(n log n), not O(n≤)");
+        Assert.That(ratio, Is.LessThan(50), "INSERT with implicit PK index should scale as O(n log n), not O(nù)");
     }
 
     /// <summary>
@@ -282,7 +283,7 @@ public class Level3_ConstraintValidationTests
         var ratio = times[3].Ms / times[1].Ms;
         TestContext.Out.WriteLine($"  Scaling ratio (2000/500): {ratio:F2}x (linear=4x, O(n log n)?4.4x)");
         
-        Assert.That(ratio, Is.LessThan(20), "INSERT with indexes should scale as O(n log n)");
+        Assert.That(ratio, Is.LessThan(12), "INSERT with indexes should scale as O(n log n)");
     }
 
     #endregion
@@ -326,9 +327,9 @@ public class Level3_ConstraintValidationTests
         TestContext.Out.WriteLine($"  Explicit PK (2 indexes):  {t4,8:F2} ms ({t4 / rowCount:F4} ms/row) [{t4 / t1:F2}x baseline]");
         
         // Verify that explicit PK with implicit index is now reasonable
-        // Allow up to 15x on CI (shared runners; typically 2-6x locally, was 20x+ before implicit index)
-        Assert.That(t3 / t1, Is.LessThan(15), 
-            "Explicit PK should be less than 15x slower than no constraints (was 20x+ before implicit index)");
+        // Allow up to 10x (was 20x+ before implicit index, now typically 2-6x)
+        Assert.That(t3 / t1, Is.LessThan(10), 
+            "Explicit PK should be less than 10x slower than no constraints (was 20x+ before implicit index)");
     }
 
     #endregion
