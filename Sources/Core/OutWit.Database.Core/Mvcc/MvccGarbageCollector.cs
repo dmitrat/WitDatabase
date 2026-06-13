@@ -223,7 +223,18 @@ namespace OutWit.Database.Core.Mvcc
             m_disposed = true;
 
             m_cts.Cancel();
-            m_timer.Dispose();
+
+            // Wait for an already-running timer callback to finish before returning. Timer.Dispose()
+            // alone does not wait for an in-flight callback, so a collection that started just before
+            // Dispose could still complete (and bump RunCount) afterwards. The WaitHandle overload
+            // signals once all callbacks have drained, guaranteeing no background collection runs
+            // after Dispose returns.
+            using (var timerCallbacksDrained = new ManualResetEvent(false))
+            {
+                if (m_timer.Dispose(timerCallbacksDrained))
+                    timerCallbacksDrained.WaitOne();
+            }
+
             m_cts.Dispose();
         }
 
