@@ -359,6 +359,7 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
         {
             ParameterType.Named => $"@{node.Name}",
             ParameterType.Colon => $":{node.Name}",
+            ParameterType.DollarNamed => $"${node.Name}",
             ParameterType.Positional => "?",
             ParameterType.Numbered => $"${node.Position}",
             _ => throw new NotSupportedException($"Unsupported parameter type: {node.ParameterType}")

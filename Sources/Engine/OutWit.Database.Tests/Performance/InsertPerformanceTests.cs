@@ -4,6 +4,7 @@ namespace OutWit.Database.Tests.Performance;
 /// Tests for INSERT performance and memory characteristics.
 /// </summary>
 [TestFixture]
+[Category("Performance")]
 public class InsertPerformanceTests : PerformanceTestsBase
 {
     #region Constants

@@ -5,6 +5,7 @@ namespace OutWit.Database.Tests.Performance;
 /// These tests verify that streaming works correctly and memory usage is bounded.
 /// </summary>
 [TestFixture]
+[Category("Performance")]
 public class SelectPerformanceTests : PerformanceTestsBase
 {
     #region Constants

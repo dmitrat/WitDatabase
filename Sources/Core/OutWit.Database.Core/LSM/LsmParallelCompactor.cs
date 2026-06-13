@@ -272,10 +272,9 @@ public sealed class LsmParallelCompactor : IDisposable, IAsyncDisposable
         m_disposed = true;
 
         m_jobChannel.Writer.Complete();
-        m_cts.Cancel();
-
         Task.WaitAll(m_workerTasks, TimeSpan.FromSeconds(30));
 
+        m_cts.Cancel();
         m_cts.Dispose();
     }
 
@@ -289,10 +288,9 @@ public sealed class LsmParallelCompactor : IDisposable, IAsyncDisposable
         m_disposed = true;
 
         m_jobChannel.Writer.Complete();
-        await m_cts.CancelAsync();
-
         await Task.WhenAll(m_workerTasks).WaitAsync(TimeSpan.FromSeconds(30));
 
+        await m_cts.CancelAsync();
         m_cts.Dispose();
     }
 

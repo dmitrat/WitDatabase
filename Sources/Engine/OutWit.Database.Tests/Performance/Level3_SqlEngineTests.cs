@@ -10,6 +10,7 @@ namespace OutWit.Database.Tests.Performance;
 /// Focuses on SQL parsing, execution planning, and row operations.
 /// </summary>
 [TestFixture]
+[Category("Performance")]
 public class Level3_SqlEngineTests
 {
     #region Fields

@@ -23,13 +23,13 @@ internal sealed partial class WitSqlVisitor
             {
                 Line = sub.Start.Line,
                 Column = sub.Start.Column,
-                Query = VisitSelectStatement(sub.selectStatement())
+                Query = VisitQueryExpression(sub.queryExpression())
             },
             WitSqlParser.ExistsExprContext exists => new WitSqlExpressionExists
             {
                 Line = exists.Start.Line,
                 Column = exists.Start.Column,
-                Query = VisitSelectStatement(exists.selectStatement()),
+                Query = VisitQueryExpression(exists.queryExpression()),
                 IsNot = exists.NOT() != null
             },
             WitSqlParser.UnaryExprContext unary => new WitSqlExpressionUnary
@@ -100,10 +100,10 @@ internal sealed partial class WitSqlVisitor
                 Line = inExpr.Start.Line,
                 Column = inExpr.Start.Column,
                 Expression = VisitExpression(inExpr.expression(0)),
-                Values = inExpr.selectStatement() == null
+                Values = inExpr.queryExpression() == null
                     ? inExpr.expression().Skip(1).Select(VisitExpression).ToList()
                     : null,
-                Subquery = inExpr.selectStatement() is { } inSelect ? VisitSelectStatement(inSelect) : null,
+                Subquery = inExpr.queryExpression() is { } inQuery ? VisitQueryExpression(inQuery) : null,
                 IsNot = inExpr.NOT() != null
             },
             WitSqlParser.LikeExprContext like => new WitSqlExpressionLike
@@ -196,7 +196,7 @@ internal sealed partial class WitSqlVisitor
             Expression = VisitExpression(context.expression()),
             Operator = op,
             QuantifierType = quantifierType,
-            Subquery = VisitSelectStatement(context.selectStatement())
+            Subquery = VisitQueryExpression(context.queryExpression())
         };
     }
 
@@ -237,6 +237,13 @@ internal sealed partial class WitSqlVisitor
                 Column = col,
                 ParameterType = ParameterType.Colon,
                 Name = colon.GetText()[1..] // Remove : prefix
+            },
+            WitSqlParser.DollarNamedParameterContext dollarNamed => new WitSqlExpressionParameter
+            {
+                Line = line,
+                Column = col,
+                ParameterType = ParameterType.DollarNamed,
+                Name = dollarNamed.GetText()[1..] // Remove $ prefix
             },
             WitSqlParser.PositionalParameterContext => new WitSqlExpressionParameter
             {

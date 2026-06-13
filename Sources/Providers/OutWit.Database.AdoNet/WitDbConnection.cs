@@ -527,7 +527,8 @@ public sealed class WitDbConnection : DbConnection
                 return DEFAULT_DATABASE_NAME;
 
             var options = new WitDbConnectionStringBuilder(m_connectionString);
-            return Path.GetFileNameWithoutExtension(options.DataSource) ?? DEFAULT_DATABASE_NAME;
+            var dataSource = options.DataSource.Replace('\\', Path.DirectorySeparatorChar);
+            return Path.GetFileNameWithoutExtension(dataSource) ?? DEFAULT_DATABASE_NAME;
         }
     }
 

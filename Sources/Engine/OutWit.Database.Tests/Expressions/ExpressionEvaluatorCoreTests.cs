@@ -218,6 +218,22 @@ public class ExpressionEvaluatorCoreTests : ExpressionEvaluatorTestsBase
     }
 
     [Test]
+    public void EvaluateParameterDollarNamedTest()
+    {
+        m_context.Parameters["$id"] = WitSqlValue.FromText("20260612034124_Initial");
+        var evaluator = new ExpressionEvaluator(m_context);
+        var param = new WitSqlExpressionParameter
+        {
+            ParameterType = ParameterType.DollarNamed,
+            Name = "id"
+        };
+
+        var result = evaluator.Evaluate(param, CreateEmptyRow());
+
+        Assert.That(result.AsString(), Is.EqualTo("20260612034124_Initial"));
+    }
+
+    [Test]
     public void EvaluateParameterNumberedTest()
     {
         m_context.Parameters["$1"] = WitSqlValue.FromText("first");

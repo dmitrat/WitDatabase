@@ -348,6 +348,117 @@ public class LsmParallelWriterTests : IDisposable
 
     #endregion
 
+    #region Shutdown Durability Tests
+
+    // These lock in the drain-before-cancel contract: every buffer submitted to the
+    // merge channel must be durably written through to the store on shutdown, and
+    // awaited writes must complete successfully rather than be faulted/dropped by a
+    // premature cancellation. A large maxPendingBuffers guarantees every submit is
+    // accepted (never silently rejected by a full bounded channel), so the assertions
+    // are deterministic: anything missing means the shutdown path lost queued work.
+
+    [Test]
+    public void DisposeDrainsAllQueuedBuffersTest()
+    {
+        var dir = Path.Combine(m_testDir, "dispose_drain_sync");
+        var options = new LsmOptions { EnableWal = false, MemTableSizeLimit = 1024 * 1024 };
+
+        using var store = new StoreLsm(dir, options);
+
+        const int count = 200;
+        var writer = new LsmParallelWriter(store, maxPendingBuffers: count * 2);
+
+        // Queue one buffer per key; do NOT wait for the background merge to catch up.
+        for (int i = 0; i < count; i++)
+        {
+            writer.Put(ToBytes($"k{i:D5}"), ToBytes($"v{i:D5}"));
+            writer.FlushCurrentBuffer();
+        }
+
+        // Dispose must drain the whole queue before returning.
+        writer.Dispose();
+
+        for (int i = 0; i < count; i++)
+            Assert.That(store.Get(ToBytes($"k{i:D5}")), Is.EqualTo(ToBytes($"v{i:D5}")), $"Missing k{i:D5} after Dispose");
+    }
+
+    [Test]
+    public async Task DisposeAsyncDrainsAllQueuedBuffersTest()
+    {
+        var dir = Path.Combine(m_testDir, "dispose_drain_async");
+        var options = new LsmOptions { EnableWal = false, MemTableSizeLimit = 1024 * 1024 };
+
+        using var store = new StoreLsm(dir, options);
+
+        const int count = 200;
+        var writer = new LsmParallelWriter(store, maxPendingBuffers: count * 2);
+
+        for (int i = 0; i < count; i++)
+        {
+            writer.Put(ToBytes($"k{i:D5}"), ToBytes($"v{i:D5}"));
+            writer.FlushCurrentBuffer();
+        }
+
+        await writer.DisposeAsync();
+
+        for (int i = 0; i < count; i++)
+            Assert.That(store.Get(ToBytes($"k{i:D5}")), Is.EqualTo(ToBytes($"v{i:D5}")), $"Missing k{i:D5} after DisposeAsync");
+    }
+
+    [Test]
+    public async Task DisposeCompletesAwaitedWritesSuccessfullyTest()
+    {
+        var dir = Path.Combine(m_testDir, "dispose_awaited");
+        var options = new LsmOptions { EnableWal = false, MemTableSizeLimit = 1024 * 1024 };
+
+        using var store = new StoreLsm(dir, options);
+
+        const int count = 50;
+        var writer = new LsmParallelWriter(store, maxPendingBuffers: count * 2);
+
+        // Issue awaited writes but capture the tasks WITHOUT awaiting them yet, so they
+        // are still in flight when shutdown begins. WriteAsync completes synchronously
+        // on the un-full channel, so all buffers + completions are enqueued before the
+        // state machines yield at 'await completion.Task'.
+        var flushTasks = new List<Task>();
+        for (int i = 0; i < count; i++)
+        {
+            writer.Put(ToBytes($"k{i:D5}"), ToBytes($"v{i:D5}"));
+            flushTasks.Add(writer.FlushCurrentBufferAsync());
+        }
+
+        await writer.DisposeAsync();
+
+        // Every awaited write must resolve successfully - not faulted or cancelled.
+        await Task.WhenAll(flushTasks);
+        Assert.That(flushTasks.All(t => t.IsCompletedSuccessfully), Is.True, "An awaited write did not complete successfully across shutdown");
+
+        for (int i = 0; i < count; i++)
+            Assert.That(store.Get(ToBytes($"k{i:D5}")), Is.EqualTo(ToBytes($"v{i:D5}")), $"Missing k{i:D5} after awaited write + Dispose");
+    }
+
+    [Test]
+    public void DisposeCompletesPromptlyWithoutHangingTest()
+    {
+        var dir = Path.Combine(m_testDir, "dispose_no_hang");
+        var options = new LsmOptions { EnableWal = false, MemTableSizeLimit = 1024 * 1024 };
+
+        using var store = new StoreLsm(dir, options);
+
+        var writer = new LsmParallelWriter(store, maxPendingBuffers: 500);
+        for (int i = 0; i < 100; i++)
+        {
+            writer.Put(ToBytes($"k{i:D5}"), ToBytes($"v{i:D5}"));
+            writer.FlushCurrentBuffer();
+        }
+
+        // The drain join is bounded; Dispose must return well within it.
+        var disposeTask = Task.Run(() => writer.Dispose());
+        Assert.That(disposeTask.Wait(TimeSpan.FromSeconds(10)), Is.True, "Dispose did not complete within the bounded drain window");
+    }
+
+    #endregion
+
     #region Integration Tests
 
     [Test]

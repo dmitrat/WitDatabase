@@ -151,7 +151,7 @@ fromClause
 tableSource
     : tableName (AS? alias)?                        # simpleTableSource
     | tableSource joinType tableSource (ON expression)?   # joinTableSource
-    | LPAREN selectStatement RPAREN AS alias        # subqueryTableSource
+    | LPAREN queryExpression RPAREN AS alias        # subqueryTableSource
     ;
 
 joinType
@@ -474,8 +474,8 @@ expression
     | functionCall                                  # functionCallExpr
     | parameter                                     # parameterExpr
     | LPAREN expression RPAREN                      # parenExpr
-    | LPAREN selectStatement RPAREN                 # subqueryExpr
-    | NOT? EXISTS LPAREN selectStatement RPAREN     # existsExpr
+    | LPAREN queryExpression RPAREN                 # subqueryExpr
+    | NOT? EXISTS LPAREN queryExpression RPAREN     # existsExpr
     | (PLUS | MINUS | NOT | TILDE) expression       # unaryExpr
     | expression (STAR | SLASH | PERCENT) expression    # mulDivExpr
     | expression (PLUS | MINUS) expression          # addSubExpr
@@ -486,10 +486,10 @@ expression
     | expression (EQ | NE | NE2) expression         # equalityExpr
     | expression IS NOT? NULL                       # isNullExpr
     | expression NOT? BETWEEN expression AND expression # betweenExpr
-    | expression NOT? IN LPAREN (expression (COMMA expression)* | selectStatement) RPAREN # inExpr
+    | expression NOT? IN LPAREN (expression (COMMA expression)* | queryExpression) RPAREN # inExpr
     | expression NOT? LIKE expression (ESCAPE expression)? # likeExpr
     | expression NOT? GLOB expression               # globExpr
-    | expression comparisonOp (ANY | SOME | ALL) LPAREN selectStatement RPAREN # quantifiedExpr
+    | expression comparisonOp (ANY | SOME | ALL) LPAREN queryExpression RPAREN # quantifiedExpr
     | expression AND expression                     # andExpr
     | expression OR expression                      # orExpr
     | CASE expression? (WHEN expression THEN expression)+ (ELSE expression)? END # caseExpr
@@ -509,6 +509,7 @@ collationName
 parameter
     : PARAM_NAMED                                   # namedParameter
     | PARAM_COLON                                   # colonParameter
+    | PARAM_DOLLAR_NAMED                            # dollarNamedParameter
     | PARAM_POSITIONAL                              # positionalParameter
     | PARAM_NUMBERED                                # numberedParameter
     ;

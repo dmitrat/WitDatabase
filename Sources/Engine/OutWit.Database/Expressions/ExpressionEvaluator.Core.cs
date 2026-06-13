@@ -117,6 +117,7 @@ public sealed partial class ExpressionEvaluator
         {
             ParameterType.Named => $"@{param.Name}",
             ParameterType.Colon => $":{param.Name}",
+            ParameterType.DollarNamed => $"${param.Name}",
             ParameterType.Positional => "?",
             ParameterType.Numbered => $"${param.Position}",
             _ => throw new NotSupportedException($"Parameter type not supported: {param.ParameterType}")
@@ -125,9 +126,19 @@ public sealed partial class ExpressionEvaluator
         if (m_context.Parameters.TryGetValue(key, out var value))
             return value;
 
-        // For named parameters, try without prefix as fallback
-        if (param.Name != null && m_context.Parameters.TryGetValue(param.Name, out value))
-            return value;
+        // Prefix-agnostic fallback for named placeholders ($name / :name / @name).
+        // A caller may register the value under a bare name (which the engine
+        // normalizes to "@name") or under a prefix style different from the one used
+        // in the SQL. The exact-key match above always wins first, so this fallback
+        // only resolves when there is no exact match - it never overrides an explicit
+        // binding, so it cannot bind the wrong parameter.
+        if (param.Name != null)
+        {
+            if (m_context.Parameters.TryGetValue(param.Name, out value))
+                return value;
+            if (m_context.Parameters.TryGetValue($"@{param.Name}", out value))
+                return value;
+        }
 
         throw new KeyNotFoundException($"Parameter '{key}' not found");
     }

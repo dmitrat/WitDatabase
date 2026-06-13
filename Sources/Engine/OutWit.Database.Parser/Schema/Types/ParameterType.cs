@@ -21,6 +21,11 @@ public enum ParameterType
     Positional,
 
     /// <summary>
+    /// SQLite-style named parameter with $ prefix: $paramName (not $1, $2).
+    /// </summary>
+    DollarNamed,
+
+    /// <summary>
     /// Numbered parameter: $1, $2, etc.
     /// </summary>
     Numbered

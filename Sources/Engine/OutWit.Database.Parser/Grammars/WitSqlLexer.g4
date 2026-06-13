@@ -529,6 +529,7 @@ IDENTIFIER
 PARAM_NAMED: '@' [a-zA-Z_] [a-zA-Z0-9_]*;
 PARAM_COLON: ':' [a-zA-Z_] [a-zA-Z0-9_]*;
 PARAM_POSITIONAL: '?';
+PARAM_DOLLAR_NAMED: '$' [a-zA-Z_] [a-zA-Z0-9_]*;
 PARAM_NUMBERED: '$' DIGIT+;
 
 // ============================================================================

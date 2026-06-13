@@ -206,7 +206,7 @@ internal sealed partial class WitSqlVisitor
             },
             WitSqlParser.SubqueryTableSourceContext sub => new TableSourceSubquery
             {
-                Subquery = VisitSelectStatement(sub.selectStatement()),
+                Subquery = VisitQueryExpression(sub.queryExpression()),
                 Alias = NormalizeIdentifier(sub.alias().GetText())
             },
             _ => throw new InvalidOperationException($"Unknown table source type: {context.GetType()}")

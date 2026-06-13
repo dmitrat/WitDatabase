@@ -12,6 +12,7 @@ namespace OutWit.Database.Tests.Performance;
 /// Tests single-row fast path and batch IN (...) fast path optimizations.
 /// </summary>
 [TestFixture]
+[Category("Performance")]
 public class DmlPerformanceTests
 {
     #region Fields

@@ -8,7 +8,7 @@ namespace OutWit.Database.Parser.Expressions;
 
 /// <summary>
 /// Represents a parameter placeholder in a SQL statement.
-/// Supports named (@param, :param), positional (?), and numbered ($1) parameters.
+/// Supports named (@param, :param, $param), positional (?), and numbered ($1) parameters.
 /// </summary>
 public class WitSqlExpressionParameter : WitSqlExpression
 {

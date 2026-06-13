@@ -183,7 +183,7 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
         {
             foreach (var (key, value) in parameters)
             {
-                var paramName = key.StartsWith("@") ? key : $"@{key}";
+                var paramName = WitSqlParameterKeys.ToContextKey(key);
                 context.Parameters[paramName] = WitSqlValue.FromObject(value);
             }
         }

@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     
-    <Version>1.0.1</Version>
+    <Version>1.1.0</Version>
     <Description>SQL execution engine for WitDatabase. Full SQL support including JOINs, subqueries, CTEs, window functions, triggers, and 60+ built-in functions.</Description>
     <PackageTags>OutWit;database;sql;engine;query;execution;cte;window-functions;triggers</PackageTags>
   </PropertyGroup>

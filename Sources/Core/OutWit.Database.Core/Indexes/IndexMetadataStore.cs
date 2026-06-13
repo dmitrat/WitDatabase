@@ -56,7 +56,7 @@ namespace OutWit.Database.Core.Indexes
 
             var metadata = new IndexMetadata { Name = name, IsUnique = isUnique };
             var key = CreateKey(name);
-            var value = JsonSerializer.SerializeToUtf8Bytes(metadata);
+            var value = JsonSerializer.SerializeToUtf8Bytes(metadata, IndexMetadataJsonContext.Default.IndexMetadata);
             
             m_store.Put(key, value);
             
@@ -84,7 +84,7 @@ namespace OutWit.Database.Core.Indexes
             if (value == null)
                 return null;
 
-            return JsonSerializer.Deserialize<IndexMetadata>(value);
+            return JsonSerializer.Deserialize(value, IndexMetadataJsonContext.Default.IndexMetadata);
         }
 
         /// <summary>
@@ -150,7 +150,7 @@ namespace OutWit.Database.Core.Indexes
 
             var metadata = new IndexMetadata { Name = name, IsUnique = isUnique };
             var key = CreateKey(name);
-            var value = JsonSerializer.SerializeToUtf8Bytes(metadata);
+            var value = JsonSerializer.SerializeToUtf8Bytes(metadata, IndexMetadataJsonContext.Default.IndexMetadata);
             
             await m_store.PutAsync(key, value, cancellationToken).ConfigureAwait(false);
             
@@ -177,7 +177,7 @@ namespace OutWit.Database.Core.Indexes
             if (value == null)
                 return null;
 
-            return JsonSerializer.Deserialize<IndexMetadata>(value);
+            return JsonSerializer.Deserialize(value, IndexMetadataJsonContext.Default.IndexMetadata);
         }
 
         /// <summary>
@@ -244,7 +244,7 @@ namespace OutWit.Database.Core.Indexes
 
             try
             {
-                return JsonSerializer.Deserialize<List<string>>(value) ?? [];
+                return JsonSerializer.Deserialize(value, IndexMetadataJsonContext.Default.ListString) ?? [];
             }
             catch
             {
@@ -254,7 +254,7 @@ namespace OutWit.Database.Core.Indexes
 
         private void SaveCatalog(List<string> catalog)
         {
-            var value = JsonSerializer.SerializeToUtf8Bytes(catalog);
+            var value = JsonSerializer.SerializeToUtf8Bytes(catalog, IndexMetadataJsonContext.Default.ListString);
             m_store.Put(CATALOG_KEY, value);
         }
 
@@ -271,7 +271,7 @@ namespace OutWit.Database.Core.Indexes
 
             try
             {
-                return JsonSerializer.Deserialize<List<string>>(value) ?? [];
+                return JsonSerializer.Deserialize(value, IndexMetadataJsonContext.Default.ListString) ?? [];
             }
             catch
             {
@@ -281,7 +281,7 @@ namespace OutWit.Database.Core.Indexes
 
         private async ValueTask SaveCatalogAsync(List<string> catalog, CancellationToken cancellationToken = default)
         {
-            var value = JsonSerializer.SerializeToUtf8Bytes(catalog);
+            var value = JsonSerializer.SerializeToUtf8Bytes(catalog, IndexMetadataJsonContext.Default.ListString);
             await m_store.PutAsync(CATALOG_KEY, value, cancellationToken).ConfigureAwait(false);
         }
 

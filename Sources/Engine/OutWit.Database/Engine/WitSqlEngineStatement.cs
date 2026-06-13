@@ -62,7 +62,7 @@ public sealed class WitSqlEngineStatement : IDisposable
     public WitSqlEngineStatement SetParameter(string name, object? value)
     {
         ThrowIfDisposed();
-        var paramName = name.StartsWith('@') ? name : $"@{name}";
+        var paramName = WitSqlParameterKeys.ToContextKey(name);
         m_parameters[paramName] = value;
         return this;
     }
@@ -171,7 +171,7 @@ public sealed class WitSqlEngineStatement : IDisposable
             context.Parameters.Clear();
             foreach (var (key, value) in paramSet)
             {
-                var paramName = key.StartsWith('@') ? key : $"@{key}";
+                var paramName = WitSqlParameterKeys.ToContextKey(key);
                 context.Parameters[paramName] = WitSqlValue.FromObject(value);
             }
 

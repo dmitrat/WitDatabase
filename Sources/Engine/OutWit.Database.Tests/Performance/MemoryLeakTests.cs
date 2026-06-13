@@ -4,6 +4,7 @@ namespace OutWit.Database.Tests.Performance;
 /// Tests to verify there are no memory leaks in repeated operations.
 /// </summary>
 [TestFixture]
+[Category("Performance")]
 public class MemoryLeakTests : PerformanceTestsBase
 {
     #region Constants

@@ -260,68 +260,68 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
 
         try
         {
-            while (!token.IsCancellationRequested)
+            while (true)
             {
-                // Wait for buffers with timeout for periodic flush
-                using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token);
-                timeoutCts.CancelAfter(m_flushIntervalMs);
+                // Wait for buffers with a periodic timeout. WaitToReadAsync returns
+                // false once the channel is completed AND fully drained, which is the
+                // clean-shutdown exit: Dispose calls Writer.Complete() and joins this
+                // task BEFORE cancelling the token (mirrors LsmMemTableFlusher /
+                // LsmParallelCompactor), so the final merges below run against a live
+                // store and every queued/awaited buffer is durably written, never
+                // dropped or faulted by a premature cancellation.
+                bool hasData;
+                using (var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(token))
+                {
+                    timeoutCts.CancelAfter(m_flushIntervalMs);
 
-                try
-                {
-                    if (await reader.WaitToReadAsync(timeoutCts.Token))
+                    try
                     {
-                        // Collect multiple buffers for batch processing
-                        var buffersToMerge = new List<(LsmWriteBuffer Buffer, TaskCompletionSource<bool>? Completion)>();
-                        
-                        while (reader.TryRead(out var item))
-                        {
-                            buffersToMerge.Add(item);
-                            
-                            // Limit batch size to avoid holding too many buffers
-                            if (buffersToMerge.Count >= 16)
-                                break;
-                        }
-                        
-                        if (buffersToMerge.Count > 0)
-                        {
-                            MergeBuffersBatch(buffersToMerge);
-                        }
+                        hasData = await reader.WaitToReadAsync(timeoutCts.Token);
+                    }
+                    catch (OperationCanceledException) when (!token.IsCancellationRequested)
+                    {
+                        // Periodic flush tick - merge anything queued, then keep waiting.
+                        DrainPendingBuffers(reader);
+                        continue;
                     }
                 }
-                catch (OperationCanceledException) when (!token.IsCancellationRequested)
-                {
-                    // Timeout - check for any remaining buffers
-                    var buffersToMerge = new List<(LsmWriteBuffer Buffer, TaskCompletionSource<bool>? Completion)>();
-                    while (reader.TryRead(out var item))
-                    {
-                        buffersToMerge.Add(item);
-                    }
-                    
-                    if (buffersToMerge.Count > 0)
-                    {
-                        MergeBuffersBatch(buffersToMerge);
-                    }
-                }
+
+                // Channel completed and empty -> clean shutdown.
+                if (!hasData)
+                    break;
+
+                // Collect a bounded batch and merge.
+                var buffersToMerge = new List<(LsmWriteBuffer Buffer, TaskCompletionSource<bool>? Completion)>();
+                while (buffersToMerge.Count < 16 && reader.TryRead(out var item))
+                    buffersToMerge.Add(item);
+
+                if (buffersToMerge.Count > 0)
+                    MergeBuffersBatch(buffersToMerge);
             }
         }
         catch (OperationCanceledException) when (token.IsCancellationRequested)
         {
-            // Normal shutdown - drain remaining buffers
-            var buffersToMerge = new List<(LsmWriteBuffer Buffer, TaskCompletionSource<bool>? Completion)>();
-            while (reader.TryRead(out var item))
-            {
-                buffersToMerge.Add(item);
-            }
-            
-            if (buffersToMerge.Count > 0)
-            {
-                MergeBuffersBatch(buffersToMerge);
-            }
+            // Hard cancel - only happens if the drain join in Dispose timed out.
         }
         catch (ChannelClosedException)
         {
-            // Channel closed during shutdown
+            // Channel completed concurrently - nothing more to do.
         }
+        finally
+        {
+            // Safety net: merge any buffer that slipped in after Complete().
+            DrainPendingBuffers(reader);
+        }
+    }
+
+    private void DrainPendingBuffers(ChannelReader<(LsmWriteBuffer Buffer, TaskCompletionSource<bool>? Completion)> reader)
+    {
+        var buffersToMerge = new List<(LsmWriteBuffer Buffer, TaskCompletionSource<bool>? Completion)>();
+        while (reader.TryRead(out var item))
+            buffersToMerge.Add(item);
+
+        if (buffersToMerge.Count > 0)
+            MergeBuffersBatch(buffersToMerge);
     }
 
     /// <summary>
@@ -478,12 +478,20 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
         if (m_disposed) return;
         m_disposed = true;
 
-        // Signal shutdown
+        // Stop accepting new buffers, then let the merge loop drain the queue and
+        // write it through to the (still-live) store before we cancel. Cancelling
+        // first would tear the merge loop down mid-drain and fault awaited writes.
         m_bufferChannel.Writer.Complete();
-        m_cts.Cancel();
 
-        // Wait for merge task
-        m_mergeTask.Wait(TimeSpan.FromSeconds(5));
+        if (!m_mergeTask.Wait(TimeSpan.FromSeconds(5)))
+        {
+            // Drain is taking too long - force the loop to stop.
+            m_cts.Cancel();
+            m_mergeTask.Wait(TimeSpan.FromSeconds(1));
+        }
+
+        // Idempotent: ensure the token is cancelled before it is disposed.
+        m_cts.Cancel();
 
         // Dispose thread-local buffers
         foreach (var buffer in m_threadLocalBuffer.Values)
@@ -504,12 +512,29 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
         if (m_disposed) return;
         m_disposed = true;
 
-        // Signal shutdown
+        // Drain-before-cancel, same ordering as the synchronous Dispose.
         m_bufferChannel.Writer.Complete();
-        await m_cts.CancelAsync();
 
-        // Wait for merge task
-        await m_mergeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        try
+        {
+            await m_mergeTask.WaitAsync(TimeSpan.FromSeconds(5));
+        }
+        catch (TimeoutException)
+        {
+            // Drain is taking too long - force the loop to stop.
+            await m_cts.CancelAsync();
+            try
+            {
+                await m_mergeTask.WaitAsync(TimeSpan.FromSeconds(1));
+            }
+            catch (TimeoutException)
+            {
+                // Give up waiting; cancellation has been requested.
+            }
+        }
+
+        // Idempotent: ensure the token is cancelled before it is disposed.
+        await m_cts.CancelAsync();
 
         // Dispose thread-local buffers
         foreach (var buffer in m_threadLocalBuffer.Values)

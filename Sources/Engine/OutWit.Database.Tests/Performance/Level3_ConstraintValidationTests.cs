@@ -9,6 +9,7 @@ namespace OutWit.Database.Tests.Performance;
 /// These tests verify that implicit PK index provides O(n log n) UNIQUE constraint checking.
 /// </summary>
 [TestFixture]
+[Category("Performance")]
 public class Level3_ConstraintValidationTests
 {
     #region Fields
@@ -82,7 +83,7 @@ public class Level3_ConstraintValidationTests
         }
 
         // Verify linear growth (not quadratic)
-        // Time for 2000 should be roughly 4x time for 500 (2x scale = 4x time for O(n), 16x for O(n≤))
+        // Time for 2000 should be roughly 4x time for 500 (2x scale = 4x time for O(n), 16x for O(nù))
         var ratio = times[3].Ms / times[1].Ms;
         TestContext.Out.WriteLine($"  Scaling ratio (2000/500): {ratio:F2}x (linear=4x, quadratic=16x)");
         
@@ -218,15 +219,15 @@ public class Level3_ConstraintValidationTests
             TestContext.Out.WriteLine($"  {count,5} rows: {ms,8:F2} ms ({ms / count:F4} ms/row)");
         }
 
-        // Check for O(n log n) behavior (not O(n≤))
-        // Compare 1000 to 100: linear = 10x, O(n log n) ? 13x, O(n≤) = 100x
+        // Check for O(n log n) behavior (not O(nù))
+        // Compare 1000 to 100: linear = 10x, O(n log n) ? 13x, O(nù) = 100x
         var ratio = times[3].Ms / times[0].Ms;
-        TestContext.Out.WriteLine($"  Scaling ratio (1000/100): {ratio:F2}x (linear=10x, O(n≤)=100x)");
+        TestContext.Out.WriteLine($"  Scaling ratio (1000/100): {ratio:F2}x (linear=10x, O(nù)=100x)");
         
-        // With implicit index, should be much better than O(n≤)
+        // With implicit index, should be much better than O(nù)
         // Allow up to 50x to account for variability and JIT warmup in CI environments
         // Key point: this was 76x+ before implicit index implementation
-        Assert.That(ratio, Is.LessThan(50), "INSERT with implicit PK index should scale as O(n log n), not O(n≤)");
+        Assert.That(ratio, Is.LessThan(50), "INSERT with implicit PK index should scale as O(n log n), not O(nù)");
     }
 
     /// <summary>

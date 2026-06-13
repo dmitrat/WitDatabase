@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Description>High-performance embedded key-value database engine for .NET. Features B+Tree and LSM-Tree storage engines, MVCC transactions, AES-256-GCM encryption, and full ACID compliance.</Description>
     <PackageTags>OutWit;database;embedded;key-value;btree;lsm-tree;mvcc;transactions;encryption;acid;storage</PackageTags>
   </PropertyGroup>

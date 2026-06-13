@@ -777,6 +777,16 @@ public class ExpressionParserTests
     }
 
     [Test]
+    public void ParseDollarNamedParameterTest()
+    {
+        var expr = WitSql.ParseExpression("$id");
+        Assert.That(expr, Is.InstanceOf<WitSqlExpressionParameter>());
+        var param = (WitSqlExpressionParameter)expr;
+        Assert.That(param.ParameterType, Is.EqualTo(ParameterType.DollarNamed));
+        Assert.That(param.Name, Is.EqualTo("id"));
+    }
+
+    [Test]
     public void ParseNumberedParameterTest()
     {
         var expr = WitSql.ParseExpression("$1");
@@ -784,6 +794,14 @@ public class ExpressionParserTests
         var param = (WitSqlExpressionParameter)expr;
         Assert.That(param.ParameterType, Is.EqualTo(ParameterType.Numbered));
         Assert.That(param.Position, Is.EqualTo(1));
+    }
+
+    [Test]
+    public void ParseStatementWithDollarNamedParametersTest()
+    {
+        var stmt = WitSql.ParseStatement(
+            "SELECT COUNT(*) FROM \"__EFMigrationsHistory\" WHERE \"MigrationId\" = $id");
+        Assert.That(stmt, Is.InstanceOf<WitSqlStatementSelect>());
     }
 
     [Test]

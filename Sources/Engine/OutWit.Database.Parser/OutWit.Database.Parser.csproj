@@ -5,8 +5,9 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
 	<AntlrScriptPath>$(MSBuildProjectDirectory)\MakeInternal.ps1</AntlrScriptPath>
+    <_AntlrVendoredJar>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../build/antlr/antlr4-4.13.1-complete.jar'))</_AntlrVendoredJar>
     
-    <Version>1.0.0</Version>
+    <Version>1.1.0</Version>
     <Description>SQL parser for WitDatabase. ANTLR4-based parser for WitSQL dialect with full SQL-92 compatibility and .NET type extensions.</Description>
     <PackageTags>OutWit;database;sql;parser;antlr;witsql;query;syntax</PackageTags>
   </PropertyGroup>
@@ -17,10 +18,21 @@
     <PackageReference Include="OutWit.Common" Version="1.3.2" />
   </ItemGroup>
 
+	<!--
+	    Antlr4BuildTasks reads the tool jar from the %(Antlr4.AntlrToolJar) item
+	    metadata. Set it INLINE on the item rather than via an ItemDefinitionGroup:
+	    the package's own Antlr4BuildTasks.targets defines an ItemDefinitionGroup
+	    default of <AntlrToolJar></AntlrToolJar> (empty) and is imported AFTER this
+	    project body, so an IDG here can be overridden to empty depending on SDK
+	    evaluation order - which silently fell back to a network jar download (flaky
+	    on CI). Inline item metadata always wins over any ItemDefinitionGroup, so the
+	    committed jar is used deterministically with no download.
+	-->
 	<ItemGroup>
 		<Antlr4 Include="Grammars\**\*.g4">
 			<Language>CSharp</Language>
 			<Package>OutWit.Database.Parser.Generated</Package>
+			<AntlrToolJar>$(_AntlrVendoredJar)</AntlrToolJar>
 		</Antlr4>
 	</ItemGroup>
 

@@ -8,6 +8,7 @@ namespace OutWit.Database.Tests.Performance;
 /// Detailed profiling tests to identify specific bottlenecks.
 /// </summary>
 [TestFixture]
+[Category("Performance")]
 public class ProfilingTests : PerformanceTestsBase
 {
     #region Constants
