@@ -76,15 +76,21 @@ jobs:
           done
           exit $status
 
+      - name: Build
+        run: dotnet build OutWit.slnx --configuration Release --no-restore
+
       # The nuspecs must list only real runtime dependencies. Microsoft.EntityFrameworkCore.Design
       # and Antlr4BuildTasks are build/design-time only; when they leaked, every consumer of the SQL
       # engine restored Roslyn, MSBuild and a net472 build host into bin/.
+      #
+      # Release sets GeneratePackageOnBuild, so the packages already exist by now - packing again
+      # here would rebuild and is what made this step fail on its first run.
       - name: Assert no build-time dependency leaked into a package
         run: |
-          dotnet pack OutWit.slnx --configuration Release --no-restore -o ./artifacts-pack
           status=0
-          for pkg in ./artifacts-pack/*.nupkg; do
-            case "$pkg" in *.symbols.nupkg) continue;; esac
+          found=0
+          while IFS= read -r pkg; do
+            found=1
             nuspec=$(unzip -p "$pkg" '*.nuspec')
             for banned in Microsoft.EntityFrameworkCore.Design Antlr4BuildTasks; do
               if echo "$nuspec" | grep -q "id=\"$banned\""; then
@@ -92,11 +98,13 @@ jobs:
                 status=1
               fi
             done
-          done
-          exit $status
+          done < <(find Sources -path "*/bin/Release/*.nupkg" ! -name "*.snupkg")
 
-      - name: Build
-        run: dotnet build OutWit.slnx --configuration Release --no-restore
+          if [ "$found" -eq 0 ]; then
+            echo "::error::No packages found under Sources/**/bin/Release - the assertion would pass vacuously"
+            status=1
+          fi
+          exit $status
 
       - name: Test
         run: dotnet test OutWit.slnx --configuration Release --no-build --verbosity normal --filter "Category!=Performance" --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
