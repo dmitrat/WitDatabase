@@ -11,15 +11,57 @@ Each entry states what was verified and what is still a hypothesis; the causes
 marked "not identified" are exactly that — the symptom is reproducible, the root
 cause was not chased into the engine.
 
-| # | Area | Severity | One line |
-|---|------|----------|----------|
-| [1](#1-alter-table-add-column-is-unusable-schema-cannot-evolve) | EF migrations + engine DDL | **Blocker** | A schema can be created but never changed |
-| [2](#2-inline-date-literals-are-rejected-by-the-parser) | EF query translation | Major | `WitSqlParsingException` on an inlined `DateOnly` |
-| [3](#3-intstring-conversion-inside-a-query-is-not-translated) | EF query translation | Minor | `group.Key.ToString()` does not translate |
+| # | Area | Severity | Status | One line |
+|---|------|----------|--------|----------|
+| [1](#1-alter-table-add-column-is-unusable-schema-cannot-evolve) | EF migrations + engine DDL | **Blocker** | **FIXED** | A schema can be created but never changed |
+| [2](#2-inline-date-literals-are-rejected-by-the-parser) | EF query translation | Major | open — root-caused | `WitSqlParsingException` on an inlined `DateOnly` |
+| [3](#3-intstring-conversion-inside-a-query-is-not-translated) | EF query translation | Minor | open — root-caused | `group.Key.ToString()` does not translate |
+
+A full audit of the engine and both providers is in
+[AUDIT-2026-07.md](AUDIT-2026-07.md); §0 of that document is the execution-verified
+part and supersedes the analysis below wherever the two disagree.
 
 ---
 
 ## 1. `ALTER TABLE ADD COLUMN` is unusable — schema cannot evolve
+
+> **FIXED.** Both halves came from the EF provider's service registration, not from
+> the engine, and both are now resolved. `ALTER TABLE ADD COLUMN` in the engine was
+> never the problem — twelve variants of it were verified correct.
+>
+> **Root cause of 1b:** `AddEntityFrameworkWitDb` never registered an
+> `IProviderConventionSetBuilder`, so EF Core used the **core** builder and the whole
+> relational convention set — including `TableNameFromDbSetConvention` — was absent.
+> Default table names therefore came from the entity CLR type instead of the `DbSet`
+> property, so the same model produced `Website` here and `Websites` on PostgreSql.
+> The hand-written `AddColumn(table: "Websites")` was copied from the PostgreSql
+> migration and referenced a table that genuinely did not exist;
+> `Table 'Websites' not found` was correct behaviour. Fixed by
+> `Metadata/WitConventionSetBuilder.cs`.
+>
+> **Root cause of 1a:** `WitModelRuntimeInitializer` installed a `RelationalModelFactory`
+> that called `RelationalModel.Create(..., designTime: false)` unconditionally, so the
+> *design-time* model handed to `MigrationsModelDiffer` was read-optimized and the differ
+> threw. `WitMigrationsModelDiffer` then swallowed that exception — returning an empty
+> operation list when `source != null` (the silent empty migration) and a lossy
+> hand-built list when `source == null` (which is why generated `CreateTable` operations
+> had no `maxLength`, listed columns in name order, and dropped unique/check constraints
+> in three empty `catch` blocks). Both classes were deleted; EF Core's stock
+> implementations are correct once the convention set builder is registered.
+>
+> **Verified:** `dotnet ef migrations add` on a changed model now emits a real
+> `AddColumn` with `maxLength` and a populated `Down()`, byte-for-byte equivalent to what
+> the PostgreSql provider produces for the same model change. Regression tests:
+> `EntityFramework.Tests/Metadata/WitConventionSetBuilderTests.cs` and
+> `EntityFramework.Tests/MigrationTests/SchemaEvolutionRegressionTests.cs` — the latter
+> applies two migrations in sequence to a real file and reads the new column back, as
+> this document asked for. Eleven of the thirteen fail if the fix is reverted.
+>
+> **Breaking change:** default table names are now the `DbSet` property name. Existing
+> `.witdb` files carry the old singular names; either recreate them or pin the old name
+> with `ToTable("Website")`.
+
+The original analysis follows, kept for the record.
 
 **Severity: blocker.** Any product on this provider is frozen at its initial
 schema. Adding one nullable column is enough to hit it.
@@ -117,6 +159,27 @@ migration. A product with real data on WitDatabase has no such escape.
 
 ## 2. Inline DATE literals are rejected by the parser
 
+> **Root-caused, not yet fixed — and wider than described here.** This is not a
+> `DateOnly` problem, it is a **typed-literal** problem, and it also breaks `DateTime`,
+> `DateTimeOffset` and `TimeOnly`, plus every `HasData` seed row with a temporal column.
+> `Storage/WitTypeMappingSource.cs:75-78` uses EF Core's stock `DateOnlyTypeMapping`,
+> `TimeOnlyTypeMapping`, `DateTimeTypeMapping` and `DateTimeOffsetTypeMapping`, whose
+> default `SqlLiteralFormatString` is the SQL-standard typed literal. Measured, driving
+> the provider's real `GenerateSqlLiteral` into the engine:
+>
+> | CLR value | literal EF emits | engine |
+> |---|---|---|
+> | `DateOnly` | `DATE '2026-07-01'` | rejected |
+> | `TimeOnly` | `TIME '13:45:30'` | rejected |
+> | `DateTime` | `TIMESTAMP '2026-07-01 13:45:30.0000000'` | rejected — `TIMESTAMP` is not even a token |
+> | `DateTimeOffset` | `TIMESTAMP '…+03:00'` | rejected |
+>
+> The grammar has `DATE`/`TIME`/`DATETIME` only as *function* names. Plain string
+> literals work (`'2026-07-01'`, `CAST('2026-07-01' AS DATE)`), so the fix belongs in the
+> grammar as typed literals producing *typed* values — emitting bare quoted strings from
+> the provider instead would trade a loud parse error for silently wrong rows, because
+> Text-vs-DateTime comparison falls back to ordinal string comparison.
+
 **Severity: major** — the failing shape is the one people write first.
 
 A `DateOnly` value inlined into the generated SQL throws
@@ -144,6 +207,19 @@ Note that `DateOnly` → `DATE` mapping itself works correctly, as does
 ---
 
 ## 3. `int`→`string` conversion inside a query is not translated
+
+> **Root-caused, not yet fixed. The engine is not at fault** — all four conversion forms
+> work when executed directly:
+> `CAST(DeviceType AS VARCHAR)`, `CAST(… AS VARCHAR(20))`, `CAST(… AS TEXT)` and
+> `CONVERT(VARCHAR, DeviceType)` all return `'42'`. The gap is that no
+> `object.ToString()` / `Convert.*` translator is registered in
+> `Query/WitMethodCallTranslatorProvider.cs`, so EF has nothing to emit. Cheap fix, and
+> the same registration covers the rest of `Convert.To*`.
+>
+> The aside below about enums is also inaccurate: `RelationalTypeMapping.NormalizeEnumValue`
+> converts int-backed enums in both `CreateParameter` and `GenerateSqlLiteral`, so enum
+> properties do work. `char` and non-`int`-backed enums are the genuine gaps, and
+> `WitDbBulkExtensions` bypasses type mappings entirely via raw reflection.
 
 **Severity: minor** — easy to work around, but the failure is a translation
 error rather than a graceful client-side fallback.

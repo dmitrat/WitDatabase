@@ -121,7 +121,7 @@ public class MigrationsTests
         using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS ""MigrationTestProduct"" (
+                CREATE TABLE IF NOT EXISTS ""Products"" (
                     ""Id"" INT PRIMARY KEY AUTOINCREMENT,
                     ""Name"" TEXT NOT NULL,
                     ""Price"" DECIMAL(10, 2) NOT NULL
@@ -159,7 +159,7 @@ public class MigrationsTests
             using (var cmd = connection.CreateCommand())
             {
                 cmd.CommandText = @"
-                    CREATE TABLE IF NOT EXISTS ""MigrationTestProduct"" (
+                    CREATE TABLE IF NOT EXISTS ""Products"" (
                         ""Id"" INT PRIMARY KEY AUTOINCREMENT,
                         ""Name"" TEXT NOT NULL,
                         ""Price"" DECIMAL(10, 2) NOT NULL

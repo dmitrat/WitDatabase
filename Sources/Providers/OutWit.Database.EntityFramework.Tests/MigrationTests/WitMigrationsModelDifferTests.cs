@@ -6,9 +6,10 @@ using OutWit.Database.EntityFramework.Extensions;
 namespace OutWit.Database.EntityFramework.Tests.Migrations;
 
 /// <summary>
-/// Tests for <see cref="Migrations.WitMigrationsModelDiffer"/> covering the EnsureCreated
-/// table-creation bug: EnsureCreated() used to create the .witdb file but generated zero
-/// CreateTableOperations, so no tables were actually created inside the database.
+/// Tests covering the EnsureCreated table-creation bug: EnsureCreated() used to create the .witdb
+/// file but generated zero CreateTableOperations, so no tables were actually created inside the
+/// database. The provider now uses EF Core's stock <c>MigrationsModelDiffer</c>; see
+/// <c>WitConventionSetBuilder</c> for why the custom differ was needed before and is not now.
 /// </summary>
 [TestFixture]
 public class WitMigrationsModelDifferTests
@@ -75,8 +76,9 @@ public class WitMigrationsModelDifferTests
 
         var script = context.Database.GenerateCreateScript();
 
-        Assert.That(script, Does.Contain("DifferProduct"));
-        Assert.That(script, Does.Contain("DifferCategory"));
+        // Table names come from the DbSet properties, as in every other EF provider.
+        Assert.That(script, Does.Contain("Products"));
+        Assert.That(script, Does.Contain("Categories"));
     }
 
     #endregion
@@ -185,7 +187,7 @@ public class WitMigrationsModelDifferTests
         var first = context.Database.EnsureCreated();
         Assert.That(first, Is.True);
 
-        // Second call on the same context — database & tables already exist
+        // Second call on the same context ï¿½ database & tables already exist
         var second = context.Database.EnsureCreated();
         Assert.That(second, Is.False,
             "Second EnsureCreated should return false because tables already exist");

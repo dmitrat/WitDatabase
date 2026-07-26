@@ -360,7 +360,7 @@ public class WitDatabaseCreatorTests
         context.Database.OpenConnection();
         using (var cmd = context.Database.GetDbConnection().CreateCommand())
         {
-            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntity"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
+            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntities"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
             cmd.ExecuteNonQuery();
         }
 
@@ -380,7 +380,7 @@ public class WitDatabaseCreatorTests
         await context.Database.OpenConnectionAsync();
         await using (var cmd = context.Database.GetDbConnection().CreateCommand())
         {
-            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntity"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
+            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntities"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
             await cmd.ExecuteNonQueryAsync();
         }
 
@@ -400,7 +400,7 @@ public class WitDatabaseCreatorTests
         context.Database.OpenConnection();
         using (var cmd = context.Database.GetDbConnection().CreateCommand())
         {
-            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntity"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
+            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntities"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
             cmd.ExecuteNonQuery();
         }
 
@@ -423,7 +423,7 @@ public class WitDatabaseCreatorTests
         await context.Database.OpenConnectionAsync();
         await using (var cmd = context.Database.GetDbConnection().CreateCommand())
         {
-            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntity"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
+            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntities"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
             await cmd.ExecuteNonQueryAsync();
         }
 
@@ -446,7 +446,7 @@ public class WitDatabaseCreatorTests
         context.Database.OpenConnection();
         using (var cmd = context.Database.GetDbConnection().CreateCommand())
         {
-            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntity"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
+            cmd.CommandText = @"CREATE TABLE IF NOT EXISTS ""TestEntities"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT)";
             cmd.ExecuteNonQuery();
         }
 
