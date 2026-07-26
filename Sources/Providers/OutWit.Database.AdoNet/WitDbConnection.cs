@@ -423,6 +423,11 @@ public sealed class WitDbConnection : DbConnection
         {
             var coreIsolationLevel = options.IsolationLevel.ToWitIsolationLevel();
             builder.WithMvcc(coreIsolationLevel);
+
+            // MVCC is the default here, so this is the path most consumers take; without the
+            // keyword they would have no way to trade durability for throughput.
+            if (!options.SynchronousCommit)
+                builder.WithAsynchronousCommit();
         }
         else if (options.IsolationLevel != WitDbIsolationLevel.ReadCommitted)
         {
