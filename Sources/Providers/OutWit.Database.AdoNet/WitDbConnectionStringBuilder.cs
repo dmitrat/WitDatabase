@@ -65,6 +65,7 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
     private const string KEY_ISOLATION_LEVEL = "Isolation Level";
     private const string KEY_MVCC = "MVCC";
     private const string KEY_TRANSACTIONS = "Transactions";
+    private const string KEY_SYNCHRONOUS_COMMIT = "Synchronous Commit";
     
     // Parallel mode settings
     private const string KEY_PARALLEL_MODE = "Parallel Mode";
@@ -207,7 +208,7 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
         {
             KEY_DATA_SOURCE, KEY_MODE, KEY_READ_ONLY,
             KEY_STORE, KEY_ENCRYPTION, KEY_PASSWORD, KEY_USER, KEY_CACHE, KEY_JOURNAL,
-            KEY_ISOLATION_LEVEL, KEY_MVCC, KEY_TRANSACTIONS,
+            KEY_ISOLATION_LEVEL, KEY_MVCC, KEY_TRANSACTIONS, KEY_SYNCHRONOUS_COMMIT,
             KEY_PARALLEL_MODE, KEY_MAX_WRITERS,
             KEY_POOLING, KEY_MIN_POOL_SIZE, KEY_MAX_POOL_SIZE, KEY_DEFAULT_TIMEOUT
         };
@@ -336,6 +337,20 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
     {
         get => GetValue(KEY_MVCC, true);
         set => SetValue(KEY_MVCC, value);
+    }
+
+    /// <summary>
+    /// Gets or sets whether a commit is flushed to storage before it returns. Default is true.
+    /// </summary>
+    /// <remarks>
+    /// Turning this off makes a successful COMMIT survive only a clean shutdown, not a process kill.
+    /// Reasonable for a disposable test database or a re-runnable bulk import; never a good way to
+    /// make a benchmark look faster than the guarantee it provides.
+    /// </remarks>
+    public bool SynchronousCommit
+    {
+        get => GetValue(KEY_SYNCHRONOUS_COMMIT, true);
+        set => SetValue(KEY_SYNCHRONOUS_COMMIT, value);
     }
 
     /// <summary>

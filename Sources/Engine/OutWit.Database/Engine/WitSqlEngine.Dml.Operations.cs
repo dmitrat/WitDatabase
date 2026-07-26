@@ -25,6 +25,11 @@ public sealed partial class WitSqlEngine
         if (table == null)
             return null;
 
+        // The catalog resolves table names case-insensitively but row keys are built from the raw
+        // string, so a caller-supplied name that differs only in case would address a separate key
+        // space. Canonicalise here so keys, indexes and row counts all agree.
+        tableName = table.Name;
+
         var key = SchemaCatalog.CreateRowKey(tableName, rowId);
         var value = GetFromStore(key);
         
@@ -63,6 +68,8 @@ public sealed partial class WitSqlEngine
         var table = m_schema.GetTable(tableName)
                     ?? throw new InvalidOperationException($"Table '{tableName}' not found");
 
+        tableName = table.Name;
+
         // Get row ID from auto-increment primary key column or _rowid
         long rowId = 0;
         bool hasRowId = false;
@@ -92,9 +99,24 @@ public sealed partial class WitSqlEngine
 
         PutToStore(key, value);
 
-        // Update all secondary indexes for this table
-        UpdateIndexesOnInsert(tableName, table, rowId, row);
-        
+        // Update all secondary indexes for this table. A unique-index violation is raised here,
+        // after the row has been written, so without compensation a rejected INSERT left the row in
+        // the store - invisible to COUNT(*), which reads the catalog's counter, but returned by any
+        // SELECT after a reopen. A failure part-way through also left entries in the indexes that
+        // did accept the row.
+        try
+        {
+            UpdateIndexesOnInsert(tableName, table, rowId, row);
+        }
+        catch
+        {
+            // Remove is keyed by (indexKey, rowId); entries this insert never added are simply not
+            // there, and the conflicting row's entry has a different rowId, so it is untouched.
+            TryRemoveIndexEntries(tableName, table, rowId, row);
+            DeleteFromStore(key);
+            throw;
+        }
+
         // Update row count
         m_schema.IncrementRowCount(tableName, 1, m_currentTransaction);
         
@@ -130,6 +152,8 @@ public sealed partial class WitSqlEngine
         var table = m_schema.GetTable(tableName)
                     ?? throw new InvalidOperationException($"Table '{tableName}' not found");
 
+        tableName = table.Name;
+
         // Read old row for index update
         var key = SchemaCatalog.CreateRowKey(tableName, rowId);
         var oldValue = GetFromStore(key);
@@ -146,8 +170,23 @@ public sealed partial class WitSqlEngine
 
         // Update indexes (remove old keys, add new keys)
         // Pass modified columns for optimization
-        UpdateIndexesOnUpdate(tableName, table, rowId, oldRow, newRow, modifiedColumns);
-        
+        try
+        {
+            UpdateIndexesOnUpdate(tableName, table, rowId, oldRow, newRow, modifiedColumns);
+        }
+        catch
+        {
+            // A rejected UPDATE must not leave the new values behind. Restoring the stored bytes is
+            // exact; the index side can only be partially reverted here, and full index rollback
+            // needs the per-transaction inverse-op log (see the audit's transactional-index item).
+            if (oldValue != null)
+                PutToStore(key, oldValue);
+            else
+                DeleteFromStore(key);
+
+            throw;
+        }
+
         // Note: UPDATE does not change row count
     }
 
@@ -163,6 +202,8 @@ public sealed partial class WitSqlEngine
     public void DeleteRow(string tableName, long rowId)
     {
         var table = m_schema.GetTable(tableName);
+        if (table != null)
+            tableName = table.Name;
 
         // Read the row before deletion for index cleanup
         var key = SchemaCatalog.CreateRowKey(tableName, rowId);
@@ -208,6 +249,8 @@ public sealed partial class WitSqlEngine
         var table = m_schema.GetTable(tableName)
             ?? throw new InvalidOperationException($"Table '{tableName}' not found");
 
+        tableName = table.Name;
+
         // Get current row count before truncate for delta tracking
         var currentCount = m_schema.GetRowCount(tableName);
 
@@ -215,20 +258,7 @@ public sealed partial class WitSqlEngine
         var indexes = m_schema.GetTableIndexes(tableName).ToList();
 
         // Delete all rows from the table
-        var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
-        var endPrefix = SchemaCatalog.GetTableDataEndPrefix(tableName);
-
-        var keysToDelete = new List<byte[]>();
-        foreach (var (key, _) in m_database.Scan(prefix, endPrefix))
-        {
-            keysToDelete.Add(key);
-        }
-
-        // Delete all rows
-        foreach (var key in keysToDelete)
-        {
-            DeleteFromStore(key);
-        }
+        DeleteAllRowData(tableName);
 
         // Clear all secondary indexes for this table
         foreach (var indexDef in indexes)
@@ -276,6 +306,21 @@ public sealed partial class WitSqlEngine
             m_currentTransaction.Delete(key);
         else
             m_database.Delete(key);
+    }
+
+    /// <summary>
+    /// Scans a key range through the active transaction when there is one.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart of <see cref="PutToStore"/> for reads. Several DDL paths still call
+    /// <c>m_database.Scan</c> directly, which reads outside the transaction and therefore cannot see
+    /// rows the same transaction has written.
+    /// </remarks>
+    private IEnumerable<(byte[] Key, byte[] Value)> ScanStore(byte[]? startKey, byte[]? endKey)
+    {
+        return m_currentTransaction != null
+            ? m_currentTransaction.Scan(startKey, endKey)
+            : m_database.Scan(startKey, endKey);
     }
 
     #endregion

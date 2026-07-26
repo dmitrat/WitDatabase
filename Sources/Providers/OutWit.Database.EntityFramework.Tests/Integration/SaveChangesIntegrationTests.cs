@@ -81,7 +81,8 @@ public class SaveChangesIntegrationTests
         var tables = relationalModel.Tables.ToList();
         
         Assert.That(tables.Count, Is.GreaterThan(0), "RelationalModel should have tables");
-        Assert.That(tables.Any(t => t.Name == "TestItem"), Is.True, "Should have TestItem table");
+        // Table name comes from the DbSet property (Items), as in every other EF provider.
+        Assert.That(tables.Any(t => t.Name == "Items"), Is.True, "Should have Items table");
     }
 
     #endregion
@@ -102,7 +103,7 @@ public class SaveChangesIntegrationTests
         using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS ""TestItem"" (
+                CREATE TABLE IF NOT EXISTS ""Items"" (
                     ""Id"" INT PRIMARY KEY AUTOINCREMENT,
                     ""Name"" TEXT NOT NULL
                 )";
@@ -134,7 +135,7 @@ public class SaveChangesIntegrationTests
         using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS ""TestItem"" (
+                CREATE TABLE IF NOT EXISTS ""Items"" (
                     ""Id"" INT PRIMARY KEY AUTOINCREMENT,
                     ""Name"" TEXT NOT NULL
                 )";
@@ -179,7 +180,7 @@ public class SaveChangesIntegrationTests
         using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS ""TestItem"" (
+                CREATE TABLE IF NOT EXISTS ""Items"" (
                     ""Id"" INT PRIMARY KEY AUTOINCREMENT,
                     ""Name"" TEXT NOT NULL
                 )";
@@ -220,10 +221,10 @@ public class SaveChangesIntegrationTests
         using (var cmd = connection.CreateCommand())
         {
             cmd.CommandText = @"
-                CREATE TABLE IF NOT EXISTS ""FourUser"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT NOT NULL);
-                CREATE TABLE IF NOT EXISTS ""FourProduct"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT NOT NULL, ""Price"" DECIMAL NOT NULL);
-                CREATE TABLE IF NOT EXISTS ""FourOrder"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""UserId"" INT NOT NULL, ""TotalAmount"" DECIMAL NOT NULL);
-                CREATE TABLE IF NOT EXISTS ""FourOrderItem"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""OrderId"" INT NOT NULL, ""ProductId"" INT NOT NULL, ""Quantity"" INT NOT NULL, ""UnitPrice"" DECIMAL NOT NULL)";
+                CREATE TABLE IF NOT EXISTS ""Users"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT NOT NULL);
+                CREATE TABLE IF NOT EXISTS ""Products"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""Name"" TEXT NOT NULL, ""Price"" DECIMAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS ""Orders"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""UserId"" INT NOT NULL, ""TotalAmount"" DECIMAL NOT NULL);
+                CREATE TABLE IF NOT EXISTS ""OrderItems"" (""Id"" INT PRIMARY KEY AUTOINCREMENT, ""OrderId"" INT NOT NULL, ""ProductId"" INT NOT NULL, ""Quantity"" INT NOT NULL, ""UnitPrice"" DECIMAL NOT NULL)";
             cmd.ExecuteNonQuery();
         }
         

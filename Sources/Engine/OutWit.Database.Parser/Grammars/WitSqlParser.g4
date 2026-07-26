@@ -185,6 +185,9 @@ orderByItem
 limitClause
     : LIMIT expression (OFFSET expression)?
     | LIMIT expression COMMA expression
+    // OFFSET with no LIMIT. Standard SQL and PostgreSql allow it, and without it a provider has to
+    // emit SQLite's `LIMIT -1 OFFSET n` for EF Core's Skip(n) without Take(n).
+    | OFFSET expression
  ;
 
 // ============================================================================
@@ -476,7 +479,10 @@ expression
     | LPAREN expression RPAREN                      # parenExpr
     | LPAREN queryExpression RPAREN                 # subqueryExpr
     | NOT? EXISTS LPAREN queryExpression RPAREN     # existsExpr
-    | (PLUS | MINUS | NOT | TILDE) expression       # unaryExpr
+    // NOT is deliberately NOT in this alternative: as a prefix operator it must bind LOOSER than
+    // every comparison and predicate, otherwise `NOT Age > 18` parses as `(NOT Age) > 18` and returns
+    // nothing. See notExpr further down, just above andExpr.
+    | (PLUS | MINUS | TILDE) expression             # unaryExpr
     | expression (STAR | SLASH | PERCENT) expression    # mulDivExpr
     | expression (PLUS | MINUS) expression          # addSubExpr
     | expression (AMP | PIPE | RSHIFT | LSHIFT) expression # bitwiseExpr
@@ -487,9 +493,17 @@ expression
     | expression IS NOT? NULL                       # isNullExpr
     | expression NOT? BETWEEN expression AND expression # betweenExpr
     | expression NOT? IN LPAREN (expression (COMMA expression)* | queryExpression) RPAREN # inExpr
-    | expression NOT? LIKE expression (ESCAPE expression)? # likeExpr
+    // Two alternatives on purpose. With a single `LIKE expression (ESCAPE expression)?` the pattern
+    // is an INTERIOR recursive reference, which ANTLR compiles as expression(0) - full precedence -
+    // so it swallowed everything after it: `Name LIKE 'a%' AND Age > 18` parsed as
+    // `Name LIKE ('a%' AND Age > 18)`, and `DELETE ... WHERE Name NOT LIKE 'p' AND Id = 5` deleted
+    // every row. Splitting the optional block out leaves the last operand of each alternative in the
+    // trailing position, where ANTLR bounds it to this rule's precedence.
+    | expression NOT? LIKE expression ESCAPE expression # likeEscapeExpr
+    | expression NOT? LIKE expression               # likeExpr
     | expression NOT? GLOB expression               # globExpr
     | expression comparisonOp (ANY | SOME | ALL) LPAREN queryExpression RPAREN # quantifiedExpr
+    | NOT expression                                # notExpr
     | expression AND expression                     # andExpr
     | expression OR expression                      # orExpr
     | CASE expression? (WHEN expression THEN expression)+ (ELSE expression)? END # caseExpr

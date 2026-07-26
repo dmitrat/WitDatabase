@@ -429,7 +429,7 @@ public sealed class WitDatabaseBuilder
     private IStorage BuildStorage(ICryptoProvider? cryptoProvider = null)
     {
         if (Options.CustomStorage != null)
-            return Options.CustomStorage;
+            return BuildCustomStorage(Options.CustomStorage, cryptoProvider);
 
         int storagePageSize = CalculateStoragePageSize(cryptoProvider);
         var baseStorage = CreateBaseStorage(storagePageSize);
@@ -442,6 +442,44 @@ public sealed class WitDatabaseBuilder
         }
 
         return baseStorage;
+    }
+
+    /// <summary>
+    /// Applies encryption to a caller-supplied storage, or refuses the combination.
+    /// </summary>
+    /// <remarks>
+    /// A custom storage - <c>WithStorage()</c>, and therefore <c>WithIndexedDbStorage()</c> too -
+    /// used to be returned as-is, bypassing the encryptor entirely, while the header still recorded
+    /// <c>ProviderFeatures.Encryption</c>. The database reported itself as encrypted and wrote
+    /// plaintext. It is now wrapped like any other storage; when its pages cannot hold the per-page
+    /// overhead the build fails rather than producing something unreadable.
+    /// </remarks>
+    private IStorage BuildCustomStorage(IStorage customStorage, ICryptoProvider? cryptoProvider)
+    {
+        if (cryptoProvider == null)
+            return customStorage;
+
+        var encryptor = new EncryptorPage(cryptoProvider, GetEncryptionSalt());
+
+        // Encryption spends Overhead bytes of every physical page on the nonce and tag, so the
+        // logical page size the rest of the engine sees is PageSize - Overhead - and that has to
+        // remain a legal page size. The built-in storages are sized as PageSize + Overhead for
+        // exactly this reason; a caller-supplied one has to be too.
+        var logicalPageSize = customStorage.PageSize - encryptor.Overhead;
+
+        if (logicalPageSize < DatabaseConstants.MIN_PAGE_SIZE ||
+            logicalPageSize > DatabaseConstants.MAX_PAGE_SIZE ||
+            (logicalPageSize & (logicalPageSize - 1)) != 0)
+        {
+            throw new InvalidOperationException(
+                $"The storage supplied to WithStorage() has a page size of {customStorage.PageSize} " +
+                $"bytes, which leaves {logicalPageSize} usable after the {encryptor.Overhead} bytes " +
+                $"encryption needs per page - not a valid page size. Construct it with " +
+                $"{Options.PageSize + encryptor.Overhead} bytes (a power of two plus the overhead), " +
+                $"or build the database without encryption.");
+        }
+
+        return new StorageEncrypted(customStorage, encryptor);
     }
 
     private int CalculateStoragePageSize(ICryptoProvider? cryptoProvider)
@@ -570,7 +608,10 @@ public sealed class WitDatabaseBuilder
                 store,
                 lockManager,
                 Options.DefaultIsolationLevel,
-                ownsStore: true);
+                ownsStore: true)
+            {
+                SynchronousCommit = Options.SynchronousCommit
+            };
         }
 
         return new TransactionalStore(

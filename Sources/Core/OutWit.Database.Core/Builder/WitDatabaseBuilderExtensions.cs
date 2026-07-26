@@ -618,6 +618,29 @@ public static class WitDatabaseBuilderExtensions
         return builder;
     }
 
+    /// <summary>
+    /// Do not flush to storage on commit. A successful COMMIT then survives only a clean shutdown.
+    /// </summary>
+    /// <remarks>
+    /// Durable commit is the default. Turn it off deliberately - for a disposable test database, or
+    /// a bulk import that will simply be re-run if the process dies - never as a way to make a
+    /// benchmark look better than the guarantee it provides.
+    /// </remarks>
+    public static WitDatabaseBuilder WithAsynchronousCommit(this WitDatabaseBuilder builder)
+    {
+        builder.Options.TransactionParameters.Set("synchronousCommit", false);
+        return builder;
+    }
+
+    /// <summary>
+    /// Flush to storage on commit, so a successful COMMIT survives a process kill. This is the default.
+    /// </summary>
+    public static WitDatabaseBuilder WithSynchronousCommit(this WitDatabaseBuilder builder)
+    {
+        builder.Options.TransactionParameters.Set("synchronousCommit", true);
+        return builder;
+    }
+
     #endregion
 
     #region Cache

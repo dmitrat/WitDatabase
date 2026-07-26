@@ -225,9 +225,7 @@ public sealed partial class SchemaCatalog
         if (namesData == null || namesData.Length == 0)
             return;
 
-        var names = namesData.FromMemoryPackBytes<List<string>>();
-        if (names == null)
-            return;
+        var names = ReadSchemaRecord<List<string>>(namesData, "sequences");
 
         // Load each sequence
         foreach (var name in names)
@@ -237,9 +235,7 @@ public sealed partial class SchemaCatalog
             if (defData == null)
                 continue;
 
-            var sequence = defData.FromMemoryPackBytes<DefinitionSequence>();
-            if (sequence == null)
-                continue;
+            var sequence = ReadSchemaRecord<DefinitionSequence>(defData, $"sequence '{name}'");
 
             // Load current value separately (may have been updated)
             var valKey = $"{SEQUENCE_PREFIX}{name}:val";

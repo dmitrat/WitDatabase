@@ -310,6 +310,11 @@ namespace OutWit.Database.Core.Stores
             ThrowIfDisposed();
             var timestamp = m_timestampManager.GetNextTimestamp();
             PutVersion(key, value, timestamp, transactionId: 0);
+
+            // Snapshots read the published watermark, so a write that never publishes would be
+            // invisible to every transaction, for ever. Publishing after the version is installed
+            // gives this single-key write the same all-or-nothing property a commit has.
+            m_timestampManager.Publish(timestamp);
         }
 
         /// <inheritdoc/>
@@ -350,7 +355,12 @@ namespace OutWit.Database.Core.Stores
         {
             ThrowIfDisposed();
             var timestamp = m_timestampManager.GetNextTimestamp();
-            return DeleteVersion(key, timestamp, transactionId: 0);
+            var deleted = DeleteVersion(key, timestamp, transactionId: 0);
+
+            // See Put: unpublished writes are invisible to snapshot readers.
+            m_timestampManager.Publish(timestamp);
+
+            return deleted;
         }
 
         /// <inheritdoc/>

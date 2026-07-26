@@ -202,6 +202,15 @@ public sealed class WitDatabaseBuilderOptions
         TransactionParameters.Get("isolationLevel", WitIsolationLevel.ReadCommitted);
 
     /// <summary>
+    /// Gets whether a commit is flushed to storage before it returns. Defaults to <c>true</c>.
+    /// </summary>
+    /// <remarks>
+    /// Turning this off makes a successful COMMIT survivable only until the process exits cleanly.
+    /// See <c>MvccTransactionalStore.SynchronousCommit</c>.
+    /// </remarks>
+    public bool SynchronousCommit => TransactionParameters.Get("synchronousCommit", true);
+
+    /// <summary>
     /// Gets whether file locking is enabled.
     /// </summary>
     public bool EnableFileLocking => TransactionParameters.Get("fileLocking", true);

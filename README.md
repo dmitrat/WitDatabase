@@ -197,15 +197,39 @@ await ((StorageIndexedDb)db.Store).InitializeAsync();
 
 ## Performance
 
-WitDatabase is optimized for common database operations:
+Measured with `Benchmarks/OutWit.Database.Benchmarks` (BenchmarkDotNet, ShortRun) on a Ryzen 9 5950X
+under .NET 10, against SQLite (`Microsoft.Data.Sqlite`) and LiteDB. **Default configuration** means
+a bare `Data Source=…` connection string: MVCC on, durable commit — what an ADO.NET or EF Core
+consumer actually gets.
 
-| Operation | vs SQLite | vs LiteDB |
-|-----------|-----------|-----------|
-| INSERT | 1.5-3x faster | 1.5-2x faster |
-| UPDATE by PK | 1.1-10x faster | 2-4x faster |
-| DELETE by PK | 20x faster | 1.7x faster |
-| SELECT by PK | 22x faster | 10x faster |
-| Transactions | 4-20x faster | 1.2-2x faster |
+Single transaction, N inserts:
+
+| Configuration | N | WitDatabase | SQLite | LiteDB |
+|---|---|---|---|---|
+| Default (MVCC, durable) | 100 | 3.17 ms — **2.5x faster** | 7.74 ms | 0.80 ms |
+| Default (MVCC, durable) | 500 | 5.30 ms — **1.3x faster** | 6.95 ms | 2.21 ms |
+| `MVCC=false`, B+Tree | 100 | 2.43 ms — **2.8x faster** | 6.79 ms | 0.81 ms |
+| `MVCC=false`, B+Tree | 500 | 4.41 ms — **1.6x faster** | 7.12 ms | 1.94 ms |
+| `MVCC=false`, LSM | 100 | 12.28 ms — 1.8x **slower** | 6.73 ms | 0.73 ms |
+| `MVCC=false`, LSM | 500 | 55.81 ms — 7.9x **slower** | 7.07 ms | 1.90 ms |
+
+Read that honestly: on transactional inserts WitDatabase is meaningfully faster than SQLite on the
+B+Tree engine, **slower** than SQLite on the LSM engine, and slower than LiteDB throughout. It also
+allocates 17-25x more than SQLite. Pick the B+Tree engine for this workload.
+
+Reproduce with:
+
+```bash
+dotnet run -c Release --project Benchmarks/OutWit.Database.Benchmarks \
+  -- --filter "*TransactionBenchmarks*"
+```
+
+> **Earlier figures withdrawn.** Previous releases advertised "4-20x faster" transactions plus
+> INSERT/UPDATE/DELETE/SELECT ratios. Those came from a `Comparison.Benchmarks` project that is not
+> in this repository and cannot be reproduced from it, and every configuration they measured passed
+> `MVCC=false` — which is not the provider default. The numbers above replace the transaction row;
+> the other operations will be re-published once there is a committed benchmark that measures them.
+> See [Docs/AUDIT-2026-07.md](Docs/AUDIT-2026-07.md).
 
 ## Requirements
 

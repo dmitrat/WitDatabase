@@ -103,9 +103,7 @@ public sealed partial class SchemaCatalog
         if (triggersData == null || triggersData.Length == 0)
             return;
 
-        var triggers = triggersData.FromMemoryPackBytes<List<DefinitionTrigger>>();
-        if (triggers == null)
-            return;
+        var triggers = ReadSchemaRecord<List<DefinitionTrigger>>(triggersData, "triggers");
 
         foreach (var trigger in triggers)
             m_triggers[trigger.Name] = trigger;

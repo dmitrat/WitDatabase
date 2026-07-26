@@ -25,12 +25,18 @@ public sealed class IteratorLimit : IteratorBase
     /// Creates a new limit iterator.
     /// </summary>
     /// <param name="source">The source iterator.</param>
-    /// <param name="limit">Maximum number of rows to return.</param>
+    /// <param name="limit">Maximum number of rows to return; negative means unbounded.</param>
     /// <param name="offset">Number of rows to skip before returning.</param>
+    /// <remarks>
+    /// A negative limit is the SQLite convention for "no limit", and it is what a relational provider
+    /// emits for an OFFSET with no LIMIT - which is what EF Core's <c>Skip(n)</c> without
+    /// <c>Take(n)</c> becomes. Taken literally, <c>0 &gt;= -1</c> is true and the query returned no
+    /// rows at all.
+    /// </remarks>
     public IteratorLimit(IResultIterator source, long limit, long offset = 0)
     {
         m_source = source;
-        m_limit = limit;
+        m_limit = limit < 0 ? long.MaxValue : limit;
         m_offset = offset;
     }
 

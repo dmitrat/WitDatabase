@@ -590,19 +590,24 @@ public sealed partial class BTree
         var rightPage = m_pageManager.GetPage(rightPageNum);
         var rightNode = new BTreeNode(rightPage.Data, PageSize, rightPageNum);
         
-        int splitPoint = totalCount / 2;
-        
+        // Split by BYTES, not by count. A count-based midpoint assumes every entry is the same size;
+        // with mixed sizes one half could exceed the page, InsertLeaf below would return false, and
+        // the entry was silently dropped while Insert reported success.
+        int splitPoint = CalculateLeafSplitPoint(allKeys, allValues, totalCount);
+
         uint oldNextLeaf = node.NextLeaf;
         node.Clear();
-        
+
         for (int i = 0; i < splitPoint; i++)
         {
-            node.InsertLeaf(i, allKeys[i], allValues[i]);
+            if (!node.InsertLeaf(i, allKeys[i], allValues[i]))
+                ThrowSplitOverflow(i, splitPoint, totalCount, left: true);
         }
-        
+
         for (int i = splitPoint; i < totalCount; i++)
         {
-            rightNode.InsertLeaf(i - splitPoint, allKeys[i], allValues[i]);
+            if (!rightNode.InsertLeaf(i - splitPoint, allKeys[i], allValues[i]))
+                ThrowSplitOverflow(i, splitPoint, totalCount, left: false);
         }
         
         node.NextLeaf = rightPageNum;
@@ -673,21 +678,24 @@ public sealed partial class BTree
         var rightPage = await m_pageManager.GetPageAsync(rightPageNum, cancellationToken).ConfigureAwait(false);
         var rightNode = new BTreeNode(rightPage.Data, PageSize, rightPageNum);
         
-        int splitPoint = totalCount / 2;
-        
+        // Size-aware, and checked - see the synchronous SplitLeaf for why.
+        int splitPoint = CalculateLeafSplitPoint(allKeys, allValues, totalCount);
+
         // Re-create node after await (page content unchanged)
         node = new BTreeNode(page.Data, PageSize, pageNumber);
         uint oldNextLeaf = node.NextLeaf;
         node.Clear();
-        
+
         for (int i = 0; i < splitPoint; i++)
         {
-            node.InsertLeaf(i, allKeys[i], allValues[i]);
+            if (!node.InsertLeaf(i, allKeys[i], allValues[i]))
+                ThrowSplitOverflow(i, splitPoint, totalCount, left: true);
         }
-        
+
         for (int i = splitPoint; i < totalCount; i++)
         {
-            rightNode.InsertLeaf(i - splitPoint, allKeys[i], allValues[i]);
+            if (!rightNode.InsertLeaf(i - splitPoint, allKeys[i], allValues[i]))
+                ThrowSplitOverflow(i, splitPoint, totalCount, left: false);
         }
         
         node.NextLeaf = rightPageNum;
@@ -877,6 +885,64 @@ public sealed partial class BTree
         page.MarkDirty();
         m_pageManager.ReleasePage(pageNumber);
         return pageNumber;
+    }
+
+    #endregion
+
+    #region Split Point
+
+    /// <summary>
+    /// Chooses the split index that puts roughly half the BYTES on each side.
+    /// </summary>
+    /// <remarks>
+    /// The previous <c>totalCount / 2</c> assumed uniform entry sizes. With mixed sizes - a handful
+    /// of large values among small ones - the heavier half could exceed the page, and since the
+    /// replay loops discarded <c>InsertLeaf</c>'s result the overflowing entries were dropped while
+    /// <c>Insert</c> returned true. Both sides are guaranteed at least one entry, so the split always
+    /// makes progress.
+    /// </remarks>
+    private static int CalculateLeafSplitPoint(byte[][] keys, byte[][] values, int totalCount)
+    {
+        if (totalCount <= 2)
+            return 1;
+
+        var sizes = new int[totalCount];
+        long totalSize = 0;
+
+        for (int i = 0; i < totalCount; i++)
+        {
+            sizes[i] = BTreeNode.CalculateLeafEntrySize(keys[i].Length, values[i].Length)
+                       + BTreeNode.CellDirectoryEntrySize;
+            totalSize += sizes[i];
+        }
+
+        long half = totalSize / 2;
+        long accumulated = 0;
+
+        for (int i = 0; i < totalCount - 1; i++)
+        {
+            accumulated += sizes[i];
+            if (accumulated >= half)
+                return i + 1;
+        }
+
+        return totalCount - 1;
+    }
+
+    /// <summary>
+    /// A replayed entry did not fit the page it was assigned to.
+    /// </summary>
+    /// <remarks>
+    /// Unreachable once the split point is size-aware and oversized values have gone to overflow
+    /// pages. If it ever fires, losing the entry silently - which is what discarding InsertLeaf's
+    /// result did - is far worse than failing here.
+    /// </remarks>
+    private static void ThrowSplitOverflow(int index, int splitPoint, int totalCount, bool left)
+    {
+        throw new InvalidOperationException(
+            $"B+Tree leaf split could not place entry {index} of {totalCount} into the " +
+            $"{(left ? "left" : "right")} page (split point {splitPoint}). The tree has not been " +
+            $"modified beyond this node; please report this with the key sizes involved.");
     }
 
     #endregion

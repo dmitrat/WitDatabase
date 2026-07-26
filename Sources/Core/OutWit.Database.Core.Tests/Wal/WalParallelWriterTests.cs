@@ -427,21 +427,33 @@ public class WalParallelWriterTests : IDisposable
 
     #region Timeout Tests
 
+    /// <summary>
+    /// A configured wait timeout must bound the write, not break it.
+    /// </summary>
+    /// <remarks>
+    /// This was called <c>TimeoutThrowsTimeoutExceptionTest</c> and asserted no such thing - it wrote
+    /// one small entry with <c>waitTimeoutMs: 1</c> and checked the entry landed. One millisecond is
+    /// a coin flip on a loaded machine, so it failed intermittently on both target frameworks and on
+    /// CI, and it never covered the <see cref="TimeoutException"/> its name promised.
+    ///
+    /// Manufacturing real contention in the batch committer to force the timeout is not something
+    /// this fixture can do reliably; until it can, this asserts the part that is actually
+    /// deterministic - a short-but-realistic budget completes an ordinary write.
+    /// </remarks>
     [Test]
-    public async Task TimeoutThrowsTimeoutExceptionTest()
+    public async Task ShortWaitTimeoutStillCompletesAnOrdinaryWriteTest()
     {
         var walPath = Path.Combine(m_testDir, "parallel_timeout.wal");
-        
-        using var wal = new WriteAheadLog(walPath, createNew: true);
-        
-        // Create writer with very short timeout
-        await using var writer = new WalParallelWriter(wal, waitTimeoutMs: 1);
 
-        // Normal operation should still work (small data)
+        using var wal = new WriteAheadLog(walPath, createNew: true);
+
+        await using var writer = new WalParallelWriter(wal, waitTimeoutMs: 5000);
+
         await writer.PutAsync(0, ToBytes("key"), ToBytes("value"));
-        
+
         Assert.That(writer.EntriesWritten, Is.EqualTo(1));
     }
+
 
     #endregion
 

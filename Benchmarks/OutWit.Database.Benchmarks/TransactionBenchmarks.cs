@@ -42,7 +42,9 @@ public class TransactionBenchmarks : IDisposable
     [Params(100, 500)]
     public int OperationsPerTx { get; set; }
 
-    [Params(WitDbEngineMode.BTree, WitDbEngineMode.Lsm, WitDbEngineMode.BTreeParallelAuto, WitDbEngineMode.LsmParallelAuto)]
+    // Default first: it is the configuration every ADO.NET and EF Core consumer actually gets, and
+    // the four tuned modes below all disable MVCC, which is not the provider default.
+    [Params(WitDbEngineMode.Default, WitDbEngineMode.BTree, WitDbEngineMode.Lsm, WitDbEngineMode.BTreeParallelAuto, WitDbEngineMode.LsmParallelAuto)]
     public WitDbEngineMode EngineMode { get; set; }
 
     #endregion

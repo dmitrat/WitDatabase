@@ -77,8 +77,17 @@ internal sealed partial class WitSqlVisitor
             select.OrderByClause = VisitOrderByClause(orderBy);
         if (context.limitClause() is { } limit)
         {
-            select.LimitCount = limit.expression(0) is { } limitExpr ? VisitExpression(limitExpr) : null;
-            select.LimitOffset = limit.expression(1) is { } offsetExpr ? VisitExpression(offsetExpr) : null;
+            if (limit.LIMIT() == null)
+            {
+                // OFFSET with no LIMIT: the single expression is the offset, not the count.
+                select.LimitCount = null;
+                select.LimitOffset = limit.expression(0) is { } onlyOffset ? VisitExpression(onlyOffset) : null;
+            }
+            else
+            {
+                select.LimitCount = limit.expression(0) is { } limitExpr ? VisitExpression(limitExpr) : null;
+                select.LimitOffset = limit.expression(1) is { } offsetExpr ? VisitExpression(offsetExpr) : null;
+            }
         }
 
         return select;

@@ -192,6 +192,90 @@ namespace OutWit.Database.Core.Tests.Managers
 
         #endregion
 
+        #region FreeOverflow Pin Release Tests
+
+        /// <summary>
+        /// FreeOverflow read the next page number into <c>currentPage</c> and then released
+        /// <c>currentPage</c>, so it unpinned the NEXT link instead of the page it had just pinned.
+        /// </summary>
+        /// <remarks>
+        /// The per-link effects mostly cancel - each link was pinned by its own iteration and
+        /// released by the previous one - but the head of every chain was pinned and never released,
+        /// and the tail was released once too often. Freeing many distinct chains therefore burns one
+        /// cache slot per chain permanently. Store all the chains first so their heads are distinct
+        /// pages; freeing in a loop would reuse the same head page and hide the leak behind a single
+        /// slot.
+        /// </remarks>
+        [Test]
+        public void FreeOverflowDoesNotLeakAPinPerChainTest()
+        {
+            using var storage = new StorageMemory(initialPageCount: 0);
+            using var pageManager = new PageManager(storage, cacheSize: 16);
+            using var overflowManager = new PageManagerOverflow(pageManager);
+
+            var data = new byte[pageManager.PageSize * 3];
+            Random.Shared.NextBytes(data);
+
+            var chains = new List<uint>();
+            for (var i = 0; i < 40; i++)
+                chains.Add(overflowManager.StoreOverflow(data));
+
+            Assert.DoesNotThrow(() =>
+            {
+                foreach (var firstPage in chains)
+                    overflowManager.FreeOverflow(firstPage);
+            }, "Freeing many chains must not leave their head pages pinned");
+
+            // The cache must still be usable afterwards.
+            Assert.DoesNotThrow(
+                () => overflowManager.FreeOverflow(overflowManager.StoreOverflow(data)),
+                "The page cache must still have evictable slots after freeing many chains");
+        }
+
+        [Test]
+        public void FreeOverflowReturnsPagesForReuseTest()
+        {
+            using var storage = new StorageMemory(initialPageCount: 0);
+            using var pageManager = new PageManager(storage);
+            using var overflowManager = new PageManagerOverflow(pageManager);
+
+            var data = new byte[pageManager.PageSize * 4];
+            Random.Shared.NextBytes(data);
+
+            overflowManager.FreeOverflow(overflowManager.StoreOverflow(data));
+            var afterFirstCycle = pageManager.TotalPageCount;
+
+            for (var i = 0; i < 10; i++)
+                overflowManager.FreeOverflow(overflowManager.StoreOverflow(data));
+
+            Assert.That(pageManager.TotalPageCount, Is.EqualTo(afterFirstCycle),
+                "Freed overflow pages must be reused rather than growing the file every cycle");
+        }
+
+        [Test]
+        public void FreedOverflowChainDataIsStillReadableWhileHeldTest()
+        {
+            // Guards the fix itself: the page being released must be the one that was pinned, so a
+            // concurrent reader of a different chain is unaffected.
+            using var storage = new StorageMemory(initialPageCount: 0);
+            using var pageManager = new PageManager(storage);
+            using var overflowManager = new PageManagerOverflow(pageManager);
+
+            var keep = new byte[pageManager.PageSize * 3];
+            var discard = new byte[pageManager.PageSize * 3];
+            Random.Shared.NextBytes(keep);
+            Random.Shared.NextBytes(discard);
+
+            var keepPage = overflowManager.StoreOverflow(keep);
+            var discardPage = overflowManager.StoreOverflow(discard);
+
+            overflowManager.FreeOverflow(discardPage);
+
+            Assert.That(overflowManager.ReadOverflow(keepPage), Is.EqualTo(keep));
+        }
+
+        #endregion
+
         #region ReadOverflow with Span Tests
 
         [Test]

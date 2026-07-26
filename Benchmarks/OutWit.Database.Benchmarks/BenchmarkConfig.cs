@@ -24,6 +24,18 @@ public class SqlEngineBenchmarkConfig : ManualConfig
 public enum WitDbEngineMode
 {
     /// <summary>
+    /// Exactly what a consumer gets from <c>Data Source=…</c> and nothing else: MVCC on, durable
+    /// commit, B+Tree.
+    /// </summary>
+    /// <remarks>
+    /// The modes below all pass <c>MVCC=false</c>, which is not the provider default - MVCC defaults
+    /// to true in <c>WitDbConnectionStringBuilder</c>, so this is the configuration behind every
+    /// ADO.NET and EF Core consumer. Measuring only the tuned modes is how a published figure ends up
+    /// describing a configuration nobody runs.
+    /// </remarks>
+    Default,
+
+    /// <summary>
     /// BTree storage engine without parallel writes.
     /// Best for read-heavy workloads.
     /// </summary>
@@ -57,7 +69,12 @@ public static class WitDbConnectionHelper
     {
         return mode switch
         {
-            WitDbEngineMode.BTree => 
+            // Deliberately nothing but the data source: whatever the provider defaults to is what
+            // this measures.
+            WitDbEngineMode.Default =>
+                $"Data Source={path}",
+
+            WitDbEngineMode.BTree =>
                 $"Data Source={path};Store=btree;Transactions=true;MVCC=false",
             
             WitDbEngineMode.Lsm => 

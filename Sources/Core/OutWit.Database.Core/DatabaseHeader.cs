@@ -122,9 +122,25 @@ public struct DatabaseHeader
         if (!buffer[..16].SequenceEqual(DatabaseConstants.MAGIC_BYTES))
             throw new InvalidDataException("Invalid database file: magic bytes do not match");
 
+        // Verify the on-disk format version. Without this a file written by a newer major version
+        // was read as though its layout were the current one: the magic bytes still matched, so
+        // whatever followed was interpreted as pages and offsets. A clear error beats a plausible
+        // misreading.
+        var formatVersion = BinaryPrimitives.ReadUInt16LittleEndian(buffer[16..]);
+        var fileMajor = (byte)(formatVersion >> 8);
+        var supportedMajor = (byte)(DatabaseConstants.FORMAT_VERSION >> 8);
+
+        if (fileMajor > supportedMajor)
+        {
+            throw new InvalidDataException(
+                $"Unsupported database format version {fileMajor}.{(byte)formatVersion}: this build " +
+                $"reads up to major version {supportedMajor}. The file was written by a newer " +
+                $"version of WitDatabase.");
+        }
+
         return new DatabaseHeader
         {
-            FormatVersion = BinaryPrimitives.ReadUInt16LittleEndian(buffer[16..]),
+            FormatVersion = formatVersion,
             PageSize = BinaryPrimitives.ReadUInt16LittleEndian(buffer[18..]),
             TotalPageCount = BinaryPrimitives.ReadUInt32LittleEndian(buffer[20..]),
             FirstFreePage = BinaryPrimitives.ReadUInt32LittleEndian(buffer[24..]),

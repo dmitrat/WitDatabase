@@ -69,6 +69,64 @@ public class DatabaseHeaderTest
 
     #endregion
 
+    #region Format Version Gate Tests
+
+    [Test]
+    public void ReadFromRejectsANewerMajorFormatVersionTest()
+    {
+        // FORMAT_VERSION was written and never compared, so a file from a newer major release was
+        // read as though its layout were the current one - the magic bytes still matched, and
+        // everything after them was interpreted as pages and offsets.
+        var header = new DatabaseHeader
+        {
+            FormatVersion = 0x0200, // major 2
+            PageSize = 4096,
+            TotalPageCount = 1
+        };
+
+        byte[] buffer = new byte[DatabaseConstants.DATABASE_HEADER_SIZE];
+        header.WriteTo(buffer);
+
+        var exception = Assert.Throws<InvalidDataException>(() => DatabaseHeader.ReadFrom(buffer));
+
+        Assert.That(exception!.Message, Does.Contain("format version"));
+    }
+
+    [Test]
+    public void ReadFromAcceptsAnOlderOrEqualFormatVersionTest()
+    {
+        var header = new DatabaseHeader
+        {
+            FormatVersion = DatabaseConstants.FORMAT_VERSION,
+            PageSize = 4096,
+            TotalPageCount = 1
+        };
+
+        byte[] buffer = new byte[DatabaseConstants.DATABASE_HEADER_SIZE];
+        header.WriteTo(buffer);
+
+        Assert.DoesNotThrow(() => DatabaseHeader.ReadFrom(buffer));
+    }
+
+    [Test]
+    public void ReadFromAcceptsANewerMinorFormatVersionTest()
+    {
+        // A minor bump must stay readable, otherwise every additive change breaks old builds.
+        var header = new DatabaseHeader
+        {
+            FormatVersion = (ushort)(DatabaseConstants.FORMAT_VERSION + 1),
+            PageSize = 4096,
+            TotalPageCount = 1
+        };
+
+        byte[] buffer = new byte[DatabaseConstants.DATABASE_HEADER_SIZE];
+        header.WriteTo(buffer);
+
+        Assert.DoesNotThrow(() => DatabaseHeader.ReadFrom(buffer));
+    }
+
+    #endregion
+
     #region WriteTo/ReadFrom Tests
 
     [Test]
@@ -187,7 +245,9 @@ public class DatabaseHeaderTest
     {
         var header = new DatabaseHeader
         {
-            FormatVersion = ushort.MaxValue,
+            // Not ushort.MaxValue: ReadFrom now rejects a format version from a newer major
+            // release, and this test is about the width of the other fields.
+            FormatVersion = DatabaseConstants.FORMAT_VERSION,
             PageSize = 32768, // Largest valid power of 2 that fits in ushort for PageSize
             TotalPageCount = uint.MaxValue,
             FirstFreePage = uint.MaxValue,

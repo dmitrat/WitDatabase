@@ -19,6 +19,7 @@ public sealed partial class ExpressionEvaluator
             LiteralType.Null => WitSqlValue.Null,
             LiteralType.Integer => WitSqlValue.FromInt((long)lit.Value!),
             LiteralType.Real => WitSqlValue.FromReal((double)lit.Value!),
+            LiteralType.Decimal => WitSqlValue.FromDecimal((decimal)lit.Value!),
             LiteralType.String => WitSqlValue.FromText((string)lit.Value!),
             LiteralType.Blob => WitSqlValue.FromBlob((byte[])lit.Value!),
             LiteralType.Boolean => WitSqlValue.FromBool((bool)lit.Value!),
@@ -151,22 +152,43 @@ public sealed partial class ExpressionEvaluator
     {
         var left = Evaluate(bin.Left, row);
 
-        // Short-circuit evaluation for AND/OR
+        // AND/OR in SQL's three-valued logic. FALSE dominates AND and TRUE dominates OR whatever the
+        // other side is - including NULL - so those still short-circuit; everything else needs both
+        // operands. Previously `NULL AND FALSE` returned NULL (SQL says FALSE) and `NULL OR FALSE`
+        // returned FALSE (SQL says NULL).
         if (bin.Operator == BinaryOperatorType.And)
         {
-            if (left.IsNull || !left.AsBool())
-                return left.IsNull ? WitSqlValue.Null : WitSqlValue.False;
-            return Evaluate(bin.Right, row);
+            if (!left.IsNull && !left.AsBool())
+                return WitSqlValue.False;
+
+            var rightAnd = Evaluate(bin.Right, row);
+            if (!rightAnd.IsNull && !rightAnd.AsBool())
+                return WitSqlValue.False;
+
+            return left.IsNull || rightAnd.IsNull ? WitSqlValue.Null : WitSqlValue.True;
         }
 
         if (bin.Operator == BinaryOperatorType.Or)
         {
             if (!left.IsNull && left.AsBool())
                 return WitSqlValue.True;
-            return Evaluate(bin.Right, row);
+
+            var rightOr = Evaluate(bin.Right, row);
+            if (!rightOr.IsNull && rightOr.AsBool())
+                return WitSqlValue.True;
+
+            return left.IsNull || rightOr.IsNull ? WitSqlValue.Null : WitSqlValue.False;
         }
 
         var right = Evaluate(bin.Right, row);
+
+        // Comparing anything with NULL yields UNKNOWN, not a true/false answer. The comparison
+        // operators on WitSqlValue impose a total order that puts NULL somewhere definite - which is
+        // what ORDER BY needs - so the guard belongs here rather than in CompareTo. Without it
+        // `NULL < 5`, `NULL <> 5` and even `NULL = NULL` were TRUE, and rows with a NULL column
+        // leaked through ordinary WHERE filters.
+        if ((left.IsNull || right.IsNull) && IsComparison(bin.Operator))
+            return WitSqlValue.Null;
 
         return bin.Operator switch
         {
@@ -190,6 +212,19 @@ public sealed partial class ExpressionEvaluator
             BinaryOperatorType.RightShift => WitSqlValue.FromInt(left.AsInt64() >> (int)right.AsInt64()),
             _ => throw new NotSupportedException($"Operator not supported: {bin.Operator}")
         };
+    }
+
+    /// <summary>
+    /// Whether an operator is a comparison, and therefore yields UNKNOWN when either side is NULL.
+    /// </summary>
+    private static bool IsComparison(BinaryOperatorType op)
+    {
+        return op is BinaryOperatorType.Equal
+            or BinaryOperatorType.NotEqual
+            or BinaryOperatorType.LessThan
+            or BinaryOperatorType.LessOrEqual
+            or BinaryOperatorType.GreaterThan
+            or BinaryOperatorType.GreaterOrEqual;
     }
 
     #endregion

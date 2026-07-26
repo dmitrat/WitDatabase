@@ -38,8 +38,13 @@ public static class WitDbServiceCollectionExtensions
             // Core infrastructure
             .TryAdd<LoggingDefinitions, WitLoggingDefinitions>()
             .TryAdd<IDatabaseProvider, WitDatabaseProvider>()
-            .TryAdd<IModelRuntimeInitializer, WitModelRuntimeInitializer>()
-            
+
+            // Model building conventions. Mandatory for a relational provider: without it EF Core
+            // uses the core ProviderConventionSetBuilder and the whole relational convention set is
+            // missing, which (among much else) makes default table names come from the entity CLR
+            // type instead of the DbSet property. See WitConventionSetBuilder.
+            .TryAdd<IProviderConventionSetBuilder, WitConventionSetBuilder>()
+
             // Connection and type mapping
             .TryAdd<IRelationalTypeMappingSource, WitTypeMappingSource>()
             .TryAdd<ISqlGenerationHelper, WitSqlGenerationHelper>()
@@ -58,11 +63,13 @@ public static class WitDbServiceCollectionExtensions
             .TryAdd<IRelationalAnnotationProvider, WitAnnotationProvider>()
             .TryAdd<IModelValidator, WitModelValidator>()
             
-            // Migrations
+            // Migrations. IMigrationsModelDiffer and IModelRuntimeInitializer are deliberately NOT
+            // overridden: the stock relational implementations are correct once the convention set
+            // builder above is registered, and the previous overrides masked the resulting failures
+            // by returning an empty operation list (KnownIssues #1a).
             .TryAdd<IMigrationsSqlGenerator, WitMigrationsSqlGenerator>()
             .TryAdd<IHistoryRepository, WitHistoryRepository>()
-            .TryAdd<IMigrationsModelDiffer, WitMigrationsModelDiffer>()
-            
+
             // Database creation
             .TryAdd<IRelationalDatabaseCreator, WitDatabaseCreator>();
 

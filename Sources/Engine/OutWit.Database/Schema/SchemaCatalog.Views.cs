@@ -99,9 +99,7 @@ public sealed partial class SchemaCatalog
         if (viewsData == null || viewsData.Length == 0)
             return;
 
-        var views = viewsData.FromMemoryPackBytes<List<DefinitionView>>();
-        if (views == null)
-            return;
+        var views = ReadSchemaRecord<List<DefinitionView>>(viewsData, "views");
 
         foreach (var view in views)
             m_views[view.Name] = view;

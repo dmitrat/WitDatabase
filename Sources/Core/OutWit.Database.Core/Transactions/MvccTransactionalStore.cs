@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using OutWit.Database.Core.Concurrency;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Mvcc;
@@ -44,9 +44,44 @@ namespace OutWit.Database.Core.Transactions
         private readonly bool m_ownsStore;
         private readonly WitIsolationLevel m_defaultIsolationLevel;
         private readonly object m_txLock = new();
+        private readonly object m_commitLock = new();
         private readonly HashSet<MvccTransaction> m_activeTransactions = new();
         private long m_nextTransactionId = 1;
         private bool m_disposed;
+
+        #endregion
+
+        #region Durability
+
+        /// <summary>
+        /// Whether a successful commit is flushed to the underlying store before it returns.
+        /// Defaults to <c>true</c>.
+        /// </summary>
+        /// <remarks>
+        /// MVCC is the default transactional mode behind the ADO.NET and EF Core providers, and its
+        /// commit path used to apply the new versions in memory and return without flushing anything.
+        /// A process kill after a successful COMMIT therefore lost the transaction - the D in ACID -
+        /// and there is no journal on this path to replay it from.
+        ///
+        /// Turning this off trades that guarantee for throughput. It is a legitimate choice for a
+        /// disposable test database or a bulk import that will be re-run on failure, and it is what
+        /// the pre-2.0 behaviour was, but it must be opted into rather than inherited by accident.
+        /// </remarks>
+        public bool SynchronousCommit { get; set; } = true;
+
+        /// <summary>
+        /// Serialises the apply-and-publish phase of a commit.
+        /// </summary>
+        /// <remarks>
+        /// Held from conflict validation through to publishing the commit timestamp, so a commit is
+        /// all-or-nothing as far as any snapshot is concerned, and so validation cannot pass for two
+        /// writers that then both install. Deliberately NOT taken by <c>BeginTransaction</c> or by
+        /// readers: they would then block behind a commit, and the
+        /// <c>Dispose -> Rollback -> NotifyTransactionComplete</c> path would close a cycle with
+        /// <c>m_txLock</c>. Lock order is m_commitLock -> m_txLock -> the timestamp manager's lock.
+        /// Never held across <c>Flush</c>, <c>ReleaseLocks</c> or the wait queue.
+        /// </remarks>
+        internal object CommitLock => m_commitLock;
 
         #endregion
 
@@ -215,7 +250,10 @@ namespace OutWit.Database.Core.Transactions
                 // Write transactions get locks at commit time (optimistic)
                 // For now, we don't acquire locks at begin - only for writes
                 
-                var snapshotTimestamp = m_timestampManager.GetNextTimestamp();
+                // A snapshot must come from the published watermark, not the raw counter: commit
+                // timestamps share that counter and are allocated before the writes are
+                // installed, so a snapshot taken from it can sit above a half-applied commit.
+                var snapshotTimestamp = m_timestampManager.StableTimestamp;
                 var txId = m_nextTransactionId++;
 
                 var tx = new MvccTransaction(
@@ -253,7 +291,10 @@ namespace OutWit.Database.Core.Transactions
 
             lock (m_txLock)
             {
-                var snapshotTimestamp = m_timestampManager.GetNextTimestamp();
+                // A snapshot must come from the published watermark, not the raw counter: commit
+                // timestamps share that counter and are allocated before the writes are
+                // installed, so a snapshot taken from it can sit above a half-applied commit.
+                var snapshotTimestamp = m_timestampManager.StableTimestamp;
                 var txId = m_nextTransactionId++;
 
                 var tx = new MvccTransaction(
