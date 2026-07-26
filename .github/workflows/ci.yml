@@ -48,6 +48,53 @@ jobs:
       - name: Restore
         run: dotnet restore OutWit.slnx
 
+      # A shipped database library must not carry known-vulnerable packages. This caught
+      # System.Security.Cryptography.Xml 9.0.0 (seven high-severity advisories) reaching every
+      # consumer through Microsoft.EntityFrameworkCore.Design.
+      #
+      # Scoped to the packable projects on purpose: the benchmarks reference SQLite to compare
+      # against it, and the samples carry their own web dependencies. Neither is shipped, so an
+      # advisory there must not block a release of the library.
+      - name: Check shipped packages for vulnerabilities
+        run: |
+          status=0
+          for proj in \
+            Sources/Core/OutWit.Database.Core/OutWit.Database.Core.csproj \
+            Sources/Core/OutWit.Database.Core.BouncyCastle/OutWit.Database.Core.BouncyCastle.csproj \
+            Sources/Core/OutWit.Database.Core.IndexedDb/OutWit.Database.Core.IndexedDb.csproj \
+            Sources/Engine/OutWit.Database.Parser/OutWit.Database.Parser.csproj \
+            Sources/Engine/OutWit.Database/OutWit.Database.csproj \
+            Sources/Providers/OutWit.Database.AdoNet/OutWit.Database.AdoNet.csproj \
+            Sources/Providers/OutWit.Database.EntityFramework/OutWit.Database.EntityFramework.csproj
+          do
+            report=$(dotnet list "$proj" package --vulnerable --include-transitive 2>&1)
+            echo "$report"
+            if echo "$report" | grep -q "has the following vulnerable packages"; then
+              echo "::error file=$proj::Vulnerable package in a shipped project"
+              status=1
+            fi
+          done
+          exit $status
+
+      # The nuspecs must list only real runtime dependencies. Microsoft.EntityFrameworkCore.Design
+      # and Antlr4BuildTasks are build/design-time only; when they leaked, every consumer of the SQL
+      # engine restored Roslyn, MSBuild and a net472 build host into bin/.
+      - name: Assert no build-time dependency leaked into a package
+        run: |
+          dotnet pack OutWit.slnx --configuration Release --no-restore -o ./artifacts-pack
+          status=0
+          for pkg in ./artifacts-pack/*.nupkg; do
+            case "$pkg" in *.symbols.nupkg) continue;; esac
+            nuspec=$(unzip -p "$pkg" '*.nuspec')
+            for banned in Microsoft.EntityFrameworkCore.Design Antlr4BuildTasks; do
+              if echo "$nuspec" | grep -q "id=\"$banned\""; then
+                echo "::error::$(basename "$pkg") declares a dependency on $banned"
+                status=1
+              fi
+            done
+          done
+          exit $status
+
       - name: Build
         run: dotnet build OutWit.slnx --configuration Release --no-restore
 
