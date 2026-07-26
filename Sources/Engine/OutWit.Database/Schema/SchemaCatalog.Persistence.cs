@@ -1,6 +1,7 @@
 using System.Text;
 using OutWit.Common.MemoryPack;
 using OutWit.Database.Definitions;
+using OutWit.Database.Exceptions;
 
 namespace OutWit.Database.Schema;
 
@@ -11,21 +12,37 @@ public sealed partial class SchemaCatalog
 {
     #region Persistence
 
+    /// <summary>
+    /// Deserializes a stored schema record, failing loudly rather than yielding an empty catalog.
+    /// </summary>
+    /// <remarks>
+    /// <c>FromMemoryPackBytes</c> catches every exception and returns <c>default</c>. Passing no logger
+    /// - which every call site here did - made that silent. A record that is present but unreadable is
+    /// corruption, not an empty schema, and must not be mistaken for one: the next
+    /// <see cref="SaveSchema"/> would overwrite it. See <see cref="WitSchemaCorruptException"/>.
+    /// </remarks>
+    internal static TRecord ReadSchemaRecord<TRecord>(byte[] data, string recordName)
+        where TRecord : class
+    {
+        var record = data.FromMemoryPackBytes<TRecord>();
+        if (record == null)
+            throw new WitSchemaCorruptException(recordName, data.Length);
+
+        return record;
+    }
+
     private void LoadSchema()
     {
         // Load tables
         var tablesData = m_store.Get(TABLES_KEY_BYTES.AsSpan());
         if (tablesData != null)
         {
-            var tableList = tablesData.FromMemoryPackBytes<List<DefinitionTable>>();
-            if (tableList != null)
+            var tableList = ReadSchemaRecord<List<DefinitionTable>>(tablesData, "tables");
+            foreach (var table in tableList)
             {
-                foreach (var table in tableList)
-                {
-                    m_tables[table.Name] = table;
-                    LoadTableRowId(table.Name);
-                    LoadTableRowCount(table.Name);
-                }
+                m_tables[table.Name] = table;
+                LoadTableRowId(table.Name);
+                LoadTableRowCount(table.Name);
             }
         }
 
@@ -33,13 +50,10 @@ public sealed partial class SchemaCatalog
         var indexesData = m_store.Get(INDEXES_KEY_BYTES.AsSpan());
         if (indexesData != null)
         {
-            var indexList = indexesData.FromMemoryPackBytes<List<DefinitionIndex>>();
-            if (indexList != null)
+            var indexList = ReadSchemaRecord<List<DefinitionIndex>>(indexesData, "indexes");
+            foreach (var index in indexList)
             {
-                foreach (var index in indexList)
-                {
-                    m_indexes[index.Name] = index;
-                }
+                m_indexes[index.Name] = index;
             }
         }
 
