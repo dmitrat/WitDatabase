@@ -353,9 +353,26 @@ is anyone's fault; both make a small-insert benchmark close to worthless as a ve
 
 **SQLite pays P/Invoke on every call.** For an operation that is a few microseconds of real work,
 that per-call marshalling overhead is a large fraction of the measurement. It amortises to nothing on
-a complex query, where one call does substantial work inside the native engine. So *beating SQLite on
-small inserts is not a win* — it mostly measures the C# wrapper's call cost. SQLite's real speed
-shows up on complex queries, and that is where a comparison against it means something.
+a complex query, where one call does substantial work inside the native engine.
+
+Two different claims have to be kept apart here, because only one of them is unsupported:
+
+- *"Our storage engine is faster than SQLite's"* — **not supported** by a small-insert benchmark.
+  That number is substantially the wrapper's call cost, not the engine, and SQLite's real speed shows
+  up on complex queries. Do not make this claim from this workload.
+- *"From .NET, on workloads made of many small operations, WitDatabase is faster than SQLite
+  end-to-end"* — **supported, real, and worth saying.** A .NET consumer cannot reach SQLite except
+  through that wrapper, so the overhead is not an artifact to be subtracted; it is part of what they
+  actually pay. Being in-process managed code with no marshalling boundary is a genuine structural
+  advantage, not a measurement error.
+
+That second claim matters for this project specifically. Small-operation-dominated workloads are
+exactly what the OutWit consumers do: WitAnalytics ingests events one at a time, WitIdentity writes
+per request, and an EF Core `SaveChanges` is typically a handful of rows. In those scenarios the
+advantage is the user's real experience, and it should be measured deliberately rather than fall out
+of a benchmark aimed at something else — a workload of many *individual* small operations, not one
+transaction containing N of them, would show it far more clearly than anything in the suite today.
+Report it with the mechanism named, and the claim stays honest.
 
 **LiteDB is a document store.** A trivial insert there is a document write: no SQL to parse, no
 relational bookkeeping, no schema to honour. It *should* be very fast at that, and a relational
@@ -393,8 +410,12 @@ What this does and does not say:
   is a document store's home ground, and part of the gap is SQL parsing and relational bookkeeping
   LiteDB simply does not do. "Adequate" is the bar here; if profiling turns up something cheap, take
   it, but do not optimise the engine around this workload.
-- **The SQLite column on these rows should be ignored.** WitDatabase looking 1.3-2.5x "faster" than
-  SQLite on trivial inserts is largely the wrapper's per-call overhead, not the engine.
+- **1.3-2.5x faster than SQLite here is real for the user, but is not an engine result.** The gap is
+  largely the wrapper's per-call overhead — so it proves nothing about the storage engine and will
+  shrink toward zero as queries get more substantial. But a .NET consumer cannot reach SQLite except
+  through that wrapper, so on workloads made of many small operations this *is* what they experience,
+  and it is worth stating with the mechanism named. Do not delete this column; do not promote it into
+  a claim about the engine either.
 - **LSM is the one real signal here.** 17-28x slower than LiteDB, 7.9x slower than SQLite, and
   **non-linear in N** — 12 ms at 100 inserts, 53 ms at 500. Non-linearity is a defect signature, not
   a workload artifact: no amount of "different engine categories" explains super-linear growth.
@@ -496,6 +517,14 @@ Profile rather than guess, and measure the right workload before drawing any con
    comparison against `WithAsynchronousCommit()` has never been run.
 8. **Is the page cache doing its job?** No hit/miss counters exist anywhere — the audit notes zero
    metrics of any kind in ~57k LOC. Add them before drawing conclusions about caching.
+9. **Measure the no-marshalling advantage on purpose.** The per-call gap against SQLite is a real
+   structural property of being managed in-process, and it is worth a benchmark aimed *at* it instead
+   of one that stumbles into it. The right shape is many **individual** small operations — N separate
+   auto-committed inserts, N single-row lookups by key, N small `SaveChanges` calls — not one
+   transaction containing N of them, which amortises the very overhead being measured. That is also
+   the shape the OutWit consumers actually run: WitAnalytics ingesting events one at a time,
+   WitIdentity writing per request. Report it as a deployment result with the mechanism named, never
+   as an engine-speed claim.
 
 Explicitly *not* a priority: closing the 2.2-3.0x trivial-insert gap to LiteDB. Take a cheap win if
 profiling hands one over, but do not shape the engine around a document store's best case.
@@ -527,10 +556,14 @@ real problems" and "we know what is wrong with this database".
 If the goal is **the performance story**, do C — but start by running the 78 benchmarks that already
 exist and have never been run. Every performance number anyone currently has, including all of the
 ones in this document, comes from trivial inserts: the workload where SQLite is penalised by
-per-call marshalling and LiteDB is on its home ground, so neither comparison means much. The one
-finding that survives that caveat is LSM's non-linear growth in N, and it is worth chasing on its
-own. Beyond that, the honest position today is **not "we are behind" but "we have not measured the
-thing that matters"** — with one real result to keep: ~30% less allocation than LiteDB.
+per-call marshalling and LiteDB is on its home ground, so neither tells you much *about the engines*.
+Beyond that, the honest position today is **not "we are behind" but "we have not measured the thing
+that matters"** — with three results worth keeping. LSM's non-linear growth in N is a defect
+signature and worth chasing on its own. ~30% less allocation than LiteDB is real, because allocation
+is not distorted by call overhead. And being faster than SQLite on small operations, while it says
+nothing about the storage engine, is still what a .NET consumer actually gets — there is no way to
+use SQLite from managed code without paying for the crossing, and on workloads made of many small
+operations that is the user's real experience, not a measurement error to be apologised for.
 
 One thing that is not in any of the three, and is worth doing whenever there is an hour: **run EF
 Core's own provider specification suite** (`Microsoft.EntityFrameworkCore.Specification.Tests`). It
