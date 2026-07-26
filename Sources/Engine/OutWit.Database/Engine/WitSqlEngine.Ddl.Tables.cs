@@ -89,15 +89,53 @@ public sealed partial class WitSqlEngine
     /// <param name="tableName">The table name to drop.</param>
     public void DropTable(string tableName)
     {
-        // Drop implicit PK index if exists
-        var implicitPkIndexName = $"_PK_{tableName}";
-        if (GetIndex(implicitPkIndexName) != null)
+        var table = m_schema.GetTable(tableName);
+        if (table == null)
         {
-            DropIndex(implicitPkIndexName);
+            // Let the catalog decide what a drop of an unknown table means.
+            m_schema.DropTable(tableName);
+            InvalidatePlanCacheForTable(tableName);
+            return;
         }
-        
+
+        tableName = table.Name;
+
+        // Drop every index on the table - schema entry and physical index alike, including the
+        // implicit _PK_ one. Leaving them behind made a subsequent CREATE fail with
+        // "Index 'x' already exists" and let a recreated index adopt stale entries.
+        foreach (var indexDef in m_schema.GetTableIndexes(tableName).ToList())
+        {
+            DropIndex(indexDef.Name);
+        }
+
+        // Delete the row data. Without this the rows outlived the table: a table recreated under
+        // the same name silently served the dropped table's contents, while COUNT(*) - which reads
+        // the catalog's row counter - reported 0.
+        DeleteAllRowData(tableName);
+
         m_schema.DropTable(tableName);
         InvalidatePlanCacheForTable(tableName);
+    }
+
+    /// <summary>
+    /// Deletes every stored row of a table, leaving its schema and indexes untouched.
+    /// </summary>
+    /// <param name="tableName">The canonical table name.</param>
+    private void DeleteAllRowData(string tableName)
+    {
+        var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
+        var endPrefix = SchemaCatalog.GetTableDataEndPrefix(tableName);
+
+        var keysToDelete = new List<byte[]>();
+        foreach (var (key, _) in ScanStore(prefix, endPrefix))
+        {
+            keysToDelete.Add(key);
+        }
+
+        foreach (var key in keysToDelete)
+        {
+            DeleteFromStore(key);
+        }
     }
 
     #endregion
@@ -113,6 +151,8 @@ public sealed partial class WitSqlEngine
     {
         var table = m_schema.GetTable(oldName)
             ?? throw new InvalidOperationException($"Table '{oldName}' not found");
+
+        oldName = table.Name;
 
         // Migrate all data from old table prefix to new table prefix
         var oldPrefix = SchemaCatalog.GetTableDataPrefix(oldName);
@@ -157,6 +197,8 @@ public sealed partial class WitSqlEngine
     {
         var table = m_schema.GetTable(tableName)
             ?? throw new InvalidOperationException($"Table '{tableName}' not found");
+
+        tableName = table.Name;
 
         // Parse and evaluate default value expression if provided
         WitSqlExpression? defaultExpression = null;
@@ -299,6 +341,8 @@ public sealed partial class WitSqlEngine
         var table = m_schema.GetTable(tableName)
             ?? throw new InvalidOperationException($"Table '{tableName}' not found");
 
+        tableName = table.Name;
+
         // Get column ordinal to remove
         var colOrdinal = table.GetOrdinal(columnName);
         if (colOrdinal < 0) return;
@@ -348,6 +392,8 @@ public sealed partial class WitSqlEngine
     {
         var oldTable = m_schema.GetTable(tableName)
             ?? throw new InvalidOperationException($"Table '{tableName}' not found");
+
+        tableName = oldTable.Name;
 
         var columnIndex = -1;
         for (int i = 0; i < oldTable.Columns.Count; i++)
@@ -436,6 +482,8 @@ public sealed partial class WitSqlEngine
             var table = m_schema.GetTable(tableName)
                 ?? throw new InvalidOperationException($"Table '{tableName}' not found");
 
+            tableName = table.Name;
+
             var columnIndex = -1;
             for (int i = 0; i < table.Columns.Count; i++)
             {
@@ -478,6 +526,8 @@ public sealed partial class WitSqlEngine
     {
         var table = m_schema.GetTable(tableName)
             ?? throw new InvalidOperationException($"Table '{tableName}' not found");
+
+        tableName = table.Name;
 
         // Check if constraint with this name already exists
         if (table.GetConstraint(constraint.Name) != null)
@@ -675,7 +725,8 @@ public sealed partial class WitSqlEngine
 
         // Build set of valid referenced values
         var validValues = new HashSet<string>();
-        var refPrefix = SchemaCatalog.GetTableDataPrefix(fk.ForeignTable);
+        // refTable.Name, not fk.ForeignTable: the parsed name may differ in case from the catalog's.
+        var refPrefix = SchemaCatalog.GetTableDataPrefix(refTable.Name);
         foreach (var (key, value) in m_database.Scan(refPrefix, GetNextPrefix(refPrefix)))
         {
             var row = refTable.DeserializeRow(value);
@@ -734,6 +785,8 @@ public sealed partial class WitSqlEngine
         var table = m_schema.GetTable(tableName)
             ?? throw new InvalidOperationException($"Table '{tableName}' not found");
 
+        tableName = table.Name;
+
         var constraint = table.GetConstraint(constraintName);
         if (constraint == null)
         {
@@ -783,6 +836,8 @@ public sealed partial class WitSqlEngine
 
         var table = m_schema.GetTable(tableName)
             ?? throw new InvalidOperationException($"Table '{tableName}' not found");
+
+        tableName = table.Name;
 
         // Parse the computed expression
         var expression = WitSql.ParseExpression(column.ComputedExpression);

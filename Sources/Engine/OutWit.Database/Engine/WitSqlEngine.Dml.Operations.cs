@@ -25,6 +25,11 @@ public sealed partial class WitSqlEngine
         if (table == null)
             return null;
 
+        // The catalog resolves table names case-insensitively but row keys are built from the raw
+        // string, so a caller-supplied name that differs only in case would address a separate key
+        // space. Canonicalise here so keys, indexes and row counts all agree.
+        tableName = table.Name;
+
         var key = SchemaCatalog.CreateRowKey(tableName, rowId);
         var value = GetFromStore(key);
         
@@ -62,6 +67,8 @@ public sealed partial class WitSqlEngine
     {
         var table = m_schema.GetTable(tableName)
                     ?? throw new InvalidOperationException($"Table '{tableName}' not found");
+
+        tableName = table.Name;
 
         // Get row ID from auto-increment primary key column or _rowid
         long rowId = 0;
@@ -130,6 +137,8 @@ public sealed partial class WitSqlEngine
         var table = m_schema.GetTable(tableName)
                     ?? throw new InvalidOperationException($"Table '{tableName}' not found");
 
+        tableName = table.Name;
+
         // Read old row for index update
         var key = SchemaCatalog.CreateRowKey(tableName, rowId);
         var oldValue = GetFromStore(key);
@@ -163,6 +172,8 @@ public sealed partial class WitSqlEngine
     public void DeleteRow(string tableName, long rowId)
     {
         var table = m_schema.GetTable(tableName);
+        if (table != null)
+            tableName = table.Name;
 
         // Read the row before deletion for index cleanup
         var key = SchemaCatalog.CreateRowKey(tableName, rowId);
@@ -208,6 +219,8 @@ public sealed partial class WitSqlEngine
         var table = m_schema.GetTable(tableName)
             ?? throw new InvalidOperationException($"Table '{tableName}' not found");
 
+        tableName = table.Name;
+
         // Get current row count before truncate for delta tracking
         var currentCount = m_schema.GetRowCount(tableName);
 
@@ -215,20 +228,7 @@ public sealed partial class WitSqlEngine
         var indexes = m_schema.GetTableIndexes(tableName).ToList();
 
         // Delete all rows from the table
-        var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
-        var endPrefix = SchemaCatalog.GetTableDataEndPrefix(tableName);
-
-        var keysToDelete = new List<byte[]>();
-        foreach (var (key, _) in m_database.Scan(prefix, endPrefix))
-        {
-            keysToDelete.Add(key);
-        }
-
-        // Delete all rows
-        foreach (var key in keysToDelete)
-        {
-            DeleteFromStore(key);
-        }
+        DeleteAllRowData(tableName);
 
         // Clear all secondary indexes for this table
         foreach (var indexDef in indexes)
@@ -276,6 +276,21 @@ public sealed partial class WitSqlEngine
             m_currentTransaction.Delete(key);
         else
             m_database.Delete(key);
+    }
+
+    /// <summary>
+    /// Scans a key range through the active transaction when there is one.
+    /// </summary>
+    /// <remarks>
+    /// The counterpart of <see cref="PutToStore"/> for reads. Several DDL paths still call
+    /// <c>m_database.Scan</c> directly, which reads outside the transaction and therefore cannot see
+    /// rows the same transaction has written.
+    /// </remarks>
+    private IEnumerable<(byte[] Key, byte[] Value)> ScanStore(byte[]? startKey, byte[]? endKey)
+    {
+        return m_currentTransaction != null
+            ? m_currentTransaction.Scan(startKey, endKey)
+            : m_database.Scan(startKey, endKey);
     }
 
     #endregion
