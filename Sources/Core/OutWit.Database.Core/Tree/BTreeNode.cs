@@ -56,6 +56,11 @@ public ref partial struct BTreeNode
     
     /// <summary>Size of each cell directory entry.</summary>
     private const int CELL_DIR_ENTRY_SIZE = 2;
+
+    /// <summary>
+    /// Bytes the cell directory spends per entry, on top of the entry itself.
+    /// </summary>
+    public const int CellDirectoryEntrySize = CELL_DIR_ENTRY_SIZE;
     
     // Node header field offsets (relative to NODE_HEADER_OFFSET)
     private const int KEY_COUNT_OFFSET = 0;
