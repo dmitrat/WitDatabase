@@ -1,3 +1,6 @@
+using System.Globalization;
+using OutWit.Database.Parser;
+using OutWit.Database.Parser.Exceptions;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Generated;
 using OutWit.Database.Parser.Schema.Clauses;
@@ -269,20 +272,8 @@ internal sealed partial class WitSqlVisitor
 
         return context switch
         {
-            WitSqlParser.IntLiteralContext intLit => new WitSqlExpressionLiteral
-            {
-                Line = line,
-                Column = col,
-                Type = LiteralType.Integer,
-                Value = long.Parse(intLit.GetText())
-            },
-            WitSqlParser.RealLiteralContext realLit => new WitSqlExpressionLiteral
-            {
-                Line = line,
-                Column = col,
-                Type = LiteralType.Real,
-                Value = double.Parse(realLit.GetText(), System.Globalization.CultureInfo.InvariantCulture)
-            },
+            WitSqlParser.IntLiteralContext intLit => ParseIntegerLiteral(intLit.GetText(), line, col),
+            WitSqlParser.RealLiteralContext realLit => ParseNumericLiteral(realLit.GetText(), line, col),
             WitSqlParser.StringLiteralContext strLit => new WitSqlExpressionLiteral
             {
                 Line = line,
@@ -337,6 +328,86 @@ internal sealed partial class WitSqlVisitor
                 Type = LiteralType.CurrentTime
             },
             _ => throw new InvalidOperationException($"Unknown literal type: {context.GetType()}")
+        };
+    }
+
+    /// <summary>
+    /// Parses an integer literal, widening to an exact decimal when it does not fit
+    /// <see cref="long"/>.
+    /// </summary>
+    /// <remarks>
+    /// <c>long.Parse</c> used to throw a raw <see cref="OverflowException"/> out of the parser for any
+    /// value above <see cref="long.MaxValue"/> — which made <c>UBIGINT</c>'s upper half unreachable by
+    /// literal — and for <c>-9223372036854775808</c>, because the sign is a separate unary operator so
+    /// the magnitude <c>9223372036854775808</c> is parsed on its own first.
+    /// </remarks>
+    private static WitSqlExpressionLiteral ParseIntegerLiteral(string text, int line, int col)
+    {
+        if (long.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var longValue))
+        {
+            return new WitSqlExpressionLiteral
+            {
+                Line = line,
+                Column = col,
+                Type = LiteralType.Integer,
+                Value = longValue
+            };
+        }
+
+        if (decimal.TryParse(text, NumberStyles.Integer, CultureInfo.InvariantCulture, out var decimalValue))
+        {
+            return new WitSqlExpressionLiteral
+            {
+                Line = line,
+                Column = col,
+                Type = LiteralType.Decimal,
+                Value = decimalValue
+            };
+        }
+
+        throw new WitSqlParsingException(new[]
+        {
+            new WitSqlParsingError
+            {
+                Line = line,
+                Column = col,
+                Message = $"Integer literal '{text}' is out of range"
+            }
+        });
+    }
+
+    /// <summary>
+    /// Parses a numeric literal that carries a decimal point or an exponent.
+    /// </summary>
+    /// <remarks>
+    /// SQL treats a literal with a decimal point and no exponent as **exact** numeric
+    /// (DECIMAL/NUMERIC); only the exponent form is approximate. Parsing everything as
+    /// <see cref="double"/> silently changed values — <c>12345678901234.5678</c> inserted into a
+    /// <c>DECIMAL(28,10)</c> column read back as <c>12345678901234.6</c>.
+    /// </remarks>
+    private static WitSqlExpressionLiteral ParseNumericLiteral(string text, int line, int col)
+    {
+        var isApproximate = text.Contains('e') || text.Contains('E');
+
+        if (!isApproximate &&
+            decimal.TryParse(text, NumberStyles.Float, CultureInfo.InvariantCulture, out var decimalValue))
+        {
+            return new WitSqlExpressionLiteral
+            {
+                Line = line,
+                Column = col,
+                Type = LiteralType.Decimal,
+                Value = decimalValue
+            };
+        }
+
+        // Exponent form, or a magnitude/precision decimal cannot hold: fall back to approximate.
+        return new WitSqlExpressionLiteral
+        {
+            Line = line,
+            Column = col,
+            Type = LiteralType.Real,
+            Value = double.Parse(text, CultureInfo.InvariantCulture)
         };
     }
 

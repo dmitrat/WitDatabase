@@ -19,6 +19,7 @@ public sealed partial class ExpressionEvaluator
             LiteralType.Null => WitSqlValue.Null,
             LiteralType.Integer => WitSqlValue.FromInt((long)lit.Value!),
             LiteralType.Real => WitSqlValue.FromReal((double)lit.Value!),
+            LiteralType.Decimal => WitSqlValue.FromDecimal((decimal)lit.Value!),
             LiteralType.String => WitSqlValue.FromText((string)lit.Value!),
             LiteralType.Blob => WitSqlValue.FromBlob((byte[])lit.Value!),
             LiteralType.Boolean => WitSqlValue.FromBool((bool)lit.Value!),

@@ -574,6 +574,7 @@ public sealed partial class StatementExecutor
             {
                 LiteralType.Integer => WitSqlType.Integer,
                 LiteralType.Real => WitSqlType.Real,
+                LiteralType.Decimal => WitSqlType.Decimal,
                 LiteralType.String => WitSqlType.Text,
                 LiteralType.Boolean => WitSqlType.Boolean,
                 LiteralType.Null => WitSqlType.Null,

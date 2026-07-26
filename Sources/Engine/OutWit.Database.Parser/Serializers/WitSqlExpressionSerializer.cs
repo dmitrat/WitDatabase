@@ -128,7 +128,8 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
         {
             LiteralType.Null => "NULL",
             LiteralType.Integer => node.Value?.ToString() ?? "0",
-            LiteralType.Real => ((double)(node.Value ?? 0.0)).ToString(System.Globalization.CultureInfo.InvariantCulture),
+            LiteralType.Real => ((double)(node.Value ?? 0.0)).ToString("R", System.Globalization.CultureInfo.InvariantCulture),
+            LiteralType.Decimal => ((decimal)(node.Value ?? 0m)).ToString(System.Globalization.CultureInfo.InvariantCulture),
             LiteralType.String => $"'{EscapeString(node.Value?.ToString() ?? "")}'",
             LiteralType.Blob => $"X'{Convert.ToHexString((byte[])(node.Value ?? Array.Empty<byte>()))}'",
             LiteralType.Boolean => (bool)(node.Value ?? false) ? "TRUE" : "FALSE",

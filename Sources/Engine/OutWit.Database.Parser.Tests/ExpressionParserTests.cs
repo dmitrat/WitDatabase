@@ -633,10 +633,56 @@ public class ExpressionParserTests
     }
 
     [Test]
-    public void ParseRealLiteralTest()
+    public void ParseDecimalPointLiteralIsExactTest()
     {
+        // SQL treats a decimal point with no exponent as exact numeric; only the exponent form is
+        // approximate. Parsing this as a double silently changed values on the way into a DECIMAL
+        // column.
         var expr = WitSql.ParseExpression("3.14159");
-        Assert.That(((WitSqlExpressionLiteral)expr).Type, Is.EqualTo(LiteralType.Real));
+        var lit = (WitSqlExpressionLiteral)expr;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(lit.Type, Is.EqualTo(LiteralType.Decimal));
+            Assert.That(lit.Value, Is.EqualTo(3.14159m));
+        });
+    }
+
+    [Test]
+    public void ParseDecimalLiteralKeepsFullPrecisionTest()
+    {
+        var expr = WitSql.ParseExpression("12345678901234.5678");
+        var lit = (WitSqlExpressionLiteral)expr;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(lit.Type, Is.EqualTo(LiteralType.Decimal));
+            Assert.That(lit.Value, Is.EqualTo(12345678901234.5678m),
+                "A double round trip would return 12345678901234.6");
+        });
+    }
+
+    [Test]
+    public void ParseIntegerLiteralAboveLongMaxWidensToDecimalTest()
+    {
+        // long.Parse used to throw a raw OverflowException out of the parser, which made UBIGINT's
+        // upper half unreachable by literal.
+        var expr = WitSql.ParseExpression("18446744073709551615");
+        var lit = (WitSqlExpressionLiteral)expr;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(lit.Type, Is.EqualTo(LiteralType.Decimal));
+            Assert.That(lit.Value, Is.EqualTo(18446744073709551615m));
+        });
+    }
+
+    [Test]
+    public void ParseLongMinValueMagnitudeWidensToDecimalTest()
+    {
+        // The sign is a separate unary operator, so the magnitude is parsed on its own and does not
+        // fit long - which is why -9223372036854775808 threw.
+        Assert.DoesNotThrow(() => WitSql.ParseExpression("-9223372036854775808"));
     }
 
     [Test]

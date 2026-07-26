@@ -101,6 +101,7 @@ public sealed class IteratorProject : IteratorBase
             // Literals
             WitSqlExpressionLiteral { Type: LiteralType.Integer } => WitSqlType.Integer,
             WitSqlExpressionLiteral { Type: LiteralType.Real } => WitSqlType.Real,
+            WitSqlExpressionLiteral { Type: LiteralType.Decimal } => WitSqlType.Decimal,
             WitSqlExpressionLiteral { Type: LiteralType.Boolean } => WitSqlType.Boolean,
             WitSqlExpressionLiteral { Type: LiteralType.String } => WitSqlType.Text,
             WitSqlExpressionLiteral { Type: LiteralType.Blob } => WitSqlType.Blob,
