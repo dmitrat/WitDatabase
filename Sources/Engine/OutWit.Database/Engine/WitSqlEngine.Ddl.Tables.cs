@@ -347,8 +347,12 @@ public sealed partial class WitSqlEngine
         var colOrdinal = table.GetOrdinal(columnName);
         if (colOrdinal < 0) return;
 
-        // Update all existing rows - remove the column value
-        MigrateExistingRows(tableName, table, values =>
+        // Read and transform with the CURRENT definition, then re-serialize with the POST-drop one.
+        // SerializeValuesArray takes each value's type from Columns[i] positionally, so writing the
+        // shortened value array against the pre-drop column list shifted every type after the
+        // dropped ordinal: dropping the middle column of (Id INT, Name VARCHAR, Age INT) rewrote
+        // Age=42 as 2.
+        var migratedRows = ReadRowsForMigration(tableName, table, values =>
         {
             var newValues = new WitSqlValue[values.Length - 1];
             for (int i = 0, j = 0; i < values.Length; i++)
@@ -360,6 +364,9 @@ public sealed partial class WitSqlEngine
         });
 
         m_schema.DropColumn(tableName, columnName);
+
+        var updatedTable = m_schema.GetTable(tableName)!;
+        WriteMigratedRows(tableName, updatedTable, migratedRows);
     }
 
     #endregion
@@ -967,25 +974,40 @@ public sealed partial class WitSqlEngine
 
     #region Migration Helpers
 
-    private void MigrateExistingRows(string tableName, DefinitionTable table, Func<WitSqlValue[], WitSqlValue[]> transform)
+    /// <summary>
+    /// Reads every row of a table with the given definition and applies a value transform.
+    /// </summary>
+    /// <remarks>
+    /// Split from the write half on purpose: an ALTER that changes the column list must read with
+    /// the definition the rows were written under and write with the one they will be read under.
+    /// </remarks>
+    private List<(long RowId, WitSqlValue[] Values)> ReadRowsForMigration(
+        string tableName, DefinitionTable readDefinition, Func<WitSqlValue[], WitSqlValue[]> transform)
     {
         var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
-        var rowsToUpdate = new List<(long rowId, WitSqlValue[] newValues)>();
+        var rows = new List<(long RowId, WitSqlValue[] Values)>();
 
-        foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+        foreach (var (key, value) in ScanStore(prefix, GetNextPrefix(prefix)))
         {
             var rowId = SchemaCatalog.ParseRowId(key, tableName);
-            var existingRow = table.DeserializeRow(value);
-            var newValues = transform(existingRow.Values.ToArray());
-            rowsToUpdate.Add((rowId, newValues));
+            var existingRow = readDefinition.DeserializeRow(value);
+            rows.Add((rowId, transform(existingRow.Values.ToArray())));
         }
 
-        // Apply updates using same format as SerializeRow
-        foreach (var (rowId, newValues) in rowsToUpdate)
+        return rows;
+    }
+
+    /// <summary>
+    /// Writes migrated rows back using the definition they must be readable under.
+    /// </summary>
+    private void WriteMigratedRows(
+        string tableName, DefinitionTable writeDefinition,
+        List<(long RowId, WitSqlValue[] Values)> rows)
+    {
+        foreach (var (rowId, values) in rows)
         {
             var key = SchemaCatalog.CreateRowKey(tableName, rowId);
-            var data = table.SerializeValuesArray(newValues);
-            PutToStore(key, data);
+            PutToStore(key, writeDefinition.SerializeValuesArray(values));
         }
     }
 
