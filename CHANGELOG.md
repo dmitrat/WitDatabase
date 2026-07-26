@@ -53,6 +53,19 @@ and read rows back.
 - **A database file from a newer major format version is rejected** rather than parsed as though its
   layout were the current one. `FORMAT_VERSION` was written and never compared.
 
+### Fixed — snapshot isolation
+
+- **A snapshot could observe a transaction's writes partially applied.** Commit timestamps and
+  snapshot timestamps came from the same counter, and the commit timestamp was allocated *before* any
+  version was installed — so a reader could take a snapshot above a commit that had only partly
+  landed, and see some of its keys updated and others not. Snapshots now read a published watermark
+  and a commit installs everything before publishing it, so a transaction is visible entirely or not
+  at all. The same change closes a lost update where two writers could both pass conflict validation
+  and both install.
+
+  This defect predates 1.1.0; it was found because its stress test fails about one run in five, on
+  the released code as well.
+
 ### Fixed — silent data corruption
 
 - `DROP COLUMN` re-serialized surviving rows against the *pre*-drop column list, so every column
@@ -114,6 +127,9 @@ and read rows back.
 - `UseWitDbInMemory()` cannot persist across EF's per-operation connection close.
 - At-rest encryption fails closed and does not leak plaintext, but its key schedule needs a rebuild:
   the salt is derived from the password, so it adds no entropy.
+- In the MVCC path: the tombstone written when a version is superseded is not transaction-gated and
+  rollback does not revert it, so a failure part-way through a commit still destroys the previous
+  value; pruning the committed-transaction map can make committed data invisible.
 - The remaining items are listed in [Docs/AUDIT-2026-07.md](Docs/AUDIT-2026-07.md) §3.
 
 ## 1.1.0 and earlier
