@@ -185,6 +185,9 @@ orderByItem
 limitClause
     : LIMIT expression (OFFSET expression)?
     | LIMIT expression COMMA expression
+    // OFFSET with no LIMIT. Standard SQL and PostgreSql allow it, and without it a provider has to
+    // emit SQLite's `LIMIT -1 OFFSET n` for EF Core's Skip(n) without Take(n).
+    | OFFSET expression
  ;
 
 // ============================================================================

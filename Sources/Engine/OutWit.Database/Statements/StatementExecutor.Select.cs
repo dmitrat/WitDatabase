@@ -210,7 +210,8 @@ public sealed partial class StatementExecutor
         if (select.LimitCount != null)
         {
             var limitValue = evaluator.Evaluate(select.LimitCount, dummyRow);
-            if (!limitValue.IsNull)
+            // A negative limit means unbounded; Take(-1) would return nothing.
+            if (!limitValue.IsNull && limitValue.AsInt64() >= 0)
             {
                 rows = rows.Take((int)limitValue.AsInt64()).ToList();
             }

@@ -93,13 +93,14 @@ public sealed class WitQuerySqlGenerator : QuerySqlGenerator
 
         if (selectExpression.Offset != null)
         {
+            // WitSQL accepts OFFSET on its own, so there is no need for SQLite's `LIMIT -1`
+            // placeholder. That form is still parsed and honoured, but emitting the standard one
+            // keeps generated SQL readable and portable.
             if (selectExpression.Limit == null)
-            {
-                // If only OFFSET, we need to use a very large LIMIT
-                Sql.AppendLine().Append("LIMIT -1");
-            }
+                Sql.AppendLine().Append("OFFSET ");
+            else
+                Sql.Append(" OFFSET ");
 
-            Sql.Append(" OFFSET ");
             Visit(selectExpression.Offset);
         }
     }

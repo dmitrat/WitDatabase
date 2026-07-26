@@ -227,14 +227,20 @@ namespace OutWit.Database.Core.Managers
                     stackBuffer[count] = currentPage;
                 count++;
                 
-                var cachedPage = m_pageManager.GetPage(currentPage);
+                // Capture before the read overwrites currentPage with the NEXT page number.
+                // Releasing `currentPage` after the read released the next link instead of the page
+                // just pinned, so every page of a freed chain except the last stayed pinned for the
+                // lifetime of the page manager - until the cache reported that everything was pinned.
+                // FreeOverflowAsync already got this right.
+                var pinnedPage = currentPage;
+                var cachedPage = m_pageManager.GetPage(pinnedPage);
                 try
                 {
                     currentPage = BinaryPrimitives.ReadUInt32LittleEndian(cachedPage.ReadOnlyData[2..]);
                 }
                 finally
                 {
-                    m_pageManager.ReleasePage(currentPage == 0 ? (heapBuffer?[count-1] ?? stackBuffer[count-1]) : currentPage);
+                    m_pageManager.ReleasePage(pinnedPage);
                 }
             }
             

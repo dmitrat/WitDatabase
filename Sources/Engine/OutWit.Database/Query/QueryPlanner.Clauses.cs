@@ -288,13 +288,17 @@ public sealed partial class QueryPlanner
 
     private IResultIterator ApplyLimitClause(IResultIterator iterator, WitSqlExpression? limitCount, WitSqlExpression? limitOffset)
     {
-        if (limitCount == null)
+        if (limitCount == null && limitOffset == null)
             return iterator;
 
         var evaluator = new ExpressionEvaluator(m_context);
         var dummyRow = new WitSqlRow([], []);
 
-        var limit = evaluator.Evaluate(limitCount, dummyRow).AsInt64();
+        // A missing or negative count means "no upper bound", so OFFSET alone still applies. Before,
+        // a null count returned the iterator untouched and the offset was silently dropped.
+        var limit = limitCount != null
+            ? evaluator.Evaluate(limitCount, dummyRow).AsInt64()
+            : -1;
         var offset = limitOffset != null
             ? evaluator.Evaluate(limitOffset, dummyRow).AsInt64()
             : 0;
