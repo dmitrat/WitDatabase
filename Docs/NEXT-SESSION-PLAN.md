@@ -329,20 +329,53 @@ Unlike A and B this is an **investigation**, not a fix list. The goal is to find
 and the allocations actually go, and only then decide what to change. There are concrete leads
 already, all measured during the audit session.
 
-### What is already known
+### The competitor is LiteDB, not SQLite
 
-**LSM is slower than SQLite on transactional inserts, badly.** Measured on the in-repo
-`TransactionBenchmarks` (Ryzen 9 5950X, .NET 10, ShortRun), single transaction with N inserts:
+This framing matters more than any individual measurement, and the README currently gets it wrong by
+using SQLite as the baseline.
 
-| configuration | N | WitDatabase | vs SQLite |
-|---|---|---|---|
-| Default (MVCC, durable) | 100 | 3.17 ms | 2.5x faster |
-| Default (MVCC, durable) | 500 | 5.30 ms | 1.3x faster |
-| `MVCC=false`, B+Tree | 500 | 4.41 ms | 1.6x faster |
-| `MVCC=false`, LSM | 100 | 12.28 ms | **1.8x slower** |
-| `MVCC=false`, LSM | 500 | 55.81 ms | **7.9x slower** |
+**SQLite is native C.** Its numbers are a reference point, not a target: matching a twenty-year-old C
+engine from managed code is probably not a solvable problem. Where WitDatabase does come close — or
+ahead — part of the credit belongs to P/Invoke overhead in the C# wrapper rather than to the engine,
+and that should be said out loud when it is claimed.
 
-LiteDB beats WitDatabase in every one of those rows. Allocations are **17-25x** SQLite's.
+**LiteDB is the real competitor.** It is pure .NET, like WitDatabase, so it is beatable on the same
+terms. It is *not* relational and has no EF Core provider, which is exactly the gap WitDatabase
+exists to fill. So the goal is precise:
+
+> **Faster than LiteDB and lighter than LiteDB, with full EF Core support.**
+> Approaching or beating SQLite anywhere is a bonus, and worth reporting when it happens.
+
+### Where that goal actually stands
+
+Measured on the in-repo `TransactionBenchmarks` (Ryzen 9 5950X, .NET 10, ShortRun), single
+transaction with N inserts, **LiteDB as the baseline**:
+
+| configuration | N | WitDatabase | LiteDB | vs LiteDB | allocated Wit / Lite |
+|---|---|---|---|---|---|
+| B+Tree, `MVCC=false` | 100 | 2.43 ms | 0.81 ms | **3.0x slower** | 736 / 827 KB |
+| B+Tree, `MVCC=false` | 500 | 4.30 ms | 1.98 ms | **2.2x slower** | 3621 / 5181 KB |
+| Default (MVCC, durable) | 100 | 3.17 ms | 0.80 ms | **4.0x slower** | 929 / 827 KB |
+| Default (MVCC, durable) | 500 | 5.30 ms | 2.21 ms | **2.4x slower** | 4509 / 5181 KB |
+| LSM, `MVCC=false` | 100 | 12.28 ms | 0.73 ms | **16.8x slower** | 762 / 827 KB |
+| LSM, `MVCC=false` | 500 | 52.91 ms | 2.33 ms | **22.7x slower** | 3726 / 5181 KB |
+
+Read plainly: **the memory half of the goal is largely met, the speed half is not met anywhere.**
+
+- **Memory — ahead.** At 500 inserts WitDatabase allocates ~30% less than LiteDB in every mode. Only
+  the MVCC path at 100 inserts is worse (929 KB against 827 KB), and MVCC versioning is the obvious
+  suspect. Against SQLite's 42 KB / 208 KB both managed engines look profligate, which is what a
+  native engine with no managed object graph buys — that gap is not the target.
+- **Speed — behind, everywhere.** Best case is 2.2x slower on the B+Tree engine. The MVCC default
+  that every ADO.NET and EF Core consumer actually gets is 2.4-4.0x slower.
+- **LSM is in a different category of wrong**: 17-28x slower than LiteDB and 7.9x slower than
+  *SQLite*, non-linearly worse as N grows. Something in that path is quadratic or flushing per
+  operation. This is the first thing to look at, not because LSM matters most but because a 28x gap
+  usually means one identifiable mistake rather than diffuse overhead.
+
+An honest scorecard also has to note what LiteDB does **not** do: it is not relational, has no SQL
+engine, no EF Core provider, no MVCC snapshot isolation. Some of the gap is the cost of features it
+does not have. That is an explanation, not an excuse — the goal above is still the goal.
 
 **Space is not reclaimed.** Five rounds of `DELETE FROM T` plus refilling the same 2,000 rows grew
 the file from 1,564 KB to 10,788 KB — **6.9x**, with no `VACUUM` to recover it. The audit's finding
@@ -380,18 +413,31 @@ open of a legacy file.
 3. The README table currently states measured transaction numbers and explicitly withdraws the
    INSERT/UPDATE/DELETE/SELECT rows. Those come back only when there is a committed benchmark that
    measures them.
+4. **Re-baseline the benchmarks on LiteDB.** Both the suite's `Baseline = true` attribute and the
+   README table use SQLite, which reports the wrong ratio for the thing being optimised — every
+   number currently reads as a win against a native engine while hiding a 2-3x loss to the actual
+   competitor. Move the baseline to LiteDB and keep SQLite as an additional column.
 
 ### Then: where does the time go
 
 Profile rather than guess. Specific questions worth answering, in rough priority:
 
-- **Why is LSM 8x slower than SQLite at 500 inserts per transaction, and non-linear in N?** 12 ms at
-  100 and 56 ms at 500 is worse than linear. Suspects: memtable rotation, per-commit flush
-  behaviour, `LsmParallelWriter`'s buffering, the full-store scan in `CommitTransaction`.
-- **Where do the 17-25x allocations come from?** `MemoryDiagnoser` is already enabled; get the
-  allocation profile per operation. `MvccRecord.Serialize`, the `byte[]` key building throughout
+- **Why is LSM 17-28x slower than LiteDB, and non-linear in N?** 12 ms at 100 inserts and 53 ms at
+  500 is worse than linear, and it is the only configuration that loses to *SQLite* too. A gap that
+  size is usually one identifiable mistake. Suspects: memtable rotation, per-commit flush behaviour,
+  `LsmParallelWriter`'s buffering, the full-store scan in `CommitTransaction`. Start here.
+- **What is the 2.2-3.0x B+Tree gap made of?** This is the one that has to close for the goal to be
+  met. It is small enough to be diffuse overhead rather than one bug, which means profiling, not
+  guessing: allocation churn, key construction, serialization, or lock traffic.
+- **What does MVCC cost?** Default is 3.17 ms against B+Tree's 2.43 ms at 100 inserts, and 929 KB
+  against 736 KB — MVCC is ~30% slower and ~25% heavier, and it is what every consumer gets. It is
+  also the only configuration that allocates more than LiteDB. Worth knowing whether that is
+  versioning itself or the commit path.
+- **Where do the allocations come from?** `MemoryDiagnoser` is already enabled; get the allocation
+  profile per operation. `MvccRecord.Serialize`, the `byte[]` key building throughout
   (`SchemaCatalog.CreateRowKey` allocates on every row access), and `WitSqlValue` boxing through
-  `m_objectValue` are the first places to look.
+  `m_objectValue` are the first places to look. Note the target is LiteDB's ~827 KB / 5181 KB, which
+  is mostly already beaten — the remaining work here is the MVCC path.
 - **What does the commit lock added in `0a3b876` cost under concurrent writers?** It was correct to
   add — it closed a snapshot-isolation violation — but its cost has not been measured, and it wraps
   the O(n) scan above. Measure before and after fixing the scan.
@@ -408,6 +454,9 @@ Profile rather than guess. Specific questions worth answering, in rough priority
   opt-in, as `WithAsynchronousCommit()` is.
 - Any published number must name the configuration it was measured in. The reason the old README
   table had to be withdrawn is that it did not.
+- A claim of beating SQLite must say which workload and, where it is plausibly the reason, that
+  P/Invoke overhead in the managed wrapper is part of the margin. Overstating that is how the
+  previous performance table lost its credibility.
 
 ---
 
@@ -422,7 +471,10 @@ If the goal is **confidence in the audit**, do B — the 104 are the difference 
 real problems" and "we know what is wrong with this database".
 
 If the goal is **the performance story**, do C, starting with the benchmark suite. Nothing else in C
-is worth doing while the harness measures a configuration nobody runs.
+is worth doing while the harness measures a configuration nobody runs and reports its ratios against
+the wrong engine. The headline to keep in view: against the competitor that matters, WitDatabase is
+**2.2-3.0x slower on its best engine and ~30% lighter** — half the goal is already met, and the other
+half is not close.
 
 One thing that is not in any of the three, and is worth doing whenever there is an hour: **run EF
 Core's own provider specification suite** (`Microsoft.EntityFrameworkCore.Specification.Tests`). It
