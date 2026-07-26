@@ -193,6 +193,27 @@ public sealed partial class WitSqlEngine
     /// <summary>
     /// Updates all secondary indexes after a row delete.
     /// </summary>
+    /// <summary>
+    /// Best-effort removal of the index entries a failed insert may have added.
+    /// </summary>
+    /// <remarks>
+    /// Used to compensate a rejected INSERT. Entries that were never added are simply absent, and
+    /// the row that caused the conflict carries a different row id, so its entry is not touched. A
+    /// failure while compensating must not mask the original error, so it is swallowed - the caller
+    /// is already unwinding.
+    /// </remarks>
+    private void TryRemoveIndexEntries(string tableName, DefinitionTable table, long rowId, WitSqlRow row)
+    {
+        try
+        {
+            UpdateIndexesOnDelete(tableName, table, rowId, row);
+        }
+        catch
+        {
+            // Swallowed on purpose: the original exception is the one that matters.
+        }
+    }
+
     private void UpdateIndexesOnDelete(string tableName, DefinitionTable table, long rowId, WitSqlRow oldRow)
     {
         var indexes = m_schema.GetTableIndexes(tableName);

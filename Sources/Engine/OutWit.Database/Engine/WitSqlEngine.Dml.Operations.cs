@@ -99,9 +99,24 @@ public sealed partial class WitSqlEngine
 
         PutToStore(key, value);
 
-        // Update all secondary indexes for this table
-        UpdateIndexesOnInsert(tableName, table, rowId, row);
-        
+        // Update all secondary indexes for this table. A unique-index violation is raised here,
+        // after the row has been written, so without compensation a rejected INSERT left the row in
+        // the store - invisible to COUNT(*), which reads the catalog's counter, but returned by any
+        // SELECT after a reopen. A failure part-way through also left entries in the indexes that
+        // did accept the row.
+        try
+        {
+            UpdateIndexesOnInsert(tableName, table, rowId, row);
+        }
+        catch
+        {
+            // Remove is keyed by (indexKey, rowId); entries this insert never added are simply not
+            // there, and the conflicting row's entry has a different rowId, so it is untouched.
+            TryRemoveIndexEntries(tableName, table, rowId, row);
+            DeleteFromStore(key);
+            throw;
+        }
+
         // Update row count
         m_schema.IncrementRowCount(tableName, 1, m_currentTransaction);
         
@@ -155,8 +170,23 @@ public sealed partial class WitSqlEngine
 
         // Update indexes (remove old keys, add new keys)
         // Pass modified columns for optimization
-        UpdateIndexesOnUpdate(tableName, table, rowId, oldRow, newRow, modifiedColumns);
-        
+        try
+        {
+            UpdateIndexesOnUpdate(tableName, table, rowId, oldRow, newRow, modifiedColumns);
+        }
+        catch
+        {
+            // A rejected UPDATE must not leave the new values behind. Restoring the stored bytes is
+            // exact; the index side can only be partially reverted here, and full index rollback
+            // needs the per-transaction inverse-op log (see the audit's transactional-index item).
+            if (oldValue != null)
+                PutToStore(key, oldValue);
+            else
+                DeleteFromStore(key);
+
+            throw;
+        }
+
         // Note: UPDATE does not change row count
     }
 
