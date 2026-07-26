@@ -15,6 +15,7 @@ namespace OutWit.Database.Core.Transactions
         private readonly ConcurrentDictionary<long, long> m_committedTransactions;
         private readonly object m_timestampLock = new();
         private long m_currentTimestamp;
+        private long m_stableTimestamp;
 
         #endregion
 
@@ -27,6 +28,7 @@ namespace OutWit.Database.Core.Transactions
         public TransactionTimestampManager(long initialTimestamp = 0)
         {
             m_currentTimestamp = initialTimestamp;
+            m_stableTimestamp = initialTimestamp;
             m_activeTransactions = new ConcurrentDictionary<long, TransactionInfo>();
             m_committedTransactions = new ConcurrentDictionary<long, long>();
         }
@@ -41,6 +43,28 @@ namespace OutWit.Database.Core.Transactions
             lock (m_timestampLock)
             {
                 return ++m_currentTimestamp;
+            }
+        }
+
+        /// <inheritdoc/>
+        public long StableTimestamp
+        {
+            get
+            {
+                lock (m_timestampLock)
+                {
+                    return m_stableTimestamp;
+                }
+            }
+        }
+
+        /// <inheritdoc/>
+        public void Publish(long timestamp)
+        {
+            lock (m_timestampLock)
+            {
+                if (timestamp > m_stableTimestamp)
+                    m_stableTimestamp = timestamp;
             }
         }
 

@@ -640,30 +640,42 @@ namespace OutWit.Database.Core.Transactions
 
             try
             {
-                // Check for conflicts based on isolation level
-                ValidateNoConflicts();
-
-                // Get commit timestamp
-                var commitTimestamp = m_timestampManager.GetNextTimestamp();
-
-                // Apply changes to MVCC store
-                foreach (var (key, (newValue, _)) in m_changes)
+                // Everything from validation to publishing the timestamp is one critical section.
+                // The commit timestamp is allocated before the versions are installed, and snapshots
+                // come from the same counter, so without this a reader could take a snapshot above
+                // this commit and then see only the part of it that had landed - a partial commit.
+                // Publishing at the end is what makes it all-or-nothing: snapshots read the
+                // watermark, so they see this transaction either entirely or not at all.
+                //
+                // Validation is inside for a second reason: outside, two writers could both pass and
+                // both install, losing one of the updates.
+                long commitTimestamp;
+                lock (m_store.CommitLock)
                 {
-                    if (newValue == null)
+                    ValidateNoConflicts();
+
+                    commitTimestamp = m_timestampManager.GetNextTimestamp();
+
+                    foreach (var (key, (newValue, _)) in m_changes)
                     {
-                        m_store.DeleteVersion(key, commitTimestamp, TransactionId);
+                        if (newValue == null)
+                        {
+                            m_store.DeleteVersion(key, commitTimestamp, TransactionId);
+                        }
+                        else
+                        {
+                            m_store.PutVersion(key, newValue, commitTimestamp, TransactionId);
+                        }
                     }
-                    else
-                    {
-                        m_store.PutVersion(key, newValue, commitTimestamp, TransactionId);
-                    }
+
+                    // Marks the records committed and calls MarkCommitted on the timestamp manager
+                    // itself - calling it again here would be redundant.
+                    m_store.CommitTransaction(TransactionId, commitTimestamp);
+
+                    State = TransactionState.Committed;
+
+                    m_timestampManager.Publish(commitTimestamp);
                 }
-
-                // Mark transaction as committed in MVCC store
-                m_store.CommitTransaction(TransactionId, commitTimestamp);
-                m_timestampManager.MarkCommitted(TransactionId, commitTimestamp);
-
-                State = TransactionState.Committed;
 
                 // Make the commit durable before returning. Without this a successful COMMIT was
                 // lost by a process kill, and this path has no journal to replay from. A flush
@@ -687,28 +699,40 @@ namespace OutWit.Database.Core.Transactions
 
             try
             {
-                ValidateNoConflicts();
+                // Same critical section as Commit(); see the comment there. Nothing inside is async,
+                // so a plain lock is fine - and the flush below must stay outside it, both because a
+                // lock cannot span an await and because holding it across I/O would serialise every
+                // commit behind a disk write.
+                //
+                // Cancellation is checked before entering: cancelling half way through installing
+                // would leave the transaction partly applied, which is the very thing this closes.
+                cancellationToken.ThrowIfCancellationRequested();
 
-                var commitTimestamp = m_timestampManager.GetNextTimestamp();
-
-                foreach (var (key, (newValue, _)) in m_changes)
+                long commitTimestamp;
+                lock (m_store.CommitLock)
                 {
-                    cancellationToken.ThrowIfCancellationRequested();
+                    ValidateNoConflicts();
 
-                    if (newValue == null)
+                    commitTimestamp = m_timestampManager.GetNextTimestamp();
+
+                    foreach (var (key, (newValue, _)) in m_changes)
                     {
-                        m_store.DeleteVersion(key, commitTimestamp, TransactionId);
+                        if (newValue == null)
+                        {
+                            m_store.DeleteVersion(key, commitTimestamp, TransactionId);
+                        }
+                        else
+                        {
+                            m_store.PutVersion(key, newValue, commitTimestamp, TransactionId);
+                        }
                     }
-                    else
-                    {
-                        m_store.PutVersion(key, newValue, commitTimestamp, TransactionId);
-                    }
+
+                    m_store.CommitTransaction(TransactionId, commitTimestamp);
+
+                    State = TransactionState.Committed;
+
+                    m_timestampManager.Publish(commitTimestamp);
                 }
-
-                m_store.CommitTransaction(TransactionId, commitTimestamp);
-                m_timestampManager.MarkCommitted(TransactionId, commitTimestamp);
-
-                State = TransactionState.Committed;
 
                 // See Commit(): the commit is not durable until the store has been flushed.
                 if (m_store.SynchronousCommit)

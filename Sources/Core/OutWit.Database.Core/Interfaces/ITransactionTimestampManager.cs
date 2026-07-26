@@ -14,6 +14,25 @@ namespace OutWit.Database.Core.Interfaces
         long GetNextTimestamp();
 
         /// <summary>
+        /// The highest timestamp whose transaction has finished applying all of its writes.
+        /// </summary>
+        /// <remarks>
+        /// A snapshot must be taken from here, not from <see cref="GetNextTimestamp"/>. Commit
+        /// timestamps come from the same counter as snapshots and are allocated *before* the
+        /// transaction's versions are installed, so a snapshot drawn from the counter can sit above
+        /// a commit that has only partly landed - and the reader then sees some of that
+        /// transaction's writes and not others. Reading the published watermark instead means a
+        /// snapshot only ever sees commits that are complete.
+        /// </remarks>
+        long StableTimestamp { get; }
+
+        /// <summary>
+        /// Publishes a commit timestamp as visible, once all of its writes are installed.
+        /// </summary>
+        /// <param name="timestamp">The commit timestamp to make visible.</param>
+        void Publish(long timestamp);
+
+        /// <summary>
         /// Registers a transaction as active with its snapshot timestamp.
         /// </summary>
         /// <param name="transactionId">The unique transaction ID.</param>
