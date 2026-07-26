@@ -664,6 +664,13 @@ namespace OutWit.Database.Core.Transactions
                 m_timestampManager.MarkCommitted(TransactionId, commitTimestamp);
 
                 State = TransactionState.Committed;
+
+                // Make the commit durable before returning. Without this a successful COMMIT was
+                // lost by a process kill, and this path has no journal to replay from. A flush
+                // failure surfaces to the caller rather than being swallowed - the transaction is
+                // applied but not durable, and the caller has to know that.
+                if (m_store.SynchronousCommit)
+                    m_store.Flush();
             }
             finally
             {
@@ -702,6 +709,10 @@ namespace OutWit.Database.Core.Transactions
                 m_timestampManager.MarkCommitted(TransactionId, commitTimestamp);
 
                 State = TransactionState.Committed;
+
+                // See Commit(): the commit is not durable until the store has been flushed.
+                if (m_store.SynchronousCommit)
+                    await m_store.FlushAsync(cancellationToken).ConfigureAwait(false);
             }
             finally
             {

@@ -50,6 +50,26 @@ namespace OutWit.Database.Core.Transactions
 
         #endregion
 
+        #region Durability
+
+        /// <summary>
+        /// Whether a successful commit is flushed to the underlying store before it returns.
+        /// Defaults to <c>true</c>.
+        /// </summary>
+        /// <remarks>
+        /// MVCC is the default transactional mode behind the ADO.NET and EF Core providers, and its
+        /// commit path used to apply the new versions in memory and return without flushing anything.
+        /// A process kill after a successful COMMIT therefore lost the transaction - the D in ACID -
+        /// and there is no journal on this path to replay it from.
+        ///
+        /// Turning this off trades that guarantee for throughput. It is a legitimate choice for a
+        /// disposable test database or a bulk import that will be re-run on failure, and it is what
+        /// the pre-2.0 behaviour was, but it must be opted into rather than inherited by accident.
+        /// </remarks>
+        public bool SynchronousCommit { get; set; } = true;
+
+        #endregion
+
         #region Constructors
 
         /// <summary>
