@@ -115,8 +115,23 @@ internal sealed partial class WitSqlVisitor
                 Column = like.Start.Column,
                 Expression = VisitExpression(like.expression(0)),
                 Pattern = VisitExpression(like.expression(1)),
-                Escape = like.expression().Length > 2 ? VisitExpression(like.expression(2)) : null,
                 IsNot = like.NOT() != null
+            },
+            WitSqlParser.LikeEscapeExprContext likeEscape => new WitSqlExpressionLike
+            {
+                Line = likeEscape.Start.Line,
+                Column = likeEscape.Start.Column,
+                Expression = VisitExpression(likeEscape.expression(0)),
+                Pattern = VisitExpression(likeEscape.expression(1)),
+                Escape = VisitExpression(likeEscape.expression(2)),
+                IsNot = likeEscape.NOT() != null
+            },
+            WitSqlParser.NotExprContext not => new WitSqlExpressionUnary
+            {
+                Line = not.Start.Line,
+                Column = not.Start.Column,
+                Operator = UnaryOperatorType.Not,
+                Operand = VisitExpression(not.expression())
             },
             WitSqlParser.AndExprContext and => new WitSqlExpressionBinary
             {

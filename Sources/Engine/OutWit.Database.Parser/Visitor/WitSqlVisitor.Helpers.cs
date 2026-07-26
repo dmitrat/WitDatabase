@@ -11,8 +11,8 @@ internal sealed partial class WitSqlVisitor
     {
         if (context.MINUS() != null) return UnaryOperatorType.Negate;
         if (context.PLUS() != null) return UnaryOperatorType.Plus;
-        if (context.NOT() != null) return UnaryOperatorType.Not;
         if (context.TILDE() != null) return UnaryOperatorType.BitwiseNot;
+        // NOT is no longer part of unaryExpr - it has its own low-precedence alternative (notExpr).
         throw new InvalidOperationException("Unknown unary operator");
     }
 
