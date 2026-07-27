@@ -97,6 +97,29 @@ Roughly a week, and larger than it looks:
 
 ## B. The 104 unverified audit findings — **complete, 2026-07-27**
 
+### Fixed so far
+
+Verification is finished; fixing has started. Branch `fix/audit-confirmed-defects`, on top of the
+verification branch. Ten confirmed defects are closed, each by removing the `[Ignore]` from the test
+that proved it — the marker count is the remaining work, and it stands at **100 of 106**.
+
+| Fixed | Finding | Note |
+|---|---|---|
+| `9510710` | Connection-string password reaching the EF Core log | The one whose cost does not scale with frequency. Redaction keeps the `Data Source` — a log line that says nothing is its own failure — and **fails closed**: an unparseable string is withheld whole. |
+| `f71a897` | MySQL `LIMIT offset, count` bound the operands backwards | The comma form now has its own branch; it cannot share one with `LIMIT count OFFSET offset`, because the same positions mean opposite things. |
+| `f71a897` | MERGE gave the target the source's alias | Split by position relative to `USING`. An index into `context.alias()` cannot identify them when both are optional. |
+| `6198ff8` | `SchemaCatalog.AddColumn` accepted a duplicate | Left the catalog holding `[Id, A, A]` on a replayed migration. |
+| `6ebc621` | `NULLS FIRST/LAST` ignored | Resolved **before** `ASC/DESC`, since the two are orthogonal; a test pins that specifically. |
+| `6ebc621` | `LIMIT` applied before `DISTINCT` | `IteratorDistinct` is streaming and yields first occurrences, so an upstream `ORDER BY` still survives; the change costs the early-out, not the ordering. |
+| `6ebc621` | `LIKE` regex flags — three defects | `Singleline`, `\A`/`\z` instead of `^`/`$`, `CultureInvariant`. **`IgnoreCase` deliberately untouched**: WitSQL.md does not fix LIKE's case behaviour, and changing it would silently alter every consumer's results — a semantics decision, not a defect fix. |
+| `e899ad6` | Scalar functions swallowed NULL | A general strict guard with an explicit exemption list. The JSON half of that list came from the **suite**, not from reasoning: a first version broke `JSON_ARRAY(1, NULL, 'hello')` and `JSON_TYPE(NULL)`. A guard this broad only earns its keep behind a full run. |
+| `bc03319` | Ordered windows defaulted to the whole partition | **Behavioural change, and the point rather than a side effect**: `LAST_VALUE` now returns the current row, as in every real backend. Two tests that asserted the old answer now assert the standard one, plus a new test showing the explicit frame that gets the partition's last value. |
+
+**One gap deliberately left open and pinned**: the synthesized default frame is typed `RANGE`, but
+`CURRENT ROW` still maps to the current index whatever the frame type, so peers — rows with equal
+`ORDER BY` values — are not grouped as `RANGE` requires. It affects ties only, and is narrower than
+the defect it came from. `WindowRangeFrameGroupsPeersTest` states it.
+
 ### What these are, precisely
 
 The audit ran 16 dimensions and produced **272 findings**, of which **198** were rated

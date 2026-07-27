@@ -65,6 +65,35 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
+    [Ignore("KNOWN GAP, narrower than the defect it came from. The default frame is now correctly " +
+            "UNBOUNDED PRECEDING .. CURRENT ROW, but it is typed RANGE and " +
+            "CalculateFrameBoundIndex maps CURRENT ROW to the current index whatever the frame " +
+            "type, so peers - rows with equal ORDER BY values - are not grouped as RANGE requires. " +
+            "Under RANGE every peer shares the frame that ends at the LAST peer, so all three rows " +
+            "below should read 450. Affects ties only. engine-query, " +
+            "Iterators/IteratorWindow.Frame.cs")]
+    public void WindowRangeFrameGroupsPeersTest()
+    {
+        // Three rows with the SAME ordering key, so they are peers of one another.
+        m_engine.Execute(@"
+            CREATE TABLE Peers (
+                Id BIGINT PRIMARY KEY AUTOINCREMENT,
+                Bucket INT NOT NULL,
+                Amount DECIMAL NOT NULL)");
+        m_engine.Execute("INSERT INTO Peers (Bucket, Amount) VALUES (1, 100)");
+        m_engine.Execute("INSERT INTO Peers (Bucket, Amount) VALUES (1, 150)");
+        m_engine.Execute("INSERT INTO Peers (Bucket, Amount) VALUES (1, 200)");
+
+        var totals = m_engine.Query(
+                "SELECT SUM(Amount) OVER (ORDER BY Bucket) AS T FROM Peers")
+            .Select(r => r["T"].AsDecimal())
+            .ToArray();
+
+        Assert.That(totals, Is.EqualTo(new[] { 450m, 450m, 450m }),
+            "under RANGE, peers share a frame that ends at the last peer");
+    }
+
+    [Test]
     public void WindowWithoutOrderByStaysWholePartitionTest()
     {
         // Passes. Pins what must NOT change: with no ORDER BY the frame really is the whole
