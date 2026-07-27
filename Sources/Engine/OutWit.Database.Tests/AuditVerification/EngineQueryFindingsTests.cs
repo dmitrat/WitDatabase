@@ -203,15 +203,15 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
         "CONFIRMED 2026-07-27: returns a zero-value instead of NULL. " +
         "engine-query, Expressions/ExpressionEvaluator.Functions.cs:58";
 
-    [TestCase("LENGTH(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("UPPER(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("LOWER(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("TRIM(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("ROUND(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("YEAR(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("MONTH(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("SUBSTR(NULL, 1, 2)", Ignore = NullPropagationIgnore)]
-    [TestCase("REPLACE(NULL, 'a', 'b')", Ignore = NullPropagationIgnore)]
+    [TestCase("LENGTH(NULL)")]
+    [TestCase("UPPER(NULL)")]
+    [TestCase("LOWER(NULL)")]
+    [TestCase("TRIM(NULL)")]
+    [TestCase("ROUND(NULL)")]
+    [TestCase("YEAR(NULL)")]
+    [TestCase("MONTH(NULL)")]
+    [TestCase("SUBSTR(NULL, 1, 2)")]
+    [TestCase("REPLACE(NULL, 'a', 'b')")]
     [TestCase("ABS(NULL)")]
     [TestCase("NULL || 'x'")]
     public void ScalarFunctionPropagatesNullTest(string expression)
