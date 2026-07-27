@@ -109,8 +109,16 @@ namespace OutWit.Database.Core.Tests.LSM
         {
             using var memTable = new MemTable();
             const int writeCount = 1000;
-            var cts = new CancellationTokenSource();
+            using var cts = new CancellationTokenSource();
             var readsCompleted = 0;
+
+            // The readers used to run until cancelled and the test then asserted that at least one
+            // read had happened. That asserts what the scheduler managed, not what the memtable
+            // does: on a loaded runner the reader tasks could fail to start before the writer
+            // finished and cancellation arrived, and readsCompleted was 0 through no fault of the
+            // code. Signalling the first read and waiting for it makes the concurrency real rather
+            // than hoped for - the readers are provably running while the writer works.
+            using var firstReadDone = new ManualResetEventSlim(false);
 
             // Pre-populate some data
             for (int i = 0; i < 100; i++)
@@ -127,9 +135,13 @@ namespace OutWit.Database.Core.Tests.LSM
                         memTable.TryGet(ToBytes("init50"), out byte[]? _);
                         memTable.Scan(null, null).ToList();
                         Interlocked.Increment(ref readsCompleted);
+                        firstReadDone.Set();
                     }
                 }))
                 .ToArray();
+
+            Assert.That(firstReadDone.Wait(TimeSpan.FromSeconds(30)), Is.True,
+                "the readers must be running before the writer is timed against them");
 
             // Writer thread
             var writerTask = Task.Run(() =>
