@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     
-    <Version>2.1.0</Version>
+    <Version>2.2.0</Version>
     <Description>IndexedDB storage provider for WitDatabase. Enables running WitDatabase entirely in the browser with Blazor WebAssembly applications.</Description>
     <PackageTags>OutWit;database;indexeddb;blazor;wasm;webassembly;storage;browser;client-side</PackageTags>
   </PropertyGroup>

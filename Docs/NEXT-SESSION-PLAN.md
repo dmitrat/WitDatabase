@@ -50,7 +50,20 @@ verification pass then confirmed 71 defects that the existing suite ran straight
 testing is the only mechanism that finds that class of hole, and this codebase has already
 demonstrated the hole exists.
 
-### Phase 1 — Data integrity *(≈25 markers, ships 2.2.0)*
+### Phase 1 — Data integrity — **shipped in 2.2.0**
+
+Twelve defects closed across PRs #12, #13 and #14. Marker count 99 → 87.
+
+Fixed: positional cascade matching, self-referencing cascades (with a cycle guard), `ON UPDATE`
+actions, `DROP COLUMN` metadata, duplicate column, integer column ranges, and the READ COMMITTED
+point-read/scan disagreement.
+
+**Two items were deliberately carried forward rather than half-done**, both recorded below: statement
+atomicity, and the discovery that declared sizes are never captured by DDL in the first place. The
+second was not in the audit at all — it surfaced only because the enforcement was written and never
+fired.
+
+<details><summary>Original scope</summary>
 
 The one remaining cluster where a defect **silently corrupts data** rather than returning a wrong
 answer. No dependencies; can start immediately.
@@ -59,6 +72,7 @@ Positional cascade matching (deletes the wrong child *and* orphans the right one
 exotic than a foreign key to a `UNIQUE` column), self-referencing keys, `ON UPDATE` actions,
 statement atomicity, `DROP COLUMN` metadata, and the READ COMMITTED point-read/scan disagreement.
 Nearly all of it lives in `StatementExecutor.Validation`, so a batch is cheaper than one at a time.
+</details>
 
 > **New task, not in the audit: DDL never captures declared sizes.** The finding says VARCHAR(n)
 > length and DECIMAL(p,s) precision are "recorded but never enforced". Measured 2026-07-27 — they are

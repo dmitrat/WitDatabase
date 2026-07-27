@@ -1,5 +1,79 @@
 # Changelog
 
+## 2.2.0
+
+A referential-integrity release. Everything here comes out of the verified backlog
+([Docs/NEXT-SESSION-PLAN.md](Docs/NEXT-SESSION-PLAN.md), phase 1), and these are the defects that
+**corrupted data** rather than returning a wrong answer - a cascade that deleted the wrong row, a
+constraint that never fired, a column write that wrapped.
+
+Minor rather than patch for the same reason as 2.1.0: most of these change an answer the previous
+release gave. Every one is a correction, and a consumer can still see different behaviour after
+upgrading.
+
+### Behaviour changes
+
+- **Cascades now match on the columns a foreign key actually references.** Matching compared the
+  child's key values positionally against the parent's PRIMARY KEY, ignoring `ForeignColumns`. With
+  a foreign key pointing anywhere other than the primary key - a `UNIQUE` column is enough - it went
+  wrong in both directions at once: a child whose referenced row still existed **was deleted**, and
+  a child whose referenced row was gone **survived as an orphan**.
+
+  A key whose column count does not line up with what it references is now skipped rather than
+  matched positionally.
+
+- **Self-referencing foreign keys cascade.** They were skipped outright, so `ON DELETE CASCADE` left
+  the child behind and `ON DELETE RESTRICT` raised nothing at all - the safe-looking declaration was
+  the one that orphaned rows.
+
+  Cascading is recursive, so this makes a reference cycle reachable; a guard tracks the rows whose
+  cascade is in flight and stops one exactly, rather than capping depth and silently truncating a
+  deep but legitimate tree. A row referencing only itself can still be deleted: it is excluded from
+  its own child set, as in every other database.
+
+- **`ON UPDATE` actions run.** Nothing ever reached them: cascading was only ever invoked from
+  DELETE. `CASCADE`, `SET NULL`, `SET DEFAULT`, `RESTRICT` and `NO ACTION` were all parsed, stored,
+  and silently ignored, so changing a referenced key left children pointing at a value that no
+  longer existed. `ON UPDATE CASCADE` rewrites the child's key rather than deleting the child.
+
+- **An integer column refuses a value it cannot hold.** The conversions were unchecked C# casts:
+  `100000` into a `SMALLINT` wrapped silently, and text that is not a number became `0`. Both were
+  wrong answers rather than errors, while WitSQL.md documents the exact range of each type.
+
+  If you have been writing out-of-range values, they were being wrapped and you will now get an
+  error instead. Rows already stored are untouched.
+
+- **A range scan and a point read agree.** `Get` chose its timestamp by isolation level while `Scan`
+  was hard-wired to the snapshot, so under READ COMMITTED one transaction could read the same key as
+  `2` by key and `1` by scan. That level permits seeing another transaction's commit; it does not
+  permit two reads in one transaction to disagree. Stricter levels are unaffected - a rescan under
+  REPEATABLE READ still shows the snapshot.
+
+### Fixed
+
+- **`DROP COLUMN` no longer leaves a table nothing can write to.** Only the column list was
+  rewritten, so the primary key and foreign keys still named a column that had gone and the next
+  INSERT died with `Column '…' not found` - from a DDL statement that reported success. Foreign keys
+  built on the dropped column now go with it. Dropping a column the **primary key** is built from is
+  refused rather than performed, as SQLite does: silently rewriting a table's identity is not a
+  decision `DROP COLUMN` should make on its own.
+
+- **`ALTER TABLE … ADD COLUMN` rejects a duplicate column name** instead of appending it again.
+  Replaying a migration left the catalog holding the same column twice.
+
+### Known and recorded, not fixed here
+
+- **A multi-row statement is still not atomic.** A failure part-way leaves the earlier rows written.
+  The fix is an implicit per-statement transaction - pre-validating every row would break
+  intra-statement uniqueness - which is the same mechanism autocommit durability needs, so it gets
+  its own change rather than a partial one here.
+
+- **Declared sizes are still unenforced, and for a reason the audit did not state.** `VARCHAR(n)`
+  and `DECIMAL(p,s)` are not merely unchecked - they are **never recorded**: after
+  `CREATE TABLE T (S VARCHAR(5))`, the column's `MaxLength` is null. Enforcement cannot be added
+  until the DDL path captures them, and `INFORMATION_SCHEMA` under-reports the schema for the same
+  reason.
+
 ## 2.1.0
 
 The first release out of the verification pass over the 2026-07 audit's backlog. Every one of the
