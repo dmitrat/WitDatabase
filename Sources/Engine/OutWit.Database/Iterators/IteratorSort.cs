@@ -2,6 +2,7 @@ using OutWit.Database.Context;
 using OutWit.Database.Expressions;
 using OutWit.Database.Interfaces;
 using OutWit.Database.Parser.Schema.Clauses;
+using OutWit.Database.Parser.Schema.Types;
 using OutWit.Database.Sql;
 
 namespace OutWit.Database.Iterators;
@@ -48,6 +49,17 @@ public sealed class IteratorSort : IteratorBase
         {
             var valA = m_evaluator.Evaluate(order.Expression, a);
             var valB = m_evaluator.Evaluate(order.Expression, b);
+
+            // NULLS FIRST/LAST is independent of ASC/DESC, so it is resolved before the direction is
+            // applied and is never flipped by it.
+            if (order.NullsOrder != NullsOrderType.Default && (valA.IsNull || valB.IsNull))
+            {
+                if (valA.IsNull && valB.IsNull)
+                    continue;
+
+                var nullsFirst = order.NullsOrder == NullsOrderType.First;
+                return valA.IsNull == nullsFirst ? -1 : 1;
+            }
 
             var cmp = valA.CompareTo(valB);
             if (cmp != 0)

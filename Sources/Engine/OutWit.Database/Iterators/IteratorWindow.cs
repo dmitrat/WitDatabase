@@ -5,6 +5,7 @@ using OutWit.Database.Interfaces;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Clauses;
 using OutWit.Database.Parser.Schema.Specs;
+using OutWit.Database.Parser.Schema.Types;
 using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Values;
@@ -167,8 +168,32 @@ public sealed partial class IteratorWindow : IteratorBase
             var sortedPartition = SortPartition(partition, windowSpec.OrderBy);
 
             // Evaluate window function for each row in the partition
-            EvaluateWindowFunction(selectIndex, funcName, func, sortedPartition, windowSpec.Frame);
+            EvaluateWindowFunction(
+                selectIndex, funcName, func, sortedPartition, EffectiveFrame(windowSpec));
         }
+    }
+
+    /// <summary>
+    /// Resolves the frame an OVER clause actually means when it does not spell one out.
+    /// </summary>
+    /// <remarks>
+    /// SQL's default depends on whether the window is ordered. With an ORDER BY the default is
+    /// <c>RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW</c>, which is what makes
+    /// <c>SUM(x) OVER (ORDER BY y)</c> a running total; without one it is the whole partition.
+    /// Treating both cases as the whole partition turned every ordered window into the partition
+    /// total.
+    /// </remarks>
+    private static SpecFrame? EffectiveFrame(SpecWindow windowSpec)
+    {
+        if (windowSpec.Frame != null || windowSpec.OrderBy is not { Count: > 0 })
+            return windowSpec.Frame;
+
+        return new SpecFrame
+        {
+            FrameType = FrameType.Range,
+            Start = new SpecFrameBound { BoundType = FrameBoundType.UnboundedPreceding },
+            End = new SpecFrameBound { BoundType = FrameBoundType.CurrentRow }
+        };
     }
 
     private Dictionary<string, List<int>> GroupByPartition(

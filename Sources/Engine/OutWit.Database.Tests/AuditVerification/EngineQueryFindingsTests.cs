@@ -25,9 +25,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     #region LIMIT is applied before DISTINCT
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: returns 1 row instead of 3. LIMIT truncates the physical rows " +
-            "before DISTINCT collapses them, so SELECT DISTINCT ... LIMIT n silently under-returns. " +
-            "engine-query, Query/QueryPlanner.cs:545")]
     public void DistinctWithLimitReturnsNDistinctRowsTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, Category VARCHAR(10))");
@@ -50,10 +47,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     #region Default window frame
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: every row returns 450, the partition total, instead of the " +
-            "running total 100/250/450. With an ORDER BY present the default frame must be " +
-            "RANGE UNBOUNDED PRECEDING .. CURRENT ROW. engine-query, " +
-            "Iterators/IteratorWindow.Frame.cs:24")]
     public void WindowWithOrderByDefaultsToRunningTotalTest()
     {
         CreateSales();
@@ -69,6 +62,35 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
             Assert.That(rows[1]["RunningTotal"].AsDecimal(), Is.EqualTo(250m));
             Assert.That(rows[2]["RunningTotal"].AsDecimal(), Is.EqualTo(450m));
         });
+    }
+
+    [Test]
+    [Ignore("KNOWN GAP, narrower than the defect it came from. The default frame is now correctly " +
+            "UNBOUNDED PRECEDING .. CURRENT ROW, but it is typed RANGE and " +
+            "CalculateFrameBoundIndex maps CURRENT ROW to the current index whatever the frame " +
+            "type, so peers - rows with equal ORDER BY values - are not grouped as RANGE requires. " +
+            "Under RANGE every peer shares the frame that ends at the LAST peer, so all three rows " +
+            "below should read 450. Affects ties only. engine-query, " +
+            "Iterators/IteratorWindow.Frame.cs")]
+    public void WindowRangeFrameGroupsPeersTest()
+    {
+        // Three rows with the SAME ordering key, so they are peers of one another.
+        m_engine.Execute(@"
+            CREATE TABLE Peers (
+                Id BIGINT PRIMARY KEY AUTOINCREMENT,
+                Bucket INT NOT NULL,
+                Amount DECIMAL NOT NULL)");
+        m_engine.Execute("INSERT INTO Peers (Bucket, Amount) VALUES (1, 100)");
+        m_engine.Execute("INSERT INTO Peers (Bucket, Amount) VALUES (1, 150)");
+        m_engine.Execute("INSERT INTO Peers (Bucket, Amount) VALUES (1, 200)");
+
+        var totals = m_engine.Query(
+                "SELECT SUM(Amount) OVER (ORDER BY Bucket) AS T FROM Peers")
+            .Select(r => r["T"].AsDecimal())
+            .ToArray();
+
+        Assert.That(totals, Is.EqualTo(new[] { 450m, 450m, 450m }),
+            "under RANGE, peers share a frame that ends at the last peer");
     }
 
     [Test]
@@ -106,9 +128,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: NULLs still sort first, so the trailing positions hold 1 and 3 " +
-            "rather than the two NULL rows. NULLS FIRST/LAST is parsed and then discarded by the " +
-            "sort iterator. engine-query, Iterators/IteratorSort.cs:45")]
     public void OrderByNullsLastPutsNullsLastTest()
     {
         CreateNullable();
@@ -120,14 +139,31 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
             "rows 2 and 4 hold NULL and must sort behind every non-NULL value");
     }
 
+    [Test]
+    public void OrderByNullsLastIsIndependentOfDescendingTest()
+    {
+        // NULLS FIRST/LAST is orthogonal to ASC/DESC in SQL: reversing the direction must not
+        // reverse where the NULLs go. This pins the half of the fix that is easy to get wrong by
+        // resolving the null order after the direction has already been applied.
+        CreateNullable();
+
+        var ids = m_engine.Query("SELECT Id FROM N ORDER BY Value DESC NULLS LAST")
+            .Select(r => r[0].AsInt64()).ToArray();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ids.Take(2), Is.EqualTo(new long[] { 3, 1 }),
+                "DESC still orders the non-NULL values 30 then 10");
+            Assert.That(ids.Skip(2), Is.EquivalentTo(new long[] { 2, 4 }),
+                "NULLS LAST still puts the NULLs at the end");
+        });
+    }
+
     #endregion
 
     #region LIKE regex flags
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: matches 0 rows. The pattern compiles to a .NET regex without " +
-            "RegexOptions.Singleline, so `.` - and therefore % - cannot cross a newline. " +
-            "engine-query, Expressions/ExpressionEvaluator.Conditional.cs:155")]
     public void LikePercentCrossesANewlineTest()
     {
         CreateText("a\nb");
@@ -138,7 +174,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: matches 0 rows, same missing Singleline as the % case.")]
     public void LikeUnderscoreCrossesANewlineTest()
     {
         CreateText("a\nb");
@@ -149,8 +184,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: 'abc\\n' matches LIKE 'abc'. .NET's `$` matches before a final " +
-            "newline, so an anchored pattern accepts a string SQL semantics say it must reject.")]
     public void LikeDoesNotTolerateATrailingNewlineTest()
     {
         CreateText("abc\n");
@@ -161,12 +194,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: 'I' LIKE 'i' matches under the invariant culture and does not " +
-            "match under tr-TR. The regex is built without RegexOptions.CultureInvariant, so the " +
-            "result of a query depends on the calling thread's culture. Note this also shows LIKE " +
-            "is case-insensitive, which WitSQL.md neither documents nor rules out - it does offer " +
-            "COLLATE NOCASE as an opt-in, which implies the default should be case-sensitive. " +
-            "The culture dependence is a defect either way.")]
     public void LikeIsNotCultureSensitiveTest()
     {
         CreateText("I");
@@ -201,15 +228,15 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
         "CONFIRMED 2026-07-27: returns a zero-value instead of NULL. " +
         "engine-query, Expressions/ExpressionEvaluator.Functions.cs:58";
 
-    [TestCase("LENGTH(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("UPPER(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("LOWER(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("TRIM(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("ROUND(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("YEAR(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("MONTH(NULL)", Ignore = NullPropagationIgnore)]
-    [TestCase("SUBSTR(NULL, 1, 2)", Ignore = NullPropagationIgnore)]
-    [TestCase("REPLACE(NULL, 'a', 'b')", Ignore = NullPropagationIgnore)]
+    [TestCase("LENGTH(NULL)")]
+    [TestCase("UPPER(NULL)")]
+    [TestCase("LOWER(NULL)")]
+    [TestCase("TRIM(NULL)")]
+    [TestCase("ROUND(NULL)")]
+    [TestCase("YEAR(NULL)")]
+    [TestCase("MONTH(NULL)")]
+    [TestCase("SUBSTR(NULL, 1, 2)")]
+    [TestCase("REPLACE(NULL, 'a', 'b')")]
     [TestCase("ABS(NULL)")]
     [TestCase("NULL || 'x'")]
     public void ScalarFunctionPropagatesNullTest(string expression)

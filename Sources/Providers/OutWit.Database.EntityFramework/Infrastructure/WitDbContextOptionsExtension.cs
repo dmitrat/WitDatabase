@@ -173,6 +173,8 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
     {
         #region Fields
 
+        private const string REDACTED = "*****";
+
         private string? m_logFragment;
         private int? m_serviceProviderHash;
 
@@ -204,6 +206,36 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
             return m_serviceProviderHash.Value;
         }
 
+        /// <summary>
+        /// Replaces the encryption password in a connection string with a placeholder.
+        /// </summary>
+        /// <remarks>
+        /// EF Core writes <see cref="LogFragment"/> at Information level the first time a context is
+        /// used, and surfaces <see cref="PopulateDebugInfo"/> in diagnostics, so neither may carry a
+        /// secret. This <b>fails closed</b>: a connection string that cannot be parsed is replaced
+        /// wholesale rather than logged as it stands, because an unparseable string is exactly the
+        /// case where we cannot tell whether it holds a password.
+        /// </remarks>
+        internal static string? Redact(string? connectionString)
+        {
+            if (string.IsNullOrEmpty(connectionString))
+                return connectionString;
+
+            try
+            {
+                var builder = new WitDbConnectionStringBuilder(connectionString);
+                if (string.IsNullOrEmpty(builder.Password))
+                    return connectionString;
+
+                builder.Password = REDACTED;
+                return builder.ToString();
+            }
+            catch
+            {
+                return "(connection string withheld - could not be parsed to redact credentials)";
+            }
+        }
+
         public override bool ShouldUseSameServiceProvider(DbContextOptionsExtensionInfo other)
         {
             return other is ExtensionInfo otherInfo
@@ -215,7 +247,7 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
 
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
         {
-            debugInfo["WitDb:ConnectionString"] = Extension.ConnectionString ?? "(null)";
+            debugInfo["WitDb:ConnectionString"] = Redact(Extension.ConnectionString) ?? "(null)";
             debugInfo["WitDb:InMemory"] = Extension.InMemory.ToString();
             debugInfo["WitDb:ParallelMode"] = Extension.ParallelMode.ToString();
             if (Extension.MaxWriters.HasValue)
@@ -243,7 +275,7 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
                     }
                     else if (!string.IsNullOrEmpty(Extension.ConnectionString))
                     {
-                        builder.Append("'").Append(Extension.ConnectionString).Append("'}");
+                        builder.Append('\'').Append(Redact(Extension.ConnectionString)).Append('\'');
                     }
                     else if (Extension.Connection != null)
                     {

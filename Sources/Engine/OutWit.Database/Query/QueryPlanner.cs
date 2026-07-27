@@ -532,11 +532,14 @@ public sealed partial class QueryPlanner
             // ORDER BY - apply after window functions for final ordering
             iterator = ApplyOrderByClause(iterator, select.OrderByClause);
 
-            // LIMIT/OFFSET - after ordering
-            iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
-
-            // DISTINCT - after window processing
+            // DISTINCT - after window processing, and BEFORE the limit: SQL evaluates DISTINCT
+            // first, so limiting ahead of it truncates the rows the duplicates are drawn from and
+            // returns fewer than n distinct values. IteratorDistinct is streaming and yields first
+            // occurrences, so the ordering above survives it.
             iterator = ApplyDistinct(iterator, select.IsDistinct);
+
+            // LIMIT/OFFSET - last, over the distinct result
+            iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
         }
         else
         {
@@ -544,14 +547,16 @@ public sealed partial class QueryPlanner
             // ORDER BY - before projection to access original column names
             iterator = ApplyOrderByClause(iterator, select.OrderByClause);
 
-            // LIMIT/OFFSET - before projection for efficiency
-            iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
-
             // Projection (SELECT columns)
             iterator = ApplyProjection(iterator, select.SelectList);
 
             // DISTINCT - after projection so internal columns (like _rowid) are excluded
             iterator = ApplyDistinct(iterator, select.IsDistinct);
+
+            // LIMIT/OFFSET - last. It used to sit before the projection "for efficiency", which put
+            // it ahead of DISTINCT: the limit then truncated the rows the duplicates were drawn
+            // from, so SELECT DISTINCT ... LIMIT n returned fewer than n distinct values.
+            iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
         }
 
         return iterator;

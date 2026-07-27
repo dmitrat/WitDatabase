@@ -11,8 +11,6 @@ public sealed class SchemaCatalogFindingTests : WitSqlEngineTestsBase
     #region SchemaCatalog.AddColumn accepts a duplicate column name
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the second ALTER TABLE ADD COLUMN is accepted without error. "
-            + "blocker-migrations, Engine/Schema/SchemaCatalog.Columns.cs:17")]
     public void AddingTheSameColumnTwiceIsRejectedTest()
     {
         // Finding: SchemaCatalog.Columns.cs:17 - AddColumn does not reject a duplicate name, so a
@@ -27,9 +25,6 @@ public sealed class SchemaCatalogFindingTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, with the damage visible in the catalog: the table ends up with "
-            + "columns [Id, A, A]. A replayed migration - a partially applied one, or a script run "
-            + "twice - widens every row again.")]
     public void ReplayedAddColumnDoesNotDuplicateTheColumnTest()
     {
         // The consequence: whether or not the second ALTER is rejected, the table must not end up

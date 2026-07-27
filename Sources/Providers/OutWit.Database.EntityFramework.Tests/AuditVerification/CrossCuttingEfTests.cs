@@ -49,11 +49,6 @@ public class CrossCuttingEfTests
     #region Connection-string password reaching the log
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and this is the security one. LogFragment came back as: "
-            + "Using WitDatabase 'Data Source=...;Password=hunter2-should-never-be-logged'} - the "
-            + "encryption password in plaintext. EF Core writes LogFragment at Information level when "
-            + "the context is first used, so it lands in ordinary application logs. "
-            + "cross-cutting, EntityFramework/Infrastructure/WitDbContextOptionsExtension.cs:246")]
     public void LogFragmentDoesNotContainTheConnectionStringPasswordTest()
     {
         // Finding: WitDbContextOptionsExtension.cs:246 - LogFragment appends the connection string
@@ -73,8 +68,6 @@ public class CrossCuttingEfTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the second surface leaks too - PopulateDebugInfo emits "
-            + "WitDb:ConnectionString=Data Source=...;Password=hunter2-should-never-be-logged.")]
     public void DebugInfoDoesNotContainTheConnectionStringPasswordTest()
     {
         // The second surface named by the finding. PopulateDebugInfo feeds the service-provider

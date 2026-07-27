@@ -9,6 +9,26 @@ namespace OutWit.Database.Expressions;
 /// </summary>
 public sealed partial class ExpressionEvaluator
 {
+    #region Constants
+
+    /// <summary>
+    /// The scalar functions that must receive a NULL argument rather than short-circuit to NULL.
+    /// </summary>
+    /// <remarks>
+    /// Two groups. First, the functions whose entire purpose is to inspect or replace a NULL.
+    /// Second, the JSON constructors and inspectors: JSON has a null of its own, so
+    /// <c>JSON_ARRAY(1, NULL, 'hello')</c> must build <c>[1,null,"hello"]</c> rather than collapse,
+    /// and <c>JSON_TYPE(NULL)</c> must answer "null" rather than return SQL NULL.
+    /// </remarks>
+    private static readonly HashSet<string> NULL_TOLERANT_FUNCTIONS =
+        new(StringComparer.OrdinalIgnoreCase)
+        {
+            "COALESCE", "NULLIF", "IFNULL", "NVL", "TYPEOF",
+            "JSON_VALID", "JSON_TYPE", "JSON_ARRAY", "JSON_OBJECT"
+        };
+
+    #endregion
+
     #region Function Router
 
     private WitSqlValue EvaluateFunction(WitSqlExpressionFunctionCall func, WitSqlRow row)
@@ -24,6 +44,16 @@ public sealed partial class ExpressionEvaluator
 
         // Evaluate arguments
         var args = func.Arguments?.Select(a => Evaluate(a, row)).ToArray() ?? [];
+
+        // SQL scalar functions are strict: a NULL argument yields NULL. Without this, every
+        // function below silently substituted a zero-value for the NULL - LENGTH(NULL) was 0,
+        // UPPER(NULL) was '', YEAR(NULL) was 1, ROUND(NULL) was 0 - which is a wrong answer rather
+        // than a missing one, and it propagates into comparisons and aggregates unnoticed.
+        //
+        // The exceptions are the functions whose whole purpose is to inspect or replace a NULL;
+        // they have to see it. Zero-argument functions are unaffected, having nothing to check.
+        if (args.Any(a => a.IsNull) && !NULL_TOLERANT_FUNCTIONS.Contains(funcName))
+            return WitSqlValue.Null;
 
         return funcName switch
         {

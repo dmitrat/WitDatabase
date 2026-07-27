@@ -69,10 +69,6 @@ public class ParserFindingsTests
     #region MERGE target alias
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and the aliases are exactly swapped: TargetAlias came back as \"s\" - "
-            + "the source's alias - and SourceAlias as null. Note a weaker assertion (that the two "
-            + "differ) PASSES on this bug; each has to be checked against what it should hold. "
-            + "parser, Parser/Visitor/WitSqlVisitor.DML.cs:373")]
     public void MergeWithoutATargetAliasDoesNotBorrowTheSourceAliasTest()
     {
         // Finding: WitSqlVisitor.DML.cs:373 - when the target alias is omitted the visitor assigns
@@ -116,9 +112,6 @@ public class ParserFindingsTests
     #region MySQL-style LIMIT offset, count
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: LIMIT 10, 5 yields offset=5 and count=10 - the operands are strictly "
-            + "reversed. Executed against 20 rows it returns 6..15 instead of 11..15, silently. "
-            + "parser, Parser/Visitor/WitSqlVisitor.DML.cs:80")]
     public void MySqlStyleLimitBindsOffsetAndCountInOrderTest()
     {
         // Finding: WitSqlVisitor.DML.cs:80 - `LIMIT 10, 5` means "skip 10, take 5" in MySQL. The

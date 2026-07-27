@@ -299,17 +299,51 @@ public sealed class WitSqlEngineWindowFunctionTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    public void LastValue_ReturnsLastValueInPartition()
+    public void LastValueWithTheDefaultFrameReturnsTheCurrentRowTest()
     {
+        // The classic window-function gotcha, and the behaviour every real backend has: with no
+        // frame clause the default is RANGE UNBOUNDED PRECEDING AND CURRENT ROW, so the frame ends
+        // at the current row and LAST_VALUE returns that row's own value - not the partition's last.
+        //
+        // This test previously asserted "Bob" for every Engineering row, which is what the engine
+        // returned while it treated every ordered window as the whole partition. See
+        // LastValueOverTheWholePartitionNeedsAnExplicitFrameTest for how to actually ask for that.
         var rows = m_engine.Query(@"
             SELECT Name, Department, Salary,
-                   LAST_VALUE(Name) OVER (PARTITION BY Department ORDER BY Salary DESC) AS LowestEarner
+                   LAST_VALUE(Name) OVER (PARTITION BY Department ORDER BY Salary DESC) AS Last
             FROM Employees");
 
-        // In Engineering, Bob (75000) is the lowest earner
-        var engineering = rows.Where(r => r["Department"].AsString() == "Engineering").ToList();
+        var engineering = rows
+            .Where(r => r["Department"].AsString() == "Engineering")
+            .ToList();
+
+        Assert.That(engineering, Is.Not.Empty);
         foreach (var row in engineering)
         {
+            Assert.That(row["Last"].AsString(), Is.EqualTo(row["Name"].AsString()),
+                "the frame ends at the current row, so LAST_VALUE is that row");
+        }
+    }
+
+    [Test]
+    public void LastValueOverTheWholePartitionNeedsAnExplicitFrameTest()
+    {
+        // The recipe for what the old assertion wanted: name the frame explicitly.
+        var rows = m_engine.Query(@"
+            SELECT Name, Department, Salary,
+                   LAST_VALUE(Name) OVER (
+                       PARTITION BY Department ORDER BY Salary DESC
+                       ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING) AS LowestEarner
+            FROM Employees");
+
+        var engineering = rows
+            .Where(r => r["Department"].AsString() == "Engineering")
+            .ToList();
+
+        Assert.That(engineering, Is.Not.Empty);
+        foreach (var row in engineering)
+        {
+            // Bob earns 75000, the least in Engineering, so he sorts last under Salary DESC.
             Assert.That(row["LowestEarner"].AsString(), Is.EqualTo("Bob"));
         }
     }
@@ -319,19 +353,28 @@ public sealed class WitSqlEngineWindowFunctionTests : WitSqlEngineTestsBase
     #region NTH_VALUE Tests
 
     [Test]
-    public void NthValue_ReturnsNthValue()
+    public void NthValueIsRelativeToTheFrameNotThePartitionTest()
     {
+        // Same default frame, same consequence: NTH_VALUE counts within the frame, which ends at the
+        // current row. The top earner's frame holds one row, so its 2nd value does not exist; from
+        // the second row on, the 2nd value is Alice and stays Alice.
         var rows = m_engine.Query(@"
             SELECT Name, Salary,
-                   NTH_VALUE(Name, 2) OVER (ORDER BY Salary DESC) AS SecondHighest
-            FROM Employees");
+                   NTH_VALUE(Name, 2) OVER (ORDER BY Salary DESC) AS Second
+            FROM Employees
+            ORDER BY Salary DESC");
 
         Assert.That(rows, Has.Count.EqualTo(8));
 
-        // Second highest salary is Alice (80000)
-        foreach (var row in rows)
+        // Carol earns the most (85000), so her frame is a single row.
+        Assert.That(rows[0]["Name"].AsString(), Is.EqualTo("Carol"));
+        Assert.That(rows[0]["Second"].IsNull, Is.True,
+            "a one-row frame has no second value");
+
+        foreach (var row in rows.Skip(1))
         {
-            Assert.That(row["SecondHighest"].AsString(), Is.EqualTo("Alice"));
+            Assert.That(row["Second"].AsString(), Is.EqualTo("Alice"),
+                "Alice (80000) is the second row in salary order and stays the frame's 2nd value");
         }
     }
 

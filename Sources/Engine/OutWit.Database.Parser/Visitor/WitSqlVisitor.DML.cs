@@ -83,6 +83,14 @@ internal sealed partial class WitSqlVisitor
                 select.LimitCount = null;
                 select.LimitOffset = limit.expression(0) is { } onlyOffset ? VisitExpression(onlyOffset) : null;
             }
+            else if (limit.COMMA() != null)
+            {
+                // MySQL's `LIMIT offset, count`. The operands are in the OPPOSITE order to the
+                // standard `LIMIT count OFFSET offset`, so the same positions mean different things
+                // in the two forms and they cannot share a branch.
+                select.LimitOffset = limit.expression(0) is { } mySqlOffset ? VisitExpression(mySqlOffset) : null;
+                select.LimitCount = limit.expression(1) is { } mySqlCount ? VisitExpression(mySqlCount) : null;
+            }
             else
             {
                 select.LimitCount = limit.expression(0) is { } limitExpr ? VisitExpression(limitExpr) : null;
@@ -379,9 +387,21 @@ internal sealed partial class WitSqlVisitor
 
     public override WitSqlStatementMerge VisitMergeStatement(WitSqlParser.MergeStatementContext context)
     {
-        var aliases = context.alias();
-        var targetAlias = aliases.Length > 0 ? GetAlias(aliases[0]) : null;
-        var sourceAlias = aliases.Length > 1 ? GetAlias(aliases[1]) : null;
+        // Both aliases are optional, so their position in context.alias() does not identify them:
+        // with only the source aliased, `USING Source AS s` lands at index 0 and reading it as the
+        // target's alias makes every unqualified reference resolve to the wrong table. Split them by
+        // where they sit relative to USING instead.
+        var usingTokenIndex = context.USING()?.Symbol.TokenIndex ?? int.MaxValue;
+
+        string? targetAlias = null;
+        string? sourceAlias = null;
+        foreach (var alias in context.alias())
+        {
+            if (alias.Start.TokenIndex < usingTokenIndex)
+                targetAlias = GetAlias(alias);
+            else
+                sourceAlias = GetAlias(alias);
+        }
 
         var mergeSource = context.mergeSource();
         string? sourceTable = null;
