@@ -25,9 +25,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     #region LIMIT is applied before DISTINCT
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: returns 1 row instead of 3. LIMIT truncates the physical rows " +
-            "before DISTINCT collapses them, so SELECT DISTINCT ... LIMIT n silently under-returns. " +
-            "engine-query, Query/QueryPlanner.cs:545")]
     public void DistinctWithLimitReturnsNDistinctRowsTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, Category VARCHAR(10))");
@@ -106,9 +103,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: NULLs still sort first, so the trailing positions hold 1 and 3 " +
-            "rather than the two NULL rows. NULLS FIRST/LAST is parsed and then discarded by the " +
-            "sort iterator. engine-query, Iterators/IteratorSort.cs:45")]
     public void OrderByNullsLastPutsNullsLastTest()
     {
         CreateNullable();
@@ -120,14 +114,31 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
             "rows 2 and 4 hold NULL and must sort behind every non-NULL value");
     }
 
+    [Test]
+    public void OrderByNullsLastIsIndependentOfDescendingTest()
+    {
+        // NULLS FIRST/LAST is orthogonal to ASC/DESC in SQL: reversing the direction must not
+        // reverse where the NULLs go. This pins the half of the fix that is easy to get wrong by
+        // resolving the null order after the direction has already been applied.
+        CreateNullable();
+
+        var ids = m_engine.Query("SELECT Id FROM N ORDER BY Value DESC NULLS LAST")
+            .Select(r => r[0].AsInt64()).ToArray();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(ids.Take(2), Is.EqualTo(new long[] { 3, 1 }),
+                "DESC still orders the non-NULL values 30 then 10");
+            Assert.That(ids.Skip(2), Is.EquivalentTo(new long[] { 2, 4 }),
+                "NULLS LAST still puts the NULLs at the end");
+        });
+    }
+
     #endregion
 
     #region LIKE regex flags
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: matches 0 rows. The pattern compiles to a .NET regex without " +
-            "RegexOptions.Singleline, so `.` - and therefore % - cannot cross a newline. " +
-            "engine-query, Expressions/ExpressionEvaluator.Conditional.cs:155")]
     public void LikePercentCrossesANewlineTest()
     {
         CreateText("a\nb");
@@ -138,7 +149,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: matches 0 rows, same missing Singleline as the % case.")]
     public void LikeUnderscoreCrossesANewlineTest()
     {
         CreateText("a\nb");
@@ -149,8 +159,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: 'abc\\n' matches LIKE 'abc'. .NET's `$` matches before a final " +
-            "newline, so an anchored pattern accepts a string SQL semantics say it must reject.")]
     public void LikeDoesNotTolerateATrailingNewlineTest()
     {
         CreateText("abc\n");
@@ -161,12 +169,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: 'I' LIKE 'i' matches under the invariant culture and does not " +
-            "match under tr-TR. The regex is built without RegexOptions.CultureInvariant, so the " +
-            "result of a query depends on the calling thread's culture. Note this also shows LIKE " +
-            "is case-insensitive, which WitSQL.md neither documents nor rules out - it does offer " +
-            "COLLATE NOCASE as an opt-in, which implies the default should be case-sensitive. " +
-            "The culture dependence is a defect either way.")]
     public void LikeIsNotCultureSensitiveTest()
     {
         CreateText("I");

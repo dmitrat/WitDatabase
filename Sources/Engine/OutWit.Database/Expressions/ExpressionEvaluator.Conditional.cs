@@ -155,16 +155,29 @@ public sealed partial class ExpressionEvaluator
         // Convert SQL LIKE pattern to regex, respecting escape character
         var regex = LikePatternToRegex(patternStr, escapeChar);
 
-        var matches = System.Text.RegularExpressions.Regex.IsMatch(
-            str, regex, System.Text.RegularExpressions.RegexOptions.IgnoreCase);
+        // Singleline makes `.` match a newline, so % and _ behave like the "any character" they are
+        // documented to be. CultureInvariant keeps the answer from depending on the calling thread's
+        // culture - without it, 'I' LIKE 'i' matched under the invariant culture and not under tr-TR.
+        //
+        // IgnoreCase is deliberately left as it was. WitSQL.md neither documents nor rules out the
+        // case behaviour of LIKE, and changing it would silently alter results for every consumer;
+        // that is a semantics decision, not a defect fix.
+        const System.Text.RegularExpressions.RegexOptions LIKE_OPTIONS =
+            System.Text.RegularExpressions.RegexOptions.IgnoreCase |
+            System.Text.RegularExpressions.RegexOptions.Singleline |
+            System.Text.RegularExpressions.RegexOptions.CultureInvariant;
+
+        var matches = System.Text.RegularExpressions.Regex.IsMatch(str, regex, LIKE_OPTIONS);
 
         return WitSqlValue.FromBool(like.IsNot ? !matches : matches);
     }
 
     private static string LikePatternToRegex(string pattern, char? escapeChar)
     {
+        // \A and \z rather than ^ and $: .NET's `$` also matches immediately BEFORE a final newline,
+        // so LIKE 'abc' accepted the string "abc\n". \z is the absolute end of the input.
         var sb = new System.Text.StringBuilder();
-        sb.Append('^');
+        sb.Append(@"\A");
 
         for (int i = 0; i < pattern.Length; i++)
         {
@@ -193,7 +206,7 @@ public sealed partial class ExpressionEvaluator
             }
         }
 
-        sb.Append('$');
+        sb.Append(@"\z");
         return sb.ToString();
     }
 
