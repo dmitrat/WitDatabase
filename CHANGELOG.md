@@ -1,5 +1,105 @@
 # Changelog
 
+## 2.1.0
+
+The first release out of the verification pass over the 2026-07 audit's backlog. Every one of the
+104 findings that audit raised but never attacked now has a verdict backed by a running test
+([Docs/NEXT-SESSION-PLAN.md](Docs/NEXT-SESSION-PLAN.md), workstream B); ten of the confirmed defects
+are fixed here.
+
+Roughly four claims in five survived scrutiny. The number worth knowing is the other one: twenty
+needed restating, and about half of those *understated* the defect. Each fix below closes a test
+that had been left `[Ignore]`d with the behaviour actually observed, so the fix and its proof arrive
+together.
+
+### Security
+
+- **The connection-string password no longer reaches the log.** `LogFragment` appended the
+  connection string verbatim and `PopulateDebugInfo` copied it into the debug dictionary, and EF
+  Core writes `LogFragment` at Information level the first time a context is used — so an
+  encryption password landed in ordinary application logs:
+
+  ```
+  Using WitDatabase 'Data Source=app.witdb;Password=hunter2'}
+  ```
+
+  Only the `Password` value is replaced; the `Data Source` and the other parameters stay, because a
+  log line that says nothing is its own kind of failure. It **fails closed**: a connection string
+  that cannot be parsed is withheld entirely rather than logged as it stands. The service-provider
+  cache key is unaffected — it still sees the real string, so two connection strings differing only
+  by password continue to get different providers.
+
+### Behaviour changes
+
+Every item here changed an answer the previous release gave. That is the point of the release, but
+it means results can differ after upgrading.
+
+- **`LAST_VALUE` and `NTH_VALUE` now follow the standard frame.** An `OVER` clause with an
+  `ORDER BY` and no frame clause defaults to `RANGE BETWEEN UNBOUNDED PRECEDING AND CURRENT ROW`;
+  the engine treated it as the whole partition, so `SUM(x) OVER (ORDER BY y)` returned the partition
+  total instead of a running total.
+
+  With the correct default, `LAST_VALUE` returns the **current row's** value, not the partition's
+  last. This is the best-known gotcha in window functions and what PostgreSQL, SQL Server, Oracle
+  and MySQL all do. To get the partition's last value, name the frame:
+
+  ```sql
+  LAST_VALUE(Name) OVER (PARTITION BY Department ORDER BY Salary DESC
+                         ROWS BETWEEN UNBOUNDED PRECEDING AND UNBOUNDED FOLLOWING)
+  ```
+
+  Known gap, deliberately left open: the default frame is typed `RANGE`, but peers — rows with equal
+  `ORDER BY` values — are not yet grouped as `RANGE` requires. It affects ties only.
+
+- **Scalar functions propagate NULL.** `LENGTH(NULL)` was `0`, `UPPER(NULL)` was `''`,
+  `YEAR(NULL)` was `1`, `ROUND(NULL)` was `0` — wrong answers rather than missing ones, and they
+  propagated into comparisons and aggregates unnoticed. SQL scalar functions are strict, so the rule
+  is now general: a NULL argument yields NULL. Exempt are the functions that exist to inspect or
+  replace a NULL (`COALESCE`, `NULLIF`, `IFNULL`, `NVL`, `TYPEOF`) and the JSON constructors and
+  inspectors, because JSON has a null of its own — `JSON_ARRAY(1, NULL, 'hello')` must still build
+  `[1,null,"hello"]` and `JSON_TYPE(NULL)` must still answer `"null"`.
+
+- **`LIKE` matches across newlines, ignores the ambient culture, and no longer tolerates a trailing
+  one.** The pattern compiled to a .NET regex with only `IgnoreCase`, which meant `%` and `_` could
+  not cross a newline, `LIKE 'abc'` accepted a string ending in a newline (because .NET's `$` also
+  matches immediately before a final one), and `'I' LIKE 'i'` gave different answers under the
+  invariant culture and under `tr-TR`. Now `Singleline`, `CultureInvariant`, and `\A`/`\z` anchors.
+
+  `IgnoreCase` is deliberately unchanged. WitSQL.md neither documents nor rules out LIKE's case
+  behaviour, and altering it would silently change results for every consumer — a semantics
+  decision, not a defect fix.
+
+- **`SELECT DISTINCT … LIMIT n` returns n distinct rows.** `LIMIT` ran before `DISTINCT`, so the
+  limit truncated the rows the duplicates were drawn from: with four distinct values,
+  `SELECT DISTINCT Category FROM T LIMIT 3` returned one row.
+
+- **`ORDER BY … NULLS FIRST | NULLS LAST` is honoured.** It was parsed and then discarded by the
+  sort comparator. The null order is resolved *before* `ASC`/`DESC` is applied, because the two are
+  orthogonal: reversing the direction must not move the NULLs.
+
+- **MySQL-style `LIMIT offset, count` binds its operands in order.** They were bound backwards, so
+  `LIMIT 10, 5` meant "skip 5, take 10" — over 20 rows it returned 6..15 instead of 11..15. The
+  comma form now has its own branch; it cannot share one with `LIMIT count OFFSET offset`, because
+  the same positions mean opposite things in the two forms.
+
+- **`MERGE` no longer gives the target the source's alias.** Both aliases are optional, so an index
+  into the parsed alias list does not identify them: with only the source aliased,
+  `USING Source AS s` was read as the target's alias and every unqualified reference resolved to the
+  wrong table.
+
+### Fixed
+
+- **`ALTER TABLE … ADD COLUMN` rejects a duplicate column name** instead of appending it again.
+  Replaying a migration — a partially applied one, or a script run twice — left the catalog holding
+  the same column twice and widened every row a second time, with nothing reported.
+
+### Tests
+
+The verification harness ships with the release, under `AuditVerification/` in each test project.
+A confirmed-but-unfixed defect is a test asserting the **correct** behaviour, marked `[Ignore]` with
+the behaviour observed, so it turns green the day the defect is fixed; refuted and latent findings
+stay as passing pins. 100 such specifications remain.
+
 ## 2.0.0
 
 A correctness release. It comes out of a full audit of the engine and both providers
