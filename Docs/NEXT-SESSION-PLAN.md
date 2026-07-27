@@ -26,8 +26,15 @@ Written 2026-07-27, after workstream B's verification finished and the first ten
 risk of redoing work sits** — not about what matters most. Severity alone would put the grammar
 rework early, and that would be a mistake.
 
-The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: **101 confirmed
-defects**, each with a test already written that turns green when it is fixed.
+The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: each marker is a
+confirmed defect with a test already written that turns green when it is fixed.
+
+> **State at the close of the 2026-07-27 session.** 2.1.0 and 2.2.0 are both published — seven
+> packages each, tags `v2.1.0` and `v2.2.0`, PRs #7–#15 merged. Phases 0 and 1 are done.
+> **100 `[Ignore]` markers remain**, 90 of them in `AuditVerification/` folders and 10 in the
+> ordinary suites, plus 3 `[Explicit]` (running them kills the host process). Count them before
+> trusting this number:
+> `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l`. Resume at **Phase 2**.
 
 ### Phase 0 — Measurement the suite does not yet have *(hours)*
 
@@ -111,7 +118,7 @@ functions and stored procedures.
 `searchCondition`/`predicate`/`valueExpression` rewrites the expression visitor and touches every
 `WHERE`, `HAVING`, `ON`, `CHECK` and partial-index reference. A grammar fix made *before* it gets
 redone; one made *separately after* it means touching the visitor twice. So: **do not touch the
-grammar until this phase**, and enter it with the densest possible test net — currently 101
+grammar until this phase**, and enter it with the densest possible test net — currently 100
 specifications plus the existing suite, which is a far better position than July's.
 
 ### Phase 4 — Durability and crash recovery
