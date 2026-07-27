@@ -104,7 +104,7 @@ public static class TableUtils
 
             if (!value.IsNull)
             {
-                WitTypeConverter.WriteValue(writer, col.Type, value);
+                WitTypeConverter.WriteValue(writer, col.Type, value, col.Name);
             }
         }
 

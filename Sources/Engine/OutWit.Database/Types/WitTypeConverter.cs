@@ -564,35 +564,73 @@ public static class WitTypeConverter
     }
 
     /// <summary>
+    /// Converts a value for an integer column, refusing anything the column cannot hold.
+    /// </summary>
+    /// <remarks>
+    /// The casts here used to be plain C# conversions, which are unchecked: 100000 written to a
+    /// SMALLINT wrapped silently, and text that is not a number became 0, because
+    /// <see cref="WitSqlValue.AsInt64"/> answers 0 for an unparseable string. Both are wrong
+    /// answers rather than errors, and WitSQL.md documents the exact range of every one of these
+    /// types - so the value was outside its declared contract and nothing said so.
+    ///
+    /// The check lives here rather than in AsInt64 because that getter is general-purpose and used
+    /// where 0 is a reasonable answer; a write to a typed column is the point where the contract
+    /// actually applies.
+    /// </remarks>
+    private static long Integer(WitSqlValue value, long min, long max, string typeName, string? columnName)
+    {
+        var where = columnName != null ? $" for column '{columnName}'" : string.Empty;
+
+        if (value.Type == WitSqlType.Text)
+        {
+            var text = value.AsString();
+            if (!long.TryParse(text, out _))
+            {
+                throw new InvalidOperationException(
+                    $"Cannot store '{text}'{where}: it is not a valid {typeName}");
+            }
+        }
+
+        var number = value.AsInt64();
+        if (number < min || number > max)
+        {
+            throw new InvalidOperationException(
+                $"Value {number} is outside the range of {typeName}{where} ({min} to {max})");
+        }
+
+        return number;
+    }
+
+    /// <summary>
     /// Writes a WitSqlValue to a BinaryWriter based on the storage data type.
     /// </summary>
-    public static void WriteValue(BinaryWriter writer, WitDataType type, WitSqlValue value)
+    public static void WriteValue(BinaryWriter writer, WitDataType type, WitSqlValue value, string? columnName = null)
     {
         switch (type)
         {
             case WitDataType.Int8:
-                writer.Write((sbyte)value.AsInt64());
+                writer.Write((sbyte)Integer(value, sbyte.MinValue, sbyte.MaxValue, "TINYINT", columnName));
                 break;
             case WitDataType.UInt8:
-                writer.Write((byte)value.AsInt64());
+                writer.Write((byte)Integer(value, byte.MinValue, byte.MaxValue, "UTINYINT", columnName));
                 break;
             case WitDataType.Int16:
-                writer.Write((short)value.AsInt64());
+                writer.Write((short)Integer(value, short.MinValue, short.MaxValue, "SMALLINT", columnName));
                 break;
             case WitDataType.UInt16:
-                writer.Write((ushort)value.AsInt64());
+                writer.Write((ushort)Integer(value, ushort.MinValue, ushort.MaxValue, "USMALLINT", columnName));
                 break;
             case WitDataType.Int32:
-                writer.Write((int)value.AsInt64());
+                writer.Write((int)Integer(value, int.MinValue, int.MaxValue, "INT", columnName));
                 break;
             case WitDataType.UInt32:
-                writer.Write((uint)value.AsInt64());
+                writer.Write((uint)Integer(value, uint.MinValue, uint.MaxValue, "UINT", columnName));
                 break;
             case WitDataType.Int64:
-                writer.Write(value.AsInt64());
+                writer.Write(Integer(value, long.MinValue, long.MaxValue, "BIGINT", columnName));
                 break;
             case WitDataType.UInt64:
-                writer.Write((ulong)value.AsInt64());
+                writer.Write((ulong)Integer(value, 0, long.MaxValue, "UBIGINT", columnName));
                 break;
             case WitDataType.Float16:
                 writer.Write((Half)value.AsDouble());

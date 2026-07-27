@@ -180,9 +180,9 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
         "CONFIRMED 2026-07-27: no exception is raised and the out-of-range value is written " +
         "silently. engine-dml, Types/WitTypeConverter.cs:576";
 
-    [TestCase("SMALLINT", "100000", Ignore = NarrowingIgnore)]
-    [TestCase("TINYINT", "999", Ignore = NarrowingIgnore)]
-    [TestCase("INT", "9999999999999", Ignore = NarrowingIgnore)]
+    [TestCase("SMALLINT", "100000")]
+    [TestCase("TINYINT", "999")]
+    [TestCase("INT", "9999999999999")]
     public void OutOfRangeNumericWriteIsRejectedTest(string type, string literal)
     {
         m_engine.Execute($"CREATE TABLE T (Id INT PRIMARY KEY, V {type})");
@@ -192,8 +192,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: no exception is raised - 'not a number' is accepted into an INT " +
-            "column and stored as 0. engine-dml, Types/WitTypeConverter.cs:576")]
     public void UnparseableTextIsNotWrittenAsZeroTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, V INT)");
