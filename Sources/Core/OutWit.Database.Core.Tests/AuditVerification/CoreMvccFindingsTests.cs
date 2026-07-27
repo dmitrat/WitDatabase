@@ -31,10 +31,6 @@ public class CoreMvccFindingsTests
     #region READ COMMITTED: point reads and range scans disagree
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, exactly as described: the same transaction read 'a' as '2' by key and "
-            + "'1' by scan. READ COMMITTED permits seeing another transaction's commit; it does not "
-            + "permit two reads in one transaction to disagree about the same key. "
-            + "core-mvcc, Core/Transactions/MvccTransaction.cs:158")]
     public void ReadCommittedPointReadAndScanAgreeTest()
     {
         // Finding: MvccTransaction.cs:158 - point reads and range scans take their snapshots from
@@ -61,6 +57,36 @@ public class CoreMvccFindingsTests
 
         Assert.That(byScan, Is.EqualTo(byPoint),
             $"the same transaction read 'a' as '{byPoint}' by key and '{byScan}' by scan");
+    }
+
+    [Test]
+    public void RepeatableReadScanStillReadsTheSnapshotTest()
+    {
+        // The other side of the fix. Making Scan follow the isolation level must not make every
+        // scan read the latest committed state: under REPEATABLE READ a rescan has to keep showing
+        // the snapshot, which is the guarantee that level exists to give.
+        using var store = CreateStore(WitIsolationLevel.RepeatableRead);
+        store.Put(Key("a"), Value("1"));
+
+        using var reader = (MvccTransaction)store.BeginTransaction();
+        Assert.That(Text(reader.Get(Key("a"))), Is.EqualTo("1"));
+
+        using (var writer = (MvccTransaction)store.BeginTransaction())
+        {
+            writer.Put(Key("a"), Value("2"));
+            writer.Commit();
+        }
+
+        var byScan = reader.Scan(null, null)
+            .Where(e => Text(e.Key) == "a")
+            .Select(e => Text(e.Value))
+            .FirstOrDefault();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Text(reader.Get(Key("a"))), Is.EqualTo("1"), "the point read holds the snapshot");
+            Assert.That(byScan, Is.EqualTo("1"), "and so does the scan");
+        });
     }
 
     #endregion
