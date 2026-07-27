@@ -46,8 +46,6 @@ public sealed class ParserFindingsEngineTests : WitSqlEngineTestsBase
     #region MySQL-style LIMIT offset, count, executed
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: returned rows 6..15 instead of 11..15 - the reversed operands " +
-            "silently shift the whole page. parser, Parser/Visitor/WitSqlVisitor.DML.cs:80")]
     public void MySqlStyleLimitReturnsTheRightRowsTest()
     {
         // The user-visible consequence of the reversed operands: `LIMIT 10, 5` must skip 10 rows and
