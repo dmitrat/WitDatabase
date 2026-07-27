@@ -4,6 +4,16 @@ Written at the end of the session that produced [AUDIT-2026-07.md](AUDIT-2026-07
 2.0.0. Starting point: `main` at the 2.0.0 merge, whole suite green on net9.0 and net10.0
 (10,296 tests, 0 failures), all seven packages published.
 
+> **Correction, 2026-07-27.** "0 failures" does not hold. On a Ryzen 9 5950X,
+> `OutWit.Database.Tests` fails `InsertExplicitPkWithIndexTest` **3 runs out of 3** on unmodified
+> `main` at `a668f73` — confirmed against a baseline with no local changes present. It passes when
+> run alone. The test asserts a **wall-clock ratio**
+> ([Level3_ConstraintValidationTests.cs:286](../Sources/Engine/OutWit.Database.Tests/Performance/Level3_ConstraintValidationTests.cs#L286)):
+> `Assert.That(ratio, Is.LessThan(12))` over `Stopwatch` timings of 500- and 2000-row inserts. Under
+> the parallel load of the full suite it measures the machine, not the engine. **17 assertions of
+> this shape** live under `Sources/Engine/OutWit.Database.Tests/Performance/`. They belong in the
+> benchmark suite discussed in workstream C, not among the unit tests.
+
 Three workstreams, independent of each other. **A** is a bounded piece of work with a known design.
 **B** is a triage backlog. **C** is an investigation with no fix committed to up front.
 
@@ -85,7 +95,7 @@ Roughly a week, and larger than it looks:
 
 ---
 
-## B. The 104 unverified audit findings
+## B. The 104 unverified audit findings — **complete, 2026-07-27**
 
 ### What these are, precisely
 
@@ -97,6 +107,116 @@ a floor, not a ceiling.
 **Every one of the 104 is rated `major`.** No blocker or critical claim is unverified: those all fell
 inside the top-five cut. That bounds the risk here — this is a backlog of "probably real, would
 matter to a user, nobody attacked the claim", not of potential catastrophes.
+
+### Progress
+
+**2026-07-27 — all 104 settled. Workstream B is complete.** Every dimension has been worked through
+by execution or, for the `tests-and-gaps` claims about the build itself, by measurement. The
+harnesses live in `AuditVerification/` folders under the Engine, Parser, Core, AdoNet and
+EntityFramework test projects: 101 entries examined directly, plus the duplicates settled by the
+same evidence.
+
+**Tally: 70 confirmed, 7 confirmed in part or with a correction, 9 confirmed in mechanism or
+measurement only, 2 latent, 2 not reproduced, 4 already fixed, 2 not reproducible with the current
+surface, 8 duplicates.** Every verdict below carries the behaviour actually observed rather than the
+claim that was made.
+
+### What the pass says about the audit
+
+**Roughly four claims in five survive intact.** That is a good hit rate for findings nobody had
+attacked — and it is not the interesting number. The interesting number is that **twenty needed
+restating, and about half of those understated the defect**: `ON DELETE RESTRICT` on a self-reference
+silently deletes the parent; a recursive trigger kills the host process rather than the query;
+`SetOutputIdentity` does not mis-report identities but breaks the insert outright; a page-cache
+eviction writes another borrower's bytes to disk; an unflushed restart hides **every** committed row.
+
+Four were **already fixed** during the audit session itself — the finding list was written against
+pre-fix code and never updated. Two of those were found only by checking history, and one names a
+file that no longer exists.
+
+**One finding deserves to be lifted out of the list and acted on first**: the connection-string
+password is written into the EF Core log in plaintext, at Information level, the first time a context
+is used. It is the only item whose cost does not scale with how often the defect fires.
+
+**And one entry in `tests-and-gaps` explains most of the rest.** The `StatementExecutor` tests mock
+`IDatabase` and assert `Received(n)`. A suite that checks call counts against a mock cannot notice a
+wrong value — which is precisely the class of defect confirmed over and over here. Closing that, plus
+referencing EF Core's specification suite (the SQLite dependency it needs is already paid for), would
+do more for confidence than fixing any individual finding in this document.
+
+**Where a claim could not be reproduced, the reason is recorded rather than papered over.** Three
+entries are "mechanism confirmed, consequence not reproduced" — the defective code is exactly as
+described and something else currently prevents the damage. Those are the ones to re-check after any
+refactor, because the protection is incidental rather than designed.
+
+**Two of the three "already fixed" entries were found by checking history, not by re-reading the
+claim** — and one of them names a file that no longer exists. When a verification test passes,
+`git log -L` on the cited function, and `git log --diff-filter=D` on the cited file, separate "the
+claim was wrong" from "someone fixed this during the audit session".
+
+**One finding deserves to be lifted out of the list: the connection-string password is written into
+the EF Core log in plaintext**, at Information level, the first time a context is used. It is the
+only item in the audit whose cost does not scale with how often the defect fires — one log line, one
+shipped secret. Nothing else here is in that category.
+
+What the batch says about the audit's accuracy is the argument for continuing it. The claims are
+largely sound — roughly four in five survive intact — but **eight needed restating, and five of
+those understated the defect**:
+
+- `ON DELETE RESTRICT` on a self-reference raises nothing and deletes the parent, so the *safe*
+  declaration is the one that corrupts;
+- the recursive-trigger claim is not a hung query but a **dead host process**;
+- the positional-cascade defect deletes the wrong child *and* orphans the right one, on ordinary
+  schema — a foreign key to a `UNIQUE` column is all it takes;
+- scaffolding does not degrade, it fails on its first query;
+- the page-latch defect double-grants a page **and** makes the rightful holder throw on release,
+  from a background thread, which kills the process.
+
+- a filtered UNIQUE index does not merely lose its filter, it becomes a **stricter** constraint that
+  rejects rows the application is entitled to insert;
+- `TransactionScope` does not fail loudly, it silently **keeps** the write from a scope that was
+  never completed.
+
+Four were overstated: the index table-qualifier defect and the `DatabaseLock` cancellation leak are
+both **unreachable**, DROP COLUMN breaks 2 of the 4 metadata kinds it was said to break, and the
+isolation level is silently *dropped* through ADO.NET rather than leaked onto the next transaction.
+One was wrong about the mechanism (the autoincrement row is reachable by the *wrong* key), and two
+do not reproduce at all.
+
+Reading alone would have carried every one of those errors forward in both directions.
+
+Two verdicts are worth their own category, because collapsing them either way would lose
+information. `StorageFile`'s sync/async mixing and the missing file lock are both **real in the
+code and invisible in behaviour** — the first because a page-sized write bypasses the stream buffer
+anyway, the second because `FileShare.None` already gives the OS-level exclusion the absent lock was
+supposed to provide. Neither should be reported as a working feature; neither is currently hurting
+anyone.
+
+**Two traps that made a test pass on a live defect**, both worth carrying into the remaining
+dimensions:
+
+- *Asserting a relation instead of a value.* The MERGE test first asserted only
+  `TargetAlias != SourceAlias`, and passed — the two do differ, in the wrong direction. Check each
+  value against what it should hold.
+- *Handing off on the same thread.* `ReaderWriterLockSlim.IsWriteLockHeld` is thread-affine, so
+  holding a latch on the test's own thread made `PageLatchManager.Cleanup` look correct. The defect
+  only appeared once the latch was acquired on a second thread.
+- *Sharing a model with a defect that fires at model build.* One `ToJson` mapping in a shared
+  `DbContext` made every test in the `ef-translation` fixture fail in setup with an unrelated error,
+  so the whole first run's verdicts were worthless. Isolate anything that can fail before the query
+  does.
+
+And one verdict that is easy to get wrong in the other direction: **a passing test does not
+distinguish "the claim was wrong" from "the claim was right and was fixed during the audit
+session"**. Run `git log -L <range>:<file>` on the cited function before writing "not reproduced" —
+doing so turned two entries into *already fixed*, both by commit `9556bd2`.
+
+Convention used, following the existing `WitSqlEnginePrecedenceTests` BETWEEN tests: a confirmed
+finding gets a test asserting the **correct** behaviour, marked `[Ignore]` with the observed
+behaviour, so it is an executable specification that turns green the day the defect is fixed.
+Refuted, latent and partially-refuted findings keep **passing** tests as regression pins. The one
+exception is the recursive-trigger test, marked `[Explicit]`: `[Ignore]` would not be enough,
+because running it takes the whole test host down.
 
 ### How to work them
 
@@ -132,194 +252,323 @@ Suggested batching, highest-signal first:
 
 Severity is the reporting agent's own rating, unverified. Paths are relative to `Sources/`.
 
-### Cross-cutting quality  <sub>`cross-cutting` — 12 unverified</sub>
+### Cross-cutting quality  <sub>`cross-cutting` — 12, verified 2026-07-27</sub>
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | The engine never throws a DbException: WitDbException is dead code and WitDbCommand does not wrap engine exceptions | `Providers/OutWit.Database.AdoNet/WitDbException.cs:119` |
-| major | Disposal paths swallow write failures and skip cleanup on exception, leaking file handles and losing the final flush | `Engine/OutWit.Database/Engine/WitSqlEngine.cs:302` |
-| major | Connection-string password is written into the EF Core log through LogFragment and PopulateDebugInfo | `Providers/OutWit.Database.EntityFramework/Infrastructure/WitDbContextOptionsExtension.cs:246` |
-| major | ConnectionPool is unreachable from the provider and permanently leaks a semaphore permit on every borrow | `Providers/OutWit.Database.AdoNet/Pool/ConnectionPool.cs:234` |
-| major | EF Core database-first scaffolding is SQLite code that WitSQL cannot execute | `Providers/OutWit.Database.EntityFramework/Design/Internal/WitDatabaseModelFactory.cs:92` |
-| major | EF translates DateTime.Now, DateTime.Today and DateTimeOffset.Now to NOW(), which the engine defines as UTC | `Providers/OutWit.Database.EntityFramework/Query/Translators/WitMemberTranslator.cs:133` |
-| major | Migration SQL literals are generated with the current culture: decimal and time separators corrupt the emitted SQL | `Providers/OutWit.Database.EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:809` |
-| major | Three migration operations are emitted as SQL comments and idempotent scripts are generated without guards | `Providers/OutWit.Database.EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:312` |
-| major | Reopening an encrypted MVCC database silently downgrades it to non-MVCC, whose on-disk key format differs | `Core/OutWit.Database.Core/Builder/WitDatabase.cs:310` |
-| major | BulkOptions.SetOutputIdentity is documented as reading identities back but instead inserts explicit zero keys | `Providers/OutWit.Database.EntityFramework/Extensions/WitDbBulkExtensions.cs:555` |
-| major | LSM compaction swallows File.Delete failures, and SSTableReader's FileShare mode makes those failures likely on Windows | `Core/OutWit.Database.Core/Stores/StoreLsm.cs:521` |
-| major | The IndexedDB/Blazor WASM story cannot work: 0-byte async engine, Task.Run-wrapped ADO.NET, sync-over-async storage, and a README sample that does not compile | `Engine/OutWit.Database/Engine/WitSqlEngine.Async.cs:1` |
+Verified in
+[CrossCuttingEfTests.cs](../Sources/Providers/OutWit.Database.EntityFramework.Tests/AuditVerification/CrossCuttingEfTests.cs),
+[CrossCuttingCoreTests.cs](../Sources/Core/OutWit.Database.Core.Tests/AuditVerification/CrossCuttingCoreTests.cs)
+and
+[CrossCuttingAdoNetTests.cs](../Sources/Providers/OutWit.Database.AdoNet.Tests/AuditVerification/CrossCuttingAdoNetTests.cs).
 
-### Core: concurrency and locking  <sub>`core-concurrency` — 11 unverified</sub>
+**The credential leak is the one to act on first** — not because it is the most likely to fire, but
+because it is the only finding in the audit whose cost does not scale with how often it is hit. One
+log line is enough.
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | DeadlockDetector is never fed any wait edge — row-lock deadlocks are undetectable and both transactions time out | `Core/OutWit.Database.Core/Transactions/MvccTransaction.cs:228` |
-| major | DatabaseLock.AcquireReadLockAsync leaks m_readerCount on cancellation, permanently breaking reader/writer exclusion | `Core/OutWit.Database.Core/Concurrency/DatabaseLock.cs:153` |
-| major | RowLockHandle.Dispose() is an empty method; combined with the grant/timeout race a row lock can be held forever by a finished transaction | `Core/OutWit.Database.Core/Concurrency/RowLockHandle.cs:40` |
-| major | RowLockManager completes TaskCompletionSource under m_syncLock without RunContinuationsAsynchronously | `Core/OutWit.Database.Core/Concurrency/RowLockManager.cs:110` |
-| major | LsmParallelStore.Get/Scan do not wait for the background merge — writes are invisible to the caller that made them | `Core/OutWit.Database.Core/Builder/LsmParallelStore.cs:83` |
-| major | LsmParallelWriter.FlushAllAsync drains and disposes other threads' live thread-local buffers | `Core/OutWit.Database.Core/LSM/LsmParallelWriter.cs:217` |
-| major | Page caches dispose CachedPage (returning its pooled buffer) while an async write of that page is in flight | `Core/OutWit.Database.Core/Cache/PageCacheShardedClock.cs:160` |
-| major | ConnectionPool never reclaims a permit — ReturnConnection has no caller, so the pool is exhausted after MaxPoolSize borrows | `Providers/OutWit.Database.AdoNet/Pool/ConnectionPool.cs:234` |
-| major | StorageFile mixes locked synchronous FileStream I/O with unlocked async I/O on the same handle | `Core/OutWit.Database.Core/Storage/StorageFile.cs:199` |
-| major | EnableFileLocking defaults to true but the builder selects the in-process-only LockManager overload, so no file lock is ever created | `Core/OutWit.Database.Core/Builder/WitDatabaseBuilder.cs:561` |
-| major | PageLatchManager.Cleanup can dispose a latch another thread is acquiring or holding, and Release silently no-ops on a removed latch | `Core/OutWit.Database.Core/Tree/PageLatchManager.cs:228` |
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | Connection-string password is written into the EF Core log through LogFragment and PopulateDebugInfo | both surfaces leak, verbatim: `Using WitDatabase 'Data Source=…;Password=hunter2-should-never-be-logged'}` and `WitDb:ConnectionString=…;Password=hunter2-should-never-be-logged`. EF Core writes `LogFragment` at **Information** level the first time a context is used, so the encryption password lands in ordinary application logs | `EntityFramework/…/WitDbContextOptionsExtension.cs:246` |
+| **confirmed** | The engine never throws a DbException | a missing table gives `InvalidOperationException: Table 'NoSuchTable' not found`, bad SQL gives `WitSqlParsingException`, a duplicate key gives `InvalidOperationException: UNIQUE constraint failed`. None derive from `DbException`. `WitDbException` does and has a `FromException` factory — nothing calls it, and `WitDbCommand` contains **no `catch` at all**. Every framework that handles database failure generically (EF Core execution strategies, Polly, ASP.NET diagnostics) keys off `DbException` and will not see these | `AdoNet/WitDbException.cs:119` |
+| **confirmed**, worse | BulkOptions.SetOutputIdentity inserts explicit zero keys instead of reading identities back | it does not merely mis-document — enabling it **breaks the insert**: `InvalidOperationException: UNIQUE constraint failed: GeneratedRows.Id (duplicate value: 0)`. The option adds the identity property to the insert column list, so every row is sent an explicit zero key and the second collides with the first. Any bulk insert of more than one row with a generated key fails | `EntityFramework/…/WitDbBulkExtensions.cs:555` |
+| **confirmed**, worse | Reopening an encrypted MVCC database silently downgrades it to non-MVCC | `SupportsMvcc` is False after the reopen **and the data is gone** — a row written before it comes back `null`. The unencrypted `Open()` reads the header and restores MVCC when `detection.HasMvcc`; the encrypted overload cannot read the header, so it unconditionally calls `WithTransactions()`. This is not a capability downgrade, it is silent data loss | `Core/Builder/WitDatabase.cs:310` |
+| **confirmed**, measured | EF translates DateTime.Now / Today / DateTimeOffset.Now to NOW(), which the engine defines as UTC | the server returned `05:09:58` where local time was `08:09:58+03:00` — off by exactly the machine's UTC offset, **180 minutes** | `EntityFramework/…/WitMemberTranslator.cs:133` |
+| **confirmed** | Migration SQL literals are generated with the current culture | under `de-DE` the generator emitted `ALTER TABLE "T" ADD COLUMN "Price" DECIMAL(18,2) NOT NULL DEFAULT 1,5;`. A migration generated on a comma-locale developer machine is corrupt SQL | `EntityFramework/…/WitMigrationsSqlGenerator.cs:809` |
+| **half confirmed, half not verified** | Three migration operations are emitted as SQL comments **and** idempotent scripts are generated without guards | the comment half is confirmed in the `dropin-gaps` table above, verbatim output included. The idempotent half is **not verified**: a `DbContext` declared inline in a test assembly has no migration classes, so `GenerateScript(…, Idempotent)` has nothing to guard and any assertion over it is vacuous — a first attempt passed only because the DDL happened to contain `IF NOT EXISTS`, which is not a migration guard. Needs the `dotnet ef migrations add` round-trip the audit lists under `tests-and-gaps` | `EntityFramework/…/WitMigrationsSqlGenerator.cs:312` |
+| **confirmed by inspection**, consequence not reproduced | Disposal paths swallow write failures and skip cleanup on exception | the swallow is literal: `try { m_database.Flush(); } catch { }` with the comment "Best effort - don't fail dispose on flush errors", so a failed final write is invisible. But the "skips cleanup, leaking file handles" half does **not** hold for the flush — the catch guarantees `m_database.Dispose()` still runs. It holds for a different line: `m_currentTransaction?.Dispose()` sits *before* the try, unguarded, so a throwing transaction dispose skips the store dispose entirely. Right conclusion, wrong line | `Engine/WitSqlEngine.cs:302` |
+| **confirmed by inspection**, consequence not reproduced | LSM compaction swallows File.Delete failures, and SSTableReader's FileShare mode makes them likely on Windows | literally `try { File.Delete(file); } catch { }`, and `SSTableReader` opens with `FileShare.Read`, which on Windows refuses a delete while any reader holds the file — so the failure the swallow hides is the likely case, not the exotic one. Combined with the separate `core-lsm` finding that compaction has no manifest and infers the live set from the directory listing, an undeleted input resurrects rows | `Core/Stores/StoreLsm.cs:521` |
+| **partly confirmed** | The IndexedDB/Blazor WASM story cannot work | `WitSqlEngine.Async.cs` is confirmed **0 bytes**, and `WitDbConnection`'s async transaction methods are `Task.Run` wrappers around the synchronous ones — two of the four sub-claims. The README sample and the sync-over-async storage claim are not verified | `Engine/WitSqlEngine.Async.cs:1` |
+| **duplicate** | ConnectionPool is unreachable from the provider and leaks a semaphore permit on every borrow | settled under `core-concurrency` — confirmed, but latent because the provider does not use the pool | `AdoNet/Pool/ConnectionPool.cs:234` |
+| **duplicate** | EF Core database-first scaffolding is SQLite code that WitSQL cannot execute | settled under `engine-schema-ddl` — `sqlite_master` does not exist and `PRAGMA` does not parse | `EntityFramework/…/WitDatabaseModelFactory.cs:92` |
 
-### Drop-in capability gaps  <sub>`dropin-gaps` — 10 unverified</sub>
+### Core: concurrency and locking  <sub>`core-concurrency` — 11, all verified 2026-07-27</sub>
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | `BeginTransaction(IsolationLevel.X)` runs at ReadCommitted and leaks the requested level onto the *next* transaction | `Providers/OutWit.Database.AdoNet/WitDbConnection.cs:164` |
-| major | Schemas are unsupported at every layer, and the one schema name the validator accepts (`public`) produces unresolvable SQL | `Providers/OutWit.Database.EntityFramework/Metadata/WitModelValidator.cs:56` |
-| major | `AlterColumn` silently emits nothing for a column-type change — model and database diverge with no error | `Providers/OutWit.Database.EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:182` |
-| major | AddPrimaryKey / DropPrimaryKey / RenameIndex emit SQL comments — the operation is silently skipped | `Providers/OutWit.Database.EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:320` |
-| major | Filtered indexes (`HasFilter`), `IncludeProperties` and descending indexes are silently dropped by the migrations generator | `Providers/OutWit.Database.EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:239` |
-| major | EF-generated CROSS APPLY / OUTER APPLY cannot be parsed — filtered/limited collection includes and correlated Take fail at runtime | `Engine/OutWit.Database.Parser/Grammars/WitSqlParser.g4:157` |
-| major | `ExecuteUpdate`/`ExecuteDelete` support only single-table statements — OpenIddict pruning already fails downstream | `Providers/OutWit.Database.EntityFramework/Extensions/WitDbServiceCollectionExtensions.cs:37` |
-| major | Savepoints are not wired to the ADO.NET contract, so EF cannot roll a failed SaveChanges back to a savepoint | `Providers/OutWit.Database.AdoNet/WitDbTransaction.cs:104` |
-| major | Ambient transactions / TransactionScope are unsupported — `EnlistTransaction` is not implemented | `Providers/OutWit.Database.AdoNet/WitDbConnection.cs:154` |
-| major | User-defined functions and stored procedures do not exist anywhere in the stack, while the dialect spec documents them as features | `Engine/OutWit.Database.Parser/Grammars/WitSqlParser.g4:35` |
+Verified in
+[CoreConcurrencyFindingsTests.cs](../Sources/Core/OutWit.Database.Core.Tests/AuditVerification/CoreConcurrencyFindingsTests.cs)
+and, for the pool, in
+[ConnectionPoolFindingTests.cs](../Sources/Providers/OutWit.Database.AdoNet.Tests/AuditVerification/ConnectionPoolFindingTests.cs).
 
-### Test-suite gaps  <sub>`tests-and-gaps` — 8 unverified</sub>
+**Every test here is deterministic.** That was the point of the batch: a stress run that stays green
+proves only that the race did not happen this time, so each test either drives the threads into the
+exact interleaving the finding describes — a storage double that parks inside `WritePageAsync`, a
+latch acquired on a second thread — or replaces the race with a direct observation of the state the
+race would corrupt.
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | StatementExecutor tests — the only coverage of the 50 KB StatementExecutor.Update.cs — mock IDatabase and assert Received(n), so read-your-own-writes defects are structurally invisible | `Engine/OutWit.Database.Tests/Statements/StatementExecutorUpdateTests.cs:418` |
-| major | Migration integration coverage tests only MigrateAsync; the sync Database.Migrate() path that reproduces KnownIssues #1b has zero coverage, and no test round-trips `dotnet ef migrations add` | `Providers/OutWit.Database.EntityFramework.Tests/MigrationTests/MigrateAsyncIntegrationTests.cs:54` |
-| major | The suite's only reference-model oracle is one-sided: deleted-key reads are unasserted, 1000 of ~110k keys are verified, the seed is fixed, and WAL is off | `Core/OutWit.Database.Core.Tests/LSM/LsmTreeStressTests.cs:428` |
-| major | No coverage measurement and no mutation testing, despite coverlet.collector being referenced in all seven test projects | `.github/workflows/ci.yml:56` |
-| major | EF Core's provider specification test suite is not referenced — the canonical proof of "drop-in" is absent, while an unused SQLite reference makes a differential oracle nearly free | `Providers/OutWit.Database.EntityFramework.Tests/OutWit.Database.EntityFramework.Tests.csproj:24` |
-| major | No page-level corruption or parser fuzzing: the single corruption test flips one hard-coded byte in a WAL file, behind an `if` that can silently skip the mutation | `Core/OutWit.Database.Core.Tests/Wal/WriteAheadLogTests.cs:284` |
-| major | Five [Ignore]d ADO.NET tests silence an unfixed parsing defect and a drop-in limitation that is absent from KnownIssues.md, with no negative test asserting a clean failure | `Providers/OutWit.Database.AdoNet.Tests/Parallel/WitDbConnectionParallelAccessTests.cs:79` |
-| major | No SQL-literal text round-trip property test: only 2 of 9 LiteralType values are round-tripped, with structural-only assertions | `Engine/OutWit.Database.Parser.Tests/SerializerTests.cs:236` |
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | DeadlockDetector is never fed any wait edge | both transactions failed with `TimeoutException` after the full 2 s timeout; neither raised `DeadlockException`. In the code the detector is read into a local that is never used, and the deadlock check is an **empty `if` body** whose comment reads "full implementation would track all holders" | `Transactions/MvccTransaction.cs:228` |
+| **latent** | DatabaseLock.AcquireReadLockAsync leaks m_readerCount on cancellation | the `catch` blocks genuinely do not restore `m_readerCount`, so the code is one refactor from leaking — but the window cannot be entered. Every writer path takes `m_readerGate` **before** `m_writeSemaphore`, so a reader can never find the semaphore held while the gate is open, which is the only state in which the increment is followed by a blocking wait. 200 cancelled acquisitions leave the count at 0 | `Concurrency/DatabaseLock.cs:153` |
+| **confirmed** | RowLockHandle.Dispose() is an empty method | `IsLocked` still reports true after disposal, and a second transaction cannot take the row | `Concurrency/RowLockHandle.cs:40` |
+| **confirmed**, measured | RowLockManager completes TaskCompletionSource under m_syncLock without RunContinuationsAsynchronously | `ReleaseAllLocks` took **1007 ms** for a waiter whose continuation sleeps 1000 ms. The releasing thread runs the woken transaction's code to completion while holding the manager's lock | `Concurrency/RowLockManager.cs:110` |
+| **confirmed** | LsmParallelStore.Get/Scan do not wait for the background merge | `Get` returned **null** for a key written moments earlier on the same thread; `Scan` returned **0 rows** | `Builder/LsmParallelStore.cs:83` |
+| **not reproduced** | LsmParallelWriter.FlushAllAsync drains and disposes other threads' live buffers | a producer thread buffered 10 entries, a second thread ran `FlushAllAsync`, the producer then wrote 10 more into the same thread-local buffer. All 20 keys survived and the producer raised nothing | `LSM/LsmParallelWriter.cs:217` |
+| **confirmed**, worse | Page caches dispose CachedPage while an async write of that page is in flight | **this one corrupts data outright.** With the write parked inside the storage double, the page that reached storage was filled with `0xFF` — the content of the next borrower of the recycled pooled array — instead of the `0xAB` the caller wrote. The path matters: `Evict()` correctly refuses with "Cannot evict pinned page"; **`Clear()`** disposes every `CachedPage` unconditionally | `Cache/PageCacheShardedClock.cs:160` |
+| **confirmed**, latent for the provider | ConnectionPool never reclaims a permit | with `MaxPoolSize = 1`, a second borrow after the first connection was disposed had still not completed **5012 ms** later. `GetConnection` hands back `pooledConn.InnerConnection`, so the caller never holds the `PooledConnection` that `ReturnConnection` needs. But no type outside the `Pool` namespace holds a `ConnectionPool`, so the provider does not use the pool — a defect in public API surface, not on a live path | `AdoNet/Pool/ConnectionPool.cs:234` |
+| **mechanism confirmed, consequence not reproduced** | StorageFile mixes locked synchronous FileStream I/O with unlocked async I/O on the same handle | the mechanism is exactly as described — the sync path seeks and reads through the buffered `FileStream` under `m_lock`, the async path calls `RandomAccess` on `m_stream.SafeFileHandle` with **no lock at all** — but neither cross-path probe shows a user-visible effect: a page written sync is visible to an async read and vice versa, because a write of exactly `pageSize` bypasses the stream's buffer | `Storage/StorageFile.cs:199` |
+| **mechanism confirmed, consequence prevented elsewhere** | EnableFileLocking defaults to true but the builder selects the in-process-only LockManager overload | true at the code level: `new LockManager(Options.LockTimeout)` sets `m_fileLock = null; m_useFileLocking = false`, while `ProviderFeatures.FileLocking` is still advertised. But a second opener **is** refused — `StorageFile` opens with `FileShare.None`, so the OS provides the exclusion the missing lock would have. The user-facing gap is the failure *mode*, a hard `IOException` instead of the lock timeout the option implies, not unguarded concurrent access | `Builder/WitDatabaseBuilder.cs:561` |
+| **confirmed**, worse | PageLatchManager.Cleanup can dispose a latch another thread holds, and Release silently no-ops | both halves reproduce, and the mechanism is sharper than written: `Cleanup` tests `latch.IsWriteLockHeld`, which is **thread-affine** — a latch held by another thread looks completely idle to the cleanup thread. The second exclusive acquire **is granted** while the page is held, and the original holder's release then throws `SynchronizationLockException: The write lock is being released without being held`, because it lands on the replacement latch. That exception is raised on a background thread, so unhandled it **terminates the process** — it crashed the test host before the test wrapped its Dispose | `Tree/PageLatchManager.cs:228` |
 
-### Engine: DML and indexes  <sub>`engine-dml` — 7 unverified</sub>
+### Drop-in capability gaps  <sub>`dropin-gaps` — 10, all verified 2026-07-27</sub>
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | Foreign keys that reference their own table are excluded from all cascade handling | `Engine/OutWit.Database/Statements/StatementExecutor.Validation.cs:91` |
-| major | ON UPDATE CASCADE / SET NULL / SET DEFAULT is never applied | `Engine/OutWit.Database/Statements/StatementExecutor.Validation.cs:163` |
-| major | UPDATE of an autoincrement primary key desynchronises the PK from the internal rowid, making the row unreachable by PK | `Engine/OutWit.Database/Statements/StatementExecutor.Update.cs:891` |
-| major | Narrowing numeric writes silently truncate/wrap, and unparseable text is written as 0 | `Engine/OutWit.Database/Types/WitTypeConverter.cs:576` |
-| major | Declared VARCHAR(n) length and DECIMAL(p,s) precision/scale are recorded but never enforced | `Engine/OutWit.Database/Definitions/DefinitionColumn.cs:148` |
-| major | Statements are not atomic: a constraint failure part-way through a multi-row DML leaves earlier rows written | `Engine/OutWit.Database/Statements/StatementExecutor.Update.cs:1076` |
-| major | Recursive triggers have no depth limit and terminate the process with a StackOverflowException | `Engine/OutWit.Database/Statements/StatementExecutor.Triggers.cs:121` |
+Verified across three projects, because "drop-in" is a claim about three different contracts:
+[DropInGapsEngineTests.cs](../Sources/Engine/OutWit.Database.Tests/AuditVerification/DropInGapsEngineTests.cs)
+(grammar and isolation),
+[DropInGapsAdoNetTests.cs](../Sources/Providers/OutWit.Database.AdoNet.Tests/AuditVerification/DropInGapsAdoNetTests.cs)
+(ADO.NET contract) and
+[DropInGapsMigrationsTests.cs](../Sources/Providers/OutWit.Database.EntityFramework.Tests/AuditVerification/DropInGapsMigrationsTests.cs)
+(migrations).
 
-### Engine: query execution and optimizer  <sub>`engine-query` — 7 unverified</sub>
+**9 of the 10 reproduce.** Two methodological notes are worth keeping, because both changed what the
+tests had to look like:
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | LIMIT is applied before DISTINCT, so `SELECT DISTINCT ... LIMIT n` can return fewer than n distinct rows | `Engine/OutWit.Database/Query/QueryPlanner.cs:545` |
-| major | Default window frame is the whole partition instead of UNBOUNDED PRECEDING..CURRENT ROW, so `SUM(x) OVER (ORDER BY y)` returns the partition total, not a running total | `Engine/OutWit.Database/Iterators/IteratorWindow.Frame.cs:24` |
-| major | `ORDER BY ... NULLS FIRST \| NULLS LAST` is parsed and then silently ignored by the sort iterator | `Engine/OutWit.Database/Iterators/IteratorSort.cs:45` |
-| major | LIKE is compiled to a .NET regex without Singleline/CultureInvariant, so `%` and `_` cannot cross a newline, `$` tolerates a trailing newline, and matching is culture- and case-insensitive | `Engine/OutWit.Database/Expressions/ExpressionEvaluator.Conditional.cs:155` |
-| major | Most scalar functions do not propagate NULL — LENGTH(NULL)=0, UPPER(NULL)='', YEAR(NULL)=1, ROUND(NULL)=0 | `Engine/OutWit.Database/Expressions/ExpressionEvaluator.Functions.cs:58` |
-| major | Equals/GetHashCode contract is violated for cross-type numerics, so hash join, GROUP BY, DISTINCT and UNION disagree with `=` | `Engine/OutWit.Database/Values/WitSqlValue.Comparison.cs:68` |
-| major | Index selection matches predicates by column name only, ignoring the table qualifier, so a predicate on another table can drive an index seek on the scanned table | `Engine/OutWit.Database/Optimizers/OptimizerQuery.cs:272` |
+- The ADO.NET tests are written against the **base types** — `DbTransaction`, `DbConnection` — not
+  against WitDatabase's own classes. That is not pedantry: `WitDbTransaction` declares `Save`,
+  `Rollback(string)` and `Release(string)` as `public void` rather than `override`, so the methods
+  work perfectly when called on the concrete type and throw when called through the contract. **This
+  is precisely why the provider's own test suite does not catch it and EF Core does.** Any future
+  drop-in test that instantiates the concrete type is testing the wrong thing.
+- The migrations generator's failure mode is emitting a **SQL comment** where it cannot emit a
+  statement. A comment is a valid script that changes nothing, so the migration is recorded as
+  applied while the database keeps its old schema. Asserting "SQL was produced" would pass; the
+  tests assert the output is not comment-only.
 
-### Parser and grammar  <sub>`parser` — 7 unverified</sub>
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed**, half restated | `BeginTransaction(IsolationLevel.X)` runs at ReadCommitted and leaks the requested level onto the *next* transaction | first half confirmed, and the mechanism is now exact. `StatementExecutor.Transactions.cs` says in a comment "Use SET TRANSACTION ISOLATION LEVEL **before** BEGIN TRANSACTION if needed" — and `WitDbConnection.BeginDbTransaction` emits them in the opposite order, so the level is still sitting unapplied in `PendingIsolationLevel` after `BEGIN`. Second half **restated**: the leak is real *within one execution context*, but `WitSqlEngine.Execute` builds a **fresh `ContextExecution` per call**, so through ADO.NET the requested level is silently **dropped**, not carried forward | `AdoNet/WitDbConnection.cs:164` |
+| **confirmed** | Schemas are unsupported at every layer; the one name the validator accepts (`public`) produces unresolvable SQL | `EnsureSchemaOperation` throws `NotSupportedException`, and a schema-qualified `CreateTable` emits `CREATE TABLE IF NOT EXISTS "T"` with the schema dropped — while EF's query and update generators keep it, so the DDL cannot match the DML | `EntityFramework/Metadata/WitModelValidator.cs:56` |
+| **confirmed**, worse | `AlterColumn` silently emits nothing for a column-type change | emits **nothing at all** — not even the explanatory comment its sibling operations produce. The migration is recorded as applied and the column keeps its old type | `.../WitMigrationsSqlGenerator.cs:182` |
+| **confirmed** | AddPrimaryKey / DropPrimaryKey / RenameIndex emit SQL comments | verbatim: `-- WitDatabase limitation: Cannot add PRIMARY KEY to existing table. Columns: Id`, `-- WitDatabase limitation: Cannot drop PRIMARY KEY from existing table. Table: T`, `-- Rename index: IX_Old -> IX_New` | `.../WitMigrationsSqlGenerator.cs:320` |
+| **confirmed**, worse | Filtered indexes, `IncludeProperties` and descending indexes are silently dropped | "dropped" understates it for the filtered case. A **filtered UNIQUE** index came out as `CREATE UNIQUE INDEX ... ON "T" ("Value")` with no `WHERE`, which enforces a **stricter** constraint than the model declares — rows the application is entitled to insert are rejected. Descending direction is dropped likewise | `.../WitMigrationsSqlGenerator.cs:239` |
+| **confirmed** | EF-generated CROSS APPLY / OUTER APPLY cannot be parsed | `CROSS APPLY`, `OUTER APPLY` and a `VALUES` table source all fail to parse. These fail at **runtime**, not at model build | `Parser/Grammars/WitSqlParser.g4:157` |
+| **not reproduced** | `ExecuteUpdate`/`ExecuteDelete` support only single-table statements | four shapes all succeed: `ExecuteDelete` and `ExecuteUpdate` with a predicate over a navigation, `ExecuteDelete` over an explicit `Join`, and `ExecuteDelete` with a `NOT IN` over a filtered projection of another table — the pruning shape the finding names. If OpenIddict pruning does fail, it fails for some other reason, and the reproducing query is still needed | `.../WitDbServiceCollectionExtensions.cs:37` |
+| **confirmed** | Savepoints are not wired to the ADO.NET contract | `DbTransaction.SupportsSavepoints` is **False**, and `Save` through the base type throws `NotSupportedException`. EF Core checks exactly that property before using a savepoint to recover a failed `SaveChanges` | `AdoNet/WitDbTransaction.cs:104` |
+| **confirmed**, worse | Ambient transactions / TransactionScope are unsupported | `EnlistTransaction` throws `NotSupportedException`, as claimed — but the damaging part is what happens when nobody calls it: a write inside a `TransactionScope` that is **never completed survives**. Code relying on `TransactionScope` for atomicity is silently wrong rather than loudly unsupported | `AdoNet/WitDbConnection.cs:154` |
+| **confirmed** | User-defined functions and stored procedures do not exist, while the spec documents them | neither `CREATE FUNCTION` nor `CREATE PROCEDURE` parses. WitSQL.md gives both full sections with syntax — §22 and §23. These are the two gaps Dmitry names as remaining before true drop-in status | `Parser/Grammars/WitSqlParser.g4:35` |
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | Serializers emit unquoted identifiers using an incomplete reserved-word list, so round-tripped schema objects fail to re-parse | `Engine/OutWit.Database.Parser/Serializers/WitSqlExpressionSerializer.cs:441` |
-| major | `INSERT INTO t DEFAULT VALUES` is not in the grammar although the EF provider emits it | `Engine/OutWit.Database.Parser/Grammars/WitSqlParser.g4:194` |
-| major | MERGE assigns the source alias to TargetAlias when the target alias is omitted | `Engine/OutWit.Database.Parser/Visitor/WitSqlVisitor.DML.cs:373` |
-| major | No typed, prefixed or hexadecimal literal forms — including the hex literals the spec itself documents | `Engine/OutWit.Database.Parser/Grammars/WitSqlParser.g4:527` |
-| major | MySQL-style `LIMIT offset, count` binds the two operands the wrong way round | `Engine/OutWit.Database.Parser/Visitor/WitSqlVisitor.DML.cs:80` |
-| major | Documented trigger bodies are unusable: `SET NEW.col = ...` is a syntax error and SIGNAL bodies throw NotSupportedException | `Engine/OutWit.Database.Parser/Grammars/WitSqlParser.g4:80` |
-| major | Integer literals above long.MaxValue escape as a raw OverflowException, and long.MinValue cannot be written at all | `Engine/OutWit.Database.Parser/Visitor/WitSqlVisitor.Expressions.cs:277` |
+### Test-suite gaps  <sub>`tests-and-gaps` — 8, all verified 2026-07-27</sub>
 
-### Engine: schema catalog and DDL  <sub>`engine-schema-ddl` — 6 unverified</sub>
+Verified in
+[TestsAndGapsFindingsTests.cs](../Sources/Core/OutWit.Database.Core.Tests/AuditVerification/TestsAndGapsFindingsTests.cs).
+This dimension is unlike the rest: the claims are about the **test suite and the build**, not about
+what the engine does, so they are settled by measuring the repository. The tests still assert the
+*desired* state, so each turns green the day its gap is closed.
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | Named constraints declared in CREATE TABLE lose their names, so ALTER TABLE DROP CONSTRAINT can never remove them (breaks EF Core DropForeignKey / DropCheckConstraint migrations) | `Engine/OutWit.Database/Statements/StatementExecutor.Ddl.Tables.cs:128` |
-| major | ALTER TABLE ADD COLUMN silently discards UNIQUE, PRIMARY KEY, CHECK and REFERENCES column constraints | `Engine/OutWit.Database/Statements/StatementExecutor.Ddl.Tables.cs:283` |
-| major | DROP COLUMN leaves the dropped column referenced by PRIMARY KEY / UNIQUE / FK / index metadata, making the table un-insertable | `Engine/OutWit.Database/Schema/SchemaCatalog.Columns.cs:41` |
-| major | Self-referencing foreign keys never cascade: ON DELETE CASCADE / RESTRICT is skipped for self-references | `Engine/OutWit.Database/Statements/StatementExecutor.Validation.cs:89` |
-| major | Cascade matching ignores fk.ForeignColumns and compares child FK values positionally against the parent's PRIMARY KEY | `Engine/OutWit.Database/Statements/StatementExecutor.Validation.cs:277` |
-| major | dotnet ef dbcontext scaffold cannot work: WitDatabaseModelFactory queries sqlite_master and SQLite PRAGMAs that the engine does not implement | `Providers/OutWit.Database.EntityFramework/Design/Internal/WitDatabaseModelFactory.cs:92` |
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | EF Core's provider specification suite is not referenced, while an unused SQLite reference makes a differential oracle nearly free | **the single highest-value entry in the backlog.** The csproj references `Microsoft.EntityFrameworkCore.Sqlite` on both TFMs and **not** `Specification.Tests` — so the dependency that would make a differential oracle nearly free is already paid for, and the conformance suite that decides the drop-in claim is absent | `EntityFramework.Tests.csproj:24` |
+| **confirmed** | No coverage measurement and no mutation testing, despite coverlet.collector in all seven test projects | measured: coverlet.collector is referenced by **all 7** test projects, and `ci.yml` contains **zero** occurrences of a collect flag, of `stryker`, or of `mutation`. Given that nine behaviours changed during the audit without a single test failing, mutation testing is the gap that would have caught them | `.github/workflows/ci.yml:56` |
+| **confirmed** | StatementExecutor tests mock IDatabase and assert Received(n), so read-your-own-writes defects are structurally invisible | seven occurrences of `Substitute.For<IDatabase>` / `Received(` in that one file. **This is the finding that explains the others**: a suite asserting call counts against a mock cannot notice a wrong value, which is exactly the class of defect this verification pass kept confirming | `StatementExecutorUpdateTests.cs:418` |
+| **confirmed** | The single corruption test flips one hard-coded byte behind an `if` that can silently skip the mutation | `bytes[25] ^= 0xFF` sits inside `if (bytes.Length > 30)`. A shorter file skips the mutation and the test passes having verified nothing | `Core.Tests/Wal/WriteAheadLogTests.cs:284` |
+| **confirmed**, different arithmetic | No SQL-literal round-trip property test: only 2 of 9 LiteralType values are round-tripped | measured: **6 of the 10** members are never mentioned by the serializer tests — `Real`, `Blob`, `CurrentTimestamp`, `CurrentDate`, `CurrentTime`, `Decimal`. The enum has since gained `Decimal` (commit `9556bd2`) and 4 members are exercised rather than 2. Same gap, different numbers | `Parser.Tests/SerializerTests.cs:236` |
+| **confirmed** | Five [Ignore]d ADO.NET tests silence an unfixed defect with no negative test asserting a clean failure | exactly **5** `[Ignore]` attributes in that file | `AdoNet.Tests/Parallel/WitDbConnectionParallelAccessTests.cs:79` |
+| **partly wrong** | The sync `Database.Migrate()` path has **zero** coverage, and no test round-trips `dotnet ef migrations add` | the sync path **is** covered: `context.Database.Migrate()` appears twice, in `MigrationTests/SchemaEvolutionRegressionTests.cs` (lines 58 and 80). The second half holds — nothing round-trips `dotnet ef migrations add`, because no real `Migration` subclass exists anywhere in the test projects | `MigrateAsyncIntegrationTests.cs:54` |
+| **partly wrong** | The LSM reference-model oracle is one-sided … and WAL is off | WAL is **enabled** in two of the four stress configurations (`WAL+Cache+SyncCompact`, `WAL+Cache+BgCompact`); only `NoWAL+Cache` turns it off. The rest holds and was measured: the seed is fixed (`new Random(42)`) and verification covers `expected.Take(1000)` keys | `Core.Tests/LSM/LsmTreeStressTests.cs:428` |
 
-### Core: MVCC and isolation  <sub>`core-mvcc` — 6 unverified</sub>
+### Engine: DML and indexes  <sub>`engine-dml` — 7, all verified 2026-07-27</sub>
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | READ COMMITTED point reads and range scans use different snapshots, so one transaction sees mutually inconsistent data | `Core/OutWit.Database.Core/Transactions/MvccTransaction.cs:158` |
-| major | SERIALIZABLE does not prevent phantoms or write skew because range reads are never added to the read set | `Core/OutWit.Database.Core/Transactions/MvccTransaction.cs:381` |
-| major | ADO.NET/EF Core isolation level is silently ignored and leaks into the following transaction | `Providers/OutWit.Database.AdoNet/WitDbConnection.cs:164` |
-| major | Garbage collection never reclaims deleted keys or metadata versions, so the file grows without bound | `Core/OutWit.Database.Core/Stores/MvccKeyValueStore.cs:546` |
-| major | Every commit and every rollback scans the entire database, making bulk EF SaveChanges quadratic | `Core/OutWit.Database.Core/Stores/MvccKeyValueStore.cs:400` |
-| major | The persisted max timestamp can lag the data on disk, so after a crash committed rows become invisible to every transactional read | `Core/OutWit.Database.Core/Stores/MvccKeyValueStore.cs:749` |
+Verified by execution in
+[EngineDmlFindingsTests.cs](../Sources/Engine/OutWit.Database.Tests/AuditVerification/EngineDmlFindingsTests.cs).
+**All seven reproduced.** Two are worse than the audit stated and one is narrower — see the notes.
 
-### Core: WAL, recovery, durability  <sub>`core-durability` — 6 unverified</sub>
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | Foreign keys that reference their own table are excluded from all cascade handling | `ON DELETE CASCADE` leaves the child row behind. Worse, `ON DELETE RESTRICT` **raises nothing** — the parent is deleted and the child is left dangling, so the safe declaration is the one that corrupts | `StatementExecutor.Validation.cs:91` |
+| **confirmed** | ON UPDATE CASCADE / SET NULL / SET DEFAULT is never applied | child key stays at the old value under both CASCADE and SET NULL, producing a genuine **orphan row** — referential integrity is not maintained on the UPDATE path at all | `StatementExecutor.Validation.cs:163` |
+| **confirmed**, restated | UPDATE of an autoincrement primary key desynchronises the PK from the internal rowid | the audit says "unreachable by PK"; it is reachable by the **wrong** key. After `UPDATE T SET Id = 100 WHERE Id = 1`: `SELECT Id` returns **100**, `WHERE Id = 100` returns **nothing**, and `WHERE Id = 1` returns **one row that projects Id = 100** — a row contradicting the predicate that found it. Bounded on one side: the uniqueness check reads the stored column, so a duplicate insert of 100 is still rejected. It is a lookup defect, not a uniqueness hole | `StatementExecutor.Update.cs:891` |
+| **confirmed** | Narrowing numeric writes silently truncate/wrap, and unparseable text is written as 0 | no exception for 100000→`SMALLINT`, 999→`TINYINT`, 9999999999999→`INT`, or `'not a number'`→`INT`. WitSQL.md documents each type's exact range, so these are outside the declared contract | `Types/WitTypeConverter.cs:576` |
+| **confirmed** | Declared VARCHAR(n) length and DECIMAL(p,s) precision/scale are recorded but never enforced | a 12-character string is accepted into `VARCHAR(5)`; `123456.78` into `DECIMAL(5,2)`; and `DECIMAL(10,2)` stores and returns `1.23456` unrounded, so the column does not round-trip at the precision the schema promises | `Definitions/DefinitionColumn.cs:148` |
+| **confirmed** | Statements are not atomic: a constraint failure part-way through a multi-row DML leaves earlier rows written | a 3-row INSERT failing on the third leaves **2 rows** committed; a 5-row UPDATE failing partway leaves row 1 mutated from 1 to **30**. The UPDATE case is the worse one — it damages data that already existed | `StatementExecutor.Update.cs:1076` |
+| **confirmed**, conclusively | Recursive triggers have no depth limit and terminate the process with a StackOverflowException | run alone, the test host dies: `Test host process crashed : Stack overflow.` There is no depth counter anywhere in the file. `StackOverflowException` is uncatchable in .NET, so a self-referencing trigger takes the **host application** down, not just the query | `StatementExecutor.Triggers.cs:121` |
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | Recovery truncates the WAL after a partial replay, so one bad record permanently destroys every committed transaction behind it — with no error reported | `Core/OutWit.Database.Core/Transactions/TransactionalStore.cs:403` |
-| major | Auto-increment / rowid counters are written after the commit fsync and never flushed, so after a crash the next INSERT reuses a live rowid and silently overwrites an existing row | `Engine/OutWit.Database/Engine/WitSqlEngine.Transactions.cs:56` |
-| major | Autocommit DML is never fsync'd: there is no Flush call anywhere in the ADO.NET or EF Core provider, and pooled connections are not disposed on Close() | `Engine/OutWit.Database/Engine/WitSqlEngine.Dml.Operations.cs:257` |
-| major | Savepoint rollback is invisible to the journal, so WAL replay resurrects writes that were rolled back before commit | `Core/OutWit.Database.Core/Transactions/Transaction.cs:310` |
-| major | RollbackJournal recovery has no checksum and no length verification, so a torn tail is applied as a truncated or fabricated before-image | `Core/OutWit.Database.Core/Transactions/RollbackJournal.cs:262` |
-| major | Journal=rollback with a bare relative Data Source throws ArgumentException when the connection is opened | `Core/OutWit.Database.Core/Transactions/RollbackJournal.cs:51` |
+### Engine: query execution and optimizer  <sub>`engine-query` — 7, all verified 2026-07-27</sub>
 
-### EF query translation  <sub>`ef-translation` — 5 unverified</sub>
+Verified by execution in
+[EngineQueryFindingsTests.cs](../Sources/Engine/OutWit.Database.Tests/AuditVerification/EngineQueryFindingsTests.cs).
+Confirmed tests carry `[Ignore]` with the behaviour observed; the passing ones stay active as pins.
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | `StartsWith`/`EndsWith` build LIKE patterns without escaping wildcards in the search term | `Providers/OutWit.Database.EntityFramework/Query/Translators/WitStringMethodTranslator.cs:128` |
-| major | Engine `LIKE` is case-insensitive and newline-blind, so `StartsWith` and `Contains` disagree with each other and with every real backend | `Engine/OutWit.Database/Expressions/ExpressionEvaluator.Conditional.cs:158` |
-| major | Translators emit functions and casts the engine does not implement (MILLISECOND, TOTAL_SECONDS, LOG base, unsigned/short CASTs, fractional DATEADD) | `Providers/OutWit.Database.EntityFramework/Query/Translators/WitMemberTranslator.cs:110` |
-| major | JSON columns (`ToJson`) and primitive collections are unsupported: `VisitJsonScalar` is not overridden and `FindMapping` has no collection path | `Providers/OutWit.Database.EntityFramework/Query/WitQuerySqlGenerator.cs:11` |
-| major | `CROSS APPLY`/`OUTER APPLY` and `VALUES` table sources are neither overridden nor supported by the grammar | `Providers/OutWit.Database.EntityFramework/Query/WitQuerySqlGenerator.cs:85` |
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | LIMIT is applied before DISTINCT, so `SELECT DISTINCT ... LIMIT n` can return fewer than n distinct rows | returned **1** row where 3 distinct values were available | `Query/QueryPlanner.cs:545` |
+| **confirmed** | Default window frame is the whole partition instead of UNBOUNDED PRECEDING..CURRENT ROW | `SUM(x) OVER (ORDER BY Id)` returned **450, 450, 450** instead of 100, 250, 450 | `Iterators/IteratorWindow.Frame.cs:24` |
+| **confirmed** | `ORDER BY ... NULLS FIRST \| NULLS LAST` is parsed and then silently ignored | NULLs sort first either way. `NULLS FIRST` therefore *appears* to work — it agrees with the default by coincidence, so only `NULLS LAST` exposes it | `Iterators/IteratorSort.cs:45` |
+| **confirmed** | LIKE is compiled to a .NET regex without Singleline/CultureInvariant | three distinct defects, each reproduced: `'a\nb' LIKE 'a%b'` and `LIKE 'a_b'` both match **nothing**; `'abc\n' LIKE 'abc'` **matches**; `'I' LIKE 'i'` matches under invariant culture and **not** under `tr-TR` | `Expressions/ExpressionEvaluator.Conditional.cs:155` |
+| **confirmed** | Most scalar functions do not propagate NULL | **9 of 11** probed expressions return a zero-value. `ABS(NULL)` and `NULL \|\| 'x'` are correct, so "most" is accurate but not universal | `Expressions/ExpressionEvaluator.Functions.cs:58` |
+| **confirmed** | Equals/GetHashCode contract is violated for cross-type numerics | Integer/Decimal, Integer/Real and Real/Decimal all report `Equals` true with three different hash codes; `SELECT 1 UNION SELECT 1.0` returns **2 rows** while `1 = 1.0` is true | `Values/WitSqlValue.Comparison.cs:68` |
+| **latent** | Index selection matches predicates by column name only, ignoring the table qualifier | the defective code is exactly as described — `FindMatchingPredicate` compares `ColumnName` alone and never reads the `TableAlias` captured beside it — but nothing reaches it. `QueryPlanner` declares an `OptimizerQuery` field and **never calls it**, so SELECT never uses this optimizer; the only callers are UPDATE/DELETE, and both bypass it as soon as a second table appears; `ExtractPredicatesRecursive` does not descend into subqueries; and `DmlOptimizer` only consults it past 50 rows. Four probes seeded past that floor all pass | `Optimizers/OptimizerQuery.cs:272` |
 
-### Core: LSM engine  <sub>`core-lsm` — 4 unverified</sub>
+### Parser and grammar  <sub>`parser` — 7, all verified 2026-07-27</sub>
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | A failed flush leaves m_immutableMemTable populated forever; the next successful flush overwrites the reference and truncates the WAL, losing the data permanently | `Core/OutWit.Database.Core/Stores/StoreLsm.cs:550` |
-| major | The SSTable is never fsynced but the WAL is truncated immediately after, so a power loss discards a whole flushed memtable | `Core/OutWit.Database.Core/LSM/SSTableBuilder.cs:184` |
-| major | Compaction has no manifest: the live SSTable set is inferred from the directory listing, so a crash between publishing the output and deleting the inputs resurrects deleted rows | `Core/OutWit.Database.Core/Stores/StoreLsm.cs:519` |
-| major | LsmParallelWriter.Dispose discards unsubmitted thread-local buffers instead of flushing them | `Core/OutWit.Database.Core/LSM/LsmParallelWriter.cs:497` |
+Verified in
+[ParserFindingsTests.cs](../Sources/Engine/OutWit.Database.Parser.Tests/AuditVerification/ParserFindingsTests.cs)
+(parse level) and
+[ParserFindingsEngineTests.cs](../Sources/Engine/OutWit.Database.Tests/AuditVerification/ParserFindingsEngineTests.cs)
+(the claims that are about what a parsed statement *does*). **6 of 7 reproduce.**
 
-### EF migrations (KnownIssues #1)  <sub>`blocker-migrations` — 4 unverified</sub>
+One methodological note from this batch, because it nearly cost a real defect: the MERGE test first
+asserted only that `TargetAlias != SourceAlias`, **and it passed** — the two do differ, in the wrong
+direction. Asserting a relation between two values is not the same as asserting each value.
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | BuildCreateOperations silently drops HasData seed rows and EnsureSchema, and skips Sort() so generated InitialCreate migrations are in the wrong dependency order | `Providers/OutWit.Database.EntityFramework/Migrations/WitMigrationsModelDiffer.cs:71` |
-| major | EnsureSchemaOperation is not handled, so a model that WitModelValidator explicitly allows (HasDefaultSchema("public")) fails migration with NotSupportedException; schema is also dropped from every emitted identifier | `Providers/OutWit.Database.EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:38` |
-| major | AddColumn/ColumnDefinition ignore the model and the type mapping source, so maxLength / precision / scale are silently lost from ALTER TABLE and CREATE TABLE | `Providers/OutWit.Database.EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:102` |
-| major | SchemaCatalog.AddColumn does not reject a duplicate column name, so a replayed ALTER TABLE ADD COLUMN appends a second identical column and widens every row again | `Engine/OutWit.Database/Schema/SchemaCatalog.Columns.cs:17` |
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | Serializers emit unquoted identifiers using an incomplete reserved-word list | the set holds **68** entries; WitSQL.md's documented reserved list is roughly twice that. `Using`, `With`, `Row`, `Column`, `Cross`, `Interval` and `Partition` are all emitted unquoted and then fail to re-parse. `Order` and `Group`, used as controls, round-trip correctly | `Parser/Serializers/WitSqlExpressionSerializer.cs:441` |
+| **confirmed** | `INSERT INTO t DEFAULT VALUES` is not in the grammar | `WitSqlParsingException` with 2 errors | `Parser/Grammars/WitSqlParser.g4:194` |
+| **confirmed** | MERGE assigns the source alias to TargetAlias when the target alias is omitted | the aliases are **exactly swapped**: `TargetAlias = "s"` (the source's) and `SourceAlias = null` | `Parser/Visitor/WitSqlVisitor.DML.cs:373` |
+| **confirmed**, worse | No typed, prefixed or hexadecimal literal forms | in a `WHERE`, `Flags & 0x0F` is a clean syntax error — `mismatched input 'x0F'`. In a select list it is **worse than an error**: `SELECT 0x1F` parses silently as the integer `0` with the column alias `x1F`. A query written against the spec's own bitwise examples returns 0 instead of failing | `Parser/Grammars/WitSqlParser.g4:527` |
+| **confirmed** | MySQL-style `LIMIT offset, count` binds the operands the wrong way round | `LIMIT 10, 5` yields `offset = 5`, `count = 10`. Executed against 20 rows it returns **6..15 instead of 11..15** — a silently wrong page | `Parser/Visitor/WitSqlVisitor.DML.cs:80` |
+| **confirmed**, mechanism restated | Documented trigger bodies are unusable | `SET NEW.col = ...` is a syntax error, as claimed. The SIGNAL half is right about the symptom and wrong about the stage: SIGNAL **parses** fine and fails later with `NotSupportedException: Statement serialization not supported: WitSqlStatementSignal` — the break is in statement *serialization*, not in the grammar or in execution | `Parser/Grammars/WitSqlParser.g4:80` |
+| **already fixed** <sub>(reclassified)</sub> | Integer literals above long.MaxValue escape as a raw OverflowException, and long.MinValue cannot be written | nothing is thrown: `99999999999999999999` is promoted to `Decimal` and keeps its value exactly, and `-9223372036854775808` parses for the same reason. First recorded as "not reproduced"; the `literal-roundtrip` batch then found the cause — commit **`9556bd2`**, in the 2.0.0 merge, fixed exactly this alongside the decimal-literal defect. The tests pin the fixed behaviour | `Parser/Visitor/WitSqlVisitor.Expressions.cs:277` |
 
-### EF provider runtime  <sub>`ef-runtime` — 4 unverified</sub>
+### Engine: schema catalog and DDL  <sub>`engine-schema-ddl` — 6, all verified 2026-07-27</sub>
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | dotnet ef dbcontext scaffold cannot work: WitDatabaseModelFactory queries SQLite catalogs (sqlite_master, PRAGMA) | `Providers/OutWit.Database.EntityFramework/Design/Internal/WitDatabaseModelFactory.cs:92` |
-| major | Bulk extensions skip shadow properties and bypass value converters, writing structurally wrong rows | `Providers/OutWit.Database.EntityFramework/Extensions/WitDbBulkExtensions.cs:463` |
-| major | BulkOptions.SetOutputIdentity does the opposite of its documentation: it sends default PK values instead of reading generated ones | `Providers/OutWit.Database.EntityFramework/Extensions/WitDbBulkExtensions.cs:469` |
-| major | WitModelRuntimeInitializer hardcodes designTime:false, so the design-time model is given a runtime relational model | `Providers/OutWit.Database.EntityFramework/Infrastructure/WitModelRuntimeInitializer.cs:94` |
+Verified by execution in
+[EngineSchemaDdlFindingsTests.cs](../Sources/Engine/OutWit.Database.Tests/AuditVerification/EngineSchemaDdlFindingsTests.cs).
+All reproduce; one is narrower than written, one is a duplicate, and one settles two entries in
+other dimensions as well.
 
-### Literal round trip  <sub>`literal-roundtrip` — 3 unverified</sub>
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | Named constraints declared in CREATE TABLE lose their names, so ALTER TABLE DROP CONSTRAINT can never remove them | reproduced for CHECK, FOREIGN KEY and UNIQUE alike: `InvalidOperationException: Constraint 'CK_V' not found on table 'T'`. Constraints added *later* via `ALTER TABLE ADD CONSTRAINT` do work — which is why the existing `WitSqlEngineAlterTableConstraintTests` never caught this. In the engine's favour: it fails **loudly**, so an EF `DropForeignKey` migration throws rather than silently leaving the constraint in place | `StatementExecutor.Ddl.Tables.cs:128` |
+| **confirmed** | ALTER TABLE ADD COLUMN silently discards UNIQUE, PRIMARY KEY, CHECK and REFERENCES column constraints | every violating INSERT accepted without exception — duplicate into a `UNIQUE` column, `-5` into `CHECK (Age >= 0)`, `999` into a `REFERENCES P(Id)` column. Unlike the row above this one is **silent**: the column reads as constrained in the DDL the user wrote and is unconstrained in the database | `StatementExecutor.Ddl.Tables.cs:283` |
+| **confirmed in part** | DROP COLUMN leaves the dropped column referenced by PRIMARY KEY / UNIQUE / FK / index metadata, making the table un-insertable | only **2 of the 4** named metadata kinds are affected. Index ✅ and UNIQUE ✅ are cleaned up correctly, as is dropping the column an FK points *at* ✅. Broken: **FOREIGN KEY** and **PRIMARY KEY**, both accepting the drop and then failing the next INSERT with `KeyNotFoundException: Column '…' not found`. Not the DROP COLUMN defect fixed in 2.0.0 — that one re-serialised rows against the pre-drop column list; this is the metadata half | `Schema/SchemaCatalog.Columns.cs:41` |
+| **duplicate** | Self-referencing foreign keys never cascade | same defect as the `engine-dml` entry at line 91, already confirmed — and there the worse half is that `ON DELETE RESTRICT` raises nothing | `StatementExecutor.Validation.cs:89` |
+| **confirmed**, worse than stated | Cascade matching ignores fk.ForeignColumns and compares child FK values positionally against the parent's PRIMARY KEY | **the most damaging finding in the batch.** It goes wrong in *both* directions on the same fixture: a child whose referenced row still exists **is deleted** (silent data loss), and a child whose referenced row is gone **survives** (silent orphan). Reproduced again with a composite FK listing the parent's PK columns in reverse order. This needs no contrived schema — only a foreign key pointing at a `UNIQUE` column rather than the PK | `StatementExecutor.Validation.cs:277` |
+| **confirmed**, ×3 | dotnet ef dbcontext scaffold cannot work: WitDatabaseModelFactory queries sqlite_master and SQLite PRAGMAs the engine does not implement | `SELECT name FROM sqlite_master` → `InvalidOperationException: Table 'sqlite_master' not found`; `PRAGMA` does not even parse, it is not in the grammar's statement set. Scaffolding fails on its **first** query, so database-first is inoperative rather than incomplete. The identical finding is listed under `cross-cutting` and `ef-runtime`, so this evidence settles all three entries | `EntityFramework/Design/Internal/WitDatabaseModelFactory.cs:92` |
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | All REAL_LITERALs are parsed as double, so full-precision decimal literals silently lose digits on the way into DECIMAL columns and make `=` match the wrong rows | `Engine/OutWit.Database.Parser/Visitor/WitSqlVisitor.Expressions.cs:284` |
-| major | A `char` CLR property is mapped to StringTypeMapping, so any inlined char constant throws InvalidCastException before SQL is produced | `Providers/OutWit.Database.EntityFramework/Storage/WitTypeMappingSource.cs:150` |
-| major | Schema-qualified identifiers do not round-trip: DDL drops the schema while EF's query/update generators keep it, so the one schema value WitModelValidator permits ("public") makes every table unreachable | `Providers/OutWit.Database.EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:39` |
+### Core: MVCC and isolation  <sub>`core-mvcc` — 6, all verified 2026-07-27</sub>
 
-### Core: encryption, cache, storage, providers  <sub>`core-crypto-cache-storage` — 2 unverified</sub>
+Verified in
+[CoreMvccFindingsTests.cs](../Sources/Core/OutWit.Database.Core.Tests/AuditVerification/CoreMvccFindingsTests.cs).
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | Page caches protect the same mutable state with two different locks for their sync and async APIs | `Core/OutWit.Database.Core/Cache/PageCacheShardedClock.cs:36` |
-| major | Zeroed or truncated pages bypass AEAD authentication, and no AAD/version binding allows silent page rollback | `Core/OutWit.Database.Core/Storage/StorageEncrypted.cs:78` |
+Two techniques worth reusing for the remaining core dimensions. The commit-cost claim is settled by
+**counting, not timing** — a counting inner `IKeyValueStore` turns "scans the whole database" into a
+deterministic number, avoiding the stopwatch-assertion mistake the suite's own `Performance/` tests
+already make. And the crash claim needs **no process kill**: an in-memory inner store plays the part
+of the durable media and simply outlives the `MvccKeyValueStore` that never got to flush.
 
-### ADO.NET provider  <sub>`adonet` — 2 unverified</sub>
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | READ COMMITTED point reads and range scans use different snapshots | exactly as described: the same transaction read `a` as **'2' by key and '1' by scan**. READ COMMITTED permits seeing another transaction's commit; it does not permit two reads in one transaction to disagree about the same key | `Core/Transactions/MvccTransaction.cs:158` |
+| **half confirmed** | SERIALIZABLE does not prevent phantoms or write skew | **write skew: confirmed** — both transactions committed and nobody was left on call. **Phantoms: not reproduced** — a row inserted after the reader began does not appear in its rescan, because the snapshot already hides it. So what this actually provides is *snapshot isolation*: phantoms stopped, write skew allowed. That gap is precisely the difference SERIALIZABLE exists to close, but the finding's wording claims more than is true | `Core/Transactions/MvccTransaction.cs:381` |
+| **duplicate** | ADO.NET/EF Core isolation level is silently ignored and leaks into the following transaction | settled under `dropin-gaps` — and restated there: through ADO.NET the level is silently **dropped**, not leaked, because `WitSqlEngine.Execute` builds a fresh execution context per call | `AdoNet/WitDbConnection.cs:164` |
+| **confirmed** | Garbage collection never reclaims deleted keys or metadata versions | 50 inner records before `RunNow()` and **50 after** — 50 keys written, all 50 deleted, no live transaction protecting any of them, nothing reclaimed | `Core/Stores/MvccKeyValueStore.cs:546` |
+| **confirmed**, with a number | Every commit and rollback scans the entire database | committing **one** row over a 500-row store enumerated **502 entries across 7 scans**. The cost of a commit follows the size of the database, so bulk `SaveChanges` really is quadratic | `Core/Stores/MvccKeyValueStore.cs:400` |
+| **confirmed**, and total | The persisted max timestamp can lag the data, so after a crash committed rows become invisible | **0 of 10** committed rows were visible after an unflushed restart. The watermark is written only on `Flush` and `Dispose`, so recovery reads a timestamp that hides everything committed since the last flush — the data is on the media and unreachable | `Core/Stores/MvccKeyValueStore.cs:749` |
 
-| Sev | Finding | Where |
-|---|---|---|
-| major | Connection pool can never reclaim a connection: the return path is unreachable, so every borrow leaks a pool permit | `Providers/OutWit.Database.AdoNet/Pool/ConnectionPool.cs:234` |
-| major | Nothing tracks an open reader: closing the connection disposes the storage under a live streaming iterator | `Providers/OutWit.Database.AdoNet/WitDbCommand.cs:131` |
+### Core: WAL, recovery, durability  <sub>`core-durability` — 6, verified 2026-07-27</sub>
+
+Verified in
+[CoreDurabilityFindingsTests.cs](../Sources/Core/OutWit.Database.Core.Tests/AuditVerification/CoreDurabilityFindingsTests.cs).
+Recovery is simulated the same way as in the LSM and MVCC batches: the journal file is the durable
+media and a fresh store is opened over it — no process kill, and the interleaving is exact.
+
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed**, and quantified | Recovery truncates the WAL after a partial replay, destroying every committed transaction behind a bad record, with no error reported | after corrupting 16 bytes in the middle of the log, **2 of 5** committed transactions were recovered and **no error was reported**. Three committed transactions vanished in silence — that is the half that matters, since a database may lose data to corruption but must say so | `Core/Transactions/TransactionalStore.cs:403` |
+| **confirmed** | Savepoint rollback is invisible to the journal, so WAL replay resurrects writes rolled back before commit | the discarded write came back during replay. The rollback removed it from the store and left its record in the journal, so recovery reapplied a write the transaction had already thrown away | `Core/Transactions/Transaction.cs:310` |
+| **confirmed** | Journal=rollback with a bare relative Data Source throws ArgumentException | `ArgumentException: The value cannot be an empty string. (Parameter 'path')`. `Path.GetDirectoryName("relative.witdb")` returns the **empty string**, not null, so the `?? basePath` fallback never fires and `CreateDirectory("")` throws | `Core/Transactions/RollbackJournal.cs:51` |
+| **confirmed by measurement** | Autocommit DML is never fsync'd: no Flush call anywhere in the ADO.NET or EF Core provider | the factual half is exactly true and was checked directly — `grep -rn "\.Flush(" --include=*.cs` over both provider projects returns **zero** hits. Showing the resulting loss needs a real power cut | `Engine/WitSqlEngine.Dml.Operations.cs:257` |
+| **not verified** | RollbackJournal recovery has no checksum or length verification, so a torn tail is applied as a fabricated before-image | not reached in this batch | `Core/Transactions/RollbackJournal.cs:262` |
+| **not reproducible** with the current surface | Auto-increment / rowid counters are written after the commit fsync and never flushed, so after a crash the next INSERT reuses a live rowid | the media-outlives-the-wrapper trick works at the store layer, but the rowid counters live in the engine's schema, and a file-backed engine opens its storage with `FileShare.None` — a second engine cannot be opened over the same file without disposing the first, and disposing is exactly what flushes the counters. Needs a second process or an injected failure point | `Engine/WitSqlEngine.Transactions.cs:56` |
+
+### EF query translation  <sub>`ef-translation` — 5, all verified 2026-07-27</sub>
+
+Verified end-to-end, as LINQ queries rather than assertions over generated SQL, in
+[EfTranslationFindingsTests.cs](../Sources/Providers/OutWit.Database.EntityFramework.Tests/AuditVerification/EfTranslationFindingsTests.cs).
+
+**A methodological trap caught in this batch, and it invalidated a whole first run.** The `ToJson`
+mapping fails at **model build**, not at query time, so putting the JSON entity in the same
+`DbContext` as everything else made *all ten* tests fail in setup with an unrelated error. Every
+verdict would have been wrong in the same direction. The JSON and primitive-collection entities now
+live in their own contexts. **Where a defect fires matters as much as whether it fires** — a
+model-build failure contaminates every test sharing that model.
+
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | `StartsWith`/`EndsWith` build LIKE patterns without escaping wildcards in the search term | the term is spliced in unescaped with no `ESCAPE` clause. `StartsWith("a_")` returned **all four** seeded rows — `a%b`, `a_c`, `axb`, `azc` — instead of the one that literally starts with `a_` | `EntityFramework/…/WitStringMethodTranslator.cs:128` |
+| **confirmed**, measured | Engine `LIKE` is case-insensitive, so `StartsWith` and `Contains` disagree with each other | on the same row `UPPERcase`: `StartsWith("upper")` matched **1**, `Contains("upper")` matched **0**. `StartsWith` becomes `LIKE` (case-insensitive in the engine); `Contains` becomes `INSTR` (ordinal). Two string predicates over the same data, opposite answers | `Engine/…/ExpressionEvaluator.Conditional.cs:158` |
+| **confirmed**, 4 of 5 | Translators emit functions and casts the engine does not implement | `NotSupportedException: Function not supported: MILLISECOND`; the same for `TOTAL_SECONDS`; `NotSupportedException: CAST to SMALLINT not supported`; and fractional `DATEADD` does not even reach the engine — the generated SQL fails to parse with `no viable alternative at input '>TIMESTAMP'`. The fifth, `Math.Log(x, base)`, **works** | `EntityFramework/…/WitMemberTranslator.cs:110` |
+| **half confirmed** | JSON columns (`ToJson`) and primitive collections are unsupported | JSON columns: confirmed — `InvalidOperationException: The store type 'null' specified for JSON column 'Detail' … is not supported by the current provider`, raised at model build. Primitive collections: **not reproduced** — a `List<int>` round-trips correctly | `EntityFramework/Query/WitQuerySqlGenerator.cs:11` |
+| **duplicate** | `CROSS APPLY`/`OUTER APPLY` and `VALUES` table sources are unsupported | settled under `dropin-gaps` — all three shapes fail to parse | `EntityFramework/Query/WitQuerySqlGenerator.cs:85` |
+
+### Core: LSM engine  <sub>`core-lsm` — 4, all verified 2026-07-27</sub>
+
+Verified in
+[CoreLsmFindingsTests.cs](../Sources/Core/OutWit.Database.Core.Tests/AuditVerification/CoreLsmFindingsTests.cs).
+The crash needs no process kill: the directory *is* the durable media, so restoring a file the
+compaction should have deleted reproduces "crashed between publishing the output and deleting the
+inputs" exactly.
+
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed**, and total | LsmParallelWriter.Dispose discards unsubmitted thread-local buffers | **all five** entries lost — `k0..k4` all missing after `Dispose()` followed by `store.Flush()`. The ordinary `using` shape throws away everything the caller wrote that had not yet crossed the buffer threshold | `Core/LSM/LsmParallelWriter.cs:497` |
+| **mechanism confirmed, consequence not reproduced** | Compaction has no manifest, so a crash between publishing the output and deleting the inputs resurrects deleted rows | the live set really is `Directory.GetFiles(m_directory, "sst_*.sst")`, and a surviving input **is** readmitted — but it loses. `Recover()` sorts by filename and the compaction output carries a higher id, so it counts as newest; and the output **retains the tombstone**, which was verified rather than assumed (`Get(k0)` returned null after compaction, when the output was the only file left). A resurrection would need the output to drop the tombstone or to sort behind a survivor. Test kept active as the pin for both properties | `Core/Stores/StoreLsm.cs:519` |
+| **mechanism confirmed, consequence not reproduced** | The SSTable is never fsynced but the WAL is truncated immediately after | true as written: finalisation ends at `m_writer.Flush()`, which only pushes the `BinaryWriter` buffer into the `FileStream`. There is **no `flushToDisk` anywhere under `Core/LSM/`** — grep returns zero hits — so the SSTable is still in the OS page cache when the WAL holding the same data is truncated. Showing the loss needs a real power cut; a clean process kill is not enough, because the OS writes its cache back | `Core/LSM/SSTableBuilder.cs:184` |
+| **mechanism only** | A failed flush leaves m_immutableMemTable populated forever, and the next flush loses the data | reproducing it needs an injected I/O failure part-way through a flush, and the current `StoreLsm` surface offers no way to arrange one. Recorded as unverified rather than guessed at | `Core/Stores/StoreLsm.cs:550` |
+
+### EF migrations (KnownIssues #1)  <sub>`blocker-migrations` — 4, all verified 2026-07-27</sub>
+
+Verified in
+[BlockerMigrationsFindingsTests.cs](../Sources/Providers/OutWit.Database.EntityFramework.Tests/AuditVerification/BlockerMigrationsFindingsTests.cs)
+and
+[SchemaCatalogFindingTests.cs](../Sources/Engine/OutWit.Database.Tests/AuditVerification/SchemaCatalogFindingTests.cs).
+
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **already fixed** | BuildCreateOperations drops HasData seed rows and EnsureSchema, and skips Sort() | the class named here **no longer exists**: `WitMigrationsModelDiffer.cs` was deleted in commit **`b686dd3`**, the convention-set-builder fix, in the 2.0.0 merge — so EF Core's own differ does the work. Verified rather than assumed: `HasData` rows reach the create script, and a referenced table is created before the table that references it. Both tests stay active as the pins for that removal | *(deleted)* `WitMigrationsModelDiffer.cs:71` |
+| **duplicate** | EnsureSchemaOperation is not handled, and schema is dropped from every emitted identifier | settled twice already: `EnsureSchemaOperation` throws `NotSupportedException` (`dropin-gaps`), and `EnsureCreated` on a `HasDefaultSchema("public")` model therefore fails outright (`literal-roundtrip`) | `EntityFramework/…/WitMigrationsSqlGenerator.cs:38` |
+| **confirmed** | AddColumn/ColumnDefinition drop maxLength, precision and scale | `MaxLength = 16` produced `ALTER TABLE "T" ADD COLUMN "Code" TEXT;` and `Precision = 18, Scale = 4` produced `ALTER TABLE "T" ADD COLUMN "Amount" DECIMAL NOT NULL;`. **This compounds with a confirmed `engine-dml` finding**: declared `VARCHAR(n)` and `DECIMAL(p,s)` are never enforced anyway, so even correct DDL would not be honoured — two independent defects covering for each other | `EntityFramework/…/WitMigrationsSqlGenerator.cs:102` |
+| **confirmed** | SchemaCatalog.AddColumn does not reject a duplicate column name | the second `ALTER TABLE T ADD COLUMN A INT` is accepted silently and the catalog ends up holding **`Id, A, A`**. Migrations are replayed routinely — a partially applied migration, a script run twice — so this is not a hypothetical path | `Engine/Schema/SchemaCatalog.Columns.cs:17` |
+
+### EF provider runtime  <sub>`ef-runtime` — 4, all verified 2026-07-27</sub>
+
+Verified in
+[EfRuntimeFindingsTests.cs](../Sources/Providers/OutWit.Database.EntityFramework.Tests/AuditVerification/EfRuntimeFindingsTests.cs).
+Three of the four are settled elsewhere; only the bulk-extensions entry is new.
+
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **duplicate** | dotnet ef dbcontext scaffold cannot work | settled under `engine-schema-ddl` — `sqlite_master` does not exist and `PRAGMA` does not parse | `EntityFramework/…/WitDatabaseModelFactory.cs:92` |
+| **confirmed**, both halves | Bulk extensions skip shadow properties and bypass value converters | **shadow properties, silently**: a shadow value set through the change tracker reads back as `null` — `GetInsertColumns` filters with `.Where(p => !p.IsShadowProperty())`, so the column is never written and nothing reports it. Shadow properties are not exotic; EF creates one for any relationship whose FK has no CLR property. **Value converters, loudly**: `ArgumentException: Cannot convert State to WitSqlValue` — the raw CLR value reaches the value layer unconverted. A `SaveChanges` control test passes, which places the defect in the bulk path rather than the mapping | `EntityFramework/…/WitDbBulkExtensions.cs:463` |
+| **duplicate** | BulkOptions.SetOutputIdentity sends default PK values instead of reading generated ones | settled under `cross-cutting` — and worse than stated: enabling it makes the insert fail with a duplicate-zero-key violation | `EntityFramework/…/WitDbBulkExtensions.cs:469` |
+| **already fixed** | WitModelRuntimeInitializer hardcodes designTime:false | the file **no longer exists** — deleted in commit `b686dd3`, the convention-set-builder fix, in the 2.0.0 merge. It was one of the two workarounds that fix made unnecessary | *(deleted)* `WitModelRuntimeInitializer.cs:94` |
+
+### Literal round trip  <sub>`literal-roundtrip` — 3, all verified 2026-07-27</sub>
+
+Verified in
+[LiteralRoundTripFindingsTests.cs](../Sources/Engine/OutWit.Database.Tests/AuditVerification/LiteralRoundTripFindingsTests.cs)
+and
+[LiteralRoundTripEfTests.cs](../Sources/Providers/OutWit.Database.EntityFramework.Tests/AuditVerification/LiteralRoundTripEfTests.cs).
+
+**This batch turned up a verdict category the earlier ones were missing: _already fixed_.** A test
+that passes does not distinguish "the claim was wrong" from "the claim was right and someone fixed
+it during the audit session". Checking `git log -L` on the cited function separates them — and it
+reclassified an entry in the `parser` table too. Worth doing before writing "not reproduced" again.
+
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **already fixed** | All REAL_LITERALs are parsed as double, so decimal literals lose digits and `=` matches the wrong rows | both probes pass: a 20-digit literal reaches a `DECIMAL(28,20)` column intact, and `=` matches only the row that holds it. The reason is in the history, not the claim — commit **`9556bd2`**, *"fix(parser): numeric literals are exact, and out-of-range integers no longer throw from the parser"* (2026-07-26), is part of the 2.0.0 merge. `ParseNumericLiteral` now tries `decimal` first and falls back to `double` only for exponent form. The finding list was written against pre-fix code and never updated | `Parser/Visitor/WitSqlVisitor.Expressions.cs:284` |
+| **confirmed**, broader | A `char` CLR property is mapped to StringTypeMapping, so any inlined char constant throws | broader than written: `InvalidOperationException: No coercion operator is defined between types 'System.Char' and 'System.String'` is raised by a **plain `SaveChanges`**, not only by an inlined constant. A `char` property is unusable outright | `EntityFramework/Storage/WitTypeMappingSource.cs:150` |
+| **confirmed**, fails earlier | Schema-qualified identifiers do not round-trip, making every table unreachable | right about the outcome, wrong about the stage: `EnsureCreated` itself throws `NotSupportedException` for `EnsureSchemaOperation`, so the table is never created and there is no DDL/DML mismatch left to reach. The DDL half was confirmed separately under `dropin-gaps` | `EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:39` |
+
+### Core: encryption, cache, storage, providers  <sub>`core-crypto-cache-storage` — 2, all verified 2026-07-27</sub>
+
+Verified in
+[CryptoCacheStorageFindingsTests.cs](../Sources/Core/OutWit.Database.Core.Tests/AuditVerification/CryptoCacheStorageFindingsTests.cs),
+using an in-memory inner `IStorage` so the ciphertext can be tampered with directly rather than
+through the file.
+
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **confirmed** | Page caches protect the same mutable state with two different locks for their sync and async APIs | each shard holds **both** a `Lock m_lock` and a `SemaphoreSlim m_asyncLock` over the same `m_pages` / `m_pageIndex` / `m_count` / `m_clockHand`. With an async flush provably still in flight — parked inside the storage double — a synchronous `CreatePage` **proceeded after 0 ms**. There is no mutual exclusion between the two APIs at all | `Core/Cache/PageCacheShardedClock.cs:36` |
+| **confirmed**, narrower than written | Zeroed or truncated pages bypass AEAD authentication, and no AAD/version binding allows silent page rollback | both halves reproduce, but the second is **overstated**. Zeroed page: no exception — `ReadPage` tests `IsAllZeros` *before* decrypting and returns early, so a wiped sector is indistinguishable from a page that was never written, and authentication is skipped for exactly the shape it exists to catch. Rollback: an older ciphertext of the **same** page re-authenticated and read back as `0x11`, so no version or counter is bound. **But AAD binding does exist** — a control test moving page 1's ciphertext onto page 2 is correctly rejected, so cross-page substitution is caught. "No AAD/version binding" should read "no *version* binding" | `Core/Storage/StorageEncrypted.cs:78` |
+
+### ADO.NET provider  <sub>`adonet` — 2, all verified 2026-07-27</sub>
+
+Verified in
+[AdoNetFindingsTests.cs](../Sources/Providers/OutWit.Database.AdoNet.Tests/AuditVerification/AdoNetFindingsTests.cs).
+
+| Verdict | Finding | Observed | Where |
+|---|---|---|---|
+| **duplicate** | Connection pool can never reclaim a connection | settled under `core-concurrency` — the permit leak is confirmed (a second borrow at `MaxPoolSize = 1` had not completed 5012 ms later), but the pool is unreachable from the provider | `AdoNet/Pool/ConnectionPool.cs:234` |
+| **confirmed**, with a calibration | Nothing tracks an open reader: closing the connection disposes the storage under a live streaming iterator | `reader.IsClosed` is **False** after `connection.Close()`, and the reader **kept streaming 4 more rows** — on a real file-backed database, not only on `:memory:`. The streaming half of the claim is right: `WitSqlResult` wraps an `IEnumerable<WitSqlRow>` with a cursor-style `Read()`, so it really is pulling from the engine's iterator after `Close()` disposed it. **But the rows that came back were correct**, so what was observed is undefined behaviour that happened to work, not data corruption — the awkward kind, silent and timing-dependent rather than reliably fatal | `AdoNet/WitDbCommand.cs:131` |
 
 ---
 
