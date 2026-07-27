@@ -217,7 +217,8 @@ public sealed partial class StatementExecutor
         ValidateConstraintsFastPath(table, newRow, update.TableName, rowId, modifiedColumns);
 
         // Perform the update
-        m_context.Database.UpdateRow(update.TableName, rowId, newRow);
+        HandleReferentialUpdate(update.TableName, existingRow.Value, newRow);
+            m_context.Database.UpdateRow(update.TableName, rowId, newRow);
 
         // Handle RETURNING clause
         if (update.ReturningClause != null)
@@ -401,6 +402,7 @@ public sealed partial class StatementExecutor
             ValidateConstraintsFastPath(table, newRow, update.TableName, rowId, modifiedColumns);
 
             // Perform the update
+            HandleReferentialUpdate(update.TableName, existingRow.Value, newRow);
             m_context.Database.UpdateRow(update.TableName, rowId, newRow);
             rowsAffected++;
 
@@ -632,6 +634,7 @@ public sealed partial class StatementExecutor
             ValidateForeignKeyConstraintsFastPath(table, newRow, update.TableName, modifiedColumns);
 
             // Perform the update
+            HandleReferentialUpdate(update.TableName, existingRow.Value, newRow);
             m_context.Database.UpdateRow(update.TableName, rowId, newRow);
             rowsAffected++;
 
@@ -1096,6 +1099,7 @@ public sealed partial class StatementExecutor
             ValidateNotNullConstraints(table, newRow);
 
             ValidateConstraints(table, newRow, update.TableName, rowId);
+            HandleReferentialUpdate(update.TableName, oldRow, newRow);
             m_context.Database.UpdateRow(update.TableName, rowId, newRow);
             rowsAffected++;
 

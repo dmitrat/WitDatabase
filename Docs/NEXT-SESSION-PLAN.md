@@ -60,6 +60,16 @@ exotic than a foreign key to a `UNIQUE` column), self-referencing keys, `ON UPDA
 statement atomicity, `DROP COLUMN` metadata, and the READ COMMITTED point-read/scan disagreement.
 Nearly all of it lives in `StatementExecutor.Validation`, so a batch is cheaper than one at a time.
 
+> **Statement atomicity needs its own PR, and it reaches into phase 4.** A multi-row DML that fails
+> part-way leaves the earlier rows written. The obvious fix — validate every row before writing any —
+> is wrong: intra-statement uniqueness depends on the earlier rows already being there, so
+> pre-validating would let a statement insert two rows with the same key. The correct shape is a
+> statement-scoped savepoint, and `CreateSavepoint` requires an active transaction while **autocommit
+> opens none** (verified: nothing in the DML path calls `BeginTransaction`). So the fix is an
+> implicit per-statement transaction — the same mechanism phase 4 needs to make autocommit durable,
+> and a change to the write path that phase 5 will measure. Doing it half-way inside a batch of
+> small fixes would be worse than leaving it visible.
+
 ### Phase 2 — EF Core conformance *(≈23 markers + whatever it finds, ships 2.3.0)*
 
 Reference `Microsoft.EntityFrameworkCore.Specification.Tests`, then work the EF batch: translation,

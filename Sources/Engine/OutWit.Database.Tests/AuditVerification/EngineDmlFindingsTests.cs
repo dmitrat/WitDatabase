@@ -16,9 +16,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     #region Self-referencing foreign keys are excluded from cascade handling
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the child row survives, so the table still holds 1 row after " +
-            "its parent is deleted. A foreign key whose child table is its own parent is skipped " +
-            "by every cascade path. engine-dml, Statements/StatementExecutor.Validation.cs:91")]
     public void SelfReferencingForeignKeyCascadesOnDeleteTest()
     {
         m_engine.Execute(@"
@@ -35,9 +32,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and this is the damaging half: no exception is raised, so the " +
-            "parent is deleted and row 2 is left pointing at a row that no longer exists. RESTRICT " +
-            "is silently not enforced for self-references.")]
     public void SelfReferencingForeignKeyRestrictsOnDeleteTest()
     {
         m_engine.Execute(@"
@@ -52,14 +46,52 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
             "row 2 still references row 1, so RESTRICT must reject the delete");
     }
 
+    [Test]
+    public void SelfReferencingCycleDoesNotRecurseForeverTest()
+    {
+        // Enabling self-referencing cascades made the recursion reachable, so this pins the guard
+        // that bounds it. Two rows pointing at each other is a cycle; without the in-flight row
+        // set the cascade would recurse until the stack ended, and a StackOverflowException cannot
+        // be caught - it takes the host process down, as the recursive-trigger finding showed.
+        m_engine.Execute(@"
+            CREATE TABLE Node (
+                Id INT PRIMARY KEY,
+                PeerId INT,
+                FOREIGN KEY (PeerId) REFERENCES Node(Id) ON DELETE CASCADE)");
+        m_engine.Execute("INSERT INTO Node (Id, PeerId) VALUES (1, NULL)");
+        m_engine.Execute("INSERT INTO Node (Id, PeerId) VALUES (2, 1)");
+        m_engine.Execute("UPDATE Node SET PeerId = 2 WHERE Id = 1");
+
+        Assert.That(() => m_engine.Execute("DELETE FROM Node WHERE Id = 1"), Throws.Nothing,
+            "a reference cycle must terminate rather than exhaust the stack");
+
+        Assert.That(Count("Node"), Is.EqualTo(0),
+            "both rows are reachable from the deleted one, so the cycle cascades away entirely");
+    }
+
+    [Test]
+    public void SelfReferencingRowPointingAtItselfCanBeDeletedTest()
+    {
+        // The exclusion that stops RESTRICT firing on the row being deleted. A row referencing
+        // itself is its own child; treating it as one would make it undeletable.
+        m_engine.Execute(@"
+            CREATE TABLE Node (
+                Id INT PRIMARY KEY,
+                PeerId INT,
+                FOREIGN KEY (PeerId) REFERENCES Node(Id) ON DELETE RESTRICT)");
+        m_engine.Execute("INSERT INTO Node (Id, PeerId) VALUES (1, NULL)");
+        m_engine.Execute("UPDATE Node SET PeerId = 1 WHERE Id = 1");
+
+        Assert.That(() => m_engine.Execute("DELETE FROM Node WHERE Id = 1"), Throws.Nothing,
+            "a row referencing only itself has no other referent to protect");
+        Assert.That(Count("Node"), Is.EqualTo(0));
+    }
+
     #endregion
 
     #region ON UPDATE actions are never applied
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the child key stays 1 after the parent moves to 2. ON UPDATE " +
-            "CASCADE is parsed and stored but never executed. engine-dml, " +
-            "Statements/StatementExecutor.Validation.cs:163")]
     public void OnUpdateCascadeRewritesTheChildKeyTest()
     {
         CreateParentChild("ON UPDATE CASCADE");
@@ -71,8 +103,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the child key is left at 1 rather than cleared. Same defect as " +
-            "OnUpdateCascadeRewritesTheChildKeyTest - no ON UPDATE action is applied.")]
     public void OnUpdateSetNullClearsTheChildKeyTest()
     {
         CreateParentChild("ON UPDATE SET NULL");
@@ -84,9 +114,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: an orphan row is produced. This is the consequence that matters " +
-            "regardless of which ON UPDATE action was declared - updating a referenced key leaves " +
-            "a dangling reference, so referential integrity is not maintained on the UPDATE path.")]
     public void UpdatingAReferencedKeyNeverLeavesAnOrphanTest()
     {
         CreateParentChild("ON UPDATE CASCADE");

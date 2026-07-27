@@ -55,6 +55,18 @@ public sealed partial class SchemaCatalog
             if (!m_tables.TryGetValue(tableName, out var table))
                 throw new InvalidOperationException($"Table '{tableName}' not found");
 
+            // Dropping a column the primary key is built from is refused rather than performed.
+            // It used to be accepted, leaving the key naming a column that no longer existed, and
+            // the next INSERT died with "Column 'Id' not found" - a table nothing could write to.
+            // Refusing is what SQLite does and is the only outcome that cannot corrupt the schema:
+            // silently rewriting a table's identity is not something a DROP COLUMN should decide.
+            if (table.PrimaryKey != null &&
+                table.PrimaryKey.Any(c => c.Equals(columnName, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    $"Cannot drop column '{columnName}' from table '{tableName}': it is part of the primary key");
+            }
+
             var newColumns = new List<DefinitionColumn>();
             int ordinal = 0;
             foreach (var column in table.Columns)
@@ -65,13 +77,39 @@ public sealed partial class SchemaCatalog
                 }
             }
 
-            m_tables[tableName] = table.With(x => x.Columns, newColumns);
+            // Foreign keys built on the dropped column go with it. Leaving them behind is what made
+            // the table un-insertable: validation walked a key whose column had gone.
+            var newForeignKeys = table.ForeignKeys?
+                .Where(fk => !fk.Columns.Any(c => c.Equals(columnName, StringComparison.OrdinalIgnoreCase)))
+                .ToList();
+
+            var newNamedConstraints = table.NamedConstraints?
+                .Where(constraint => !ReferencesColumn(constraint, columnName))
+                .ToList();
+
+            m_tables[tableName] = table
+                .With(x => x.Columns, newColumns)
+                .With(x => x.ForeignKeys, newForeignKeys)
+                .With(x => x.NamedConstraints, newNamedConstraints);
+
             SaveSchema();
         }
         finally
         {
             m_lock.ExitWriteLock();
         }
+    }
+
+    /// <summary>
+    /// Whether a named constraint is built on the given column, and so cannot outlive it.
+    /// </summary>
+    private static bool ReferencesColumn(DefinitionNamedConstraint constraint, string columnName)
+    {
+        if (constraint.Columns?.Any(c => c.Equals(columnName, StringComparison.OrdinalIgnoreCase)) == true)
+            return true;
+
+        return constraint.ForeignKey?.Columns
+            .Any(c => c.Equals(columnName, StringComparison.OrdinalIgnoreCase)) == true;
     }
 
     /// <summary>
