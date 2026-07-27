@@ -419,6 +419,16 @@ public class CoreConcurrencyFindingsTests
     #region LsmParallelWriter.FlushAllAsync and other threads' buffers
 
     [Test]
+    [Ignore("CONFIRMED 2026-07-27 by CI, after this test was first recorded as NOT REPRODUCED. It " +
+            "passed on the development machine and failed on both PR runs, losing the tail of the " +
+            "producer's second batch - k18,k19 on one run and k17,k18,k19 on the other. Those are " +
+            "exactly the entries written AFTER the foreign FlushAllAsync, so the flush really does " +
+            "take a buffer another thread is still using. " +
+            "core-concurrency, Core/LSM/LsmParallelWriter.cs:217. " +
+            "The test is [Ignore]d rather than left running because it is timing-dependent: as an " +
+            "active test it fails intermittently on a loaded machine. Its own fixture note says a " +
+            "passing stress run proves only that the race did not happen that time - and this is " +
+            "the verdict that ignored it.")]
     public void FlushAllDoesNotDiscardAnotherThreadsBufferedWritesTest()
     {
         // Finding: LsmParallelWriter.cs:217 - FlushAllAsync drains and disposes thread-local

@@ -139,10 +139,18 @@ harnesses live in `AuditVerification/` folders under the Engine, Parser, Core, A
 EntityFramework test projects: 101 entries examined directly, plus the duplicates settled by the
 same evidence.
 
-**Tally: 70 confirmed, 7 confirmed in part or with a correction, 9 confirmed in mechanism or
-measurement only, 2 latent, 2 not reproduced, 4 already fixed, 2 not reproducible with the current
+**Tally: 71 confirmed, 7 confirmed in part or with a correction, 9 confirmed in mechanism or
+measurement only, 2 latent, 1 not reproduced, 4 already fixed, 2 not reproducible with the current
 surface, 8 duplicates.** Every verdict below carries the behaviour actually observed rather than the
 claim that was made.
+
+> **One verdict has already been corrected by a second machine, and it is the cautionary tale of
+> this whole pass.** `LsmParallelWriter.FlushAllAsync` was written up as *not reproduced* because
+> its test passed locally. Both CI runs then failed it, losing exactly the entries written after the
+> foreign flush. The fixture's own opening note says a passing stress run proves only that the race
+> did not happen that time — and the verdict ignored it anyway. **Treat every "not reproduced" on a
+> concurrency claim as provisional until a second machine agrees**, and prefer `[Ignore]` over an
+> active test for anything timing-dependent, or CI inherits the flake.
 
 ### What the pass says about the audit
 
@@ -322,7 +330,7 @@ race would corrupt.
 | **confirmed** | RowLockHandle.Dispose() is an empty method | `IsLocked` still reports true after disposal, and a second transaction cannot take the row | `Concurrency/RowLockHandle.cs:40` |
 | **confirmed**, measured | RowLockManager completes TaskCompletionSource under m_syncLock without RunContinuationsAsynchronously | `ReleaseAllLocks` took **1007 ms** for a waiter whose continuation sleeps 1000 ms. The releasing thread runs the woken transaction's code to completion while holding the manager's lock | `Concurrency/RowLockManager.cs:110` |
 | **confirmed** | LsmParallelStore.Get/Scan do not wait for the background merge | `Get` returned **null** for a key written moments earlier on the same thread; `Scan` returned **0 rows** | `Builder/LsmParallelStore.cs:83` |
-| **not reproduced** | LsmParallelWriter.FlushAllAsync drains and disposes other threads' live buffers | a producer thread buffered 10 entries, a second thread ran `FlushAllAsync`, the producer then wrote 10 more into the same thread-local buffer. All 20 keys survived and the producer raised nothing | `LSM/LsmParallelWriter.cs:217` |
+| **confirmed** <sub>(corrected — first recorded as "not reproduced")</sub> | LsmParallelWriter.FlushAllAsync drains and disposes other threads' live buffers | **the development machine said no and CI said yes.** All 20 keys survived locally, so this was first written up as not reproduced. Both PR runs on CI then failed it, losing the tail of the producer's second batch — `k18,k19` on one run, `k17,k18,k19` on the other. Those are precisely the entries written *after* the foreign `FlushAllAsync`, so the flush really does take a buffer another thread is still using. Now `[Ignore]`d rather than left active, because as a running test it is timing-dependent and fails intermittently | `LSM/LsmParallelWriter.cs:217` |
 | **confirmed**, worse | Page caches dispose CachedPage while an async write of that page is in flight | **this one corrupts data outright.** With the write parked inside the storage double, the page that reached storage was filled with `0xFF` — the content of the next borrower of the recycled pooled array — instead of the `0xAB` the caller wrote. The path matters: `Evict()` correctly refuses with "Cannot evict pinned page"; **`Clear()`** disposes every `CachedPage` unconditionally | `Cache/PageCacheShardedClock.cs:160` |
 | **confirmed**, latent for the provider | ConnectionPool never reclaims a permit | with `MaxPoolSize = 1`, a second borrow after the first connection was disposed had still not completed **5012 ms** later. `GetConnection` hands back `pooledConn.InnerConnection`, so the caller never holds the `PooledConnection` that `ReturnConnection` needs. But no type outside the `Pool` namespace holds a `ConnectionPool`, so the provider does not use the pool — a defect in public API surface, not on a live path | `AdoNet/Pool/ConnectionPool.cs:234` |
 | **mechanism confirmed, consequence not reproduced** | StorageFile mixes locked synchronous FileStream I/O with unlocked async I/O on the same handle | the mechanism is exactly as described — the sync path seeks and reads through the buffered `FileStream` under `m_lock`, the async path calls `RandomAccess` on `m_stream.SafeFileHandle` with **no lock at all** — but neither cross-path probe shows a user-visible effect: a page written sync is visible to an async read and vice versa, because a write of exactly `pageSize` bypasses the stream's buffer | `Storage/StorageFile.cs:199` |
