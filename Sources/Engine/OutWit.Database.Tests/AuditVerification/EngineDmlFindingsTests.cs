@@ -92,9 +92,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     #region ON UPDATE actions are never applied
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the child key stays 1 after the parent moves to 2. ON UPDATE " +
-            "CASCADE is parsed and stored but never executed. engine-dml, " +
-            "Statements/StatementExecutor.Validation.cs:163")]
     public void OnUpdateCascadeRewritesTheChildKeyTest()
     {
         CreateParentChild("ON UPDATE CASCADE");
@@ -106,8 +103,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the child key is left at 1 rather than cleared. Same defect as " +
-            "OnUpdateCascadeRewritesTheChildKeyTest - no ON UPDATE action is applied.")]
     public void OnUpdateSetNullClearsTheChildKeyTest()
     {
         CreateParentChild("ON UPDATE SET NULL");
@@ -119,9 +114,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: an orphan row is produced. This is the consequence that matters " +
-            "regardless of which ON UPDATE action was declared - updating a referenced key leaves " +
-            "a dangling reference, so referential integrity is not maintained on the UPDATE path.")]
     public void UpdatingAReferencedKeyNeverLeavesAnOrphanTest()
     {
         CreateParentChild("ON UPDATE CASCADE");

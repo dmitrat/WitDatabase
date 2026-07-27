@@ -126,59 +126,207 @@ public sealed partial class StatementExecutor
         // Materialize the table list to avoid enumeration issues when modifying database
         var allTableNames = GetAllTableNames().ToList();
 
-        // Find all tables that have foreign keys referencing this table
+        foreach (var (childTableName, childTable, fk) in FindReferencingForeignKeys(tableName, allTableNames))
+        {
+            // Only a self-reference can turn up the parent row in its own child scan.
+            var excludeRowId = childTableName.Equals(tableName, StringComparison.OrdinalIgnoreCase)
+                ? parentRowId
+                : null;
+
+            CascadeToChild(childTableName, childTable, fk, row, pkColumns, isDelete, excludeRowId);
+        }
+    }
+
+    /// <summary>
+    /// Enumerates every foreign key pointing at <paramref name="tableName"/>, from any of the three
+    /// places one can be declared: on a column, on the table, or as a named constraint.
+    /// </summary>
+    /// <remarks>
+    /// Self-references are included. They used to be skipped outright, which made ON DELETE CASCADE
+    /// leave the child behind and - the damaging half - made ON DELETE RESTRICT raise nothing, so
+    /// the safe-looking declaration was the one that orphaned rows.
+    /// </remarks>
+    private IEnumerable<(string ChildTableName, DefinitionTable ChildTable, DefinitionForeignKey Fk)>
+        FindReferencingForeignKeys(string tableName, List<string> allTableNames)
+    {
         foreach (var childTableName in allTableNames)
         {
-            // Self-references are cascaded like any other. They used to be skipped outright, which
-            // made ON DELETE CASCADE leave the child behind and - the damaging half - made
-            // ON DELETE RESTRICT raise nothing at all, so the safe declaration was the one that
-            // orphaned rows. The row being deleted is excluded from its own child set below, so a
-            // row pointing at itself does not block its own deletion.
-            var isSelfReference = childTableName.Equals(tableName, StringComparison.OrdinalIgnoreCase);
-
             var childTable = m_context.Database.GetTable(childTableName);
             if (childTable == null)
                 continue;
 
-            // Only a self-reference can turn up the parent row in its own child scan.
-            var excludeRowId = isSelfReference ? parentRowId : null;
-
-            // Check column-level FK constraints
             foreach (var col in childTable.Columns)
             {
-                if (col.ForeignKey != null &&
-                    col.ForeignKey.ForeignTable.Equals(tableName, StringComparison.OrdinalIgnoreCase))
-                {
-                    CascadeToChild(childTableName, childTable, col.ForeignKey, row, pkColumns, isDelete, excludeRowId);
-                }
+                if (col.ForeignKey != null && PointsAt(col.ForeignKey, tableName))
+                    yield return (childTableName, childTable, col.ForeignKey);
             }
 
-            // Check table-level FK constraints
             if (childTable.ForeignKeys != null)
             {
                 foreach (var fk in childTable.ForeignKeys)
                 {
-                    if (fk.ForeignTable.Equals(tableName, StringComparison.OrdinalIgnoreCase))
-                    {
-                        CascadeToChild(childTableName, childTable, fk, row, pkColumns, isDelete, excludeRowId);
-                    }
+                    if (PointsAt(fk, tableName))
+                        yield return (childTableName, childTable, fk);
                 }
             }
 
-            // Check named constraints
             if (childTable.NamedConstraints != null)
             {
                 foreach (var constraint in childTable.NamedConstraints)
                 {
                     if (constraint.Type == ConstraintType.ForeignKey &&
                         constraint.ForeignKey != null &&
-                        constraint.ForeignKey.ForeignTable.Equals(tableName, StringComparison.OrdinalIgnoreCase))
+                        PointsAt(constraint.ForeignKey, tableName))
                     {
-                        CascadeToChild(childTableName, childTable, constraint.ForeignKey, row, pkColumns, isDelete, excludeRowId);
+                        yield return (childTableName, childTable, constraint.ForeignKey);
                     }
                 }
             }
         }
+    }
+
+    private static bool PointsAt(DefinitionForeignKey fk, string tableName) =>
+        fk.ForeignTable.Equals(tableName, StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Applies ON UPDATE actions after a row's referenced columns change.
+    /// </summary>
+    /// <remarks>
+    /// Nothing used to call this path at all: HandleCascadingActions was only ever invoked from
+    /// DELETE, with isDelete: true. <see cref="DefinitionForeignKey.OnUpdate"/> was parsed, stored
+    /// and read - and unreachable, so every ON UPDATE action silently did nothing and updating a
+    /// referenced key left orphans behind.
+    ///
+    /// CASCADE means something different here than it does for a delete: the child's key is
+    /// rewritten to the new value rather than the child being removed.
+    /// </remarks>
+    private void HandleReferentialUpdate(string tableName, WitSqlRow oldRow, WitSqlRow newRow)
+    {
+        var parentTable = m_context.Database.GetTable(tableName);
+        if (parentTable == null)
+            return;
+
+        var pkColumns = GetPrimaryKeyColumns(parentTable);
+        if (pkColumns == null)
+            return;
+
+        var parentRowId = TryGetRowId(oldRow);
+        var allTableNames = GetAllTableNames().ToList();
+
+        foreach (var (childTableName, childTable, fk) in FindReferencingForeignKeys(tableName, allTableNames))
+        {
+            var referencedColumns = fk.ForeignColumns is { Count: > 0 } ? fk.ForeignColumns : pkColumns;
+            if (referencedColumns.Count != fk.Columns.Count)
+                continue;
+
+            var oldValues = referencedColumns.Select(c => oldRow[c]).ToArray();
+            var newValues = referencedColumns.Select(c => newRow[c]).ToArray();
+
+            // Only a change to the referenced columns concerns a foreign key. An UPDATE that leaves
+            // them alone must not disturb children.
+            if (!ReferencedValuesChanged(oldValues, newValues))
+                continue;
+
+            var excludeRowId = childTableName.Equals(tableName, StringComparison.OrdinalIgnoreCase)
+                ? parentRowId
+                : null;
+
+            ApplyUpdateAction(childTableName, childTable, fk, oldValues, newValues, excludeRowId);
+        }
+    }
+
+    private static bool ReferencedValuesChanged(WitSqlValue[] oldValues, WitSqlValue[] newValues)
+    {
+        for (int i = 0; i < oldValues.Length; i++)
+        {
+            if (oldValues[i].IsNull != newValues[i].IsNull)
+                return true;
+
+            if (!oldValues[i].IsNull && oldValues[i].CompareTo(newValues[i]) != 0)
+                return true;
+        }
+
+        return false;
+    }
+
+    private void ApplyUpdateAction(
+        string childTableName,
+        DefinitionTable childTable,
+        DefinitionForeignKey fk,
+        WitSqlValue[] oldValues,
+        WitSqlValue[] newValues,
+        long? excludeRowId)
+    {
+        if (oldValues.All(v => v.IsNull))
+            return;
+
+        var action = fk.OnUpdate;
+
+        if (action == ReferenceAction.NoAction || action == ReferenceAction.Restrict)
+        {
+            if (HasReferencingRows(childTableName, fk, oldValues, excludeRowId))
+            {
+                throw new InvalidOperationException(
+                    $"Cannot update the referenced key of '{fk.ForeignTable}': " +
+                    $"foreign key constraint on '{childTableName}' references it");
+            }
+
+            return;
+        }
+
+        var childRows = FindReferencingRows(childTableName, fk, oldValues, excludeRowId);
+        if (childRows.Count == 0)
+            return;
+
+        foreach (var (rowId, oldChildRow) in childRows)
+        {
+            var newChildRow = action switch
+            {
+                ReferenceAction.Cascade => SetColumns(oldChildRow, fk.Columns, newValues),
+                ReferenceAction.SetNull => SetColumnsToNull(oldChildRow, fk.Columns, childTable),
+                ReferenceAction.SetDefault => SetColumnsToDefault(oldChildRow, fk.Columns, childTable),
+                _ => null
+            };
+
+            if (newChildRow != null)
+                m_context.Database.UpdateRow(childTableName, rowId, newChildRow.Value);
+        }
+    }
+
+    /// <summary>
+    /// Copies a row with the named columns replaced by the given values, positionally.
+    /// </summary>
+    private static WitSqlRow? SetColumns(
+        WitSqlRow row,
+        IReadOnlyList<string> columns,
+        WitSqlValue[] values)
+    {
+        if (columns.Count != values.Length)
+            return null;
+
+        var names = row.ColumnNames.ToArray();
+        var updated = names.Select(n => row[n]).ToArray();
+
+        for (int i = 0; i < columns.Count; i++)
+        {
+            var index = Array.FindIndex(names, n => n.Equals(columns[i], StringComparison.OrdinalIgnoreCase));
+            if (index < 0)
+                return null;
+
+            updated[index] = values[i];
+        }
+
+        return new WitSqlRow(updated, names);
+    }
+
+    private static List<string>? GetPrimaryKeyColumns(DefinitionTable table)
+    {
+        var pkColumns = table.PrimaryKey?.ToList();
+        if (pkColumns is { Count: > 0 })
+            return pkColumns;
+
+        var pkCol = table.Columns.FirstOrDefault(c => c.IsPrimaryKey);
+        return pkCol != null ? [pkCol.Name] : null;
     }
 
     /// <summary>
