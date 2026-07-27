@@ -212,9 +212,6 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the drop is accepted and the next INSERT dies with " +
-            "KeyNotFoundException 'Column PId not found' - the foreign key metadata survives the " +
-            "column. engine-schema-ddl, Schema/SchemaCatalog.Columns.cs:41")]
     public void TableStaysInsertableAfterDroppingAForeignKeyColumnTest()
     {
         m_engine.Execute("CREATE TABLE P (Id INT PRIMARY KEY)");
@@ -233,9 +230,6 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: dropping a PRIMARY KEY column is accepted rather than refused, " +
-            "and the next INSERT dies with KeyNotFoundException 'Column Id not found'. " +
-            "engine-schema-ddl, Schema/SchemaCatalog.Columns.cs:41")]
     public void TableStaysInsertableAfterDroppingAPrimaryKeyColumnTest()
     {
         // Refusing the drop outright would also be a correct outcome - what must not happen is
