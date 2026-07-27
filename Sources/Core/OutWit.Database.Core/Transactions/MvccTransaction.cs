@@ -142,6 +142,22 @@ namespace OutWit.Database.Core.Transactions
         }
 
         /// <summary>
+        /// The timestamp and transaction id a read should see, by isolation level.
+        /// </summary>
+        /// <remarks>
+        /// Point reads and range scans have to agree, so they share this. READ COMMITTED reads the
+        /// latest committed state at the moment of the read; everything stricter reads the
+        /// transaction's snapshot. Passing transaction id 0 excludes uncommitted rows - the
+        /// transaction's own writes are served from m_changes before the store is consulted at all.
+        /// </remarks>
+        private (long Timestamp, long TransactionId) ReadVisibility() => IsolationLevel switch
+        {
+            WitIsolationLevel.ReadUncommitted => (m_timestampManager.CurrentTimestamp, TransactionId),
+            WitIsolationLevel.ReadCommitted => (m_timestampManager.CurrentTimestamp, 0),
+            _ => (SnapshotTimestamp, TransactionId)
+        };
+
+        /// <summary>
         /// Read Uncommitted: Can see uncommitted changes from other transactions.
         /// </summary>
         private byte[]? GetReadUncommitted(ReadOnlySpan<byte> key)
@@ -382,8 +398,12 @@ namespace OutWit.Database.Core.Transactions
         {
             ThrowIfNotActive();
 
-            // Get results from MVCC store as of our snapshot
-            var storeResults = m_store.ScanAsOf(startKey, endKey, SnapshotTimestamp, TransactionId);
+            // Same visibility rule as Get. It used to be hard-wired to the snapshot while Get chose
+            // by isolation level, so under READ COMMITTED one transaction could read a key as '2'
+            // by key and '1' by scan. That level permits seeing another transaction's commit; it
+            // does not permit two reads in the same transaction to disagree about the same key.
+            var (timestamp, visibleTransactionId) = ReadVisibility();
+            var storeResults = m_store.ScanAsOf(startKey, endKey, timestamp, visibleTransactionId);
 
             // Merge store results with local changes
             return MergeScanResults(storeResults, startKey, endKey);
@@ -398,8 +418,12 @@ namespace OutWit.Database.Core.Transactions
             ThrowIfNotActive();
             cancellationToken.ThrowIfCancellationRequested();
 
-            // Get results from MVCC store as of our snapshot
-            var storeResults = m_store.ScanAsOf(startKey, endKey, SnapshotTimestamp, TransactionId);
+            // Same visibility rule as Get. It used to be hard-wired to the snapshot while Get chose
+            // by isolation level, so under READ COMMITTED one transaction could read a key as '2'
+            // by key and '1' by scan. That level permits seeing another transaction's commit; it
+            // does not permit two reads in the same transaction to disagree about the same key.
+            var (timestamp, visibleTransactionId) = ReadVisibility();
+            var storeResults = m_store.ScanAsOf(startKey, endKey, timestamp, visibleTransactionId);
 
             // Merge store results with local changes
             foreach (var item in MergeScanResults(storeResults, startKey, endKey))
