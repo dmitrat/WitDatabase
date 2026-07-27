@@ -273,9 +273,6 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     // engine-schema-ddl, Statements/StatementExecutor.Validation.cs:277
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the child row IS deleted (count 0, expected 1) although the row " +
-            "it references still exists. Silent data loss. " +
-            "engine-schema-ddl, Statements/StatementExecutor.Validation.cs:277")]
     public void CascadeFollowsTheReferencedColumnNotThePrimaryKeyTest()
     {
         // The FK below points at P.Code, which is UNIQUE but is not the primary key. The child row
@@ -291,9 +288,6 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the child row survives (count 1, expected 0) although the row it " +
-            "references was deleted. Silent orphan - the same defect as " +
-            "CascadeFollowsTheReferencedColumnNotThePrimaryKeyTest, seen from the other side.")]
     public void CascadeRemovesTheChildWhenItsReferencedRowGoesTest()
     {
         SeedNonPrimaryKeyReference();
@@ -305,9 +299,6 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the child row survives (count 1, expected 0). The composite form " +
-            "of the same defect - the FK lists the parent's PK columns in reverse order, so the " +
-            "positional comparison lines the values up wrongly.")]
     public void CascadeHonoursCompositeForeignKeyColumnOrderTest()
     {
         m_engine.Execute("CREATE TABLE P (A INT, B INT, PRIMARY KEY (A, B))");
