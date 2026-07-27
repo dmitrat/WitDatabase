@@ -47,10 +47,6 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
     #region Default window frame
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: every row returns 450, the partition total, instead of the " +
-            "running total 100/250/450. With an ORDER BY present the default frame must be " +
-            "RANGE UNBOUNDED PRECEDING .. CURRENT ROW. engine-query, " +
-            "Iterators/IteratorWindow.Frame.cs:24")]
     public void WindowWithOrderByDefaultsToRunningTotalTest()
     {
         CreateSales();
