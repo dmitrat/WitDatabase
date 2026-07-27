@@ -1,0 +1,99 @@
+name: Mutation Testing
+run-name: "Mutation Testing: ${{ inputs.project || 'OutWit.Database' }}"
+
+# Deliberately NOT part of CI. A Stryker run rebuilds and re-tests the project once per mutant, so
+# it takes tens of minutes - far too slow to block a pull request. It answers a different question
+# from CI anyway: not "does the suite pass" but "would the suite NOTICE if the code changed".
+#
+# That question is the reason this exists. During the 2026-07 audit nine behaviours changed without
+# a single test failing, and the verification pass that followed confirmed 71 defects the existing
+# suite ran straight past. A surviving mutant is the same signal, found before the defect ships.
+on:
+  workflow_dispatch:
+    inputs:
+      project:
+        description: 'Project to mutate'
+        required: true
+        type: choice
+        default: OutWit.Database
+        options:
+          - OutWit.Database
+          - OutWit.Database.Parser
+          - OutWit.Database.Core
+          - OutWit.Database.AdoNet
+          - OutWit.Database.EntityFramework
+  schedule:
+    # Weekly, so the score has a trend rather than a single reading.
+    - cron: '17 3 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  mutate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 180
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Set up JDK for the vendored ANTLR tool
+        uses: actions/setup-java@v4
+        with:
+          distribution: 'temurin'
+          java-version: '17'
+
+      - name: Set up .NET
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: |
+            9.0.x
+            10.0.x
+
+      - name: Restore tools
+        run: dotnet tool restore
+
+      - name: Restore
+        run: dotnet restore OutWit.slnx
+
+      # Scoped to one project per run: mutating everything at once would take longer than the job
+      # timeout and produce a report nobody reads. Performance tests are excluded for the same
+      # reason CI excludes them - a wall-clock assertion under a mutant is noise, not signal.
+      - name: Run Stryker
+        run: |
+          project="${{ inputs.project || 'OutWit.Database' }}"
+          case "$project" in
+            OutWit.Database)                 src=Sources/Engine/OutWit.Database ;;
+            OutWit.Database.Parser)          src=Sources/Engine/OutWit.Database.Parser ;;
+            OutWit.Database.Core)            src=Sources/Core/OutWit.Database.Core ;;
+            OutWit.Database.AdoNet)          src=Sources/Providers/OutWit.Database.AdoNet ;;
+            OutWit.Database.EntityFramework) src=Sources/Providers/OutWit.Database.EntityFramework ;;
+            *) echo "::error::Unknown project $project"; exit 1 ;;
+          esac
+
+          dotnet dotnet-stryker \
+            --project "$project.csproj" \
+            --solution OutWit.slnx \
+            --target-framework net10.0 \
+            --test-case-filter "Category!=Performance" \
+            --reporter html --reporter markdown --reporter progress \
+            --output "StrykerOutput/$project"
+
+      - name: Publish the score to the run summary
+        if: always()
+        run: |
+          shopt -s globstar nullglob
+          reports=(StrykerOutput/**/mutation-report.md)
+          if [ ${#reports[@]} -eq 0 ]; then
+            echo "::warning::Stryker produced no markdown report"
+            exit 0
+          fi
+          cat "${reports[0]}" >> "$GITHUB_STEP_SUMMARY"
+
+      - name: Upload the full report
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: mutation-report-${{ inputs.project || 'OutWit.Database' }}
+          path: StrykerOutput/**
+          if-no-files-found: ignore
