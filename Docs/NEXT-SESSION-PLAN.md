@@ -19,6 +19,103 @@ Three workstreams, independent of each other. **A** is a bounded piece of work w
 
 ---
 
+# The plan, in phases
+
+Written 2026-07-27, after workstream B's verification finished and the first ten fixes shipped in
+2.1.0. Everything below has to be done; the phases are about **what depends on what, and where the
+risk of redoing work sits** — not about what matters most. Severity alone would put the grammar
+rework early, and that would be a mistake.
+
+The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: **101 confirmed
+defects**, each with a test already written that turns green when it is fixed.
+
+### Phase 0 — Measurement the suite does not yet have *(hours)*
+
+> **Correction to an earlier framing in this document.** The wall-clock assertions under
+> `Performance/` were described as producing false reds in CI. They do not: CI runs with
+> `--filter "Category!=Performance"`, and every one of those assertions sits inside a test carrying
+> `[Category("Performance")]`. They are already quarantined. What is true is narrower — they still
+> fail a plain local `dotnet test`, which costs a developer time distinguishing them from real
+> regressions, and they remain assertions about machine load that can never be trustworthy as
+> assertions. Worth converting to logged diagnostics eventually; not urgent, and not a CI problem.
+
+What is genuinely missing is measurement.
+
+**Coverage is never collected.** `coverlet.collector` is referenced by all seven test projects and
+`ci.yml` contains zero collect flags — the dependency is paid for and unused.
+
+**Nothing checks whether the assertions would notice a change.** This is the one that matters here:
+nine behaviours changed during the 2026-07 audit **without a single test failing**, and the
+verification pass then confirmed 71 defects that the existing suite ran straight past. Mutation
+testing is the only mechanism that finds that class of hole, and this codebase has already
+demonstrated the hole exists.
+
+### Phase 1 — Data integrity *(≈25 markers, ships 2.2.0)*
+
+The one remaining cluster where a defect **silently corrupts data** rather than returning a wrong
+answer. No dependencies; can start immediately.
+
+Positional cascade matching (deletes the wrong child *and* orphans the right one, on nothing more
+exotic than a foreign key to a `UNIQUE` column), self-referencing keys, `ON UPDATE` actions,
+statement atomicity, `DROP COLUMN` metadata, and the READ COMMITTED point-read/scan disagreement.
+Nearly all of it lives in `StatementExecutor.Validation`, so a batch is cheaper than one at a time.
+
+### Phase 2 — EF Core conformance *(≈23 markers + whatever it finds, ships 2.3.0)*
+
+Reference `Microsoft.EntityFrameworkCore.Specification.Tests`, then work the EF batch: translation,
+migrations, bulk extensions.
+
+**Why here rather than later:** the suite is an information source, not a fix. It will almost
+certainly *add* findings, and learning them before the remaining phases are planned is cheaper than
+replanning afterwards. The SQLite dependency a differential oracle needs is already in the csproj.
+
+### Phase 3 — Grammar, all of it at once *(a week, candidate for 3.0.0)*
+
+Workstream A (`BETWEEN` precedence) **together with** every other grammar-level fix:
+`INSERT … DEFAULT VALUES`, hexadecimal literals, `CROSS APPLY`/`OUTER APPLY`/`VALUES`, user-defined
+functions and stored procedures.
+
+**This is the load-bearing constraint of the whole plan.** Lifting the boolean layer into
+`searchCondition`/`predicate`/`valueExpression` rewrites the expression visitor and touches every
+`WHERE`, `HAVING`, `ON`, `CHECK` and partial-index reference. A grammar fix made *before* it gets
+redone; one made *separately after* it means touching the visitor twice. So: **do not touch the
+grammar until this phase**, and enter it with the densest possible test net — currently 101
+specifications plus the existing suite, which is a far better position than July's.
+
+### Phase 4 — Durability and crash recovery
+
+Has a **prerequisite**: two findings cannot be reproduced with the current test surface. Rowid
+counter reuse needs a second process, because a file engine opens its storage with `FileShare.None`
+and disposing the first engine is exactly what flushes the counters; the fsync claims need a real
+power cut, because a clean process kill still lets the OS write its cache back.
+
+So build the harness first — I/O fault injection plus an out-of-process runner — then fix WAL
+truncation on partial replay, savepoint replay, rowid counters, SSTable fsync and the compaction
+manifest.
+
+### Phase 5 — Performance *(workstream C)*
+
+Run the 78 benchmarks that have never been run, fix what the profile actually shows
+(`CommitTransaction` scanning the whole store on every commit; GC reclaiming nothing), re-measure.
+
+**Why last:** phases 1 and 4 both change the write path, so measuring before them means measuring
+twice. The one exception is the **baseline** — it depends on nothing, costs a couple of hours, and
+is worth taking early precisely because nobody has it.
+
+### What would reorder this
+
+The order above optimises for "don't lose data, then don't redo work". Two things would change it:
+
+- **If an honest "drop-in" claim is the nearer goal**, phase 2 moves to the front: it decides what is
+  worth fixing at all, and could reclassify part of phase 1 as lower priority.
+- **If performance is pressing** — a consumer hitting a wall — the phase 5 baseline moves into phase
+  0. It depends on nothing.
+
+One thing should not move under any circumstance: **the grammar goes after everything else that
+touches it.** It is the only phase carrying real rework risk.
+
+---
+
 ## A. `BETWEEN` operator precedence — the last item from the audit's week-1 list
 
 **Status:** the only remaining item from §3 of the audit. Two `[Ignore]`d tests already state the
@@ -385,7 +482,7 @@ what the engine does, so they are settled by measuring the repository. The tests
 | Verdict | Finding | Observed | Where |
 |---|---|---|---|
 | **confirmed** | EF Core's provider specification suite is not referenced, while an unused SQLite reference makes a differential oracle nearly free | **the single highest-value entry in the backlog.** The csproj references `Microsoft.EntityFrameworkCore.Sqlite` on both TFMs and **not** `Specification.Tests` — so the dependency that would make a differential oracle nearly free is already paid for, and the conformance suite that decides the drop-in claim is absent | `EntityFramework.Tests.csproj:24` |
-| **confirmed** | No coverage measurement and no mutation testing, despite coverlet.collector in all seven test projects | measured: coverlet.collector is referenced by **all 7** test projects, and `ci.yml` contains **zero** occurrences of a collect flag, of `stryker`, or of `mutation`. Given that nine behaviours changed during the audit without a single test failing, mutation testing is the gap that would have caught them | `.github/workflows/ci.yml:56` |
+| **FIXED** <sub>(phase 0)</sub> | No coverage measurement and no mutation testing, despite coverlet.collector in all seven test projects | was true: **all 7** test projects referenced `coverlet.collector` while `ci.yml` held **zero** collect flags and no mention of `stryker`. CI now collects coverage and summarises it per assembly — reported, not gated, since a threshold on a suite known to miss defects would measure the wrong thing. Mutation testing lives in its own `mutation.yml`, dispatchable per project and scheduled weekly, because a Stryker run rebuilds and re-tests once per mutant and cannot block a PR | `.github/workflows/ci.yml`, `.github/workflows/mutation.yml` |
 | **confirmed** | StatementExecutor tests mock IDatabase and assert Received(n), so read-your-own-writes defects are structurally invisible | seven occurrences of `Substitute.For<IDatabase>` / `Received(` in that one file. **This is the finding that explains the others**: a suite asserting call counts against a mock cannot notice a wrong value, which is exactly the class of defect this verification pass kept confirming | `StatementExecutorUpdateTests.cs:418` |
 | **confirmed** | The single corruption test flips one hard-coded byte behind an `if` that can silently skip the mutation | `bytes[25] ^= 0xFF` sits inside `if (bytes.Length > 30)`. A shorter file skips the mutation and the test passes having verified nothing | `Core.Tests/Wal/WriteAheadLogTests.cs:284` |
 | **confirmed**, different arithmetic | No SQL-literal round-trip property test: only 2 of 9 LiteralType values are round-tripped | measured: **6 of the 10** members are never mentioned by the serializer tests — `Real`, `Blob`, `CurrentTimestamp`, `CurrentDate`, `CurrentTime`, `Decimal`. The enum has since gained `Decimal` (commit `9556bd2`) and 4 members are exercised rather than 2. Same gap, different numbers | `Parser.Tests/SerializerTests.cs:236` |

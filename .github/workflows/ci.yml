@@ -106,8 +106,52 @@ jobs:
           fi
           exit $status
 
+      # Category!=Performance excludes the wall-clock assertions under Performance/. They measure
+      # machine load rather than code - a scaling ratio on a shared runner says nothing - so they
+      # are quarantined here rather than allowed to produce noise.
+      #
+      # Coverage is collected because coverlet.collector is referenced by all seven test projects
+      # and was never invoked. It is reported, not gated: a threshold on a suite whose assertions
+      # are known to miss defects would measure the wrong thing, and this project has the evidence -
+      # nine behaviours changed during the 2026-07 audit without a single test failing.
       - name: Test
-        run: dotnet test OutWit.slnx --configuration Release --no-build --verbosity normal --filter "Category!=Performance" --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+        run: dotnet test OutWit.slnx --configuration Release --no-build --verbosity normal --filter "Category!=Performance" --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+
+      - name: Summarise coverage
+        if: always()
+        run: |
+          shopt -s globstar nullglob
+          files=(TestResults/**/coverage.cobertura.xml)
+          if [ ${#files[@]} -eq 0 ]; then
+            echo "::warning::No coverage files produced"
+            exit 0
+          fi
+          {
+            echo "### Line coverage"
+            echo
+            echo "| Assembly | Covered | Total | % |"
+            echo "|---|---:|---:|---:|"
+          } >> "$GITHUB_STEP_SUMMARY"
+          python3 - "${files[@]}" >> "$GITHUB_STEP_SUMMARY" <<'PY'
+          import sys, xml.etree.ElementTree as ET
+          from collections import defaultdict
+          hits = defaultdict(lambda: [0, 0])
+          for path in sys.argv[1:]:
+              for package in ET.parse(path).getroot().iter("package"):
+                  name = package.get("name", "?")
+                  for line in package.iter("line"):
+                      hits[name][1] += 1
+                      if int(line.get("hits", "0")) > 0:
+                          hits[name][0] += 1
+          total_covered = total_lines = 0
+          for name, (covered, lines) in sorted(hits.items()):
+              total_covered += covered
+              total_lines += lines
+              pct = (100.0 * covered / lines) if lines else 0.0
+              print(f"| {name} | {covered} | {lines} | {pct:.1f} |")
+          pct = (100.0 * total_covered / total_lines) if total_lines else 0.0
+          print(f"| **Total** | **{total_covered}** | **{total_lines}** | **{pct:.1f}** |")
+          PY
 
       - name: Upload Test Results
         if: always()

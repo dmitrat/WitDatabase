@@ -21,13 +21,12 @@ public class TestsAndGapsFindingsTests
     #region Coverage and mutation testing
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27 by measurement: coverlet.collector is referenced by ALL SEVEN test "
-            + "projects and ci.yml contains zero occurrences of a collect flag. Nothing measures "
-            + "coverage. tests-and-gaps, .github/workflows/ci.yml:56")]
     public void CiCollectsCodeCoverageTest()
     {
-        // Finding: ci.yml:56 - coverlet.collector is referenced by every test project and never
-        // used, so nothing measures coverage.
+        // FIXED. coverlet.collector was referenced by all seven test projects and never invoked.
+        // CI now collects it and summarises the result; the number is reported, not gated, because
+        // a threshold on a suite whose assertions are known to miss defects would measure the wrong
+        // thing. tests-and-gaps, .github/workflows/ci.yml
         var workflow = ReadRepositoryFile(".github/workflows/ci.yml");
 
         Assert.That(workflow, Does.Contain("collect").IgnoreCase,
@@ -35,14 +34,24 @@ public class TestsAndGapsFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: zero occurrences of stryker or mutation in ci.yml. Given that nine "
-            + "behaviours changed during the 2026-07 audit without a single test failing, this is the "
-            + "gap that would have caught them.")]
-    public void CiRunsMutationTestingTest()
+    public void MutationTestingIsWiredUpTest()
     {
-        var workflow = ReadRepositoryFile(".github/workflows/ci.yml");
+        // FIXED, though not where the finding pointed. It named ci.yml, but a Stryker run rebuilds
+        // and re-tests once per mutant and is far too slow to block a pull request - so it lives in
+        // its own workflow, dispatchable per project and scheduled weekly. The assertion therefore
+        // scans the whole workflows directory rather than ci.yml alone, because the claim was "no
+        // mutation testing", not "none in ci.yml".
+        //
+        // This is the gap that matters most in this dimension: nine behaviours changed during the
+        // 2026-07 audit without a single test failing, and a surviving mutant is that same signal
+        // caught before the defect ships.
+        var root = FindRepositoryRoot();
+        var workflows = Directory
+            .GetFiles(Path.Combine(root, ".github", "workflows"), "*.yml")
+            .Select(File.ReadAllText)
+            .ToList();
 
-        Assert.That(workflow, Does.Contain("stryker").IgnoreCase,
+        Assert.That(workflows, Has.Some.Contains("stryker").IgnoreCase,
             "nothing checks whether the suite's assertions would notice a changed behaviour");
     }
 
