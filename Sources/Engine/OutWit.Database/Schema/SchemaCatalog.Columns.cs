@@ -22,6 +22,15 @@ public sealed partial class SchemaCatalog
             if (!m_tables.TryGetValue(tableName, out var table))
                 throw new InvalidOperationException($"Table '{tableName}' not found");
 
+            // Migrations are replayed routinely - a partially applied migration, a script run twice.
+            // Without this the same column is appended again and every row is widened a second time,
+            // leaving a catalog that holds one name twice and a table nothing can address.
+            if (table.Columns.Any(c => string.Equals(c.Name, column.Name, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    $"Column '{column.Name}' already exists on table '{tableName}'");
+            }
+
             List<DefinitionColumn> newColumns = table.Columns.ToList();
             var newColumn = column.With(x => x.Ordinal, newColumns.Count);
             newColumns.Add(newColumn);
