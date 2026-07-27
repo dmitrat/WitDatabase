@@ -180,9 +180,9 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
         "CONFIRMED 2026-07-27: no exception is raised and the out-of-range value is written " +
         "silently. engine-dml, Types/WitTypeConverter.cs:576";
 
-    [TestCase("SMALLINT", "100000", Ignore = NarrowingIgnore)]
-    [TestCase("TINYINT", "999", Ignore = NarrowingIgnore)]
-    [TestCase("INT", "9999999999999", Ignore = NarrowingIgnore)]
+    [TestCase("SMALLINT", "100000")]
+    [TestCase("TINYINT", "999")]
+    [TestCase("INT", "9999999999999")]
     public void OutOfRangeNumericWriteIsRejectedTest(string type, string literal)
     {
         m_engine.Execute($"CREATE TABLE T (Id INT PRIMARY KEY, V {type})");
@@ -192,8 +192,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: no exception is raised - 'not a number' is accepted into an INT " +
-            "column and stored as 0. engine-dml, Types/WitTypeConverter.cs:576")]
     public void UnparseableTextIsNotWrittenAsZeroTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, V INT)");
@@ -207,8 +205,13 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     #region Declared VARCHAR length and DECIMAL precision are not enforced
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: a 12-character string is accepted into VARCHAR(5). The declared " +
-            "length is recorded and never checked. engine-dml, Definitions/DefinitionColumn.cs:148")]
+    [Ignore("CONFIRMED, and the audit's wording is wrong about WHY. It says the declared length is "
+            + "\"recorded but never enforced\". Measured 2026-07-27: it is not recorded at all - after "
+            + "CREATE TABLE T (S VARCHAR(5)), DefinitionColumn.MaxLength is NULL, and the same holds "
+            + "for Precision and Scale on DECIMAL(5,2). So enforcement cannot be added on its own; "
+            + "the DDL path has to capture the sizes first. INFORMATION_SCHEMA reports them from "
+            + "the same empty fields, so it under-reports too. "
+            + "engine-dml, Definitions/DefinitionColumn.cs:148")]
     public void VarcharLengthIsEnforcedTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, S VARCHAR(5))");
@@ -218,8 +221,8 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: 123456.78 is accepted into DECIMAL(5, 2). Declared precision is " +
-            "recorded and never checked.")]
+    [Ignore("CONFIRMED - same root cause as VarcharLengthIsEnforcedTest: Precision and Scale are never "
+            + "populated by CREATE TABLE, so there is nothing to enforce against.")]
     public void DecimalPrecisionIsEnforcedTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, V DECIMAL(5, 2))");

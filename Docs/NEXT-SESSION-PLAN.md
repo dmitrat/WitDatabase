@@ -60,6 +60,14 @@ exotic than a foreign key to a `UNIQUE` column), self-referencing keys, `ON UPDA
 statement atomicity, `DROP COLUMN` metadata, and the READ COMMITTED point-read/scan disagreement.
 Nearly all of it lives in `StatementExecutor.Validation`, so a batch is cheaper than one at a time.
 
+> **New task, not in the audit: DDL never captures declared sizes.** The finding says VARCHAR(n)
+> length and DECIMAL(p,s) precision are "recorded but never enforced". Measured 2026-07-27 — they are
+> **not recorded**: after `CREATE TABLE T (S VARCHAR(5), V DECIMAL(5,2))`, `DefinitionColumn`'s
+> `MaxLength`, `Precision` and `Scale` are all null. Enforcement cannot be added on its own; the DDL
+> path has to capture them first. It is worth doing for a second reason the audit never mentions:
+> `INFORMATION_SCHEMA` reports those same empty fields, so the schema it describes is missing every
+> declared size.
+
 > **Statement atomicity needs its own PR, and it reaches into phase 4.** A multi-row DML that fails
 > part-way leaves the earlier rows written. The obvious fix — validate every row before writing any —
 > is wrong: intra-statement uniqueness depends on the earlier rows already being there, so
