@@ -32,9 +32,9 @@ confirmed defect with a test already written that turns green when it is fixed.
 > **State at 2026-07-28.** 2.1.0 and 2.2.0 are published — seven packages each, tags `v2.1.0` and
 > `v2.2.0`, PRs #7–#15 merged. Phases 0 and 1 are done; **phase 2 is under way**, its harness merged
 > in PR #16. Nothing is released from phase 2 yet: 2.3.0 ships when the EF batch is worked.
-> **100 `[Ignore]` markers**, plus 3 `[Explicit]` (running them kills the host process). It went to
-> 102 when the conformance harness landed and back to 100 when the finding those two recorded was
-> corrected and fixed — the audit's own hundred are untouched so far. Count before trusting it:
+> **89 `[Ignore]` markers**, plus 3 `[Explicit]` (running them kills the host process). It went to
+> 102 when the conformance harness landed, back to 100 when the finding those two recorded was
+> corrected, and then down through the EF batch. Count before trusting it:
 > `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l`. The second ledger is the baseline in
 > `WitComplianceTest` — **325 unimplemented conformance suites**.
 

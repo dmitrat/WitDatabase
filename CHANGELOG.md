@@ -22,6 +22,13 @@ that suite on its first run; neither was in the audit's backlog.
   `OutWit.Database.Core.Utils.DatabaseFiles`, so what creates them and what deletes them cannot
   drift apart.
 
+- **`StartsWith` and `EndsWith` no longer treat the search term's own wildcards as wildcards.** The
+  term was spliced into the LIKE pattern raw and with no `ESCAPE` clause, so `StartsWith("a_")`
+  matched every row beginning with `a` followed by anything — four seeded rows instead of the one
+  that literally starts with `a_`. That is a wrong answer, not a slow one. A constant term is now
+  escaped when the query is built; anything else is escaped by the engine with `REPLACE`, since its
+  value is not known until the query runs. Matches what EF Core's SQLite provider emits.
+
 - **Index filters and descending columns now reach the SQL.** `HasFilter` was dropped, so a
   filtered UNIQUE index became a full one — which enforces a **stricter** constraint than the model
   declares, rejecting rows the application is entitled to insert. `IsDescending` was dropped too.
