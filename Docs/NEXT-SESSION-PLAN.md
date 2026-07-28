@@ -29,12 +29,13 @@ rework early, and that would be a mistake.
 The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: each marker is a
 confirmed defect with a test already written that turns green when it is fixed.
 
-> **State at the close of the 2026-07-27 session.** 2.1.0 and 2.2.0 are both published — seven
-> packages each, tags `v2.1.0` and `v2.2.0`, PRs #7–#15 merged. Phases 0 and 1 are done.
-> **100 `[Ignore]` markers remain**, 90 of them in `AuditVerification/` folders and 10 in the
-> ordinary suites, plus 3 `[Explicit]` (running them kills the host process). Count them before
-> trusting this number:
-> `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l`. Resume at **Phase 2**.
+> **State at 2026-07-28.** 2.1.0 and 2.2.0 are published — seven packages each, tags `v2.1.0` and
+> `v2.2.0`, PRs #7–#15 merged. Phases 0 and 1 are done; **phase 2 is under way**.
+> **102 `[Ignore]` markers**, plus 3 `[Explicit]` (running them kills the host process). The number
+> went *up* by two: nothing was removed from the audit's hundred, and the EF Core conformance harness
+> added findings of its own, which is what it is for. Count before trusting it:
+> `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l`. The second ledger is the baseline in
+> `WitComplianceTest` — **325 unimplemented conformance suites**.
 
 ### Phase 0 — Measurement the suite does not yet have *(hours)*
 
@@ -99,7 +100,7 @@ Nearly all of it lives in `StatementExecutor.Validation`, so a batch is cheaper 
 > and a change to the write path that phase 5 will measure. Doing it half-way inside a batch of
 > small fixes would be worse than leaving it visible.
 
-### Phase 2 — EF Core conformance *(≈23 markers + whatever it finds, ships 2.3.0)*
+### Phase 2 — EF Core conformance *(≈23 markers + whatever it finds, ships 2.3.0)* — **started**
 
 Reference `Microsoft.EntityFrameworkCore.Specification.Tests`, then work the EF batch: translation,
 migrations, bulk extensions.
@@ -107,6 +108,40 @@ migrations, bulk extensions.
 **Why here rather than later:** the suite is an information source, not a fix. It will almost
 certainly *add* findings, and learning them before the remaining phases are planned is cheaper than
 replanning afterwards. The SQLite dependency a differential oracle needs is already in the csproj.
+
+**Harness in place, 2026-07-28.** `OutWit.Database.EntityFramework.Specification.Tests` — a separate
+project because the specification packages are xunit-based and the rest of the suite is NUnit.
+`WitTestStore`, `WitTestStoreFactory` and `WitTestHelpers` are the whole provider-side surface; it is
+small, and it is nearly identical between EF Core 9 and 10 (only disposal differs).
+
+- **`WitComplianceTest` is the report.** EF Core's own meta-test names every suite a provider has not
+  implemented: **325 at the baseline** (236 under EF 9, 323 under EF 10, overlapping). It is held as
+  a name list so one baseline covers both frameworks, and it runs in CI — a suite that appears in a
+  future EF Core and is not on the list fails the build. **The list length is the phase-2 ledger.**
+- **`WitFindTest` is the first wired suite**, chosen to prove the harness rather than for its
+  subject: int, nullable, string, composite, shadow and inherited keys, real schema, real SQL,
+  411 tests. It is tagged `Category=Conformance` and excluded from CI while it is red.
+
+**It paid for itself immediately — three defects on the first run**, none of them in the audit's 104:
+
+1. **Dropping an index left its entries in storage.** `IndexManager.DropIndex` removed the index from
+   the manager and disposed it, which only closes the backing store; on a persistent store the
+   entries stayed under the index's own name and the next index created with that name adopted them.
+   A recreated table rejected rows it did not contain. Invisible in-memory, where every index gets a
+   fresh store. **Fixed** — `Sources/Engine/OutWit.Database.Tests/AuditVerification/DroppedIndexStorageTests.cs`.
+   Note that the 2.0.0 `DropTable` fix carries a comment claiming to have addressed this symptom; it
+   fixed the schema half, and the storage half survived it.
+2. **`EnsureDeleted` deleted the data file and reported success, leaving the index directory.** A
+   database recreated at the same path inherited every index of the one that had been deleted. The
+   naming rule for the sidecars now lives in one place, `Core/Utils/DatabaseFiles.cs`, so whoever
+   creates them and whoever deletes them cannot drift. **Fixed** —
+   `EntityFramework.Tests/AuditVerification/DatabaseDeletionFindingsTests.cs`.
+3. **An owned collection's generated key column gets no value generation in the DDL.** EF emits
+   `INSERT INTO … ("OwnerId", "Prop") VALUES (…) RETURNING "Id"`, while the generated schema declares
+   `"Id" INT NOT NULL` inside `PRIMARY KEY ("OwnerId", "Id")` — `AUTOINCREMENT` is only emitted when
+   the integer key is the sole primary key column. **Not fixed**, recorded in
+   `EntityFramework.Tests/AuditVerification/OwnedCollectionKeyFindingsTests.cs`. This is what blocks
+   `WitFindTest` today, and it is the next thing to do in this phase.
 
 ### Phase 3 — Grammar, all of it at once *(a week, candidate for 3.0.0)*
 

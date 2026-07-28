@@ -51,6 +51,7 @@
     <Project Path="Sources/Providers/OutWit.Database.AdoNet/OutWit.Database.AdoNet.csproj" Id="f2f4a444-28b5-412a-a7c3-a3fcef303cf3" />
     <Project Path="Sources/Providers/OutWit.Database.EntityFramework.Tests/OutWit.Database.EntityFramework.Tests.csproj" Id="09badd84-f5a3-4310-b672-3c8a8c1a04d3" />
     <Project Path="Sources/Providers/OutWit.Database.EntityFramework/OutWit.Database.EntityFramework.csproj" Id="a9ae5e40-63e3-4f7a-9b64-03ad4397ab00" />
+    <Project Path="Sources/Providers/OutWit.Database.EntityFramework.Specification.Tests/OutWit.Database.EntityFramework.Specification.Tests.csproj" />
   </Folder>
   <Folder Name="/Tools/">
     <Project Path="Tools/OutWit.Database.Studio.Tests/OutWit.Database.Studio.Tests.csproj" />

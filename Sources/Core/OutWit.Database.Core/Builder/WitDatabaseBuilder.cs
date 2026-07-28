@@ -9,6 +9,7 @@ using OutWit.Database.Core.Providers;
 using OutWit.Database.Core.Storage;
 using OutWit.Database.Core.Stores;
 using OutWit.Database.Core.Transactions;
+using OutWit.Database.Core.Utils;
 
 namespace OutWit.Database.Core.Builder;
 
@@ -662,21 +663,10 @@ public sealed class WitDatabaseBuilder
         if (Options.UseLsmTree && !string.IsNullOrEmpty(Options.LsmDirectory))
             return Path.Combine(Options.LsmDirectory, "_indexes");
 
-        // For BTree file, create index directory based on database filename
-        // e.g., "data.db" -> "data.db_indexes" (sibling to database file)
-        if (!string.IsNullOrEmpty(Options.FilePath))
-        {
-            var directory = Path.GetDirectoryName(Options.FilePath);
-            var filename = Path.GetFileName(Options.FilePath);
-            
-            // Create index directory named after the database file
-            // e.g., /tmp/mydb.db -> /tmp/mydb.db_indexes/
-            return directory != null 
-                ? Path.Combine(directory, filename + "_indexes")
-                : filename + "_indexes";
-        }
-
-        return null;
+        // For BTree file, the index directory is a sibling of the database file
+        // e.g., /tmp/mydb.db -> /tmp/mydb.db_indexes/. The rule lives in DatabaseFiles so that
+        // deleting a database removes exactly what creating it produced.
+        return DatabaseFiles.GetIndexDirectory(Options.FilePath);
     }
 
     private static ISecondaryIndexFactory CreateInMemoryIndexFactory()

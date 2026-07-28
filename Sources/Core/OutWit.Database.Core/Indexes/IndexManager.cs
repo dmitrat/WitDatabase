@@ -80,6 +80,14 @@ namespace OutWit.Database.Core.Indexes
                 if (m_indexes.TryGetValue(name, out var index))
                 {
                     m_indexes.Remove(name);
+
+                    // Empty the index before releasing it. Disposing only closes the backing store;
+                    // on a persistent one the entries stay under the index's own name, and the next
+                    // index created with that name reopens them. That made a recreated table reject
+                    // rows it did not contain - the primary key index was still holding the dropped
+                    // table's keys.
+                    ClearBackingStore(index);
+
                     index.Dispose();
                     return true;
                 }
@@ -98,6 +106,27 @@ namespace OutWit.Database.Core.Indexes
             lock (m_lock)
             {
                 return m_indexes.ContainsKey(name);
+            }
+        }
+
+        /// <summary>
+        /// Empties a dropped index and pushes the deletions through to its store.
+        /// </summary>
+        /// <param name="index">The index being dropped.</param>
+        private static void ClearBackingStore(ISecondaryIndex index)
+        {
+            // A drop must not fail because the store could not be emptied - the index is already
+            // out of the manager by this point, and the caller asked for it to be gone.
+            try
+            {
+                index.Clear();
+                index.Flush();
+            }
+            catch (ObjectDisposedException)
+            {
+            }
+            catch (IOException)
+            {
             }
         }
 

@@ -398,10 +398,9 @@ public sealed class WitDbConnection : DbConnection
         if (!string.IsNullOrEmpty(options.DataSource) && 
             !string.Equals(options.DataSource, ":memory:", StringComparison.OrdinalIgnoreCase))
         {
-            var journalPath = Path.Combine(
-                Path.GetDirectoryName(options.DataSource) ?? ".",
-                Path.GetFileNameWithoutExtension(options.DataSource) + ".journal");
-            
+            // Same rule as the one deleting a database uses, so the journal cannot be missed there.
+            var journalPath = DatabaseFiles.GetJournalPath(options.DataSource)!;
+
             if (!providerParams.Has("filePath"))
                 providerParams.Set("filePath", journalPath);
             if (!providerParams.Has("walPath"))
