@@ -2,6 +2,7 @@ using System.Collections.Generic;
 using Microsoft.EntityFrameworkCore;
 using Microsoft.EntityFrameworkCore.Storage;
 using OutWit.Database.AdoNet;
+using OutWit.Database.Core.Utils;
 
 namespace OutWit.Database.EntityFramework.Storage;
 
@@ -140,11 +141,10 @@ public sealed class WitDatabaseCreator : RelationalDatabaseCreator
             return;
         }
 
-        var dataSource = GetDataSource();
-        if (!string.IsNullOrEmpty(dataSource) && File.Exists(dataSource))
-        {
-            File.Delete(dataSource);
-        }
+        // Deletes the index directory and the journal as well as the data file. Removing only the
+        // data file left the indexes on disk, so a database recreated at the same path inherited
+        // them and rejected rows it did not contain - while EnsureDeleted had reported success.
+        DatabaseFiles.Delete(GetDataSource());
     }
 
     /// <inheritdoc/>
@@ -158,10 +158,7 @@ public sealed class WitDatabaseCreator : RelationalDatabaseCreator
         }
 
         var dataSource = GetDataSource();
-        if (!string.IsNullOrEmpty(dataSource) && File.Exists(dataSource))
-        {
-            await Task.Run(() => File.Delete(dataSource), cancellationToken).ConfigureAwait(false);
-        }
+        await Task.Run(() => DatabaseFiles.Delete(dataSource), cancellationToken).ConfigureAwait(false);
     }
 
     #endregion

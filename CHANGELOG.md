@@ -1,5 +1,37 @@
 # Changelog
 
+## Unreleased
+
+Phase 2 opens by wiring EF Core's own provider specification suite. Both fixes below were found by
+that suite on its first run; neither was in the audit's backlog.
+
+### Behaviour changes
+
+- **Dropping an index now empties its storage.** Dropping removed the index from the manager and
+  disposed it, which only closes the backing store - on a file-backed database the entries stayed on
+  disk under the index's name, and the next index created with that name adopted them. A table
+  dropped and recreated then **rejected rows it did not contain**, reporting a `UNIQUE` violation
+  against keys belonging to a table that no longer existed. Affects primary keys, single and
+  composite, and explicitly declared unique indexes alike. An in-memory database was never affected:
+  it builds a fresh store per index.
+
+- **Deleting a database now deletes all of it.** `EnsureDeleted` removed the data file and reported
+  success while leaving the index directory (`<file>_indexes`) in place, so a database recreated at
+  the same path inherited every index of the one that had been deleted - with the same symptom as
+  above. The naming rule for the sidecar files now lives in one place,
+  `OutWit.Database.Core.Utils.DatabaseFiles`, so what creates them and what deletes them cannot
+  drift apart.
+
+### Added
+
+- `OutWit.Database.EntityFramework.Specification.Tests` - the EF Core conformance harness. Its
+  `WitComplianceTest` records the baseline of **325 specification suites not yet implemented**, and
+  fails if a future EF Core adds one that nobody has looked at. Individual conformance suites are
+  tagged `Category=Conformance` and excluded from CI while they are red.
+
+- `OutWit.Database.Core.Utils.DatabaseFiles` - the files a file-backed database owns (data file,
+  index directory, journal) and a `Delete` that removes all of them.
+
 ## 2.2.0
 
 A referential-integrity release. Everything here comes out of the verified backlog
