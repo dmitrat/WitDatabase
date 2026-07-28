@@ -202,13 +202,23 @@ public class EfTranslationFindingsTests
             "a primitive collection must survive a round trip");
     }
 
+    /// <summary>
+    /// Not a defect but a capability that was never built, and the marker now says which piece is
+    /// missing rather than pointing at a file. The refusal comes from
+    /// RelationalModel.CreateContainerColumn, which reads a *container column type* annotation -
+    /// so a type mapping cannot satisfy it, however it is registered. A provider supplies that
+    /// annotation from its convention set, and then owes the query and update generators a JSON
+    /// path syntax to go with it.
+    /// </summary>
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: InvalidOperationException \"The store type 'null' specified for JSON "
-            + "column 'Detail' ... is not supported by the current provider. JSON columns require a "
-            + "provider-specific JSON store type.\" Note it fails at MODEL BUILD, not at query time - "
-            + "which is why the JSON entity had to be moved into its own DbContext before any other "
-            + "test in this fixture could be trusted. "
-            + "ef-translation, EntityFramework/Query/WitQuerySqlGenerator.cs:11")]
+    [Ignore("NOT SUPPORTED. ToJson() is refused at MODEL BUILD: \"The store type 'null' specified "
+            + "for JSON column 'Detail' ... is not supported by the current provider.\" Raised by "
+            + "RelationalModel.CreateContainerColumn, which wants a container column type "
+            + "annotation - registering a type mapping for JsonElement does not satisfy it, tried "
+            + "and refuted. Needs a convention in WitConventionSetBuilder to set the annotation, "
+            + "plus JSON path support in WitQuerySqlGenerator and the update generator. Its own "
+            + "DbContext in this fixture is deliberate: the failure is at model build, so sharing "
+            + "a context would make every other test here fail for an unrelated reason.")]
     public void JsonOwnedEntityRoundTripsTest()
     {
         var options = new DbContextOptionsBuilder<JsonContext>()

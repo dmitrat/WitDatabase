@@ -85,10 +85,6 @@ public class LiteralRoundTripEfTests
     #region Schema-qualified identifiers do not round-trip
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and it fails earlier than the finding suggests: EnsureCreated itself "
-            + "throws NotSupportedException for EnsureSchemaOperation, so the table is never created "
-            + "at all - there is no DDL/DML mismatch to reach. "
-            + "literal-roundtrip, EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:39")]
     public void DefaultSchemaTableIsReachableTest()
     {
         // Finding: WitMigrationsSqlGenerator.cs:39 - the DDL drops the schema while EF's query and
