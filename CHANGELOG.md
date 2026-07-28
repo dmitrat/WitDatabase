@@ -1,9 +1,23 @@
 # Changelog
 
-## Unreleased
+## 2.3.0
 
-Phase 2 opens by wiring EF Core's own provider specification suite. Both fixes below were found by
-that suite on its first run; neither was in the audit's backlog.
+An EF Core conformance release. It opens phase 2 of
+[Docs/NEXT-SESSION-PLAN.md](Docs/NEXT-SESSION-PLAN.md) by referencing EF Core's own provider
+specification suite - the canonical proof of drop-in compatibility, which this provider had never
+been run against - and fixes what that surfaced.
+
+**The headline is a measurement rather than a fix.** Nine conformance suites are wired, and
+WitDatabase matches EF Core's SQLite provider **exactly** on every one: same pass count, same
+failing tests, across roughly 3,600 tests. 3,146 of them now run in CI on every build.
+
+Minor rather than patch for the same reason as 2.1.0 and 2.2.0: several of these change an answer
+the previous release gave.
+
+**Everything below was found either by the suite or by the SQLite oracle beside it.** Six of the
+findings the 2026-07 audit had recorded turned out to be misattributed, and each correction came
+from running the same model on SQLite rather than from reading the code - the entries say so where
+it matters.
 
 ### Behaviour changes
 
@@ -81,8 +95,9 @@ that suite on its first run; neither was in the audit's backlog.
 ### Added
 
 - `OutWit.Database.EntityFramework.Specification.Tests` - the EF Core conformance harness. Its
-  `WitComplianceTest` records the baseline of **325 specification suites not yet implemented**, and
-  fails if a future EF Core adds one that nobody has looked at. Individual conformance suites are
+  `WitComplianceTest` records the baseline of specification suites not yet implemented - **317**,
+  down from 325 as suites are wired - and fails if a future EF Core adds one that nobody has looked
+  at. Individual conformance suites are
   tagged `Category=Conformance` and excluded from CI while they are red.
 
 - Nine conformance suites wired, each paired with its oracle. **WitDatabase matches SQLite exactly
@@ -98,6 +113,14 @@ that suite on its first run; neither was in the audit's backlog.
 
 - `OutWit.Database.Core.Utils.DatabaseFiles` - the files a file-backed database owns (data file,
   index directory, journal) and a `Delete` that removes all of them.
+
+### Known and recorded, not fixed here
+
+Twelve of the audit's EF findings remain, each with a test that turns green when it is fixed: JSON
+columns (they fail at model build), literal round trips, the migrations blockers, and a
+schema-qualified table whose `CREATE TABLE` drops the schema that the query and update generators
+keep. `Docs/NEXT-SESSION-PLAN.md` has the ledger; the marker count across the repository stands at
+**85**, from 100 when the release opened.
 
 ## 2.2.0
 
