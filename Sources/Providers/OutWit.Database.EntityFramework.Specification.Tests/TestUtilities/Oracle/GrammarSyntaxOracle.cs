@@ -17,8 +17,11 @@ namespace OutWit.Database.EntityFramework.Specification.Tests.TestUtilities.Orac
 /// <para>
 /// Why it exists: during phase 2, nine of the 29 EF findings were misattributed, and every correction
 /// came from running the same thing on SQLite instead of reading code. Three of the phase-3
-/// <c>[Ignore]</c>d cases are written in SQL Server syntax (<c>TOP</c>, <c>CROSS APPLY</c>), so the
+/// ignored cases are written in SQL Server syntax (<c>TOP</c>, <c>CROSS APPLY</c>), so the
 /// same check has to happen before anything is built rather than after.
+///
+/// NB: the phrase "ignored cases" above deliberately avoids the literal marker text. The project's
+/// ledger command counts markers with a plain grep, so a prose mention of one inflates the backlog.
 /// </para>
 /// <para>
 /// This is a <b>characterisation</b> fixture: it records what each engine does and asserts nothing

@@ -435,7 +435,103 @@ merely that the statement parses.
 
 ### 7.5 Still to fill
 
-- The parse-throughput baseline from PR 1.
 - The §3.2 execution check: capture SQL from an EF query that forces an apply, and confirm whether
   `WitQuerySqlGenerator` emits `CROSS APPLY` its own parser cannot read. Acceptance parity above says
   the grammar need not learn `APPLY`; it does **not** settle whether the generator emits it.
+
+---
+
+## 8. PR 1 results — the safety net, measured 2026-07-28
+
+Four fixtures under
+[`Parser.Tests/Grammar/`](../Sources/Engine/OutWit.Database.Parser.Tests/Grammar/), built against a
+**193-entry corpus** organised by *where an expression can appear* rather than by feature — because
+the rework re-points every one of those positions, and a position nobody listed is how a regression
+gets through. All 23 grammar sites and all 30 expression alternatives are represented.
+
+The generated ANTLR classes are deliberately `internal` (`MakeInternal.ps1` keeps the parse tree out
+of the public API), so the harness reaches them through `InternalsVisibleTo` rather than by adding
+public diagnostic surface.
+
+### 8.1 The grammar is already ambiguous — 7 of 193 entries
+
+Measured before any rule changed, which was the point of running it first.
+
+**Six of the seven are the same shape: `BETWEEN … AND …` followed by `AND`.** The reported conflict
+is over the text beginning at `BETWEEN`'s `AND` — literally the question of which `AND` belongs to
+the `BETWEEN`. This localises the phase-3 defect **structurally, without executing a query.**
+
+It agrees exactly with §7.3, which found it by running queries: shapes where `BETWEEN` is followed by
+`OR`, `THEN`, `AS`, or end-of-clause are neither ambiguous nor wrong. **Two independent instruments,
+same sharper conclusion** — the defect is `BETWEEN` followed by `AND`.
+
+The seventh is unrelated and benign: `NOT EXISTS (…)` is derivable both as `existsExpr`'s own `NOT`
+and as `notExpr` applied to `EXISTS`. Both mean the same thing, so nothing is wrong today — but it is
+a real ambiguity resolved silently by alternative order, and the rework should remove it rather than
+inherit it.
+
+`AmbiguousCorpusEntriesMatchTheRecordedBaselineTest` pins the exact set, so a **new** ambiguity fails
+the build the moment the layers become mutually reachable. `CorpusIsFreeOfAmbiguityTest` states the
+target and carries the marker until PR 2.
+
+### 8.2 A defect the net found before the rework started
+
+**69 of 193 entries do not round-trip**, from two pre-existing causes — and the second is a real
+defect nobody had recorded:
+
+**`WitSqlExpressionSerializer` replaces every subquery with the literal text `SELECT ...`.** Not an
+abbreviation in a log message: the ellipsis is emitted into the SQL. It affects scalar subqueries,
+`EXISTS`, `IN (SELECT …)` and quantified comparisons.
+
+That would be harmless if the serializer were a debugging aid. It is not — the DDL path **persists
+schema through it**: `CHECK` conditions and computed columns (`Ddl.Tables.cs`), a partial index's
+`WHERE` (`Ddl.Indexes.cs`), a trigger's `WHEN` (`Ddl.Triggers.cs`), and the **entire body of a view**
+(`Ddl.Views.cs`).
+
+Confirmed by execution, and **worse than "the subquery is lost"**:
+
+- `CREATE VIEW BigOrders AS SELECT Id FROM Orders WHERE Total > (SELECT 150)` **succeeds**. Every
+  `SELECT` against the view then throws `WitSqlParsingException: mismatched input '.'`, because
+  `QueryPlanner.CreateViewIterator` re-parses the stored body at query time. The view is accepted,
+  written to the schema, and permanently unusable.
+- `INFORMATION_SCHEMA.INDEXES.FILTER_CONDITION` for a partial index filtered by a subquery reads
+  `(CustomerId IN (SELECT ...))`.
+
+Recorded in
+[SerializerSubqueryFindingsTests.cs](../Sources/Engine/OutWit.Database.Tests/AuditVerification/SerializerSubqueryFindingsTests.cs),
+both markers proven red on unfixed code first. **It is not a phase-3 defect and is not fixed here** —
+phase 3 is the grammar. It is on the ledger with a test waiting.
+
+> One of the two tests first failed for the *wrong* reason — `KeyNotFoundException: Column 'IndexName'
+> not found`, because the real column is `INDEX_NAME` and the view is `FILTER_CONDITION`. A red test
+> is not automatically a proven defect; it was corrected until it failed on the claim it makes.
+
+The first cause is already on record: the serializer covers DML only, and raises
+`NotSupportedException` for every DDL statement and for `MERGE`.
+
+`EveryRoundTripFailureHasAKnownCauseTest` **classifies** rather than counts, so a new DML round-trip
+failure still fails the build even though 69 entries are already failing. A bare count would go green
+again if the rework broke something while an unrelated fix repaired something else.
+
+### 8.3 Parse-throughput baseline
+
+**104.2 µs per parse** (193 entries × 20 iterations = 3,860 parses in 402 ms, after warm-up, this
+machine). Logged, never asserted: this suite already carries 17 wall-clock assertions that measure
+machine load rather than the engine, and the recorded verdict is that they should have been
+diagnostics. This one is written as one.
+
+### 8.4 Suite counts after PR 1
+
+| Suite | Before | After |
+|---|---|---|
+| `Parser.Tests` | 723 passed / 10 skipped / 733 | **727 / 12 / 739** |
+| `Tests` (`Category!=Performance`) | 1904 / 28 / 1932 | **1905 / 30 / 1935** |
+
+Ledger: **74 → 78**. Four genuine new markers — two phase-3 target states that go green in PR 2, and
+the two serializer findings.
+
+> **The ledger command over-counts.** `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l` also
+> matches prose mentions of the marker inside doc comments, and misses `Ignore = "…"` properties on
+> individual `[TestCase]`s. A comment added in PR 0 inflated it by one before being reworded. The
+> count is still the right ledger for comparing across phases — but only if nobody writes the literal
+> marker text in prose, so don't.
