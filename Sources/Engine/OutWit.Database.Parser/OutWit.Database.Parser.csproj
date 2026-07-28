@@ -27,6 +27,17 @@
     <PackageReference Include="OutWit.Common" Version="1.3.2" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      MakeInternal.ps1 rewrites the ANTLR-generated classes to `internal` so that the parse tree
+      never reaches the public API. The phase-3 grammar harnesses need to construct the parser
+      directly, to set PredictionMode and attach an ambiguity listener - neither of which is
+      reachable through WitSql.Parse. Granting the test assembly access keeps the public surface
+      unchanged, which is the point of the internalisation in the first place.
+    -->
+    <InternalsVisibleTo Include="OutWit.Database.Parser.Tests" />
+  </ItemGroup>
+
 	<!--
 	    Antlr4BuildTasks reads the tool jar from the %(Antlr4.AntlrToolJar) item
 	    metadata. Set it INLINE on the item rather than via an ItemDefinitionGroup:
