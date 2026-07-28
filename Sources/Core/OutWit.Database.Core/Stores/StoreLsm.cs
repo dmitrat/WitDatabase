@@ -38,7 +38,9 @@ namespace OutWit.Database.Core.Stores
         private Task? m_compactionTask;
         private int m_nextSstableId;
         private bool m_compactionPending;
-        private bool m_disposed;
+        // Volatile because Dispose sets it outside any lock and ScheduleBackgroundCompaction reads
+        // it to decide whether a compaction may still be started.
+        private volatile bool m_disposed;
 
         #endregion
 
@@ -398,7 +400,16 @@ namespace OutWit.Database.Core.Stores
         /// </summary>
         public void WaitForCompaction()
         {
-            var task = Volatile.Read(ref m_compactionTask);
+            Task? task;
+
+            // Read under the same lock that assigns it, so a compaction scheduled concurrently is
+            // either already visible here or refused by the disposal check below. Waiting outside
+            // the lock is required: the task takes it again to clear m_compactionPending.
+            lock (m_compactionLock)
+            {
+                task = m_compactionTask;
+            }
+
             task?.Wait();
         }
 
@@ -406,6 +417,15 @@ namespace OutWit.Database.Core.Stores
         {
             lock (m_compactionLock)
             {
+                // Nothing may be started once disposal has begun. Dispose waits for compaction and
+                // only then flushes what is left in the memtable - and that flush used to schedule
+                // a fresh compaction, which then ran on after Dispose returned. The next store
+                // opened on the directory met an SSTable that was still being written ("SSTable
+                // file is too small") or a file the departing compaction still held open.
+                // Compacting on the way out buys nothing in any case.
+                if (m_disposed)
+                    return;
+
                 // Check if compaction is needed
                 m_sstableLock.EnterReadLock();
                 try

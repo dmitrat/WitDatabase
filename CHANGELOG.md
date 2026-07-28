@@ -22,6 +22,16 @@ that suite on its first run; neither was in the audit's backlog.
   `OutWit.Database.Core.Utils.DatabaseFiles`, so what creates them and what deletes them cannot
   drift apart.
 
+- **Disposing an LSM store now waits for all of its background work.** `Dispose` waited for
+  compaction and *then* flushed what was left in the memtable — and that flush scheduled a fresh
+  compaction which nobody waited for. The next store opened on the same directory met an SSTable
+  that was still being written (`SSTable file is too small`) or a file the departing compaction
+  still held open. Nothing is scheduled once disposal has begun; compacting on the way out bought
+  nothing in any case.
+
+  Not found by the audit. `RapidOpenCloseTest` had been failing intermittently on CI and 9 runs in
+  10 on Windows.
+
 - **A composite key containing a store-generated property is now refused when the model is built.**
   It could never work - value generation is tied to the row counter, which can only stand behind a
   key of one column - but the model was accepted, the emitted DDL declared the column `NOT NULL`
