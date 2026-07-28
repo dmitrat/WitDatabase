@@ -30,7 +30,8 @@ The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: e
 confirmed defect with a test already written that turns green when it is fixed.
 
 > **State at 2026-07-28.** 2.1.0 and 2.2.0 are published — seven packages each, tags `v2.1.0` and
-> `v2.2.0`, PRs #7–#15 merged. Phases 0 and 1 are done; **phase 2 is under way**.
+> `v2.2.0`, PRs #7–#15 merged. Phases 0 and 1 are done; **phase 2 is under way**, its harness merged
+> in PR #16. Nothing is released from phase 2 yet: 2.3.0 ships when the EF batch is worked.
 > **102 `[Ignore]` markers**, plus 3 `[Explicit]` (running them kills the host process). The number
 > went *up* by two: nothing was removed from the audit's hundred, and the EF Core conformance harness
 > added findings of its own, which is what it is for. Count before trusting it:
