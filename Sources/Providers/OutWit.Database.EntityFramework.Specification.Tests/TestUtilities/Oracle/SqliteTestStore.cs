@@ -16,8 +16,10 @@ namespace OutWit.Database.EntityFramework.Specification.Tests.TestUtilities.Orac
 /// </summary>
 public class SqliteTestStore : RelationalTestStore
 {
+    // Per process, for the same reason as WitTestStore: the project's two target frameworks run in
+    // parallel and must not share a store file.
     private static readonly string BaseDirectory = Path.Combine(
-        Path.GetTempPath(), "witdb-specification-oracle");
+        Path.GetTempPath(), $"witdb-specification-oracle-{Environment.ProcessId}");
 
     public static SqliteTestStore GetOrCreate(string name) => new(name, shared: true);
 

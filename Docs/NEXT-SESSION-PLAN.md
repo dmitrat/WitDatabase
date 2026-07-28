@@ -160,6 +160,26 @@ SQLite. Its purpose is attribution, not coverage: **a suite red on WitDatabase m
 the oracle says the suite is green on SQLite.** Tagged `Category=Oracle` and excluded from CI — it is
 a control to consult, not a gate.
 
+> **It caught a second wrong claim within the hour — this time a regression of my own.** The fix
+> above was first written to *refuse* the model. Wiring `CompositeKeyEndToEnd` showed SQLite
+> accepting exactly that shape and passing two of its three tests, while WitDatabase failed all
+> three on the validation. A provider stricter than the one it substitutes for is not a drop-in one,
+> so the check was lowered to a warning. **Both corrections to this finding came from the oracle and
+> neither would have come from reading the code.**
+
+**Suites wired so far**, each with its oracle counterpart:
+
+| Suite | Oracle (SQLite) | WitDatabase |
+|---|---|---|
+| `NotificationEntities` | 2/2 | **2/2 — runs in CI** |
+| `CompositeKeyEndToEnd` | 2/3 | 2/3 — parity, same test fails on both |
+| `Find` | red | red |
+
+A suite loses its `Category=Conformance` tag and joins CI the moment it is green, and gets it back if
+it ever stops being. Parity with the oracle is the bar, not a clean sheet: the third
+`CompositeKeyEndToEnd` test asks for generated values inside a composite key, which SQLite cannot do
+either.
+
 `WitFindTest` remains red. It now fails at model validation for the documented reason above, and the
 oracle shows `FindTestBase` does not run on SQLite either without suppressing that same limit — so
 it is **not** a good yardstick suite, and the next step is to wire suites the oracle shows green.

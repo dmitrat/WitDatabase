@@ -32,15 +32,16 @@ that suite on its first run; neither was in the audit's backlog.
   Not found by the audit. `RapidOpenCloseTest` had been failing intermittently on CI and 9 runs in
   10 on Windows.
 
-- **A composite key containing a store-generated property is now refused when the model is built.**
-  It could never work - value generation is tied to the row counter, which can only stand behind a
-  key of one column - but the model was accepted, the emitted DDL declared the column `NOT NULL`
-  with nothing to fill it, and the first insert failed with a `NOT NULL` violation naming a column
-  the caller had never written to. The error now arrives at validation and names the entity, the key
-  and the way out. EF Core's SQLite provider has the same limit and reports it the same way.
+- **A composite key containing a store-generated property is now reported when the model is built.**
+  Nothing can fill such a key - value generation is tied to the row counter, which can only stand
+  behind a key of one column - but the model was accepted in silence, the emitted DDL declared the
+  column `NOT NULL` with nothing to fill it, and the first insert that relied on generation failed
+  with a `NOT NULL` violation naming a column the caller had never written to. The model build now
+  says so, naming the entity, the key and the way out.
 
-  Most likely to be met through an owned collection, whose key is the owner's key plus a generated
-  ordinal unless configured with `HasKey`.
+  It is a warning and not an error: such a model works whenever the caller supplies the values, and
+  EF Core's SQLite provider accepts it too. Most likely to be met through an owned collection, whose
+  key is the owner's key plus a generated ordinal unless configured with `HasKey`.
 
 ### Added
 
@@ -48,6 +49,11 @@ that suite on its first run; neither was in the audit's backlog.
   `WitComplianceTest` records the baseline of **325 specification suites not yet implemented**, and
   fails if a future EF Core adds one that nobody has looked at. Individual conformance suites are
   tagged `Category=Conformance` and excluded from CI while they are red.
+
+- Three conformance suites wired, each paired with its oracle. `NotificationEntities` passes
+  outright — the first one to do so, and it runs in CI rather than being quarantined.
+  `CompositeKeyEndToEnd` reaches parity with SQLite: the same two of three tests pass on both, and
+  the third fails on both for the same reason. `Find` remains red.
 
 - A differential oracle in the same project: the same suites run against SQLite, tagged
   `Category=Oracle`. A conformance suite failing on WitDatabase says nothing on its own - some of

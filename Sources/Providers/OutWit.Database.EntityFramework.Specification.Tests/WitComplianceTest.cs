@@ -21,7 +21,9 @@ namespace OutWit.Database.EntityFramework.Specification.Tests;
 /// nothing and is skipped, while a suite present but unlisted still fails the test, which is the
 /// direction that matters.
 ///
-/// Baseline taken 2026-07-28 against EF Core 9.0.6 and 10.0.2: 325 suites in the union.
+/// Baseline taken 2026-07-28 against EF Core 9.0.6 and 10.0.2. It started at 325 suites in
+/// the union and stands at 323: a line goes when its suite is wired, whether or not the suite
+/// then passes - the ledger counts what has been looked at.
 /// </summary>
 public class WitComplianceTest : RelationalComplianceTestBase
 {
@@ -51,7 +53,6 @@ public class WitComplianceTest : RelationalComplianceTestBase
         "Microsoft.EntityFrameworkCore.CommandInterceptionTestBase",
         "Microsoft.EntityFrameworkCore.ComplexTypesTrackingRelationalTestBase`1",
         "Microsoft.EntityFrameworkCore.ComplexTypesTrackingTestBase`1",
-        "Microsoft.EntityFrameworkCore.CompositeKeyEndToEndTestBase`1",
         "Microsoft.EntityFrameworkCore.ConcurrencyDetectorDisabledRelationalTestBase`1",
         "Microsoft.EntityFrameworkCore.ConcurrencyDetectorDisabledTestBase`1",
         "Microsoft.EntityFrameworkCore.ConcurrencyDetectorEnabledRelationalTestBase`1",
@@ -110,7 +111,6 @@ public class WitComplianceTest : RelationalComplianceTestBase
         "Microsoft.EntityFrameworkCore.ModelBuilding101TestBase",
         "Microsoft.EntityFrameworkCore.MonsterFixupTestBase`1",
         "Microsoft.EntityFrameworkCore.MusicStoreTestBase`1",
-        "Microsoft.EntityFrameworkCore.NotificationEntitiesTestBase`1",
         "Microsoft.EntityFrameworkCore.OptimisticConcurrencyRelationalTestBase`2",
         "Microsoft.EntityFrameworkCore.OptimisticConcurrencyTestBase`2",
         "Microsoft.EntityFrameworkCore.OverzealousInitializationTestBase`1",
