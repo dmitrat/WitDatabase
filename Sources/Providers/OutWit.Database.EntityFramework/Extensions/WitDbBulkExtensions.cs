@@ -76,9 +76,22 @@ public static class WitDbBulkExtensions
             ?? throw new InvalidOperationException("Connection is not open or engine is not available.");
 
         // Get column mappings
-        var columns = GetInsertColumns(entityType, options).ToList();
+        var entitiesList = entities as IList<T> ?? entities.ToList();
+
+        var supplied = FindSuppliedGeneratedColumns(context, entityType, entitiesList);
+        var columns = GetInsertColumns(entityType, options, supplied).ToList();
+
+        // The one generated key the store fills, if the caller asked for it back. Only a
+        // single-column integer key can be answered from the row counter.
+        var generatedKey = options?.SetOutputIdentity == true
+            ? entityType.FindPrimaryKey()?.Properties.SingleOrDefault(
+                p => p.ValueGenerated != ValueGenerated.Never
+                     && !supplied.Contains(p)
+                     && !p.IsShadowProperty()
+                     && (p.ClrType == typeof(int) || p.ClrType == typeof(long)))
+            : null;
         var columnNames = columns.Select(c => c.GetColumnName()).ToArray();
-        var properties = columns.Select(c => c.PropertyInfo!).ToArray();
+        var properties = columns.ToArray();
 
         // Build parameterized INSERT statement
         var paramNames = columnNames.Select((_, i) => $"@p{i}").ToArray();
@@ -89,7 +102,6 @@ public static class WitDbBulkExtensions
         using var stmt = engine.Prepare(sql);
 
         int totalInserted = 0;
-        var entitiesList = entities as IList<T> ?? entities.ToList();
         var batchSize = options?.BatchSize ?? 0;
         var useTransaction = options?.UseTransaction ?? true;
         
@@ -108,13 +120,27 @@ public static class WitDbBulkExtensions
                 stmt.ClearParameters();
                 for (int i = 0; i < properties.Length; i++)
                 {
-                    var value = properties[i].GetValue(entity);
+                    var value = ReadValue(context, entity!, properties[i]);
                     stmt.SetParameter($"p{i}", value);
                 }
 
                 using var result = stmt.Execute(cancellationToken);
                 totalInserted += result.RowsAffected;
                 batchCount++;
+
+                // SetOutputIdentity promises the generated keys come back on the entities. It used
+                // to do the opposite - forcing the key into the insert, so every row sent an
+                // explicit zero and the second collided with the first.
+                if (generatedKey != null)
+                {
+                    var rowId = stmt.LastInsertRowId;
+
+                    // Boxed separately on purpose: a conditional over int and long unifies to
+                    // long, and the setter then rejects it for an int property.
+                    generatedKey.PropertyInfo?.SetValue(
+                        entity,
+                        generatedKey.ClrType == typeof(int) ? (object)(int)rowId : rowId);
+                }
 
                 // Handle batching
                 if (batchSize > 0 && batchCount >= batchSize)
@@ -219,14 +245,14 @@ public static class WitDbBulkExtensions
             // SET parameters
             for (int i = 0; i < updateColumns.Count; i++)
             {
-                var value = updateColumns[i].PropertyInfo!.GetValue(entity);
+                var value = ReadValue(context, entity!, updateColumns[i]);
                 stmt.SetParameter($"s{i}", value);
             }
             
             // WHERE parameters (PK)
             for (int i = 0; i < pkProperties.Count; i++)
             {
-                var value = pkProperties[i].PropertyInfo!.GetValue(entity);
+                var value = ReadValue(context, entity!, pkProperties[i]);
                 stmt.SetParameter($"pk{i}", value);
             }
 
@@ -303,7 +329,7 @@ public static class WitDbBulkExtensions
             // WHERE parameters (PK)
             for (int i = 0; i < pkProperties.Count; i++)
             {
-                var value = pkProperties[i].PropertyInfo!.GetValue(entity);
+                var value = ReadValue(context, entity!, pkProperties[i]);
                 stmt.SetParameter($"pk{i}", value);
             }
 
@@ -397,7 +423,7 @@ public static class WitDbBulkExtensions
         // because ON CONFLICT uses them to detect conflicts
         var insertColumns = GetInsertColumnsForUpsert(entityType, pkPropertyNames, options).ToList();
         var columnNames = insertColumns.Select(c => c.GetColumnName()).ToArray();
-        var properties = insertColumns.Select(c => c.PropertyInfo!).ToArray();
+        var properties = insertColumns.ToArray();
 
         // Get update columns (exclude PK)
         var updateColumns = insertColumns.Where(c => !pkColumnNames.Contains(c.GetColumnName())).ToList();
@@ -428,7 +454,7 @@ public static class WitDbBulkExtensions
             stmt.ClearParameters();
             for (int i = 0; i < properties.Length; i++)
             {
-                var value = properties[i].GetValue(entity);
+                var value = ReadValue(context, entity!, properties[i]);
                 stmt.SetParameter($"p{i}", value);
             }
 
@@ -460,13 +486,24 @@ public static class WitDbBulkExtensions
         return witDbConnection;
     }
 
-    private static IEnumerable<IProperty> GetInsertColumns(IEntityType entityType, BulkOptions? options)
+    private static IEnumerable<IProperty> GetInsertColumns(
+        IEntityType entityType,
+        BulkOptions? options,
+        IReadOnlySet<IProperty> suppliedGenerated)
     {
+        // Shadow properties are written like any other. Excluding them dropped the column from
+        // the insert with nothing reported - and they are not exotic: EF Core creates one for any
+        // relationship whose foreign key has no CLR property, which is the default when a
+        // navigation is declared without one.
+        //
+        // A store-generated column is written only when the caller has actually supplied values
+        // for it. SetOutputIdentity used to force it into the list unconditionally, so every row
+        // carried an explicit zero and the second collided with the first - the option made any
+        // insert of more than one row fail. Leaving it out unconditionally is just as wrong the
+        // other way: a bulk insert is a loading tool, and an explicitly assigned key has to reach
+        // the table.
         var properties = entityType.GetProperties()
-            .Where(p => !p.IsShadowProperty())
-            .Where(p => p.PropertyInfo != null)
-            .Where(p => p.ValueGenerated == ValueGenerated.Never || 
-                        (options?.SetOutputIdentity == true && p.ValueGenerated == ValueGenerated.OnAdd));
+            .Where(p => p.ValueGenerated == ValueGenerated.Never || suppliedGenerated.Contains(p));
 
         // Exclude properties marked as computed
         properties = properties.Where(p => p.GetComputedColumnSql() == null);
@@ -479,17 +516,25 @@ public static class WitDbBulkExtensions
 
     private static IEnumerable<IProperty> GetInsertColumnsForUpsert(IEntityType entityType, HashSet<string> pkPropertyNames, BulkOptions? options)
     {
+        // Shadow properties are written like any other. Excluding them dropped the column from
+        // the insert with nothing reported - and they are not exotic: EF Core creates one for any
+        // relationship whose foreign key has no CLR property, which is the default when a
+        // navigation is declared without one.
+        //
+        // A store-generated column is written only when the caller has actually supplied values
+        // for it. SetOutputIdentity used to force it into the list unconditionally, so every row
+        // carried an explicit zero and the second collided with the first - the option made any
+        // insert of more than one row fail. Leaving it out unconditionally is just as wrong the
+        // other way: a bulk insert is a loading tool, and an explicitly assigned key has to reach
+        // the table.
         var properties = entityType.GetProperties()
-            .Where(p => !p.IsShadowProperty())
-            .Where(p => p.PropertyInfo != null)
-            .Where(p => p.ValueGenerated == ValueGenerated.Never || 
-                        (options?.SetOutputIdentity == true && p.ValueGenerated == ValueGenerated.OnAdd));
+            .Where(p => p.ValueGenerated == ValueGenerated.Never);
 
         // Exclude properties marked as computed
         properties = properties.Where(p => p.GetComputedColumnSql() == null);
 
         // Always include primary key columns for upsert
-        properties = properties.Concat(entityType.FindPrimaryKey()!.Properties.Where(p => p.PropertyInfo != null && !p.IsShadowProperty()));
+        properties = properties.Concat(entityType.FindPrimaryKey()!.Properties);
 
         // Apply include/exclude filters
         properties = ApplyPropertyFilters(properties, options);
@@ -533,6 +578,75 @@ public static class WitDbBulkExtensions
     private static string QuoteIdentifier(string identifier)
     {
         return $"\"{identifier.Replace("\"", "\"\"")}\"";
+    }
+
+    #endregion
+
+    /// <summary>
+    /// The store-generated columns for which the caller has supplied values.
+    /// </summary>
+    /// <param name="context">The context the entities belong to.</param>
+    /// <param name="entityType">The entity type being written.</param>
+    /// <param name="entities">The batch about to be inserted.</param>
+    /// <returns>The generated properties that carry a value on at least one entity.</returns>
+    /// <remarks>
+    /// Decided once for the batch, because the INSERT is prepared once. A column is included if any
+    /// row assigns it - a batch that mixes assigned and unassigned keys is a caller error either
+    /// way, and including the column at least reports it rather than dropping half the values.
+    /// </remarks>
+    private static IReadOnlySet<IProperty> FindSuppliedGeneratedColumns<T>(
+        DbContext context,
+        IEntityType entityType,
+        IList<T> entities)
+        where T : class
+    {
+        var generated = entityType.GetProperties()
+            .Where(p => p.ValueGenerated != ValueGenerated.Never)
+            .ToList();
+
+        var supplied = new HashSet<IProperty>();
+
+        foreach (var property in generated)
+        {
+            var unset = property.ClrType.IsValueType ? Activator.CreateInstance(property.ClrType) : null;
+
+            if (entities.Any(entity => !Equals(ReadValue(context, entity, property), unset)))
+            {
+                supplied.Add(property);
+            }
+        }
+
+        return supplied;
+    }
+
+    #region Values
+
+    /// <summary>
+    /// Reads a property's value in the form the store expects.
+    /// </summary>
+    /// <param name="context">The context the entity belongs to.</param>
+    /// <param name="entity">The entity being written.</param>
+    /// <param name="property">The property being read.</param>
+    /// <returns>The value to send as a parameter.</returns>
+    /// <remarks>
+    /// Reflection over PropertyInfo used to do this, which got two things wrong. A shadow property
+    /// has no PropertyInfo at all - its value lives in the change tracker - and a property with a
+    /// value converter had its raw CLR value sent straight through, so the conversion the model
+    /// declares never happened and the value layer refused the type outright.
+    ///
+    /// The tracker is consulted only for shadow properties: doing it for every property would make
+    /// a bulk insert of untracked entities create an entry per row, which is the cost the bulk path
+    /// exists to avoid.
+    /// </remarks>
+    private static object? ReadValue(DbContext context, object entity, IProperty property)
+    {
+        var value = property.IsShadowProperty()
+            ? context.Entry(entity).Property(property.Name).CurrentValue
+            : property.GetGetter().GetClrValue(entity);
+
+        var converter = property.GetValueConverter();
+
+        return converter == null ? value : converter.ConvertToProvider(value);
     }
 
     #endregion
@@ -599,4 +713,5 @@ public class BulkOptions
     /// Primary key columns cannot be excluded from WHERE clause.
     /// </remarks>
     public IList<string>? PropertiesToExclude { get; set; }
+
 }

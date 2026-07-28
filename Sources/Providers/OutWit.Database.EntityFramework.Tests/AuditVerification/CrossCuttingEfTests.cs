@@ -168,13 +168,6 @@ public class CrossCuttingEfTests
     #region BulkOptions.SetOutputIdentity
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and worse than \"does the opposite of its documentation\": enabling the "
-            + "option makes the bulk insert FAIL - "
-            + "InvalidOperationException: UNIQUE constraint failed: GeneratedRows.Id (duplicate value: 0). "
-            + "It adds the identity property to the insert column list, so every row is sent an "
-            + "explicit zero key and the second one collides with the first. Any bulk insert of more "
-            + "than one row with a generated key is broken by it. "
-            + "cross-cutting, EntityFramework/Extensions/WitDbBulkExtensions.cs:555")]
     public void SetOutputIdentityReadsGeneratedKeysBackTest()
     {
         // Finding: WitDbBulkExtensions.cs:555 - the option is documented as "requires reading
