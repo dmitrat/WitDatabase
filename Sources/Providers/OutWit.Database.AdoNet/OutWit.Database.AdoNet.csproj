@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     
-    <Version>2.3.0</Version>
+    <Version>2.4.0</Version>
     <Description>ADO.NET data provider for WitDatabase. Full System.Data compatibility with connection pooling, transactions, and parameterized queries.</Description>
     <PackageTags>OutWit;database;ado-net;data-provider;sql;connection;transactions;dotnet</PackageTags>
   </PropertyGroup>

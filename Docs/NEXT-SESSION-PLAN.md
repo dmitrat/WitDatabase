@@ -30,9 +30,9 @@ The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: e
 confirmed defect with a test already written that turns green when it is fixed.
 
 > **State at 2026-07-28.** 2.1.0 and 2.2.0 are published — seven packages each, tags `v2.1.0` and
-> `v2.2.0`, PRs #7–#15 merged. Phases 0 and 1 are done. **Phase 2 shipped its first half as 2.3.0**
-> (PRs #16–#23): the conformance harness, the SQLite oracle, nine suites wired and fifteen findings
-> closed. Twelve of the EF batch remain.
+> `v2.2.0`, PRs #7–#15 merged. **Phases 0, 1 and 2 are done**, phase 2 shipping as 2.3.0 (PRs
+> #16–#23: conformance harness, SQLite oracle, nine suites wired) and 2.4.0 (PRs #24–#27: the rest
+> of the EF batch). Resume at **Phase 3 — the grammar, all of it at once.**
 > **74 `[Ignore]` markers**, plus 3 `[Explicit]` (running them kills the host process). It went to
 > 102 when the conformance harness landed, back to 100 when the finding those two recorded was
 > corrected, and then down through the EF batch. Count before trusting it:
@@ -102,7 +102,7 @@ Nearly all of it lives in `StatementExecutor.Validation`, so a batch is cheaper 
 > and a change to the write path that phase 5 will measure. Doing it half-way inside a batch of
 > small fixes would be worse than leaving it visible.
 
-### Phase 2 — EF Core conformance *(≈23 markers + whatever it finds, ships 2.3.0)* — **started**
+### Phase 2 — EF Core conformance — **DONE, shipped as 2.3.0 and 2.4.0**
 
 Reference `Microsoft.EntityFrameworkCore.Specification.Tests`, then work the EF batch: translation,
 migrations, bulk extensions.
@@ -123,6 +123,9 @@ small, and it is nearly identical between EF Core 9 and 10 (only disposal differ
 - **`WitFindTest` is the first wired suite**, chosen to prove the harness rather than for its
   subject: int, nullable, string, composite, shadow and inherited keys, real schema, real SQL,
   411 tests. It is tagged `Category=Conformance` and excluded from CI while it is red.
+
+**Outcome: 26 markers closed and nine audit findings restated.** The batch is finished; what follows
+is the record of how it went, kept because the *pattern* is the useful part.
 
 **It paid for itself immediately — three defects on the first run**, none of them in the audit's 104:
 
