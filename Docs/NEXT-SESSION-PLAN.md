@@ -169,16 +169,33 @@ a control to consult, not a gate.
 
 **Suites wired so far**, each with its oracle counterpart:
 
-| Suite | Oracle (SQLite) | WitDatabase |
-|---|---|---|
-| `NotificationEntities` | 2/2 | **2/2 — runs in CI** |
-| `CompositeKeyEndToEnd` | 2/3 | 2/3 — parity, same test fails on both |
-| `Find` | red | red |
+| Suite | Oracle (SQLite) | WitDatabase | |
+|---|---|---|---|
+| `Load` | 3137/3137 | **3137/3137** | runs in CI |
+| `NullKeys` | 5/5 | **5/5** | runs in CI |
+| `NotificationEntities` | 2/2 | **2/2** | runs in CI |
+| `FieldMapping` | 156/167 | 156/167 | parity |
+| `StoreGenerated` | 98/211 | 98/211 | parity |
+| `WithConstructors` | 39/41 | 39/41 | parity |
+| `CompositeKeyEndToEnd` | 2/3 | 2/3 | parity |
+| `PropertyValues` | 0/198 | 0/198 | parity — see below |
+| `Find` | red | red | |
 
-A suite loses its `Category=Conformance` tag and joins CI the moment it is green, and gets it back if
-it ever stops being. Parity with the oracle is the bar, not a clean sheet: the third
-`CompositeKeyEndToEnd` test asks for generated values inside a composite key, which SQLite cannot do
-either.
+**WitDatabase matches the oracle exactly on every suite wired so far** — same pass count, same
+failing tests. Roughly 3,600 conformance tests, and not one behaviour where it differs from SQLite.
+
+A suite loses its `Category=Conformance` tag and joins CI the moment it passes outright, and gets it
+back if it ever stops. **Parity with the oracle is the bar, not a clean sheet.** What the parity rows
+are actually reporting:
+
+- `PropertyValues` fails wholesale on *both* at model build: its fixture uses complex collections
+  that a relational provider requires to be mapped with `ToJson()`, and the shared fixture does not
+  configure it. Nothing to do with either provider.
+- `StoreGenerated` and `CompositeKeyEndToEnd` fail where they ask the store to generate values it
+  cannot — the same limit SQLite has.
+
+The next suites to wire are the ones that need Northwind seeding, which is a bigger fixture job, and
+the migrations and bulk-update families that the EF batch of `[Ignore]` markers already points at.
 
 `WitFindTest` remains red. It now fails at model validation for the documented reason above, and the
 oracle shows `FindTestBase` does not run on SQLite either without suppressing that same limit — so
