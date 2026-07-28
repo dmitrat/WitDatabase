@@ -535,3 +535,104 @@ the two serializer findings.
 > individual `[TestCase]`s. A comment added in PR 0 inflated it by one before being reworded. The
 > count is still the right ledger for comparing across phases — but only if nobody writes the literal
 > marker text in prose, so don't.
+
+---
+
+## 9. PR 2 results — the restructure, landed 2026-07-28
+
+The grammar is now three layers. **`BETWEEN` is fixed**, and the whole solution is green on both
+frameworks with no change to the AST, the engine, or any consumer.
+
+### 9.1 What the final rule shape is, and why
+
+```antlr
+expression      : searchCondition ;                       // entry point, unchanged for 23 call sites
+
+searchCondition : predicate | NOT searchCondition
+                | searchCondition AND searchCondition
+                | searchCondition OR searchCondition ;    // order IS precedence, high to low
+
+predicate       : predicate <op> valueExpression | … ;    // left-recursive on the LEFT operand only
+
+valueExpression : … | LPAREN expression RPAREN ;          // re-entry, so serializer output re-parses
+```
+
+The load-bearing detail is in `predicate`: it recurses on its **left** operand and takes
+`valueExpression` for **every other** operand. The left reference is in first position, so ANTLR
+bounds it and comparisons still chain. The other operands are references to a *different rule*, and
+ANTLR's precedence machinery does not apply across rules — so they cannot derive `AND` at all, since
+`AND` lives two layers up. That is what removes the defect, structurally.
+
+### 9.2 Two mistakes the net caught, both of which would have shipped
+
+Neither was found by reading the grammar. Both were found by tests, within minutes, and both are the
+reason PR 1 existed.
+
+**1. The boolean operators were ordered backwards.** ANTLR binds an *earlier* alternative of a
+left-recursive rule more tightly. I wrote `OR` first, which silently made `a AND b OR c` mean
+`a AND (b OR c)`. `AndBindsTighterThanOrTest` and `NotBindsTighterThanAndTest` — the pins that exist
+to state what must *not* change — went red immediately. **The two `BETWEEN` tests passed the whole
+time**, so a green `BETWEEN` proved nothing on its own.
+
+**2. The first `predicate` was not left-recursive at all**, with every operand a `valueExpression`.
+It read more cleanly, it removed the `BETWEEN` defect, and **the entire solution stayed green** —
+14 projects, both frameworks, zero failures. It had also silently stopped accepting `a = 1 = 1` and
+`a < 5 < 3`, which **SQLite accepts**. Only the oracle caught it.
+
+> This is the sharpest example so far of why the oracle exists. A full-suite pass across ~10,000
+> tests was not evidence: no test in this repository chains a comparison. The bar is parity with the
+> provider WitDatabase substitutes for, and a provider **stricter** than SQLite is not a drop-in one.
+> Pinned now by `ComparisonsStillChainLeftAssociativelyTest` and by three oracle shapes.
+
+### 9.3 Results
+
+| Instrument | Before | After |
+|---|---|---|
+| Ambiguous corpus entries | **7 of 193** | **0** |
+| Round-trip clean / broken | 124 / 69 | **124 / 69** — unchanged |
+| Parse throughput | 104.2 µs | **~53 µs** (52.6 / 53.9 / 56.4 / 58.6 over four runs) |
+| Oracle: `BETWEEN` shapes | 2 DISAGREE | **all AGREE** |
+| `WitSqlEnginePrecedenceTests` | 12 passed, 2 skipped | **16 passed, 0 skipped** |
+
+All seven ambiguities are gone, including the benign `NOT EXISTS` one — `existsExpr` lost its
+optional `NOT`, and the visitor folds `NOT EXISTS` back into `Exists(IsNot: true)` so the emitted AST
+is byte-identical. That mattered: `ExpressionEvaluator.Subquery` reads `exists.IsNot` directly.
+
+**Round-trip is unchanged at 124/69**, which is the point — the same 69 failures, from the same two
+pre-existing causes, and not one new one. That is the measurement behind "the restructure changed
+nothing else".
+
+**The new grammar parses about twice as fast.** Unexpected, and reported with the caveat it deserves:
+one machine, four runs, a 193-entry corpus. Full-context attempts and context sensitivities were zero
+both before and after, so the gain is a simpler ATN rather than avoided backtracking. It is not a
+claim about engine throughput — phase 5 measures that.
+
+### 9.4 A defect fixed that was never on the list
+
+`NotBetweenInADeleteRemovesOnlyTheMatchingRowsTest` pins the half of this defect nobody recorded: the
+negated form returned **every** row, so `DELETE … WHERE x NOT BETWEEN a AND b AND …` removed exactly
+the rows the `WHERE` clause was written to protect. Found by the PR 0 oracle sweep, not by the audit.
+
+### 9.5 Cleanups the restructure earned
+
+- **The `LIKE` split is collapsed.** `ESCAPE` is an optional operand again; the positional workaround
+  from `fde365d` is gone. Re-verified rather than assumed — all five `LIKE`/`GLOB` precedence tests
+  pass across the change, per the standing rule that a comment about a past fix is a claim.
+- **The `CASE` counting heuristic is deleted.** Simple and searched `CASE` are separate grammar
+  alternatives now, so the visitor no longer infers which form it has from
+  `whenCount * 2 + (hasElse ? 1 : 0)`.
+- **Prefix `NOT` is correct by construction**, not by hand-ordering within a flat rule.
+
+### 9.6 Suite counts after PR 2
+
+| Suite | After PR 1 | After PR 2 |
+|---|---|---|
+| `Parser.Tests` | 727 / 11 skipped / 738 | **727 / 11 / 738** |
+| `Tests` (`Category!=Performance`) | 1905 / 30 / 1935 | **1909 / 28 / 1937** |
+
+Whole solution under the CI filter: **green, 14 projects, both frameworks, zero failures**, including
+3,142 and 3,146 EF specification conformance tests.
+
+Ledger: **78 → 75.** Three markers removed — the two `BETWEEN` tests, and the ambiguity target state.
+The round-trip fixpoint marker stays, correctly: the serializer's subquery defect is real and is not
+phase 3's to fix. The two serializer findings stay open with it.

@@ -157,15 +157,13 @@ public sealed class WitSqlEnginePrecedenceTests : WitSqlEngineTestsBase
 
     #endregion
 
-    #region Known Broken
+    #region BETWEEN
+
+    // Fixed by the searchCondition/predicate/valueExpression split. BETWEEN's bounds are
+    // valueExpressions now, and a valueExpression cannot derive AND at all - AND lives one layer up -
+    // so the interior reference has nothing left to swallow.
 
     [Test]
-    [Ignore("BETWEEN's lower bound is an interior recursive reference, so it is parsed at " +
-            "precedence 0 and absorbs the following AND conjunct: 'Age BETWEEN 1 AND 10 AND Flag = 1' " +
-            "becomes Between(Age, (1 AND 10), Flag = 1). Unlike LIKE this cannot be fixed by " +
-            "reordering the alternative - the AND keyword sits structurally in the middle - so it " +
-            "needs the boolean layer split out of `expression` into searchCondition/predicate/" +
-            "valueExpression rules. Tracked in Docs/AUDIT-2026-07.md section 4.2.")]
     public void BetweenDoesNotSwallowTheFollowingConjunctTest()
     {
         var ids = SelectIds(
@@ -175,13 +173,62 @@ public sealed class WitSqlEnginePrecedenceTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("Same interior-recursive-reference defect as BetweenDoesNotSwallowTheFollowingConjunctTest.")]
     public void NotBetweenDoesNotSwallowTheFollowingConjunctTest()
     {
         var ids = SelectIds(
             "SELECT Id FROM People WHERE Age NOT BETWEEN 1 AND 20 AND Flag = 0 ORDER BY Id");
 
         Assert.That(ids, Is.EqualTo(new long[] { 3 }));
+    }
+
+    /// <summary>
+    /// The half of this defect nobody recorded, and the dangerous half.
+    /// </summary>
+    /// <remarks>
+    /// The finding on file says <c>BETWEEN</c> returns nothing. Measured against SQLite during phase
+    /// 3's oracle sweep, the <b>negated</b> form did the opposite: <c>Age NOT BETWEEN 1 AND 20 AND
+    /// Active = 0</c> returned <b>every</b> row where SQLite returned one. Returning everything is
+    /// far worse than returning nothing, and in a <c>DELETE</c> it removes exactly the rows the
+    /// <c>WHERE</c> clause was written to protect - the same shape as the <c>NOT LIKE</c> defect that
+    /// deleted every row in the table.
+    /// </remarks>
+    [Test]
+    public void NotBetweenInADeleteRemovesOnlyTheMatchingRowsTest()
+    {
+        m_engine.Execute("DELETE FROM People WHERE Age NOT BETWEEN 1 AND 20 AND Flag = 0");
+
+        var ids = SelectIds("SELECT Id FROM People ORDER BY Id");
+
+        Assert.That(ids, Is.EqualTo(new long[] { 1, 2 }),
+            "only row 3 matches (Age 40 is outside 1..20, and Flag = 0); rows 1 and 2 must survive");
+    }
+
+    #endregion
+
+    #region Chained comparisons
+
+    /// <summary>
+    /// Comparisons must keep chaining left-associatively, as they always did and as SQLite does.
+    /// </summary>
+    /// <remarks>
+    /// This is a pin against a regression the rework actually introduced. The first version of the
+    /// <c>predicate</c> rule was written without left recursion — every operand a
+    /// <c>valueExpression</c> — which read cleanly, removed the <c>BETWEEN</c> defect, and silently
+    /// stopped accepting <c>a = 1 = 1</c>. The whole solution stayed green; only the SQLite oracle
+    /// caught it, because SQLite accepts both forms. A provider stricter than the one it substitutes
+    /// for is not a drop-in one.
+    ///
+    /// The fix was to recurse on the LEFT operand only, leaving every other operand at the value
+    /// layer where it cannot reach <c>AND</c>.
+    /// </remarks>
+    [Test]
+    public void ComparisonsStillChainLeftAssociativelyTest()
+    {
+        // (Age = 30) = 1 -> for row 1, (30 = 30) is true, and true = 1 holds.
+        var ids = SelectIds("SELECT Id FROM People WHERE Age = 30 = 1 ORDER BY Id");
+
+        Assert.That(ids, Is.EqualTo(new long[] { 1 }),
+            "SQLite parses `Age = 30 = 1` as `(Age = 30) = 1`, so this must too");
     }
 
     #endregion

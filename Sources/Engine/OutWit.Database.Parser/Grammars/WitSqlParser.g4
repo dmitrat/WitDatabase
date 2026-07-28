@@ -471,42 +471,108 @@ sequenceName
     : IDENTIFIER
     ;
 
+// ============================================================================
+// Expressions - three layers
+// ============================================================================
+//
+// The boolean operators live in `searchCondition`, the comparison and pattern predicates in
+// `predicate`, and everything that produces a value in `valueExpression`.
+//
+// WHY, and it is not style. ANTLR eliminates left recursion by compiling each alternative's
+// recursive references with a precedence argument. A reference that is FIRST or LAST in its
+// alternative is bound to the rule's own precedence and stops where it should. A reference that is
+// INTERIOR - neither first nor last - is compiled as expression(0), full precedence, and consumes
+// everything after it.
+//
+// BETWEEN's lower bound is interior, and the token after it is AND, which used to be an operator of
+// this same rule. So `Age BETWEEN 1 AND 10 AND Flag = 1` parsed as
+// Between(Age, lower = (1 AND 10), upper = (Flag = 1)), and returned nothing. Worse, the negated
+// form returned EVERY row: `Age NOT BETWEEN 1 AND 20 AND Active = 0` matched all of them, which in a
+// DELETE removes rows the WHERE clause was written to protect.
+//
+// LIKE had the same shape and was fixed positionally, by splitting its optional ESCAPE block into a
+// separate alternative so the pattern moved to the trailing position. BETWEEN cannot be fixed that
+// way: its AND keyword sits structurally in the MIDDLE of the alternative, so no reordering can move
+// the lower bound out of the interior position.
+//
+// With the layers split, BETWEEN's operands are `valueExpression`, which cannot derive AND at all -
+// AND lives one layer up. The bug is removed structurally rather than worked around, and the LIKE
+// split is no longer needed and has been collapsed back into one alternative.
+//
+// `expression` is kept as the entry point, so that all 23 clause references (WHERE, HAVING, ON,
+// CHECK, computed columns, trigger WHEN, partial indexes, DEFAULT, MERGE ...) and the visitor call
+// sites are unchanged, and every one of them gets the full boolean layer for free.
+
 expression
+    : searchCondition
+    ;
+
+// ORDER IS PRECEDENCE, and it runs high-to-low: ANTLR binds an earlier alternative of a
+// left-recursive rule more tightly than a later one. So NOT before AND before OR, which is the same
+// relative order the flat rule used. Writing OR first instead is not a style choice - it silently
+// makes `a AND b OR c` mean `a AND (b OR c)`, which is what AndBindsTighterThanOrTest and
+// NotBindsTighterThanAndTest caught the first time this rule was written.
+searchCondition
+    : predicate                                     # predicateExpr
+    // NOT binds looser than every comparison and predicate. It used to sit in the same flat rule as
+    // the comparisons, which made `NOT Age > 18` mean `(NOT Age) > 18` until it was reordered by
+    // hand; now the layering guarantees it instead of the ordering doing so.
+    | NOT searchCondition                           # notExpr
+    | searchCondition AND searchCondition           # andExpr
+    | searchCondition OR searchCondition            # orExpr
+    ;
+
+// Left-recursive on its LEFT operand only. That combination is the whole trick:
+//
+//   - the left operand is a recursive reference in FIRST position, which ANTLR bounds to this rule's
+//     precedence, so `a = 1 = 1` and `a < 5 < 3` still chain the way they always did. SQLite accepts
+//     both, and a provider stricter than the one it substitutes for is not a drop-in one - this was
+//     measured, after a first version of this rule took the recursion out entirely and silently
+//     stopped accepting them;
+//   - every OTHER operand is a `valueExpression`, a reference to a different rule. ANTLR's precedence
+//     machinery does not apply across rules, so those operands simply cannot derive AND - AND lives
+//     two layers up in searchCondition. That is what stops BETWEEN's lower bound from swallowing the
+//     following conjunct, and it is why the LIKE workaround is no longer needed.
+predicate
+    : predicate (LT | LE | GT | GE) valueExpression         # compareExpr
+    | predicate (EQ | NE | NE2) valueExpression             # equalityExpr
+    | predicate IS NOT? NULL                                # isNullExpr
+    | predicate NOT? BETWEEN valueExpression AND valueExpression # betweenExpr
+    | predicate NOT? IN LPAREN (expression (COMMA expression)* | queryExpression) RPAREN # inExpr
+    | predicate NOT? LIKE valueExpression (ESCAPE valueExpression)? # likeExpr
+    | predicate NOT? GLOB valueExpression                   # globExpr
+    | predicate comparisonOp (ANY | SOME | ALL) LPAREN queryExpression RPAREN # quantifiedExpr
+    // NOT is deliberately absent here: `NOT EXISTS (...)` is negated by searchCondition's NOT, and
+    // the visitor folds that back into Exists(IsNot = true) so the AST is unchanged. Carrying a
+    // NOT? here as well made the input derivable two ways, which ANTLR resolved silently by
+    // alternative order.
+    | EXISTS LPAREN queryExpression RPAREN                  # existsExpr
+    // A bare value used as a condition - `WHERE Flag`, `WHERE 1`. Last, so it is only tried once no
+    // predicate matches.
+    | valueExpression                                       # valuePredicate
+    ;
+
+valueExpression
     : literal                                       # literalExpr
     | columnRef                                     # columnRefExpr
     | functionCall                                  # functionCallExpr
     | parameter                                     # parameterExpr
+    // The re-entry that makes the two layers mutually reachable. It is required, not convenience:
+    // WitSqlExpressionSerializer parenthesises every binary node unconditionally, so `a AND b`
+    // round-trips as `(a AND b)` and must keep parsing in a value position.
     | LPAREN expression RPAREN                      # parenExpr
     | LPAREN queryExpression RPAREN                 # subqueryExpr
-    | NOT? EXISTS LPAREN queryExpression RPAREN     # existsExpr
-    // NOT is deliberately NOT in this alternative: as a prefix operator it must bind LOOSER than
-    // every comparison and predicate, otherwise `NOT Age > 18` parses as `(NOT Age) > 18` and returns
-    // nothing. See notExpr further down, just above andExpr.
-    | (PLUS | MINUS | TILDE) expression             # unaryExpr
-    | expression (STAR | SLASH | PERCENT) expression    # mulDivExpr
-    | expression (PLUS | MINUS) expression          # addSubExpr
-    | expression (AMP | PIPE | RSHIFT | LSHIFT) expression # bitwiseExpr
-    | expression (CONCAT) expression                # concatExpr
-    | expression COLLATE collationName              # collateExpr
-    | expression (LT | LE | GT | GE) expression     # compareExpr
-    | expression (EQ | NE | NE2) expression         # equalityExpr
-    | expression IS NOT? NULL                       # isNullExpr
-    | expression NOT? BETWEEN expression AND expression # betweenExpr
-    | expression NOT? IN LPAREN (expression (COMMA expression)* | queryExpression) RPAREN # inExpr
-    // Two alternatives on purpose. With a single `LIKE expression (ESCAPE expression)?` the pattern
-    // is an INTERIOR recursive reference, which ANTLR compiles as expression(0) - full precedence -
-    // so it swallowed everything after it: `Name LIKE 'a%' AND Age > 18` parsed as
-    // `Name LIKE ('a%' AND Age > 18)`, and `DELETE ... WHERE Name NOT LIKE 'p' AND Id = 5` deleted
-    // every row. Splitting the optional block out leaves the last operand of each alternative in the
-    // trailing position, where ANTLR bounds it to this rule's precedence.
-    | expression NOT? LIKE expression ESCAPE expression # likeEscapeExpr
-    | expression NOT? LIKE expression               # likeExpr
-    | expression NOT? GLOB expression               # globExpr
-    | expression comparisonOp (ANY | SOME | ALL) LPAREN queryExpression RPAREN # quantifiedExpr
-    | NOT expression                                # notExpr
-    | expression AND expression                     # andExpr
-    | expression OR expression                      # orExpr
-    | CASE expression? (WHEN expression THEN expression)+ (ELSE expression)? END # caseExpr
+    | (PLUS | MINUS | TILDE) valueExpression        # unaryExpr
+    | valueExpression (STAR | SLASH | PERCENT) valueExpression # mulDivExpr
+    | valueExpression (PLUS | MINUS) valueExpression # addSubExpr
+    | valueExpression (AMP | PIPE | RSHIFT | LSHIFT) valueExpression # bitwiseExpr
+    | valueExpression (CONCAT) valueExpression      # concatExpr
+    | valueExpression COLLATE collationName         # collateExpr
+    // Two alternatives rather than one rule with an optional operand. The visitor used to tell the
+    // simple form from the searched one by COUNTING how many expressions the context held; the
+    // layers make them structurally distinct, so the counting heuristic is gone.
+    | CASE valueExpression (WHEN valueExpression THEN expression)+ (ELSE expression)? END # simpleCaseExpr
+    | CASE (WHEN searchCondition THEN expression)+ (ELSE expression)? END # searchedCaseExpr
     | CAST LPAREN expression AS dataType RPAREN     # castExpr
     | CONVERT LPAREN dataType COMMA expression RPAREN # convertExpr
     | IIF LPAREN expression COMMA expression COMMA expression RPAREN # iifExpr
