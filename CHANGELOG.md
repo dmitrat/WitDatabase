@@ -1,8 +1,17 @@
 # Changelog
 
-## Unreleased
+## 2.4.0
 
-Continues phase 2 with the rest of the EF batch.
+Closes phase 2. Every one of the 2026-07 audit's 29 EF Core findings is now either fixed or restated
+with what it actually is - and **nine of them were misattributed**, almost one in three. Each
+correction came from running the same model on EF Core's SQLite provider rather than from reading
+the code, which is what the oracle added in 2.3.0 exists for.
+
+Minor rather than patch for the same reason as the last three releases: most of these change an
+answer the previous release gave. The ones most likely to be noticed are that `DateTime.Now` returns
+local time, that a `char` property works at all, that migration literals no longer depend on the
+developer's locale, and that a bulk insert of more than one row with `SetOutputIdentity` no longer
+fails outright.
 
 ### Behaviour changes
 
