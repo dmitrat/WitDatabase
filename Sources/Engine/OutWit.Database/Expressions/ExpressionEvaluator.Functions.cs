@@ -118,6 +118,15 @@ public sealed partial class ExpressionEvaluator
             "HOUR" => WitSqlValue.FromInt(args[0].AsDateTime().Hour),
             "MINUTE" => WitSqlValue.FromInt(args[0].AsDateTime().Minute),
             "SECOND" => WitSqlValue.FromInt(args[0].AsDateTime().Second),
+            // MILLISECOND and TOTAL_SECONDS were emitted by the EF Core translators for
+            // DateTime.Millisecond and TimeSpan.TotalSeconds and had no implementation here, so the
+            // query reached the engine and died with "Function not supported".
+            "MILLISECOND" or "MS" => WitSqlValue.FromInt(EvaluateMillisecond(args[0])),
+            "TOTAL_SECONDS" => WitSqlValue.FromReal(args[0].AsTimeSpan().TotalSeconds),
+            "TOTAL_MINUTES" => WitSqlValue.FromReal(args[0].AsTimeSpan().TotalMinutes),
+            "TOTAL_HOURS" => WitSqlValue.FromReal(args[0].AsTimeSpan().TotalHours),
+            "TOTAL_DAYS" => WitSqlValue.FromReal(args[0].AsTimeSpan().TotalDays),
+            "TOTAL_MILLISECONDS" => WitSqlValue.FromReal(args[0].AsTimeSpan().TotalMilliseconds),
             "DATEADD" => EvaluateDateAdd(args),
             "DATEDIFF" => EvaluateDateDiff(args),
             "STRFTIME" => EvaluateStrftime(args),

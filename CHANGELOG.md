@@ -22,6 +22,17 @@ that suite on its first run; neither was in the audit's backlog.
   `OutWit.Database.Core.Utils.DatabaseFiles`, so what creates them and what deletes them cannot
   drift apart.
 
+- **Temporal literals are emitted as plain strings, not ANSI typed literals.** EF Core's own
+  mappings produce `TIMESTAMP '1970-01-01 …'`, a form WitSQL has no grammar for, so **any query
+  comparing against a constant date failed to parse before it reached the engine** —
+  `no viable alternative at input '>TIMESTAMP'`. `DATE`, `TIME` and `DATETIMEOFFSET` had the same
+  shape. All four now emit a quoted string, as EF Core's SQLite provider does.
+
+- **`MILLISECOND`, `TOTAL_SECONDS` and casts to the narrower integer types now work.** The
+  translators emitted them and the engine had no implementation, so `DateTime.Millisecond`,
+  `TimeSpan.TotalSeconds` and a cast to `short` each ended in `NotSupportedException` at run time.
+  `TOTAL_MINUTES`, `TOTAL_HOURS`, `TOTAL_DAYS`, `TOTAL_MILLISECONDS` and `TINYINT` came with them.
+
 - **`StartsWith` and `EndsWith` no longer treat the search term's own wildcards as wildcards.** The
   term was spliced into the LIKE pattern raw and with no `ESCAPE` clause, so `StartsWith("a_")`
   matched every row beginning with `a` followed by anything — four seeded rows instead of the one

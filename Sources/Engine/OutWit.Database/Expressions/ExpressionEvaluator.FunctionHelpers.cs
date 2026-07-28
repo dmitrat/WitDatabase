@@ -232,4 +232,23 @@ public sealed partial class ExpressionEvaluator
     }
 
     #endregion
+
+    /// <summary>
+    /// The millisecond component of a value, whichever of the temporal types it holds.
+    /// </summary>
+    /// <param name="value">A datetime, a time of day or an interval.</param>
+    /// <returns>The millisecond component.</returns>
+    /// <remarks>
+    /// EF Core reaches this from three places - DateTime.Millisecond, TimeOnly.Millisecond and
+    /// TimeSpan.Milliseconds - and all three translate to the same function, so it has to answer
+    /// for all three rather than assume a datetime.
+    /// </remarks>
+    private static int EvaluateMillisecond(WitSqlValue value)
+    {
+        return value.Type switch
+        {
+            WitSqlType.TimeSpan => value.AsTimeSpan().Milliseconds,
+            _ => value.AsDateTime().Millisecond,
+        };
+    }
 }
