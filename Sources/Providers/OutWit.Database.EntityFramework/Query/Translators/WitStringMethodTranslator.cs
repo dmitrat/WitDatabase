@@ -127,22 +127,12 @@ public sealed class WitStringMethodTranslator : IMethodCallTranslator
 
         if (method == STRING_STARTSWITH_METHOD && instance != null)
         {
-            // instance LIKE argument || '%'
-            var pattern = m_sqlExpressionFactory.Add(
-                arguments[0],
-                m_sqlExpressionFactory.Constant("%"));
-
-            return m_sqlExpressionFactory.Like(instance, pattern);
+            return LikeAgainst(instance, arguments[0], suffix: "%");
         }
 
         if (method == STRING_ENDSWITH_METHOD && instance != null)
         {
-            // instance LIKE '%' || argument
-            var pattern = m_sqlExpressionFactory.Add(
-                m_sqlExpressionFactory.Constant("%"),
-                arguments[0]);
-
-            return m_sqlExpressionFactory.Like(instance, pattern);
+            return LikeAgainst(instance, arguments[0], prefix: "%");
         }
 
         if (method == STRING_INDEXOF_METHOD && instance != null)
@@ -242,6 +232,101 @@ public sealed class WitStringMethodTranslator : IMethodCallTranslator
         }
 
         return null;
+    }
+
+    #endregion
+
+    #region LIKE patterns
+
+    /// <summary>
+    /// The character used to escape wildcards inside a search term.
+    /// </summary>
+    private const char ESCAPE_CHARACTER = '\\';
+
+    /// <summary>
+    /// Builds <c>instance LIKE &lt;pattern&gt; ESCAPE ''</c> for a StartsWith or EndsWith.
+    /// </summary>
+    /// <param name="instance">The string being tested.</param>
+    /// <param name="term">The term being searched for.</param>
+    /// <param name="prefix">Wildcard placed before the term, if any.</param>
+    /// <param name="suffix">Wildcard placed after the term, if any.</param>
+    /// <remarks>
+    /// The term's own '%' and '_' have to stop being wildcards. Splicing it in raw made
+    /// StartsWith("a_") match every row beginning with 'a' followed by anything - a wrong answer,
+    /// not a slow one. EF Core's SQLite provider escapes the term and adds ESCAPE for the same
+    /// reason.
+    /// </remarks>
+    private SqlExpression LikeAgainst(
+        SqlExpression instance,
+        SqlExpression term,
+        string? prefix = null,
+        string? suffix = null)
+    {
+        var escaped = Escape(term);
+
+        if (prefix != null)
+        {
+            escaped = m_sqlExpressionFactory.Add(m_sqlExpressionFactory.Constant(prefix), escaped);
+        }
+
+        if (suffix != null)
+        {
+            escaped = m_sqlExpressionFactory.Add(escaped, m_sqlExpressionFactory.Constant(suffix));
+        }
+
+        return m_sqlExpressionFactory.Like(
+            instance,
+            escaped,
+            m_sqlExpressionFactory.Constant(ESCAPE_CHARACTER.ToString()));
+    }
+
+    /// <summary>
+    /// Escapes the LIKE wildcards in a search term.
+    /// </summary>
+    /// <param name="term">The term being searched for.</param>
+    /// <returns>An expression yielding the escaped term.</returns>
+    /// <remarks>
+    /// A constant is escaped here and emitted as a literal. Anything else - a parameter, a column -
+    /// is escaped by the engine with REPLACE, because its value is not known until the query runs.
+    /// The escape character itself goes first, or escaping the wildcards would escape it in turn.
+    /// </remarks>
+    private SqlExpression Escape(SqlExpression term)
+    {
+        if (term is SqlConstantExpression { Value: string literal })
+        {
+            return m_sqlExpressionFactory.Constant(EscapeLiteral(literal));
+        }
+
+        var escaped = term;
+
+        foreach (var wildcard in new[] { ESCAPE_CHARACTER, '%', '_' })
+        {
+            escaped = m_sqlExpressionFactory.Function(
+                "REPLACE",
+                [
+                    escaped,
+                    m_sqlExpressionFactory.Constant(wildcard.ToString()),
+                    m_sqlExpressionFactory.Constant($"{ESCAPE_CHARACTER}{wildcard}"),
+                ],
+                nullable: true,
+                argumentsPropagateNullability: [true, true, true],
+                typeof(string));
+        }
+
+        return escaped;
+    }
+
+    /// <summary>
+    /// Escapes the LIKE wildcards in a known string.
+    /// </summary>
+    /// <param name="value">The term being searched for.</param>
+    /// <returns>The term with its wildcards escaped.</returns>
+    private static string EscapeLiteral(string value)
+    {
+        return value
+            .Replace($"{ESCAPE_CHARACTER}", $"{ESCAPE_CHARACTER}{ESCAPE_CHARACTER}")
+            .Replace("%", $"{ESCAPE_CHARACTER}%")
+            .Replace("_", $"{ESCAPE_CHARACTER}_");
     }
 
     #endregion
