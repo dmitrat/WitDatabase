@@ -44,10 +44,6 @@ public class EfRuntimeFindingsTests
     #region Bulk extensions skip shadow properties
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and silently: the shadow property reads back as null instead of \"acme\". "
-            + "GetInsertColumns filters with .Where(p => !p.IsShadowProperty()), so the column is never "
-            + "written and nothing reports it. "
-            + "ef-runtime, EntityFramework/Extensions/WitDbBulkExtensions.cs:463")]
     public void BulkInsertPersistsAShadowPropertyTest()
     {
         // Finding: WitDbBulkExtensions.cs:463 - GetInsertColumns filters with
@@ -83,10 +79,6 @@ public class EfRuntimeFindingsTests
     #region Bulk extensions bypass value converters
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: ArgumentException \"Cannot convert State to WitSqlValue\" - the raw CLR "
-            + "value reaches the value layer with the configured conversion never applied. Unlike the "
-            + "shadow-property half this one fails loudly. The SaveChanges control test passes, which "
-            + "places the defect in the bulk path rather than in the mapping.")]
     public void BulkInsertAppliesTheValueConverterTest()
     {
         // The other half: the value is taken straight off the CLR property, so a configured
