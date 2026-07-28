@@ -181,6 +181,10 @@ namespace OutWit.Database.Values
                 double d => FromReal(d),
                 decimal d => FromDecimal(d),
                 string s => FromText(s),
+                // A char is a one-character string here, not a number. Without this an entity with
+                // a char property could not be saved at all - the value reached this layer and was
+                // refused outright.
+                char c => FromText(c.ToString()),
                 byte[] b => FromBlob(b),
                 DateTime dt => FromDateTime(dt),
                 DateOnly d => FromDateOnly(d),

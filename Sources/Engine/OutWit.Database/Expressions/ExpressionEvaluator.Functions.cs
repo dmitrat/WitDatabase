@@ -108,6 +108,11 @@ public sealed partial class ExpressionEvaluator
 
             // Date/Time Functions
             "NOW" or "CURRENT_TIMESTAMP" => WitSqlValue.FromDateTime(DateTime.UtcNow),
+            // The local-time counterparts. Everything used to land on NOW(), so DateTime.Now came
+            // back as UTC - the answer was wrong by exactly the machine's offset, silently.
+            "LOCALTIMESTAMP" or "NOW_LOCAL" => WitSqlValue.FromDateTime(DateTime.Now),
+            "LOCALDATE" or "CURRENT_DATE_LOCAL" => WitSqlValue.FromDateOnly(DateOnly.FromDateTime(DateTime.Now)),
+            "LOCALTIME" or "CURRENT_TIME_LOCAL" => WitSqlValue.FromTimeOnly(TimeOnly.FromDateTime(DateTime.Now)),
             "CURRENT_DATE" => WitSqlValue.FromDateOnly(DateOnly.FromDateTime(DateTime.UtcNow)),
             "CURRENT_TIME" => WitSqlValue.FromTimeOnly(TimeOnly.FromDateTime(DateTime.UtcNow)),
             "DATE" => WitSqlValue.FromDateOnly(DateOnly.FromDateTime(args[0].AsDateTime())),
