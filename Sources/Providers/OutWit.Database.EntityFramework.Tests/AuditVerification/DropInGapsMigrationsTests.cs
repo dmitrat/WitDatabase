@@ -3,7 +3,9 @@ using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.EntityFrameworkCore.Migrations;
 using Microsoft.EntityFrameworkCore.Migrations.Operations;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.EntityFrameworkCore.Storage;
 using OutWit.Database.EntityFramework.Extensions;
+using OutWit.Database.EntityFramework.Storage;
 
 namespace OutWit.Database.EntityFramework.Tests.AuditVerification;
 
@@ -171,13 +173,18 @@ public class DropInGapsMigrationsTests
             "and nothing should be emitted for it either, as SQLite does");
     }
 
+    /// <summary>
+    /// The finding asked for the schema to reach the SQL. The oracle says the opposite: EF Core's
+    /// SQLite provider, which likewise has no schemas, drops the name from DDL *and* DML and the
+    /// table round-trips perfectly well. What was wrong was that WitDatabase dropped it in one
+    /// place and kept it in the other, so the DDL and the DML disagreed about the table's name.
+    ///
+    /// The consistency is the requirement, and dropping it everywhere is how SQLite gets there.
+    /// </summary>
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: CREATE TABLE emits \"T\" with the schema dropped entirely, while EF's "
-            + "query and update generators keep it - so the one schema name WitModelValidator accepts "
-            + "(\"public\") produces DDL that does not match the DML.")]
-    public void SchemaQualifiedTableIsAddressableTest()
+    public void SchemaIsDroppedFromDdlAndDmlAlikeTest()
     {
-        var sql = GenerateSql(new CreateTableOperation
+        var ddl = GenerateSql(new CreateTableOperation
         {
             Name = "T",
             Schema = "public",
@@ -187,8 +194,13 @@ public class DropInGapsMigrationsTests
             }
         });
 
-        Assert.That(sql, Does.Contain("public"),
-            $"the schema the validator accepts must reach the emitted SQL. Generated: {sql}");
+        Assert.That(ddl, Does.Not.Contain("public"),
+            $"the DDL names the table without its schema. Generated: {ddl}");
+
+        var helper = new WitSqlGenerationHelper(new RelationalSqlGenerationHelperDependencies());
+
+        Assert.That(helper.DelimitIdentifier("T", "public"), Is.EqualTo(helper.DelimitIdentifier("T")),
+            "and so must everything else, or a query looks for a table the DDL never created");
     }
 
     #endregion

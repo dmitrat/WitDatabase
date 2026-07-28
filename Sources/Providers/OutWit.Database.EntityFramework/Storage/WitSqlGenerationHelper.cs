@@ -37,6 +37,26 @@ public sealed class WitSqlGenerationHelper : RelationalSqlGenerationHelper
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The schema is dropped, because WitDatabase has none. The base implementation qualifies the
+    /// name with it, so a model that named a schema produced <c>"public"."T"</c> in queries and
+    /// updates while CREATE TABLE emitted plain <c>"T"</c> - the DDL and the DML disagreed about
+    /// what the table was called, and the one schema name the model validator accepts was the one
+    /// that broke. EF Core's SQLite provider, which likewise has no schemas, drops it everywhere.
+    /// </remarks>
+    public override string DelimitIdentifier(string name, string? schema)
+    {
+        return DelimitIdentifier(name);
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>See <see cref="DelimitIdentifier(string, string?)"/>.</remarks>
+    public override void DelimitIdentifier(System.Text.StringBuilder builder, string name, string? schema)
+    {
+        DelimitIdentifier(builder, name);
+    }
+
+    /// <inheritdoc/>
     public override string EscapeIdentifier(string identifier)
     {
         return identifier.Replace("\"", "\"\"");

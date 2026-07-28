@@ -6,6 +6,12 @@ Continues phase 2 with the rest of the EF batch.
 
 ### Behaviour changes
 
+- **The schema name is dropped from DDL and DML alike.** `CREATE TABLE` emitted a bare `"T"` while
+  queries and updates emitted `"public"."T"`, so the DDL and the DML disagreed about the table's
+  name — and `public` is the one schema the model validator accepts, which made it the one value
+  that broke. WitDatabase has no schemas, so the name is now ignored everywhere, as EF Core's SQLite
+  provider does.
+
 - **The bulk extensions write shadow properties, apply value converters, and `SetOutputIdentity`
   does what it says.** Three defects in one path, all of which came from reading values with
   reflection over `PropertyInfo`:
