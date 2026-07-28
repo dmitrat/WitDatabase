@@ -22,6 +22,23 @@ that suite on its first run; neither was in the audit's backlog.
   `OutWit.Database.Core.Utils.DatabaseFiles`, so what creates them and what deletes them cannot
   drift apart.
 
+- **Index filters and descending columns now reach the SQL.** `HasFilter` was dropped, so a
+  filtered UNIQUE index became a full one — which enforces a **stricter** constraint than the model
+  declares, rejecting rows the application is entitled to insert. `IsDescending` was dropped too.
+  Both now emit exactly what EF Core's SQLite provider emits.
+
+- **Migration operations WitDatabase cannot carry out now stop the migration instead of emitting a
+  comment.** Adding or dropping a primary key on an existing table, renaming an index and changing a
+  column's type each produced a SQL comment — or, for the type change, nothing at all. A comment is a
+  valid script that changes nothing, so the migration was recorded as applied while the database kept
+  its old schema and the model silently disagreed with it from then on. All four now throw
+  `NotSupportedException` naming the table, the change and the way round it, as EF Core's SQLite
+  provider does for the same operations.
+
+- **`EnsureSchema` is ignored rather than refused.** It threw `NotSupportedException`, which failed
+  migrations EF Core emits as a matter of course. WitDatabase has one schema, so there is nothing to
+  create; SQLite ignores the operation in the same way.
+
 - **Disposing an LSM store now waits for all of its background work.** `Dispose` waited for
   compaction and *then* flushed what was left in the memtable — and that flush scheduled a fresh
   compaction which nobody waited for. The next store opened on the same directory met an SSTable

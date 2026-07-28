@@ -47,15 +47,16 @@ public class DropInGapsMigrationsTests
 
     #region AlterColumn
 
+    /// <summary>
+    /// The finding asked for a statement. The oracle says otherwise: EF Core's SQLite provider
+    /// refuses an AlterColumnOperation outright, because its ALTER TABLE cannot change a type
+    /// either. What was wrong here was never the missing statement - it was that nothing was
+    /// emitted and nothing was said, so the migration was recorded as applied and the column kept
+    /// its old type.
+    /// </summary>
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and worse than written: a column-type change emits NOTHING AT ALL - not "
-            + "even the explanatory comment the sibling operations produce. The migration is recorded "
-            + "as applied and the column keeps its old type. "
-            + "dropin-gaps, EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:182")]
-    public void AlterColumnEmitsAStatementForATypeChangeTest()
+    public void AlterColumnRefusesATypeChangeRatherThanEmittingNothingTest()
     {
-        // Finding: WitMigrationsSqlGenerator.cs:182 - a column-type change produces nothing, so the
-        // model says the column is one type and the database keeps another, silently.
         var operation = new AlterColumnOperation
         {
             Name = "Amount",
@@ -73,7 +74,7 @@ public class DropInGapsMigrationsTests
             }
         };
 
-        AssertEmitsRealSql(operation, "ALTER");
+        AssertRefusedRatherThanCommentedOut(operation, "a column type change");
     }
 
     #endregion
@@ -81,34 +82,31 @@ public class DropInGapsMigrationsTests
     #region AddPrimaryKey / DropPrimaryKey / RenameIndex
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: emits only "
-            + "\"-- WitDatabase limitation: Cannot add PRIMARY KEY to existing table. Columns: Id\". "
-            + "dropin-gaps, EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:320")]
-    public void AddPrimaryKeyEmitsAStatementTest()
+    public void AddPrimaryKeyIsRefusedRatherThanCommentedOutTest()
     {
-        // Finding: WitMigrationsSqlGenerator.cs:320 - emitted as a SQL comment.
-        AssertEmitsRealSql(
+        // A table left without the key its model declares takes duplicates in silence, so a
+        // migration that appears to succeed is the worse outcome. SQLite refuses this too.
+        AssertRefusedRatherThanCommentedOut(
             new AddPrimaryKeyOperation { Name = "PK_T", Table = "T", Columns = ["Id"] },
-            "PRIMARY KEY");
+            "adding a primary key to an existing table");
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: emits only "
-            + "\"-- WitDatabase limitation: Cannot drop PRIMARY KEY from existing table. Table: T\".")]
-    public void DropPrimaryKeyEmitsAStatementTest()
+    public void DropPrimaryKeyIsRefusedRatherThanCommentedOutTest()
     {
-        AssertEmitsRealSql(
+        AssertRefusedRatherThanCommentedOut(
             new DropPrimaryKeyOperation { Name = "PK_T", Table = "T" },
-            "PRIMARY KEY");
+            "dropping the primary key of an existing table");
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: emits only \"-- Rename index: IX_Old -> IX_New\".")]
-    public void RenameIndexEmitsAStatementTest()
+    public void RenameIndexIsRefusedRatherThanCommentedOutTest()
     {
-        AssertEmitsRealSql(
+        // The comment left the index under its old name, so the migration that referred to the new
+        // one failed later for a reason with no connection to the cause.
+        AssertRefusedRatherThanCommentedOut(
             new RenameIndexOperation { Name = "IX_Old", NewName = "IX_New", Table = "T" },
-            "INDEX");
+            "renaming an index");
     }
 
     #endregion
@@ -116,11 +114,6 @@ public class DropInGapsMigrationsTests
     #region Index options silently dropped
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and the consequence is stronger than \"silently dropped\". A filtered "
-            + "UNIQUE index became CREATE UNIQUE INDEX ... ON \"T\" (\"Value\") with no WHERE, which "
-            + "enforces a STRICTER constraint than the model declares - rows the application is "
-            + "entitled to insert are rejected. "
-            + "dropin-gaps, EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:239")]
     public void FilteredIndexKeepsItsFilterTest()
     {
         // Finding: WitMigrationsSqlGenerator.cs:239 - HasFilter, IncludeProperties and descending
@@ -140,7 +133,6 @@ public class DropInGapsMigrationsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: emitted as CREATE INDEX ... (\"Value\") with the DESC direction dropped.")]
     public void DescendingIndexKeepsItsDirectionTest()
     {
         var sql = GenerateSql(new CreateIndexOperation
@@ -159,14 +151,24 @@ public class DropInGapsMigrationsTests
 
     #region Schemas
 
+    /// <summary>
+    /// The finding asked for real SQL here. That was more than the oracle does: EF Core's SQLite
+    /// provider, which likewise has no schemas, returns no commands at all for this operation. So
+    /// the defect was never the missing statement - it was the NotSupportedException, which failed
+    /// migrations EF Core emits as a matter of course.
+    /// </summary>
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: throws NotSupportedException - EnsureSchemaOperation is not handled at "
-            + "all. dropin-gaps, EntityFramework/Metadata/WitModelValidator.cs:56")]
-    public void EnsureSchemaEmitsAStatementTest()
+    public void EnsureSchemaIsIgnoredRatherThanRefusedTest()
     {
-        // Finding: WitModelValidator.cs:56 - schemas are unsupported at every layer, yet `public`
-        // is the one schema name the validator accepts.
-        AssertEmitsRealSql(new EnsureSchemaOperation { Name = "public" }, "SCHEMA");
+        var operation = new EnsureSchemaOperation { Name = "public" };
+
+        Assert.DoesNotThrow(
+            () => GenerateSql(operation),
+            "WitDatabase has one schema, so there is nothing to create - but refusing the operation "
+            + "fails migrations that are perfectly valid");
+
+        Assert.That(GenerateSql(operation).Trim(), Is.Empty,
+            "and nothing should be emitted for it either, as SQLite does");
     }
 
     [Test]
@@ -311,6 +313,22 @@ public class DropInGapsMigrationsTests
     /// Asserts that the operation produced an executable statement rather than nothing at all or a
     /// comment. Comment-only output is the failure mode these findings describe.
     /// </summary>
+    /// <summary>
+    /// An operation WitDatabase cannot carry out must say so. Emitting a comment instead let the
+    /// migration be recorded as applied while nothing had happened, so the model and the database
+    /// parted company with nothing to show for it. EF Core's SQLite provider, whose ALTER TABLE is
+    /// just as limited, throws NotSupportedException for every one of these.
+    /// </summary>
+    private void AssertRefusedRatherThanCommentedOut(MigrationOperation operation, string subject)
+    {
+        var exception = Assert.Throws<NotSupportedException>(
+            () => GenerateSql(operation),
+            $"{subject} cannot be applied, so the migration must stop rather than appear to succeed");
+
+        Assert.That(exception!.Message, Does.Contain("WitDatabase"),
+            "and the message must say who is refusing and why");
+    }
+
     private void AssertEmitsRealSql(MigrationOperation operation, string expectedFragment)
     {
         var sql = GenerateSql(operation);
