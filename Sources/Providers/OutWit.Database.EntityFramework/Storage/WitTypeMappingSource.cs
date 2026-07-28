@@ -85,6 +85,12 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
     private readonly StringTypeMapping m_textMapping = new(TYPE_TEXT, DbType.String);
     private readonly StringTypeMapping m_jsonMapping = new(TYPE_JSON, DbType.String);
 
+    // A char was mapped to the string mapping, whose converter cannot take one: any SaveChanges on
+    // an entity with a char property failed with "No coercion operator is defined between types
+    // 'System.Char' and 'System.String'". The property was unusable outright, not merely in
+    // inlined constants.
+    private readonly CharTypeMapping m_charMapping = new(TYPE_TEXT, DbType.String);
+
     // Binary mapping
     private readonly ByteArrayTypeMapping m_blobMapping = new(TYPE_BLOB, DbType.Binary);
 
@@ -150,7 +156,7 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
             { typeof(Guid), m_guidMapping },
 
             // Char
-            { typeof(char), m_textMapping }
+            { typeof(char), m_charMapping }
         };
 
         m_storeTypeMappings = new Dictionary<string, RelationalTypeMapping>(StringComparer.OrdinalIgnoreCase)

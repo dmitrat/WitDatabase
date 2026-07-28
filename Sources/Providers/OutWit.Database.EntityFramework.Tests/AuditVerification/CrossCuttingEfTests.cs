@@ -91,11 +91,6 @@ public class CrossCuttingEfTests
     #region Migration literals and the current culture
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: under de-DE the generator emitted "
-            + "ALTER TABLE \"T\" ADD COLUMN \"Price\" DECIMAL(18,2) NOT NULL DEFAULT 1,5; - a comma "
-            + "decimal separator. A migration generated on a comma-locale developer machine is "
-            + "corrupt SQL. "
-            + "cross-cutting, EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:809")]
     public void MigrationLiteralsAreCultureInvariantTest()
     {
         // Finding: WitMigrationsSqlGenerator.cs:809 - literals are formatted with the current
@@ -130,11 +125,6 @@ public class CrossCuttingEfTests
     #region DateTime.Now translated to a UTC function
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27 and measured: the server returned 05:09:58 while local time was "
-            + "08:09:58+03:00 - off by exactly the machine's UTC offset, 180 minutes. DateTime.Now, "
-            + "DateTime.Today and DateTimeOffset.Now all translate to NOW(), which the engine defines "
-            + "as UTC. "
-            + "cross-cutting, EntityFramework/Query/Translators/WitMemberTranslator.cs:133")]
     public void DateTimeNowDoesNotTranslateToAUtcFunctionTest()
     {
         // Finding: WitMemberTranslator.cs:133 - DateTime.Now, DateTime.Today and

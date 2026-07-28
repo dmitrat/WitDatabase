@@ -130,8 +130,11 @@ public sealed class WitMemberTranslator : IMemberTranslator
     {
         return memberName switch
         {
+            // Now, UtcNow and Today used to translate to the same NOW(), which the engine defines
+            // as UTC, so DateTime.Now came back wrong by exactly the machine's offset and said
+            // nothing about it. EF Core's SQLite provider keeps them apart the same way.
             nameof(DateTime.Now) => m_sqlExpressionFactory.Function(
-                "NOW",
+                "LOCALTIMESTAMP",
                 Array.Empty<SqlExpression>(),
                 nullable: false,
                 argumentsPropagateNullability: Array.Empty<bool>(),
@@ -145,7 +148,7 @@ public sealed class WitMemberTranslator : IMemberTranslator
             nameof(DateTime.Today) => m_sqlExpressionFactory.Function(
                 "DATE",
                 [m_sqlExpressionFactory.Function(
-                    "NOW",
+                    "LOCALTIMESTAMP",
                     Array.Empty<SqlExpression>(),
                     nullable: false,
                     argumentsPropagateNullability: Array.Empty<bool>(),
@@ -186,8 +189,14 @@ public sealed class WitMemberTranslator : IMemberTranslator
     {
         return memberName switch
         {
-            nameof(DateTimeOffset.UtcNow) or nameof(DateTimeOffset.Now) => m_sqlExpressionFactory.Function(
+            nameof(DateTimeOffset.UtcNow) => m_sqlExpressionFactory.Function(
                 "NOW",
+                Array.Empty<SqlExpression>(),
+                nullable: false,
+                argumentsPropagateNullability: Array.Empty<bool>(),
+                typeof(DateTimeOffset)),
+            nameof(DateTimeOffset.Now) => m_sqlExpressionFactory.Function(
+                "LOCALTIMESTAMP",
                 Array.Empty<SqlExpression>(),
                 nullable: false,
                 argumentsPropagateNullability: Array.Empty<bool>(),

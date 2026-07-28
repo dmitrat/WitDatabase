@@ -40,10 +40,6 @@ public class LiteralRoundTripEfTests
     #region char CLR property mapped to StringTypeMapping
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and broader than written: InvalidOperationException \"No coercion "
-            + "operator is defined between types 'System.Char' and 'System.String'\" is raised by a "
-            + "plain SaveChanges, not only by an inlined constant. A char property is unusable "
-            + "outright. literal-roundtrip, EntityFramework/Storage/WitTypeMappingSource.cs:150")]
     public void CharPropertyRoundTripsTest()
     {
         // Finding: WitTypeMappingSource.cs:150 - a `char` property is given a StringTypeMapping, so
@@ -64,7 +60,6 @@ public class LiteralRoundTripEfTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: same coercion failure on the inlined-constant shape the finding names.")]
     public void InlinedCharConstantIsQueryableTest()
     {
         // The specific shape the finding names: an *inlined* char constant, which the type mapping

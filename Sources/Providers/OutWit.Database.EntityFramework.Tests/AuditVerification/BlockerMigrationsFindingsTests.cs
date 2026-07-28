@@ -85,10 +85,6 @@ public class BlockerMigrationsFindingsTests
     #region AddColumn / ColumnDefinition drop maxLength, precision and scale
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: MaxLength = 16 produced ALTER TABLE \"T\" ADD COLUMN \"Code\" TEXT; - "
-            + "the length is gone entirely. Compounds with the confirmed engine-dml finding that a "
-            + "declared VARCHAR(n) is never enforced anyway: even a correct DDL would not be honoured. "
-            + "blocker-migrations, EntityFramework/Migrations/WitMigrationsSqlGenerator.cs:102")]
     public void AddColumnKeepsItsMaxLengthTest()
     {
         // Finding: WitMigrationsSqlGenerator.cs:102 - AddColumn and ColumnDefinition ignore the
@@ -108,8 +104,6 @@ public class BlockerMigrationsFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: Precision = 18, Scale = 4 produced "
-            + "ALTER TABLE \"T\" ADD COLUMN \"Amount\" DECIMAL NOT NULL; - both are dropped.")]
     public void AddColumnKeepsItsPrecisionAndScaleTest()
     {
         var sql = GenerateSql(new AddColumnOperation
