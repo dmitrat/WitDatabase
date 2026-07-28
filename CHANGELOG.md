@@ -22,12 +22,27 @@ that suite on its first run; neither was in the audit's backlog.
   `OutWit.Database.Core.Utils.DatabaseFiles`, so what creates them and what deletes them cannot
   drift apart.
 
+- **A composite key containing a store-generated property is now refused when the model is built.**
+  It could never work - value generation is tied to the row counter, which can only stand behind a
+  key of one column - but the model was accepted, the emitted DDL declared the column `NOT NULL`
+  with nothing to fill it, and the first insert failed with a `NOT NULL` violation naming a column
+  the caller had never written to. The error now arrives at validation and names the entity, the key
+  and the way out. EF Core's SQLite provider has the same limit and reports it the same way.
+
+  Most likely to be met through an owned collection, whose key is the owner's key plus a generated
+  ordinal unless configured with `HasKey`.
+
 ### Added
 
 - `OutWit.Database.EntityFramework.Specification.Tests` - the EF Core conformance harness. Its
   `WitComplianceTest` records the baseline of **325 specification suites not yet implemented**, and
   fails if a future EF Core adds one that nobody has looked at. Individual conformance suites are
   tagged `Category=Conformance` and excluded from CI while they are red.
+
+- A differential oracle in the same project: the same suites run against SQLite, tagged
+  `Category=Oracle`. A conformance suite failing on WitDatabase says nothing on its own - some of
+  EF Core's specification models ask for capabilities no file-backed provider has. Only a test that
+  passes on SQLite and fails here is a WitDatabase defect.
 
 - `OutWit.Database.Core.Utils.DatabaseFiles` - the files a file-backed database owns (data file,
   index directory, journal) and a `Delete` that removes all of them.

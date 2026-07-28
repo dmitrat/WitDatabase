@@ -5,12 +5,18 @@ using OutWit.Database.EntityFramework.Extensions;
 namespace OutWit.Database.EntityFramework.Tests.AuditVerification;
 
 /// <summary>
-/// An owned collection gets a composite primary key of (owner key, generated ordinal). EF treats
-/// the ordinal as store-generated and inserts without it, asking for it back with RETURNING - but
-/// the emitted DDL declares it as a plain NOT NULL column, because value generation is only emitted
-/// for a single-column integer key. The insert then fails on the NOT NULL constraint.
+/// An owned collection gets a composite key of (owner key, generated ordinal) unless configured
+/// otherwise, and no file-backed provider can satisfy that - the row counter can only stand behind a
+/// single-column key. **EF Core's SQLite provider has the same limit**, which is why the first
+/// version of this fixture was wrong: it asserted that WitDatabase should generate the value, and
+/// the differential oracle showed SQLite failing on the identical model.
 ///
-/// Found by EF Core's specification suite; it is what blocks WitFindTest today.
+/// What SQLite does and WitDatabase did not is *say so*. It rejects the model at validation, naming
+/// the entity and the key. WitDatabase accepted the model, emitted DDL that could not work, and
+/// failed on the first insert with `NOT NULL constraint failed: Item.Id` - a data error for what is
+/// a modelling mistake, pointing at a column the caller never mentioned.
+///
+/// So the defect is the missing diagnosis, and that is what these tests hold.
 /// </summary>
 [TestFixture]
 public sealed class OwnedCollectionKeyFindingsTests
@@ -54,71 +60,56 @@ public sealed class OwnedCollectionKeyFindingsTests
     #region Tests
 
     [Test]
-    [Ignore("CONFIRMED. The generated DDL declares the owned collection's key column as "
-            + "\"Id\" INT NOT NULL inside PRIMARY KEY (\"OwnerId\", \"Id\") with no value "
-            + "generation, while EF emits INSERT INTO ... (\"OwnerId\", \"Prop\") VALUES (...) "
-            + "RETURNING \"Id\". Observed: NOT NULL constraint failed: "
-            + "Owner_Items.Id. Value generation is only emitted for a single-column integer key.")]
-    public void OwnedCollectionRowIsInsertedWithAGeneratedKeyTest()
+    public void GeneratedValueInACompositeKeyIsRejectedWhenTheModelIsBuiltTest()
     {
-        using var context = CreateContext();
-        context.Database.EnsureCreated();
+        using var context = new OwnedContext(m_databasePath);
 
-        context.Add(new Owner
+        var exception = Assert.Throws<InvalidOperationException>(
+            () => context.Database.EnsureCreated(),
+            "the model cannot work, so it must be refused before any schema is written");
+
+        Assert.Multiple(() =>
         {
-            Id = 1,
-            Items = { new OwnedItem { Prop = "first" }, new OwnedItem { Prop = "second" } },
+            Assert.That(exception!.Message, Does.Contain("composite key"),
+                "the message must name the limit that was hit");
+            Assert.That(exception.Message, Does.Contain("Item"),
+                "and the entity type that hit it");
+            Assert.That(exception.Message, Does.Contain("HasKey"),
+                "and what to do about it - an owned collection is the usual way to arrive here");
         });
-
-        Assert.DoesNotThrow(
-            () => context.SaveChanges(),
-            "EF generates the owned collection's ordinal key in the store, so the schema must "
-            + "declare it as generated");
-
-        Assert.That(context.Set<Owner>().Single().Items, Has.Count.EqualTo(2));
     }
 
     /// <summary>
-    /// States the mechanism separately from the symptom: the column carries EF's
-    /// ValueGenerated.OnAdd, so whatever the schema says about it must reflect that.
+    /// The failure must arrive before any data work. Reporting it on the first insert is what made
+    /// the original diagnosis so hard: the error named a column the caller had never written to.
     /// </summary>
     [Test]
-    [Ignore("CONFIRMED. The column is marked ValueGenerated.OnAdd in the model, but the DDL for it "
-            + "is \"Id\" INT NOT NULL - the AUTOINCREMENT clause is only emitted when the integer "
-            + "key is the sole primary key column.")]
-    public void OwnedCollectionKeyColumnIsDeclaredAsGeneratedTest()
+    public void TheModelIsRefusedBeforeAnySchemaIsWrittenTest()
     {
-        using var context = CreateContext();
+        using (var context = new OwnedContext(m_databasePath))
+        {
+            Assert.Throws<InvalidOperationException>(() => context.Database.EnsureCreated());
+        }
 
-        // The owner's own key is AUTOINCREMENT, so asserting against the whole script would pass
-        // while the defect stands. Only the owned collection's own statement is evidence.
-        var statement = CreateStatementFor(context.Database.GenerateCreateScript(), "Owner_Items");
-
-        Assert.That(statement, Does.Contain("AUTOINCREMENT"),
-            $"the owned collection's key column is store-generated, so its own CREATE TABLE must "
-            + $"say so. Generated:{Environment.NewLine}{statement}");
+        Assert.That(File.Exists(m_databasePath), Is.False,
+            "a model that is refused must leave no database behind");
     }
 
     /// <summary>
-    /// Extracts the CREATE TABLE statement for one table out of a create script.
+    /// The check must not catch composite keys that are perfectly serviceable - only those with a
+    /// generated member. Without this the validation would refuse most join tables.
     /// </summary>
-    private static string CreateStatementFor(string script, string tableName)
+    [Test]
+    public void CompositeKeyWithoutGeneratedValuesIsAcceptedTest()
     {
-        var start = script.IndexOf($"\"{tableName}\"", StringComparison.Ordinal);
+        using var context = new ExplicitKeyContext(m_databasePath);
 
-        Assert.That(start, Is.GreaterThanOrEqualTo(0),
-            $"the create script must contain a statement for '{tableName}'");
+        Assert.DoesNotThrow(() => context.Database.EnsureCreated());
 
-        var end = script.IndexOf(");", start, StringComparison.Ordinal);
+        context.Add(new Owner { Id = 1, Items = { new Item { Ordinal = 1, Prop = "a" } } });
 
-        return end < 0 ? script[start..] : script[start..(end + 2)];
+        Assert.DoesNotThrow(() => context.SaveChanges());
     }
-
-    #endregion
-
-    #region Helpers
-
-    private OwnedContext CreateContext() => new(m_databasePath);
 
     #endregion
 
@@ -128,21 +119,50 @@ public sealed class OwnedCollectionKeyFindingsTests
     {
         public int Id { get; set; }
 
-        public List<OwnedItem> Items { get; } = [];
+        public List<Item> Items { get; } = [];
     }
 
-    public class OwnedItem
+    public class Item
     {
+        public int Ordinal { get; set; }
+
         public string Prop { get; set; } = null!;
     }
 
+    /// <summary>
+    /// An owned collection with EF's default key: (OwnerId, generated ordinal).
+    /// </summary>
     private sealed class OwnedContext(string path) : DbContext
     {
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
             => optionsBuilder.UseWitDb(new WitDbConnection($"Data Source={path}"));
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
-            => modelBuilder.Entity<Owner>().OwnsMany(e => e.Items, b => b.ToTable("Owner_Items"));
+            => modelBuilder.Entity<Owner>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.OwnsMany(x => x.Items);
+            });
+    }
+
+    /// <summary>
+    /// The same shape with the ordinal supplied by the caller - a composite key that works.
+    /// </summary>
+    private sealed class ExplicitKeyContext(string path) : DbContext
+    {
+        protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
+            => optionsBuilder.UseWitDb(new WitDbConnection($"Data Source={path}"));
+
+        protected override void OnModelCreating(ModelBuilder modelBuilder)
+            => modelBuilder.Entity<Owner>(e =>
+            {
+                e.HasKey(x => x.Id);
+                e.OwnsMany(x => x.Items, b =>
+                {
+                    b.Property(x => x.Ordinal).ValueGeneratedNever();
+                    b.HasKey("OwnerId", nameof(Item.Ordinal));
+                });
+            });
     }
 
     #endregion

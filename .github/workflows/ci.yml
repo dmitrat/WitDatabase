@@ -115,12 +115,17 @@ jobs:
       # along with the gap it was reporting. WitComplianceTest is deliberately NOT tagged, so the
       # baseline of unimplemented suites is still enforced on every run.
       #
+      # Category!=Oracle excludes the same suites run against SQLite. They are a control, not a
+      # verdict on this code: their job is to tell a WitDatabase defect apart from something the
+      # specification model asks of every provider, and they are consulted when a conformance suite
+      # is red rather than gating anything.
+      #
       # Coverage is collected because coverlet.collector is referenced by all seven test projects
       # and was never invoked. It is reported, not gated: a threshold on a suite whose assertions
       # are known to miss defects would measure the wrong thing, and this project has the evidence -
       # nine behaviours changed during the 2026-07 audit without a single test failing.
       - name: Test
-        run: dotnet test OutWit.slnx --configuration Release --no-build --verbosity normal --filter "Category!=Performance&Category!=Conformance" --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
+        run: dotnet test OutWit.slnx --configuration Release --no-build --verbosity normal --filter "Category!=Performance&Category!=Conformance&Category!=Oracle" --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx" --results-directory TestResults
 
       - name: Summarise coverage
         if: always()
