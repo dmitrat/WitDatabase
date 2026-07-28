@@ -312,6 +312,11 @@ public sealed partial class ExpressionEvaluator
         return targetType switch
         {
             "INT" or "INT32" or "INTEGER" or "BIGINT" or "INT64" => WitSqlValue.FromInt(value.AsInt64()),
+            // The narrower integer names were missing, so a cast EF Core emits for a short or a
+            // byte died with "CAST to SMALLINT not supported". Like SQLite, the value is kept as an
+            // integer rather than being wrapped to the narrower range: a cast is not a constraint.
+            "SMALLINT" or "INT16" or "SHORT" => WitSqlValue.FromInt(value.AsInt64()),
+            "TINYINT" or "INT8" or "BYTE" => WitSqlValue.FromInt(value.AsInt64()),
             "REAL" or "FLOAT" or "DOUBLE" or "FLOAT64" => WitSqlValue.FromReal(value.AsDouble()),
             "TEXT" or "VARCHAR" or "CHAR" or "NVARCHAR" => WitSqlValue.FromText(value.AsString()),
             "BOOLEAN" or "BOOL" => WitSqlValue.FromBool(value.AsBool()),

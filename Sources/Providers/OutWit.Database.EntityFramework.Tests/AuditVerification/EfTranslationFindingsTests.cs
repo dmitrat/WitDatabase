@@ -128,8 +128,6 @@ public class EfTranslationFindingsTests
     #region Translators emit functions the engine does not implement
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: NotSupportedException \"Function not supported: MILLISECOND\". "
-            + "ef-translation, EntityFramework/Query/Translators/WitMemberTranslator.cs:110")]
     public void MillisecondTranslatesToSomethingExecutableTest()
     {
         // Finding: WitMemberTranslator.cs:110 - the translators emit MILLISECOND, TOTAL_SECONDS,
@@ -152,8 +150,6 @@ public class EfTranslationFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and it does not even reach the engine: the generated SQL fails to parse - "
-            + "WitSqlParsingException \"no viable alternative at input '>TIMESTAMP'\".")]
     public void FractionalDateAddTranslatesToSomethingExecutableTest()
     {
         using var context = CreateSeededContext();
@@ -163,7 +159,6 @@ public class EfTranslationFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: NotSupportedException \"Function not supported: TOTAL_SECONDS\".")]
     public void TotalSecondsTranslatesToSomethingExecutableTest()
     {
         using var context = CreateSeededContext();
@@ -172,7 +167,6 @@ public class EfTranslationFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: NotSupportedException \"CAST to SMALLINT not supported\".")]
     public void ShortCastTranslatesToSomethingExecutableTest()
     {
         using var context = CreateSeededContext();
