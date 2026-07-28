@@ -184,7 +184,21 @@ public sealed class WitMigrationsSqlGenerator : MigrationsSqlGenerator
         IModel? model,
         MigrationCommandListBuilder builder)
     {
-        // WitSQL supports ALTER COLUMN for modifying defaults and nullability
+        // WitSQL's ALTER COLUMN reaches defaults and nullability and nothing else. A change it
+        // cannot make used to produce no statement at all, which is the worst of the options: the
+        // migration is recorded as applied and the column keeps its old type, so the model and the
+        // database disagree from then on with nothing to show for it. EF Core's SQLite provider,
+        // whose ALTER TABLE is just as limited, refuses the operation instead - and so does this.
+        if (!string.Equals(operation.ColumnType, operation.OldColumn.ColumnType, StringComparison.OrdinalIgnoreCase))
+        {
+            throw new NotSupportedException(
+                $"WitDatabase cannot change the type of an existing column. Column "
+                + $"'{operation.Name}' on table '{operation.Table}' would go from "
+                + $"'{operation.OldColumn.ColumnType}' to '{operation.ColumnType}'. Create a new "
+                + $"table with the type you want, copy the rows across, drop the old table and "
+                + $"rename the new one.");
+        }
+
         if (operation.DefaultValue != null || !string.IsNullOrEmpty(operation.DefaultValueSql))
         {
             builder.Append("ALTER TABLE ");
@@ -235,6 +249,23 @@ public sealed class WitMigrationsSqlGenerator : MigrationsSqlGenerator
 
     #region Index Operations
 
+    /// <summary>
+    /// Whether the column at <paramref name="index"/> is indexed in descending order.
+    /// </summary>
+    /// <param name="operation">The index being created.</param>
+    /// <param name="index">Position of the column in the index.</param>
+    /// <remarks>
+    /// EF Core's convention: null means every column ascends, and an *empty* list means every
+    /// column descends - it is not the same as "no descending columns".
+    /// </remarks>
+    private static bool IsDescending(CreateIndexOperation operation, int index)
+    {
+        if (operation.IsDescending == null)
+            return false;
+
+        return operation.IsDescending.Length == 0 || operation.IsDescending[index];
+    }
+
     /// <inheritdoc/>
     protected override void Generate(
         CreateIndexOperation operation,
@@ -261,9 +292,22 @@ public sealed class WitMigrationsSqlGenerator : MigrationsSqlGenerator
         builder.Append("ON ");
         builder.Append(Dependencies.SqlGenerationHelper.DelimitIdentifier(operation.Table));
         builder.Append(" (");
-        builder.Append(string.Join(", ", operation.Columns.Select(c => 
-            Dependencies.SqlGenerationHelper.DelimitIdentifier(c))));
+        builder.Append(string.Join(", ", operation.Columns.Select((column, index) =>
+        {
+            var identifier = Dependencies.SqlGenerationHelper.DelimitIdentifier(column);
+
+            return IsDescending(operation, index) ? identifier + " DESC" : identifier;
+        })));
         builder.Append(")");
+
+        // A dropped filter is not a performance question. A filtered UNIQUE index that becomes a
+        // full one enforces a STRICTER constraint than the model declares, so rows the application
+        // is entitled to insert are rejected.
+        if (!string.IsNullOrEmpty(operation.Filter))
+        {
+            builder.Append(" WHERE ");
+            builder.Append(operation.Filter);
+        }
 
         if (terminate)
         {
@@ -295,13 +339,14 @@ public sealed class WitMigrationsSqlGenerator : MigrationsSqlGenerator
         IModel? model,
         MigrationCommandListBuilder builder)
     {
-        // WitSQL doesn't have RENAME INDEX, so we drop and recreate
-        // This is a simplified implementation
-        builder.Append("-- Rename index: ");
-        builder.Append(operation.Name);
-        builder.Append(" -> ");
-        builder.AppendLine(operation.NewName);
-        EndStatement(builder);
+        // A comment is not a rename. It left the migration recorded as applied with the index
+        // still under its old name, so every later migration that referred to the new one failed
+        // for a reason with no connection to the cause. EF Core's SQLite provider refuses the
+        // operation outright, and being told is worth more than a comment nobody reads.
+        throw new NotSupportedException(
+            $"WitDatabase cannot rename an index. Index '{operation.Name}' on table "
+            + $"'{operation.Table}' would become '{operation.NewName}'. Drop the index and create "
+            + $"it again under the new name.");
     }
 
     #endregion
@@ -315,12 +360,13 @@ public sealed class WitMigrationsSqlGenerator : MigrationsSqlGenerator
         MigrationCommandListBuilder builder,
         bool terminate = true)
     {
-        // WitDatabase doesn't support adding PRIMARY KEY to existing table
-        // This is a limitation of most embedded databases
-        builder.Append("-- WitDatabase limitation: Cannot add PRIMARY KEY to existing table. ");
-        builder.Append("Columns: ");
-        builder.AppendLine(string.Join(", ", operation.Columns));
-        EndStatement(builder);
+        // Emitting a comment made the migration succeed while the constraint was never created.
+        // A table without the key its model declares accepts duplicates in silence, which is worse
+        // than a migration that stops. SQLite refuses this operation for the same reason.
+        throw new NotSupportedException(
+            $"WitDatabase cannot add a PRIMARY KEY to an existing table. Table '{operation.Table}', "
+            + $"columns {string.Join(", ", operation.Columns)}. Declare the key when the table is "
+            + $"created, or create a new table with it and copy the rows across.");
     }
 
     /// <inheritdoc/>
@@ -330,10 +376,10 @@ public sealed class WitMigrationsSqlGenerator : MigrationsSqlGenerator
         MigrationCommandListBuilder builder,
         bool terminate = true)
     {
-        builder.Append("-- WitDatabase limitation: Cannot drop PRIMARY KEY from existing table. ");
-        builder.Append("Table: ");
-        builder.AppendLine(operation.Table);
-        EndStatement(builder);
+        throw new NotSupportedException(
+            $"WitDatabase cannot drop the PRIMARY KEY of an existing table. Table "
+            + $"'{operation.Table}', constraint '{operation.Name}'. Create a new table without the "
+            + $"key, copy the rows across, drop the old table and rename the new one.");
     }
 
     /// <inheritdoc/>
@@ -535,6 +581,24 @@ public sealed class WitMigrationsSqlGenerator : MigrationsSqlGenerator
     {
         builder.AppendLine(operation.Sql);
         EndStatement(builder, suppressTransaction: operation.SuppressTransaction);
+    }
+
+    #endregion
+
+    #region Schema Operations
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Deliberately emits nothing. WitDatabase has a single schema, so there is never a schema to
+    /// create - but EF Core emits this operation as a matter of course, and the base implementation
+    /// answered it with NotSupportedException, which failed migrations that were perfectly valid.
+    /// EF Core's SQLite provider, which likewise has no schemas, ignores it in the same way.
+    /// </remarks>
+    protected override void Generate(
+        EnsureSchemaOperation operation,
+        IModel? model,
+        MigrationCommandListBuilder builder)
+    {
     }
 
     #endregion
