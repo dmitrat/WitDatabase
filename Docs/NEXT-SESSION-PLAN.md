@@ -32,9 +32,9 @@ confirmed defect with a test already written that turns green when it is fixed.
 > **State at 2026-07-28.** 2.1.0 and 2.2.0 are published — seven packages each, tags `v2.1.0` and
 > `v2.2.0`, PRs #7–#15 merged. Phases 0 and 1 are done; **phase 2 is under way**, its harness merged
 > in PR #16. Nothing is released from phase 2 yet: 2.3.0 ships when the EF batch is worked.
-> **102 `[Ignore]` markers**, plus 3 `[Explicit]` (running them kills the host process). The number
-> went *up* by two: nothing was removed from the audit's hundred, and the EF Core conformance harness
-> added findings of its own, which is what it is for. Count before trusting it:
+> **100 `[Ignore]` markers**, plus 3 `[Explicit]` (running them kills the host process). It went to
+> 102 when the conformance harness landed and back to 100 when the finding those two recorded was
+> corrected and fixed — the audit's own hundred are untouched so far. Count before trusting it:
 > `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l`. The second ledger is the baseline in
 > `WitComplianceTest` — **325 unimplemented conformance suites**.
 
@@ -137,12 +137,32 @@ small, and it is nearly identical between EF Core 9 and 10 (only disposal differ
    naming rule for the sidecars now lives in one place, `Core/Utils/DatabaseFiles.cs`, so whoever
    creates them and whoever deletes them cannot drift. **Fixed** —
    `EntityFramework.Tests/AuditVerification/DatabaseDeletionFindingsTests.cs`.
-3. **An owned collection's generated key column gets no value generation in the DDL.** EF emits
-   `INSERT INTO … ("OwnerId", "Prop") VALUES (…) RETURNING "Id"`, while the generated schema declares
-   `"Id" INT NOT NULL` inside `PRIMARY KEY ("OwnerId", "Id")` — `AUTOINCREMENT` is only emitted when
-   the integer key is the sole primary key column. **Not fixed**, recorded in
-   `EntityFramework.Tests/AuditVerification/OwnedCollectionKeyFindingsTests.cs`. This is what blocks
-   `WitFindTest` today, and it is the next thing to do in this phase.
+3. **An owned collection's generated key column gets no value generation in the DDL** — as first
+   reported. **That report was wrong, and the correction is the more useful result.**
+
+   > **Corrected 2026-07-28 by the differential oracle.** EF Core's *SQLite* provider fails on the
+   > identical model, so generating a value inside a composite key is not something WitDatabase was
+   > missing — no file-backed provider does it, because the row counter can only stand behind a
+   > single-column key. What SQLite does and WitDatabase did not is **say so**: it refuses the model
+   > at validation with a named event, while WitDatabase accepted it, emitted DDL that could not
+   > work, and failed on the first insert with `NOT NULL constraint failed: Item.Id` — a data error
+   > for a modelling mistake, naming a column the caller never wrote to.
+   >
+   > **The defect is the missing diagnosis, and that is fixed**: `WitModelValidator` now rejects a
+   > composite key containing a generated property, naming the entity, the key and the way out.
+   > `OwnedCollectionKeyFindingsTests` holds it, including a guard so that ordinary composite keys
+   > are still accepted.
+   >
+   > This is why the oracle exists now — see below. It cost one wrong finding to learn.
+
+**The differential oracle, added the same day.** `TestUtilities/Oracle/` runs the same suites against
+SQLite. Its purpose is attribution, not coverage: **a suite red on WitDatabase means nothing until
+the oracle says the suite is green on SQLite.** Tagged `Category=Oracle` and excluded from CI — it is
+a control to consult, not a gate.
+
+`WitFindTest` remains red. It now fails at model validation for the documented reason above, and the
+oracle shows `FindTestBase` does not run on SQLite either without suppressing that same limit — so
+it is **not** a good yardstick suite, and the next step is to wire suites the oracle shows green.
 
 ### Phase 3 — Grammar, all of it at once *(a week, candidate for 3.0.0)*
 
