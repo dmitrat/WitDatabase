@@ -22,7 +22,7 @@ namespace OutWit.Database.EntityFramework.Specification.Tests;
 /// direction that matters.
 ///
 /// Baseline taken 2026-07-28 against EF Core 9.0.6 and 10.0.2. It started at 325 suites in
-/// the union and stands at 323: a line goes when its suite is wired, whether or not the suite
+/// the union and stands at 317: a line goes when its suite is wired, whether or not the suite
 /// then passes - the ledger counts what has been looked at.
 /// </summary>
 public class WitComplianceTest : RelationalComplianceTestBase
@@ -68,7 +68,6 @@ public class WitComplianceTest : RelationalComplianceTestBase
         "Microsoft.EntityFrameworkCore.DesignTimeTestBase`1",
         "Microsoft.EntityFrameworkCore.EntityFrameworkServiceCollectionExtensionsTestBase",
         "Microsoft.EntityFrameworkCore.EntitySplittingTestBase",
-        "Microsoft.EntityFrameworkCore.FieldMappingTestBase`1",
         "Microsoft.EntityFrameworkCore.FieldsOnlyLoadTestBase`1",
         "Microsoft.EntityFrameworkCore.GraphUpdatesTestBase`1",
         "Microsoft.EntityFrameworkCore.InterceptionTestBase",
@@ -77,7 +76,6 @@ public class WitComplianceTest : RelationalComplianceTestBase
         "Microsoft.EntityFrameworkCore.KeysWithConvertersTestBase`1",
         "Microsoft.EntityFrameworkCore.LazyLoadProxyRelationalTestBase`1",
         "Microsoft.EntityFrameworkCore.LazyLoadProxyTestBase`1",
-        "Microsoft.EntityFrameworkCore.LoadTestBase`1",
         "Microsoft.EntityFrameworkCore.LoggingRelationalTestBase`2",
         "Microsoft.EntityFrameworkCore.LoggingTestBase",
         "Microsoft.EntityFrameworkCore.ManyToManyFieldsLoadTestBase`1",
@@ -116,7 +114,6 @@ public class WitComplianceTest : RelationalComplianceTestBase
         "Microsoft.EntityFrameworkCore.OverzealousInitializationTestBase`1",
         "Microsoft.EntityFrameworkCore.OwnedEntityQueryTestBase",
         "Microsoft.EntityFrameworkCore.PropertyValuesRelationalTestBase`1",
-        "Microsoft.EntityFrameworkCore.PropertyValuesTestBase`1",
         "Microsoft.EntityFrameworkCore.ProxyGraphUpdatesTestBase`1",
         "Microsoft.EntityFrameworkCore.Query.AdHocAdvancedMappingsQueryRelationalTestBase",
         "Microsoft.EntityFrameworkCore.Query.AdHocAdvancedMappingsQueryTestBase",
@@ -268,7 +265,6 @@ public class WitComplianceTest : RelationalComplianceTestBase
         "Microsoft.EntityFrameworkCore.Query.NorthwindStringIncludeQueryTestBase`1",
         "Microsoft.EntityFrameworkCore.Query.NorthwindWhereQueryRelationalTestBase`1",
         "Microsoft.EntityFrameworkCore.Query.NorthwindWhereQueryTestBase`1",
-        "Microsoft.EntityFrameworkCore.Query.NullKeysTestBase`1",
         "Microsoft.EntityFrameworkCore.Query.NullSemanticsQueryTestBase`1",
         "Microsoft.EntityFrameworkCore.Query.OperatorsProceduralQueryTestBase",
         "Microsoft.EntityFrameworkCore.Query.OperatorsQueryTestBase",
@@ -334,7 +330,6 @@ public class WitComplianceTest : RelationalComplianceTestBase
         "Microsoft.EntityFrameworkCore.SpatialTestBase`1",
         "Microsoft.EntityFrameworkCore.StoreGeneratedFixupRelationalTestBase`1",
         "Microsoft.EntityFrameworkCore.StoreGeneratedFixupTestBase`1",
-        "Microsoft.EntityFrameworkCore.StoreGeneratedTestBase`1",
         "Microsoft.EntityFrameworkCore.TPTTableSplittingTestBase",
         "Microsoft.EntityFrameworkCore.TableSplittingTestBase",
         "Microsoft.EntityFrameworkCore.TransactionInterceptionTestBase",
@@ -351,7 +346,6 @@ public class WitComplianceTest : RelationalComplianceTestBase
         "Microsoft.EntityFrameworkCore.Update.UpdatesRelationalTestBase`1",
         "Microsoft.EntityFrameworkCore.Update.UpdatesTestBase`1",
         "Microsoft.EntityFrameworkCore.ValueConvertersEndToEndTestBase`1",
-        "Microsoft.EntityFrameworkCore.WithConstructorsTestBase`1",
     ];
 
     protected override Assembly TargetAssembly => typeof(WitComplianceTest).Assembly;

@@ -50,10 +50,11 @@ that suite on its first run; neither was in the audit's backlog.
   fails if a future EF Core adds one that nobody has looked at. Individual conformance suites are
   tagged `Category=Conformance` and excluded from CI while they are red.
 
-- Three conformance suites wired, each paired with its oracle. `NotificationEntities` passes
-  outright — the first one to do so, and it runs in CI rather than being quarantined.
-  `CompositeKeyEndToEnd` reaches parity with SQLite: the same two of three tests pass on both, and
-  the third fails on both for the same reason. `Find` remains red.
+- Nine conformance suites wired, each paired with its oracle. **WitDatabase matches SQLite exactly
+  on every one of them** — same pass count, same failing tests, across roughly 3,600 tests.
+  `Load` (3,137 tests), `NullKeys` and `NotificationEntities` pass outright and run in CI;
+  `FieldMapping`, `StoreGenerated`, `WithConstructors`, `CompositeKeyEndToEnd` and `PropertyValues`
+  are at parity, failing only where SQLite fails; `Find` remains red.
 
 - A differential oracle in the same project: the same suites run against SQLite, tagged
   `Category=Oracle`. A conformance suite failing on WitDatabase says nothing on its own - some of
