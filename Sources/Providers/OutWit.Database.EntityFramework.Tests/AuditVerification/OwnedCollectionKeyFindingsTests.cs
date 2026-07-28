@@ -1,4 +1,5 @@
 using Microsoft.EntityFrameworkCore;
+using Microsoft.Extensions.Logging;
 using OutWit.Database.AdoNet;
 using OutWit.Database.EntityFramework.Extensions;
 
@@ -6,17 +7,22 @@ namespace OutWit.Database.EntityFramework.Tests.AuditVerification;
 
 /// <summary>
 /// An owned collection gets a composite key of (owner key, generated ordinal) unless configured
-/// otherwise, and no file-backed provider can satisfy that - the row counter can only stand behind a
-/// single-column key. **EF Core's SQLite provider has the same limit**, which is why the first
-/// version of this fixture was wrong: it asserted that WitDatabase should generate the value, and
-/// the differential oracle showed SQLite failing on the identical model.
+/// otherwise, and nothing can fill that ordinal - value generation is tied to the row counter, which
+/// can only stand behind a key of one column.
 ///
-/// What SQLite does and WitDatabase did not is *say so*. It rejects the model at validation, naming
-/// the entity and the key. WitDatabase accepted the model, emitted DDL that could not work, and
-/// failed on the first insert with `NOT NULL constraint failed: Item.Id` - a data error for what is
-/// a modelling mistake, pointing at a column the caller never mentioned.
+/// This fixture has been wrong twice, and both corrections came from running EF Core's suites
+/// against SQLite rather than from reading:
 ///
-/// So the defect is the missing diagnosis, and that is what these tests hold.
+/// 1. It first asserted that WitDatabase ought to generate the value. SQLite fails on the identical
+///    model, so nothing was missing.
+/// 2. It then asserted that the model must be refused outright. SQLite accepts it - EF Core's own
+///    CompositeKeyEndToEnd suite passes two of its three tests on SQLite with exactly this shape -
+///    so refusing it broke models that work, and a provider stricter than SQLite is not a drop-in
+///    one.
+///
+/// What is left is the real defect and the one both corrections agree on: the caller was told
+/// nothing until an insert failed on a NOT NULL constraint naming a column they had never written
+/// to. The model is now accepted and the problem is stated when the model is built.
 /// </summary>
 [TestFixture]
 public sealed class OwnedCollectionKeyFindingsTests
@@ -25,6 +31,7 @@ public sealed class OwnedCollectionKeyFindingsTests
 
     private string m_directory = null!;
     private string m_databasePath = null!;
+    private CollectingLoggerProvider m_logger = null!;
 
     #endregion
 
@@ -37,11 +44,14 @@ public sealed class OwnedCollectionKeyFindingsTests
         Directory.CreateDirectory(m_directory);
 
         m_databasePath = Path.Combine(m_directory, "app.witdb");
+        m_logger = new CollectingLoggerProvider();
     }
 
     [TearDown]
     public void TearDown()
     {
+        m_logger.Dispose();
+
         if (!Directory.Exists(m_directory))
             return;
 
@@ -60,55 +70,57 @@ public sealed class OwnedCollectionKeyFindingsTests
     #region Tests
 
     [Test]
-    public void GeneratedValueInACompositeKeyIsRejectedWhenTheModelIsBuiltTest()
+    public void GeneratedValueInACompositeKeyIsReportedWhenTheModelIsBuiltTest()
     {
-        using var context = new OwnedContext(m_databasePath);
+        using var context = new OwnedContext(m_databasePath, m_logger);
 
-        var exception = Assert.Throws<InvalidOperationException>(
-            () => context.Database.EnsureCreated(),
-            "the model cannot work, so it must be refused before any schema is written");
+        context.Database.EnsureCreated();
+
+        var warning = m_logger.Warnings.FirstOrDefault(w => w.Contains("composite key"));
+
+        Assert.That(warning, Is.Not.Null,
+            "nothing can fill the generated part of this key, so the model must not be built in "
+            + "silence - the caller used to learn of it from a NOT NULL error on the first insert");
 
         Assert.Multiple(() =>
         {
-            Assert.That(exception!.Message, Does.Contain("composite key"),
-                "the message must name the limit that was hit");
-            Assert.That(exception.Message, Does.Contain("Item"),
-                "and the entity type that hit it");
-            Assert.That(exception.Message, Does.Contain("HasKey"),
-                "and what to do about it - an owned collection is the usual way to arrive here");
+            Assert.That(warning, Does.Contain("Item"), "the warning must name the entity type");
+            Assert.That(warning, Does.Contain("HasKey"), "and what to do about it");
         });
     }
 
     /// <summary>
-    /// The failure must arrive before any data work. Reporting it on the first insert is what made
-    /// the original diagnosis so hard: the error named a column the caller had never written to.
+    /// The warning must stay a warning. Such a model is usable whenever the caller supplies the
+    /// values, and EF Core's SQLite provider accepts it - so refusing it would break working code
+    /// and diverge from the provider WitDatabase is meant to substitute for.
     /// </summary>
     [Test]
-    public void TheModelIsRefusedBeforeAnySchemaIsWrittenTest()
+    public void TheModelIsStillAcceptedTest()
     {
-        using (var context = new OwnedContext(m_databasePath))
-        {
-            Assert.Throws<InvalidOperationException>(() => context.Database.EnsureCreated());
-        }
-
-        Assert.That(File.Exists(m_databasePath), Is.False,
-            "a model that is refused must leave no database behind");
-    }
-
-    /// <summary>
-    /// The check must not catch composite keys that are perfectly serviceable - only those with a
-    /// generated member. Without this the validation would refuse most join tables.
-    /// </summary>
-    [Test]
-    public void CompositeKeyWithoutGeneratedValuesIsAcceptedTest()
-    {
-        using var context = new ExplicitKeyContext(m_databasePath);
+        using var context = new OwnedContext(m_databasePath, m_logger);
 
         Assert.DoesNotThrow(() => context.Database.EnsureCreated());
 
+        Assert.That(File.Exists(m_databasePath), Is.True,
+            "the schema is created - the warning does not stop the model being used");
+    }
+
+    /// <summary>
+    /// The other half: a composite key with no generated member must draw no warning at all, or
+    /// every join table in every model would carry one.
+    /// </summary>
+    [Test]
+    public void CompositeKeyWithoutGeneratedValuesDrawsNoWarningTest()
+    {
+        using var context = new ExplicitKeyContext(m_databasePath, m_logger);
+
+        context.Database.EnsureCreated();
         context.Add(new Owner { Id = 1, Items = { new Item { Ordinal = 1, Prop = "a" } } });
 
         Assert.DoesNotThrow(() => context.SaveChanges());
+
+        Assert.That(m_logger.Warnings.Any(w => w.Contains("composite key")), Is.False,
+            "this key is supplied by the caller, so there is nothing to warn about");
     }
 
     #endregion
@@ -132,10 +144,12 @@ public sealed class OwnedCollectionKeyFindingsTests
     /// <summary>
     /// An owned collection with EF's default key: (OwnerId, generated ordinal).
     /// </summary>
-    private sealed class OwnedContext(string path) : DbContext
+    private sealed class OwnedContext(string path, ILoggerProvider logger) : DbContext
     {
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-            => optionsBuilder.UseWitDb(new WitDbConnection($"Data Source={path}"));
+            => optionsBuilder
+                .UseWitDb(new WitDbConnection($"Data Source={path}"))
+                .UseLoggerFactory(LoggerFactory.Create(b => b.AddProvider(logger).SetMinimumLevel(LogLevel.Warning)));
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
             => modelBuilder.Entity<Owner>(e =>
@@ -148,10 +162,12 @@ public sealed class OwnedCollectionKeyFindingsTests
     /// <summary>
     /// The same shape with the ordinal supplied by the caller - a composite key that works.
     /// </summary>
-    private sealed class ExplicitKeyContext(string path) : DbContext
+    private sealed class ExplicitKeyContext(string path, ILoggerProvider logger) : DbContext
     {
         protected override void OnConfiguring(DbContextOptionsBuilder optionsBuilder)
-            => optionsBuilder.UseWitDb(new WitDbConnection($"Data Source={path}"));
+            => optionsBuilder
+                .UseWitDb(new WitDbConnection($"Data Source={path}"))
+                .UseLoggerFactory(LoggerFactory.Create(b => b.AddProvider(logger).SetMinimumLevel(LogLevel.Warning)));
 
         protected override void OnModelCreating(ModelBuilder modelBuilder)
             => modelBuilder.Entity<Owner>(e =>
@@ -163,6 +179,58 @@ public sealed class OwnedCollectionKeyFindingsTests
                     b.HasKey("OwnerId", nameof(Item.Ordinal));
                 });
             });
+    }
+
+    #endregion
+
+    #region Logging
+
+    /// <summary>
+    /// Collects warnings so a test can assert on what the model build said.
+    /// </summary>
+    private sealed class CollectingLoggerProvider : ILoggerProvider
+    {
+        private readonly List<string> m_warnings = [];
+
+        public IReadOnlyList<string> Warnings
+        {
+            get
+            {
+                lock (m_warnings)
+                {
+                    return m_warnings.ToList();
+                }
+            }
+        }
+
+        public ILogger CreateLogger(string categoryName) => new CollectingLogger(m_warnings);
+
+        public void Dispose()
+        {
+        }
+
+        private sealed class CollectingLogger(List<string> warnings) : ILogger
+        {
+            public IDisposable? BeginScope<TState>(TState state) where TState : notnull => null;
+
+            public bool IsEnabled(LogLevel logLevel) => logLevel >= LogLevel.Warning;
+
+            public void Log<TState>(
+                LogLevel logLevel,
+                EventId eventId,
+                TState state,
+                Exception? exception,
+                Func<TState, Exception?, string> formatter)
+            {
+                if (logLevel < LogLevel.Warning)
+                    return;
+
+                lock (warnings)
+                {
+                    warnings.Add(formatter(state, exception));
+                }
+            }
+        }
     }
 
     #endregion

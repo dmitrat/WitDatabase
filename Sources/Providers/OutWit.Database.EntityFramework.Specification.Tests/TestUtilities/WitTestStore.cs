@@ -14,8 +14,11 @@ namespace OutWit.Database.EntityFramework.Specification.Tests.TestUtilities;
 /// </summary>
 public class WitTestStore : RelationalTestStore
 {
+    // Per process, because "shared" means shared between the fixtures of one test run and no more.
+    // Without this, running the project's two target frameworks - which dotnet test does in
+    // parallel - puts both hosts on the same file, and each one's seeding is the other's corruption.
     private static readonly string BaseDirectory = Path.Combine(
-        Path.GetTempPath(), "witdb-specification-tests");
+        Path.GetTempPath(), $"witdb-specification-tests-{Environment.ProcessId}");
 
     public static WitTestStore GetOrCreate(string name) => new(name, shared: true);
 
