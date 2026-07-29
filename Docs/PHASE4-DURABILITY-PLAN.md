@@ -246,8 +246,8 @@ depends on. **Subject 6 lands after subject 2, never before.**
 
 | PR | Subject | Production change |
 |---|---|---|
-| 0 | This plan, plus the engine-suite baseline | none |
-| 1 | Instrument A — crash runner, C1–C3, verdict classification | none |
+| 0 | This plan, plus the engine-suite baseline | none — **merged as #38** |
+| 1 | Instrument A — crash runner, C1–C3, verdict classification | none — **§6** |
 | 2 | Instrument B — storage seam, modelled cut, fsync counter, C4–C6 | narrow internal factory in Core |
 | 3 | WAL truncation on partial replay (+ the `RollbackJournal` relative path) | recovery |
 | 4 | Savepoint replay | journal |
@@ -262,7 +262,67 @@ an answer a previous release gave**, and several of these change what survives a
 
 ---
 
-## 6. The four standing rules, applied to this phase
+## 6. PR 1 results — the out-of-process runner, measured 2026-07-29
+
+`Tools/OutWit.Database.CrashRunner` plus `Sources/Engine/OutWit.Database.Tests/Durability/`.
+**Ten tests: eight green, two marked — and the two marked are both real defects, one of which the
+audit had recorded as impossible to reproduce.**
+
+### 6.1 The controls held, and one of them changed the reading of everything else
+
+| Control | Result |
+|---|---|
+| **C1** clean shutdown | 20 of 20 rows, last row id 20 |
+| **C2** commit + flush, then kill | 20 of 20 rows |
+| **C3** autocommit, no flush, then kill | **the database could not be reopened at all — `Table 'T' not found`** |
+| ADO.NET clean close | 20 rows, and `COUNT(*)` agrees |
+| unknown scenario | fails as a harness error, not as a lost database |
+
+**C3 is the calibration and it is more severe than expected.** A hard kill with nothing flushed does
+not lose *some* rows — it loses the schema too, because nothing has reached the file yet. The
+operating system never got the data, so its write-back cache never came into it. That is the baseline
+every crash result here is read against.
+
+### 6.2 The instrument caught a defect in its own measurement first
+
+The first run reported **"a committed transaction does not survive a process kill — 0 of 20 rows"**,
+through the ADO.NET provider *and* at the engine level with MVCC. That reading was **wrong**, and the
+attribution probe is what broke it: opening the crashed file underneath the MVCC layer found **24 raw
+records** against 27 in a cleanly closed database of the same shape. The data was on the media.
+
+The verification was measuring `SELECT COUNT(*)`, which the engine answers from a cached per-table
+counter rather than from the rows. Switched to counting what `SELECT` returns, the same crash gives
+**20 of 20**. Durability holds; the counter does not.
+
+**Every crash verification in the fixture now scans rather than counts, and says why.** Asserting on a
+proxy is the same mistake phase 3's acceptance-only oracle made — "does it parse" instead of "what
+does it answer" — and it produced a false report of the most serious defect class there is.
+
+### 6.3 Two defects, both proven by execution
+
+**Row ids come back at zero, so the next insert takes an identity already in use.** After a commit and
+a kill, 20 rows survived with ids up to 20 — and the next insert was handed **id 1**. The audit
+recorded this as *not reproducible with the current surface*; it is reproducible, and the surface it
+needed is this harness. It is also worse than the finding stated: the counter does not skip ahead, it
+restarts, so every insert after the crash collides.
+
+**`SELECT` and `SELECT COUNT(*)` disagree after a crash — 20 rows returned, 0 counted.** Not in the
+audit's 104. Same root cause: `PersistRowCountsToStore` and `PersistRowIdsToStore` run *after* the
+commit, outside the flush the commit performed, inside a `try { } catch { }` that swallows failures —
+and in autocommit they never run at all. The rows reach the media; the numbers describing them do not.
+
+The count is the one an application believes when it checks whether its data arrived.
+
+### 6.4 Counts after PR 1
+
+Engine suite **1941 → 1949 passed, 32 → 34 skipped**, both frameworks identical, whole solution green
+under the CI filter. Ledger **73 → 75** `[Ignore]` attributes plus 13 `[TestCase(… Ignore =)]` —
+**88 suppressed entries**, up two, and the rise is the honest kind: both new markers are defects that
+were already there.
+
+---
+
+## 7. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -282,7 +342,7 @@ an answer a previous release gave**, and several of these change what survives a
 
 ---
 
-## 7. Acceptance
+## 8. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.

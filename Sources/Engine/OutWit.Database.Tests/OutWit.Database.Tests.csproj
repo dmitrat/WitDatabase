@@ -24,6 +24,28 @@
   <ItemGroup>
     <ProjectReference Include="..\OutWit.Database.Parser\OutWit.Database.Parser.csproj" />
     <ProjectReference Include="..\OutWit.Database\OutWit.Database.csproj" />
+
+    <!--
+      The crash runner is launched as a separate process, not called into - but the reference is a
+      real one so that the tests share its line protocol and scenario names instead of duplicating
+      them. A drifted protocol would not fail loudly: the test would wait for a line that is never
+      printed and time out, which reads like a defect in the engine rather than in the harness.
+    -->
+    <ProjectReference Include="..\..\..\Tools\OutWit.Database.CrashRunner\OutWit.Database.CrashRunner.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      Where to find the runner's own build output - which, unlike the copy that lands next to the
+      tests, carries the runtimeconfig.json that `dotnet exec` needs. Baked in at build time so it
+      always names the matching configuration and target framework.
+    -->
+    <AssemblyAttribute Include="System.Reflection.AssemblyMetadataAttribute">
+      <_Parameter1>CrashRunnerDirectory</_Parameter1>
+      <!-- Forward slashes on purpose: MSBuild accepts them on Windows, and Path.GetFullPath does not
+           treat a backslash as a separator on Linux, where CI runs. -->
+      <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../Tools/OutWit.Database.CrashRunner/bin/$(Configuration)/$(TargetFramework)'))</_Parameter2>
+    </AssemblyAttribute>
   </ItemGroup>
 
   <ItemGroup>
