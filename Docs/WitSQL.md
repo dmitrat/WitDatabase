@@ -229,6 +229,13 @@ DROP VIEW [IF EXISTS] view_name;
 
 ### 2.8 CREATE TRIGGER
 
+> **Partly implemented as of 2026-07-29.** Reading `OLD.column` / `NEW.column` works, and so does
+> `SIGNAL` — but **assigning to `NEW` does not parse**, so the `SET NEW.UpdatedAt = NOW()` example
+> below does not run. That makes the BEFORE-trigger idiom the feature exists for unavailable.
+> Planned, not withdrawn. Executable specification: `TriggerBodyCanAssignToNewParsesTest` in
+> `Sources/Engine/OutWit.Database.Parser.Tests/AuditVerification/ParserFindingsTests.cs`.
+
+
 ```sql
 CREATE TRIGGER [IF NOT EXISTS] trigger_name
     {BEFORE | AFTER | INSTEAD OF} {INSERT | UPDATE [OF column_list] | DELETE}
@@ -1303,6 +1310,14 @@ WHERE Id = 1;
 
 ## 22. User-Defined Functions
 
+> **Status: not implemented as of 2026-07-29.** This section describes intended behaviour, not
+> shipped behaviour — `CREATE FUNCTION` does not parse. It is **planned**, not withdrawn: PostgreSQL and
+> SQL Server both provide this, and WitDatabase aims to substitute for those without the calling
+> application noticing. What it needs is a subsystem rather than a grammar rule — a function catalog, integration with the expression evaluator, and persistence — so it is
+> tracked outside the grammar work. Executable specification: `CreateFunctionIsSupportedTest` in
+> `Sources/Engine/OutWit.Database.Tests/AuditVerification/DropInGapsEngineTests.cs`.
+
+
 ### 22.1 Scalar Functions
 
 ```sql
@@ -1349,6 +1364,14 @@ DROP FUNCTION [IF EXISTS] function_name;
 ---
 
 ## 23. Stored Procedures
+
+> **Status: not implemented as of 2026-07-29.** This section describes intended behaviour, not
+> shipped behaviour — `CREATE PROCEDURE` does not parse. It is **planned**, not withdrawn: PostgreSQL and
+> SQL Server both provide this, and WitDatabase aims to substitute for those without the calling
+> application noticing. What it needs is a subsystem rather than a grammar rule — a procedural interpreter with variables, control flow and CALL — so it is
+> tracked outside the grammar work. Executable specification: `CreateProcedureIsSupportedTest` in
+> `Sources/Engine/OutWit.Database.Tests/AuditVerification/DropInGapsEngineTests.cs`.
+
 
 ```sql
 CREATE PROCEDURE procedure_name (parameters)

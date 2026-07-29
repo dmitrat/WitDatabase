@@ -130,8 +130,12 @@ public class ParserFindingsTests
     #region Documented trigger bodies
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: SET NEW.col = ... is a syntax error, though WitSQL.md documents it. "
-            + "parser, Parser/Grammars/WitSqlParser.g4:80")]
+    [Ignore("UNBUILT CAPABILITY, restated 2026-07-29. `SET NEW.col = ...` is a syntax error, though "
+            + "WitSQL.md section 2.8 documents it - now annotated there as partly implemented, since "
+            + "READING OLD/NEW and SIGNAL both work and only assignment does not. Wanted: it is the "
+            + "idiom a BEFORE trigger exists for, and both PostgreSQL (NEW.col := ...) and SQL Server "
+            + "offer the capability. Beyond grammar, though - the trigger executor has to let a BEFORE "
+            + "trigger mutate the pending row. parser, Parser/Grammars/WitSqlParser.g4:80")]
     public void TriggerBodyCanAssignToNewParsesTest()
     {
         // Finding: WitSqlParser.g4:80 - the trigger bodies WitSQL.md documents do not parse.

@@ -158,8 +158,12 @@ public sealed class DropInGapsEngineTests : WitSqlEngineTestsBase
     #region User-defined functions and stored procedures
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: CREATE FUNCTION does not parse. WitSQL.md section 22 documents it with "
-            + "full syntax. dropin-gaps, Parser/Grammars/WitSqlParser.g4:35")]
+    [Ignore("UNBUILT CAPABILITY, restated 2026-07-29. CREATE FUNCTION does not parse, and WitSQL.md "
+            + "section 22 documents it in full - now annotated there as not implemented. It is WANTED: "
+            + "PostgreSQL and SQL Server both have user-defined functions, and application code "
+            + "written against them would notice the absence, which is the bar. It is out of the "
+            + "grammar phase because it is a subsystem - a function catalog, evaluator integration and "
+            + "persistence - not a grammar rule. dropin-gaps")]
     public void CreateFunctionIsSupportedTest()
     {
         // Finding: WitSqlParser.g4:35 - WitSQL.md documents user-defined functions in section 22
@@ -173,8 +177,11 @@ public sealed class DropInGapsEngineTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: CREATE PROCEDURE does not parse, while WitSQL.md section 23 documents "
-            + "it with full syntax.")]
+    [Ignore("UNBUILT CAPABILITY, restated 2026-07-29. CREATE PROCEDURE does not parse, and WitSQL.md "
+            + "section 23 documents it in full - now annotated there as not implemented. Wanted for the "
+            + "same reason as CreateFunctionIsSupportedTest, and out of the grammar phase for a bigger "
+            + "one: it needs a procedural interpreter with variables, control flow and CALL. "
+            + "dropin-gaps")]
     public void CreateProcedureIsSupportedTest()
     {
         Assert.That(

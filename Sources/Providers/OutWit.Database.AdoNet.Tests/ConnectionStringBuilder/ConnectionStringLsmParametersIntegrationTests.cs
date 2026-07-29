@@ -167,18 +167,32 @@ public class ConnectionStringLsmParametersIntegrationTests : IDisposable
         tx.Commit();
         sw.Stop();
 
-        // With SyncWrites=false (default), 1000 inserts should complete in under 5 seconds
-        // With SyncWrites=true, it would take ~10+ seconds
-        Assert.That(sw.Elapsed.TotalSeconds, Is.LessThan(5), 
-            $"1000 inserts took {sw.Elapsed.TotalSeconds:F2}s - expected < 5s with SyncWrites=false (default)");
+        // The elapsed time is REPORTED, not asserted.
+        //
+        // This assertion used to read `Is.LessThan(5)` seconds, on the reasoning that SyncWrites=true
+        // would take ~10s and so a 5s ceiling proves the default is false. It measures the machine,
+        // not the default: on a loaded CI runner the same 1000 inserts took 5.9s and 7.5s and failed
+        // the build, having passed on the five preceding runs with nothing relevant changed. There
+        // was never any margin - the threshold sat between the two behaviours it was meant to
+        // separate.
+        //
+        // The claim in the test's name is a CONFIGURATION fact, so it is asserted as one below.
+        TestContext.Out.WriteLine($"1000 inserts took {sw.Elapsed.TotalSeconds:F2}s (diagnostic only)");
 
-        // Verify data
-        using (var cmd = conn.CreateCommand())
+        Assert.Multiple(() =>
         {
+            // What "the default is false" actually means: the connection string above sets no
+            // SyncWrites parameter, and the parameter is only applied when present, so the value
+            // falls through to LsmOptions' own default.
+            Assert.That(new Core.LSM.LsmOptions().SyncWrites, Is.False,
+                "SyncWrites must default to false, which is what makes the unqualified connection " +
+                "string above fast");
+
+            using var cmd = conn.CreateCommand();
             cmd.CommandText = "SELECT COUNT(*) FROM T";
-            var count = Convert.ToInt64(cmd.ExecuteScalar());
-            Assert.That(count, Is.EqualTo(1000));
-        }
+            Assert.That(Convert.ToInt64(cmd.ExecuteScalar()), Is.EqualTo(1000),
+                "and the writes must actually have landed");
+        });
     }
 
     #endregion
