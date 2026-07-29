@@ -144,6 +144,21 @@ public class GrammarSyntaxOracle
         Add("betweenInCase", "SELECT CASE WHEN Age BETWEEN 1 AND 35 THEN 1 ELSE 0 END FROM T ORDER BY Id");
         Add("betweenSubqueryBound", "SELECT Id FROM T WHERE Age BETWEEN (SELECT MIN(Age) FROM T) AND (SELECT MAX(Age) FROM T) ORDER BY Id");
 
+        // The shapes that combine a BETWEEN with the trailing AND that used to break it, in each of
+        // the positions the boolean-layer split re-pointed. Expected values for the engine tests are
+        // taken from here rather than reasoned out.
+        Add("betweenSubqueryBoundThenAnd", "SELECT Id FROM T WHERE Age BETWEEN (SELECT MIN(Age) FROM T) AND 35 AND Active = 1 ORDER BY Id");
+        Add("betweenInCaseThenAnd", "SELECT CASE WHEN Age BETWEEN 1 AND 35 AND Active = 1 THEN 1 ELSE 0 END FROM T ORDER BY Id");
+        Add("twoBetweensConjoined", "SELECT Id FROM T WHERE Age BETWEEN 1 AND 35 AND Active BETWEEN 1 AND 2 ORDER BY Id");
+        Add("betweenThenAndInsideNot", "SELECT Id FROM T WHERE NOT (Age BETWEEN 1 AND 35 AND Active = 1) ORDER BY Id");
+        Add("betweenThenAndInHaving", "SELECT Active FROM T GROUP BY Active HAVING COUNT(*) BETWEEN 1 AND 5 AND Active = 1");
+        // Isolating the HAVING divergence: is it BETWEEN, or is it any aggregate outside a plain
+        // comparison? Narrowest forms first.
+        Add("havingCountCompare", "SELECT Active FROM T GROUP BY Active HAVING COUNT(*) > 1");
+        Add("havingCountBetween", "SELECT Active FROM T GROUP BY Active HAVING COUNT(*) BETWEEN 1 AND 5");
+        Add("havingCountIn", "SELECT Active FROM T GROUP BY Active HAVING COUNT(*) IN (1, 2)");
+        Add("havingCountCompareAnd", "SELECT Active FROM T GROUP BY Active HAVING COUNT(*) > 1 AND Active = 1");
+
         // The false parity that prompted this whole theory.
         Add("hexLiteral", "SELECT 0x1F");
 

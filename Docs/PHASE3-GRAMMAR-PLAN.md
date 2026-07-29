@@ -636,3 +636,56 @@ Whole solution under the CI filter: **green, 14 projects, both frameworks, zero 
 Ledger: **78 → 75.** Three markers removed — the two `BETWEEN` tests, and the ambiguity target state.
 The round-trip fixpoint marker stays, correctly: the serializer's subquery defect is real and is not
 phase 3's to fix. The two serializer findings stay open with it.
+
+---
+
+## 10. PR 3 results — the `BETWEEN` shapes, 2026-07-28
+
+Scoped by §7.4c as **pins rather than fixes**: all three audit §4.2 shapes already agreed with SQLite
+before anything was built. `WitSqlEngineBetweenShapesTests` holds them, executed rather than parsed,
+plus the more useful set — the same shapes combined with the trailing `AND` that *was* broken, in
+each position the split re-pointed: `WHERE`, `HAVING`, join `ON`, partial-index filter, `CHECK`
+constraint, `UPDATE`, and inside `NOT`.
+
+**Every expected value was taken from the oracle, not reasoned out.** Five composite shapes were added
+to `GrammarSyntaxOracle` first and run against SQLite; the engine assertions then use those answers.
+
+### 10.1 The oracle found another pre-existing defect
+
+`HAVING COUNT(*) BETWEEN 1 AND 5` raises
+`InvalidOperationException: COUNT(*) should be handled by aggregation iterator`. SQLite returns both
+groups.
+
+Isolated by narrowing:
+
+| Shape | SQLite | WitDatabase |
+|---|---|---|
+| `HAVING COUNT(*) > 1` | `1` | `1` — agree |
+| `HAVING COUNT(*) > 1 AND Active = 1` | `1` | `1` — agree |
+| `HAVING COUNT(*) BETWEEN 1 AND 5` | `0,1` | **throws** |
+| `HAVING COUNT(*) IN (1, 2)` | `0,1` | **throws** |
+
+**`IN` failing is the giveaway** — `IN` was never part of the `BETWEEN` precedence problem, so this is
+not a grammar defect. The aggregation iterator collects aggregates from comparison operands only, so
+an aggregate inside `BETWEEN` or `IN` reaches the row-level evaluator, which refuses it.
+
+**Confirmed pre-existing by execution**, not by argument: a worktree at parent commit `39d22e4` — the
+commit before the grammar changed — fails both shapes identically. Recorded in
+`HavingAggregateFindingsTests` with a passing control (`COUNT(*) > 1`) so the two findings cannot
+quietly start describing something else. Not fixed here; phase 3 is the grammar.
+
+`BetweenFollowedByAndInAHavingClauseTest` is kept and marked rather than deleted, so the `HAVING`
+position stays represented and turns green when the aggregation defect is fixed.
+
+> Worth noting how it was found: only because the oracle compares **answers**. Both shapes parse
+> perfectly, so every acceptance-level check — including the whole 10,000-test suite — is blind to it.
+
+### 10.2 Counts after PR 3
+
+| Suite | After PR 2 | After PR 3 |
+|---|---|---|
+| `Tests` (`Category!=Performance`) | 1909 / 28 skipped / 1937 | **1921 / 31 / 1952** |
+
+Twelve new passing pins, three new markers. Whole solution green under the CI filter, 14 projects,
+both frameworks. Ledger **75 → 78** — the increase is honest: three defects that were already there,
+now on the books with tests waiting.
