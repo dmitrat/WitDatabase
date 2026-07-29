@@ -1000,3 +1000,64 @@ pass/fail gate. Two things would fall out of it immediately:
 
 That is a proposal, not a decision. It is the cheapest way to stop the roadmap being assembled from
 recollection — which is exactly the failure mode this project has already paid for twice.
+
+---
+
+## 15. PR 7 results — WitSQL.md marked honestly, 2026-07-29
+
+The last piece of phase 3, and the one the scope correction changed most.
+
+The original plan called this "correct `WitSQL.md` so it stops generating findings", on the reasoning
+that UDFs and procedures are not needed because SQLite lacks them. **That reasoning was wrong.** Both
+large engines have them, application code written against those engines uses them, and the whole
+point is that such code should not notice the substitution.
+
+So the sections are not withdrawn — they are **marked as not implemented and explicitly still
+planned**, each with the reason it sits outside the grammar phase and a pointer to its executable
+specification:
+
+| Section | Status | Why it is not phase-3 work |
+|---|---|---|
+| §22 User-Defined Functions | not implemented | needs a function catalog, evaluator integration, persistence |
+| §23 Stored Procedures | not implemented | needs a procedural interpreter — variables, control flow, `CALL` |
+| §2.8 CREATE TRIGGER | **partly** implemented | reading `OLD`/`NEW` and `SIGNAL` work; **assigning** to `NEW` does not parse, and the executor would have to let a BEFORE trigger mutate the pending row |
+
+The trigger entry is new. It was on the ledger as a parser finding, and re-reading it against the
+sharpened criterion makes it a documentation problem too: §2.8 states "in BEFORE triggers, modifying
+`NEW.column_name` changes the value" and shows `SET NEW.UpdatedAt = NOW()`, which does not parse.
+**Partly implemented is the honest label** — the surrounding claims about `OLD`/`NEW` and `SIGNAL` are
+true, so marking the whole section unimplemented would be its own inaccuracy.
+
+The three markers are restated in the same terms: **unbuilt capability, wanted, out of scope on
+cost** — not "confirmed defect" and not "not required".
+
+Whole solution green under the CI filter, 14 projects, both frameworks. Ledger **77**.
+
+---
+
+## 16. Phase 3, closed
+
+| PR | Subject | Outcome |
+|---|---|---|
+| #28 | Plan, and the SQLite oracle | All five predictions held; three results re-scoped the phase |
+| #29 | The regression net | Found the grammar already ambiguous, and a serializer defect that corrupts views |
+| #30 | The boolean-layer split | `BETWEEN` fixed; 7 ambiguities → 0; parse ~2× faster |
+| #31 | `BETWEEN` shapes pinned | Found the `HAVING`-aggregate defect |
+| #32 | `INSERT … DEFAULT VALUES` | Executor needed no change |
+| #33 | Hex literals | `SELECT 0x1F` stopped returning `0` |
+| #34 | `APPLY` refused, `VALUES` deferred | Provider stopped emitting SQL its own parser rejects |
+| #35 | `WitSQL.md` marked honestly | Three sections labelled, three markers restated |
+
+**What the phase actually delivered**, beyond the scope list: four defects nobody had recorded — the
+`NOT BETWEEN`-deletes-everything half, the serializer's subquery placeholder corrupting views and
+partial indexes, the `HAVING`-aggregate refusal, and hex literals returning a silently wrong number
+rather than failing.
+
+**The pattern worth carrying forward.** Every one of those four was found by an instrument that
+compares *answers*, not by reading code and not by the existing 10,000 tests. Twice the instrument
+itself was wrong first — the acceptance-only oracle reporting false parity on `0x1F`, and the
+agreement theory's controls going red on a formatting difference — and both times the controls caught
+it. **Build the control into the instrument, or the instrument will lie quietly.**
+
+Next: phases 4 (durability) and 5 (performance) as planned, plus the capability backlog in §14 and the
+PostgreSQL/SQL Server dialect oracle it argues for.
