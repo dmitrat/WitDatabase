@@ -46,6 +46,28 @@ v2.4.0 merge), tree clean. Phases 0–2 closed, 2.1.0–2.4.0 published.
 > What does **not** change: `BETWEEN`, the ambiguity work, `DEFAULT VALUES`, and hex literals. Those
 > were fixed because the behaviour was wrong on its own terms, and SQLite was used to pin the
 > expected values — a legitimate use, since on those points the large engines agree with it.
+>
+> ### The acceptance criterion this comes from
+>
+> **Swapping WitDatabase in must be invisible to the rest of the application.** The use cases are
+> tests, demo deployments, and deployments where no real server can be installed — and in all three
+> the calling code is not supposed to notice which engine answers.
+>
+> SQLite is old; this is a new-generation engine, so its feature set is a **floor, never the goal**.
+> Ideally WitSQL offers everything, or the bulk of everything, PostgreSQL and SQL Server offer.
+>
+> The operative test for "is this in scope" is therefore not *"does SQLite have it"* but:
+> **would application code written against PostgreSQL or SQL Server notice its absence?** If yes, it
+> is core scope. By that test the items this phase deferred are roadmap items, not curiosities:
+> lateral joins, a `VALUES` table source with a derived column list, `TOP`, user-defined functions,
+> and stored procedures.
+>
+> Being *more* capable or more correct than SQLite — or than SQL Server — is fine. Being **stricter
+> than the engine being substituted for** is the thing that breaks the illusion.
+>
+> **A gap this leaves open:** every conformance instrument in this repository compares against SQLite.
+> Nothing yet measures WitSQL against PostgreSQL or SQL Server, which is where the real bar now sits.
+> Recorded in §14 as the natural successor to phase 3's oracle work.
 
 ## 1. What the defect actually is
 
@@ -933,3 +955,48 @@ columns explicitly beats inheriting SQLite's positional `column1..columnN`.
 Whole solution green under the CI filter, 14 projects, both frameworks. Ledger **77**, unchanged: the
 four table-source shapes stay marked as unbuilt capability (`TestCase`-level `Ignore =`, which the
 ledger command does not count — §8.4), and the five new EF tests are all passing.
+
+---
+
+## 14. What the sharpened criterion leaves on the table
+
+Written 2026-07-29, after the scope correction at the top of this document. Phase 3 measured a great
+deal about which shapes WitSQL accepts; **re-read against "would PostgreSQL/SQL Server code notice",
+several results change from "settled" to "backlog".** Collected here so the next session inherits the
+list rather than re-deriving it.
+
+### 14.1 Capability gaps, all measured during phase 3
+
+| Gap | Who has it | What it costs | Where it is tracked |
+|---|---|---|---|
+| **Lateral joins** — `LATERAL` (PostgreSQL), `CROSS`/`OUTER APPLY` (SQL Server) | both | engine: re-evaluate the right side per left row. Currently **refused** by the EF generator as a stopgap | `LargeEngineTableSourceParsesTest`, `GeneratedSqlIsParseableTests` |
+| **`VALUES` table source** | both | engine: materialise a row set | `LargeEngineTableSourceParsesTest` |
+| **Derived column list** `AS V(Id)` | both | grammar, small — and a better design than SQLite's positional `column1..columnN` | same |
+| **`TOP n`** | SQL Server | grammar only; `LIMIT` already covers the capability | same |
+| **User-defined functions** | both | subsystem: catalog, evaluator integration, persistence | `CreateFunctionIsSupportedTest` |
+| **Stored procedures** | both | subsystem: procedural interpreter, variables, `CALL` | `CreateProcedureIsSupportedTest` |
+| **JSON columns** | both | convention + query/update generator support — carried out of phase 2 | audit state |
+
+None of these is a defect in the sense the audit used the word. All of them are places where
+application code written against a large engine would notice the substitution — which is the bar.
+
+### 14.2 The instrument gap, and the natural successor to phase 3
+
+**Every conformance instrument in this repository compares against SQLite.** That was right for
+attribution and it earned its keep — nine of 29 EF findings in phase 2, and four more restatements in
+phase 3. But it cannot answer the question that now defines scope, because SQLite lacks most of the
+list above.
+
+The successor to `GrammarSyntaxOracle` is the same idea aimed one level up: **run the same SQL against
+PostgreSQL and SQL Server** — Testcontainers or a developer-supplied connection string, excluded from
+CI exactly as the SQLite oracle is — and produce a **dialect coverage report** rather than a
+pass/fail gate. Two things would fall out of it immediately:
+
+- a measured list of what those engines accept and WitSQL does not, replacing the hand-assembled table
+  in §14.1;
+- the same **agreement** check phase 3 added, which is what caught `0x1F` returning `0` and
+  `NOT BETWEEN` returning every row. Acceptance parity is not behavioural parity, and that lesson
+  transfers directly.
+
+That is a proposal, not a decision. It is the cheapest way to stop the roadmap being assembled from
+recollection — which is exactly the failure mode this project has already paid for twice.
