@@ -249,9 +249,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     #region Statement atomicity
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the statement throws on the third row and the first two remain " +
-            "in the table, so a failed INSERT is half-applied. engine-dml, " +
-            "Statements/StatementExecutor.Update.cs:1076")]
     public void FailedMultiRowInsertLeavesNoRowsBehindTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, V INT CHECK (V < 10))");
@@ -265,9 +262,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the UPDATE throws on a later row but row 1 is left at 30 " +
-            "instead of its original 1. Same non-atomicity on the UPDATE path, and here it mutates " +
-            "data that already existed rather than only adding rows.")]
     public void FailedMultiRowUpdateLeavesNoRowChangedTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, V INT CHECK (V < 100))");

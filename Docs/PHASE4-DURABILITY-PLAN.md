@@ -254,7 +254,7 @@ depends on. **Subject 6 lands after subject 2, never before.**
 | 5 | Rowid counters | engine metadata — an MVCC namespace collision fixed in **§10**; the subject itself closed in **§13** |
 | 6 | SSTable fsync **and the LSM file seam** | LSM — **§11** |
 | 7 | Compaction crash window | LSM — **§12**, atomic publish rather than a manifest |
-| 8 | Statement atomicity / implicit per-statement transaction | engine write path |
+| 8 | Statement atomicity / implicit per-statement transaction | engine write path — **§14** |
 
 Each PR waits for green CI before the next starts. A release is cut when enough has accumulated;
 whether it is 3.1.0 or 4.0.0 is decided by the rule the previous releases used — **major if it changes
@@ -721,7 +721,67 @@ entries**.
 
 ---
 
-## 14. The four standing rules, applied to this phase
+## 14. PR 9 results — a statement is a unit of work, 2026-07-29
+
+Subject 6, carried since phase 1, and with it the autocommit durability the crash runner's C3 control
+had been recording. **Three markers close and one control becomes an assertion.**
+
+### 14.1 The fix is the mechanism that already existed
+
+A multi-row DML that failed part-way left the rows it had already written: an INSERT that threw on the
+third row kept the first two; an UPDATE that threw on a later row left an earlier one changed.
+
+Pre-validating every row was the obvious fix and it is wrong — intra-statement uniqueness depends on
+the earlier rows already being present, so a pre-validating INSERT would accept two rows with the same
+key. A statement is a unit of work, and the mechanism for a unit of work already exists: a
+data-modifying statement executed with no transaction open now runs inside an implicit one.
+
+Only `INSERT`, `UPDATE`, `DELETE` and `MERGE`. A `SELECT` needs no transaction, and wrapping the
+transaction-control statements would mean `BEGIN` opening a transaction inside a transaction. A
+database built **without** transactions is left alone — that configuration traded atomicity away
+deliberately, and asking it for a transaction throws.
+
+### 14.2 What else it closed, and it is the bigger half
+
+Autocommit opened no transaction at all, so nothing on that path was ever committed **or flushed**.
+The C3 control had been recording the consequence since PR 1: a killed process lost every autocommit
+row *and the table it had created* — `Table 'T' not found` — because nothing had reached the file. The
+operating system's write-back cache never entered into it.
+
+Now: **20 of 20 rows survive.** C3 is no longer a baseline of unavoidable loss, so it stops being a
+recorded calibration and becomes an assertion.
+
+### 14.3 A defect the change revealed rather than caused
+
+Making autocommit commit made memtable flushes — and therefore compaction — happen far more often, and
+that surfaced a latent defect in `Compactor`: it created its readers as `new SSTableReader(f)` and its
+output with `encryptor: null`. **It was never told about the store's encryptor at all.** Compacting an
+encrypted store failed outright with *"SSTable is encrypted but no encryptor provided"* — and had the
+reads somehow succeeded, every row would have been rewritten **in clear text**.
+
+Fixed, with a test for each half: the rows survive compaction, and the merged output does not contain
+the plaintext. The second matters because a compactor that silently wrote clear text would pass the
+first perfectly.
+
+### 14.4 The cost, measured rather than asserted
+
+Every autocommit write now pays a commit, and a commit flushes. **1000 autocommit inserts: 0.26 s,
+against the 0.17 s phase 3 recorded for the same test** — about 1.5×, on the LSM path with
+`SyncWrites=false`.
+
+That is the price of the D in ACID on this path, and it is what PostgreSQL, SQL Server and SQLite all
+charge. Phase 5 measures it properly rather than guessing; the number is here so the change is not
+discovered as a mystery regression later.
+
+### 14.5 Counts after PR 9
+
+Engine suite **1951 → 1953 passed, 32 → 30 skipped**; Core **2239 → 2241**; all ten crash tests green
+with **nothing skipped**. Whole solution green on both frameworks. Ledger **70 → 68** attributes plus
+13 `[TestCase(… Ignore =)]` — **81 suppressed entries**.
+
+---
+
+## 15. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -741,7 +801,7 @@ entries**.
 
 ---
 
-## 15. Acceptance
+## 16. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.

@@ -1,4 +1,5 @@
 using OutWit.Database.Core.Comparers;
+using OutWit.Database.Core.Interfaces;
 
 namespace OutWit.Database.Core.LSM
 {
@@ -16,6 +17,8 @@ namespace OutWit.Database.Core.LSM
 
         private readonly ISstableFileFactory? m_fileFactory;
 
+        private readonly IBlockEncryptor? m_encryptor;
+
         private readonly ByteArrayComparer m_comparer = ByteArrayComparer.Default;
 
         #endregion
@@ -28,11 +31,21 @@ namespace OutWit.Database.Core.LSM
         /// <param name="directory">Directory containing SSTables.</param>
         /// <param name="blockSize">Block size for output SSTables.</param>
         /// <param name="fileFactory">Where output files come from; null means ordinary files.</param>
-        public Compactor(string directory, int blockSize = 4096, ISstableFileFactory? fileFactory = null)
+        /// <param name="encryptor">
+        /// The store's block encryptor, if it has one. Compaction reads and rewrites whole tables, so
+        /// without it an encrypted store could not be compacted at all - and had the reads somehow
+        /// succeeded, the output would have been written in clear text.
+        /// </param>
+        public Compactor(
+            string directory,
+            int blockSize = 4096,
+            ISstableFileFactory? fileFactory = null,
+            IBlockEncryptor? encryptor = null)
         {
             m_directory = directory;
             m_blockSize = blockSize;
             m_fileFactory = fileFactory;
+            m_encryptor = encryptor;
         }
 
         #endregion
@@ -52,7 +65,7 @@ namespace OutWit.Database.Core.LSM
                 return new CompactionResult { InputFiles = 0, OutputEntries = 0 };
 
             // Open all input readers
-            var readers = inputFiles.Select(f => new SSTableReader(f)).ToList();
+            var readers = inputFiles.Select(f => new SSTableReader(f, m_encryptor)).ToList();
 
             try
             {
@@ -64,7 +77,7 @@ namespace OutWit.Database.Core.LSM
                 int outputEntries = 0;
                 int tombstonesRemoved = 0;
 
-                using (var builder = new SSTableBuilder(outputFile, m_blockSize, encryptor: null, m_fileFactory))
+                using (var builder = new SSTableBuilder(outputFile, m_blockSize, m_encryptor, m_fileFactory))
                 {
                     byte[]? lastKey = null;
 
