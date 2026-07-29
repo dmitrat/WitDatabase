@@ -87,6 +87,7 @@ public sealed class SstableFsyncTests
             file.Stream.WriteByte(0x01);
             file.Sync();
             file.Sync();
+            file.Publish();
         }
 
         Assert.That(factory.SyncCount, Is.EqualTo(2),
@@ -200,25 +201,29 @@ internal sealed class CountingSstableFileFactory : ISstableFileFactory
 
     internal void RecordSync() => SyncCount++;
 
+    // Wraps the real file rather than reimplementing it, so the counting double cannot drift away
+    // from the publish-and-sync semantics it is supposed to be observing.
     private sealed class CountingSstableFile : ISstableFile
     {
         private readonly CountingSstableFileFactory m_owner;
-        private readonly FileStream m_stream;
+        private readonly SstableFile m_inner;
 
         public CountingSstableFile(CountingSstableFileFactory owner, string path)
         {
             m_owner = owner;
-            m_stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None, 4096);
+            m_inner = new SstableFile(path);
         }
 
-        public Stream Stream => m_stream;
+        public Stream Stream => m_inner.Stream;
 
         public void Sync()
         {
             m_owner.RecordSync();
-            m_stream.Flush(flushToDisk: true);
+            m_inner.Sync();
         }
 
-        public void Dispose() => m_stream.Dispose();
+        public void Publish() => m_inner.Publish();
+
+        public void Dispose() => m_inner.Dispose();
     }
 }
