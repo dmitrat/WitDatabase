@@ -364,6 +364,7 @@ internal sealed partial class WitSqlVisitor
         return context switch
         {
             WitSqlParser.IntLiteralContext intLit => ParseIntegerLiteral(intLit.GetText(), line, col),
+            WitSqlParser.HexLiteralContext hexLit => ParseHexLiteral(hexLit.GetText(), line, col),
             WitSqlParser.RealLiteralContext realLit => ParseNumericLiteral(realLit.GetText(), line, col),
             WitSqlParser.StringLiteralContext strLit => new WitSqlExpressionLiteral
             {
@@ -465,6 +466,55 @@ internal sealed partial class WitSqlVisitor
                 Message = $"Integer literal '{text}' is out of range"
             }
         });
+    }
+
+    /// <summary>
+    /// Parses a <c>0x…</c> hexadecimal literal as a 64-bit two's-complement integer.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Hex does not behave like the decimal integer literal above, and the difference was
+    /// measured rather than assumed.</b> An oversized decimal literal is widened to
+    /// <see cref="decimal"/> to keep its value; an oversized hex literal is not. SQLite answers
+    /// <c>SELECT 0xFFFFFFFFFFFFFFFF</c> with <b>-1</b> — the 64 bits are reinterpreted as signed,
+    /// which is the whole point of writing a bit pattern in hex. Widening it to
+    /// 18446744073709551615 instead would have been the natural-looking choice and would have
+    /// disagreed with the oracle.
+    /// </para>
+    /// <para>
+    /// Past 64 bits SQLite raises <c>hex literal too big</c> rather than truncating, so this does
+    /// too. Leading zeros do not count against the limit.
+    /// </para>
+    /// </remarks>
+    private static WitSqlExpressionLiteral ParseHexLiteral(string text, int line, int col)
+    {
+        // text is "0x…" or "0X…"; both the prefix and the digits are case-insensitive.
+        var digits = text[2..].TrimStart('0');
+
+        if (digits.Length > 16)
+        {
+            throw new WitSqlParsingException(new[]
+            {
+                new WitSqlParsingError
+                {
+                    Line = line,
+                    Column = col,
+                    Message = $"Hex literal '{text}' is too big"
+                }
+            });
+        }
+
+        var magnitude = digits.Length == 0
+            ? 0UL
+            : Convert.ToUInt64(digits, 16);
+
+        return new WitSqlExpressionLiteral
+        {
+            Line = line,
+            Column = col,
+            Type = LiteralType.Integer,
+            Value = unchecked((long)magnitude)
+        };
     }
 
     /// <summary>

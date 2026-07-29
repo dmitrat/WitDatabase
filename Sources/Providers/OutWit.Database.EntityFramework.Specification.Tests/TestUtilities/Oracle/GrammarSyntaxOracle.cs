@@ -162,6 +162,21 @@ public class GrammarSyntaxOracle
         // The false parity that prompted this whole theory.
         Add("hexLiteral", "SELECT 0x1F");
 
+        // Hex edge cases, measured BEFORE implementing rather than after. The interesting ones are
+        // the overflow shapes: a 64-bit hex literal above long.MaxValue has to go somewhere, and
+        // guessing which way SQLite resolves it is exactly the mistake this oracle exists to prevent.
+        Add("hexCase", "SELECT 0xff");
+        Add("hexCase", "SELECT 0XFF");
+        Add("hexArithmetic", "SELECT 0x10 + 1");
+        Add("hexBitwise", "SELECT Id FROM T WHERE Flags & 0x0F = 15 ORDER BY Id");
+        Add("hexLongMax", "SELECT 0x7FFFFFFFFFFFFFFF");
+        Add("hexOverflow", "SELECT 0xFFFFFFFFFFFFFFFF");
+        Add("hexNegated", "SELECT -0x10");
+        Add("hexZero", "SELECT 0x0");
+        // 17 significant digits - past what 64 bits can hold at all.
+        Add("hexTooWide", "SELECT 0x1FFFFFFFFFFFFFFFF");
+        Add("hexLeadingZeros", "SELECT 0x0000000000000010");
+
         // Controls: shapes with no known divergence, so a red here means the harness is wrong.
         Add("control", "SELECT Id FROM T WHERE Age > 18 AND Active = 1 ORDER BY Id");
         Add("control", "SELECT COUNT(*) FROM T");
@@ -176,15 +191,24 @@ public class GrammarSyntaxOracle
         var sqlite = RunSqlite(sql);
         var witDb = RunWitDatabase(sql);
 
-        var agree = sqlite.Error is null && witDb.Error is null &&
-                    string.Equals(sqlite.Rows, witDb.Rows, StringComparison.Ordinal);
+        // Both engines refusing a shape IS parity, even though their message texts differ - so a
+        // literal string comparison would report it as disagreement and manufacture a finding. That
+        // is what happened to `SELECT 0x1FFFFFFFFFFFFFFFF`, which both correctly reject as too wide.
+        var verdict = (sqlite.Error, witDb.Error) switch
+        {
+            (not null, not null) => "PARITY - both reject",
+            (null, not null) or (not null, null) => "DISAGREE - one engine failed and the other did not",
+            _ => string.Equals(sqlite.Rows, witDb.Rows, StringComparison.Ordinal)
+                ? "AGREE"
+                : "DISAGREE - the answers differ"
+        };
 
         var report = new StringBuilder()
             .AppendLine($"item     : {item}")
             .AppendLine($"sql      : {sql}")
             .AppendLine($"sqlite   : {sqlite.Error ?? sqlite.Rows}")
             .AppendLine($"witdb    : {witDb.Error ?? witDb.Rows}")
-            .AppendLine($"verdict  : {(agree ? "AGREE" : "DISAGREE - the answers differ")}")
+            .AppendLine($"verdict  : {verdict}")
             .ToString();
 
         Assert.True(true, report);

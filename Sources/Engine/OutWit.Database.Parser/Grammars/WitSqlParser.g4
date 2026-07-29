@@ -612,6 +612,7 @@ comparisonOp
 
 literal
     : INTEGER_LITERAL                               # intLiteral
+    | HEX_LITERAL                                   # hexLiteral
     | REAL_LITERAL                                  # realLiteral
     | STRING_LITERAL                                # stringLiteral
     | BLOB_LITERAL                                  # blobLiteral

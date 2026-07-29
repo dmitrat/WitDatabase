@@ -739,3 +739,68 @@ Whole solution green under the CI filter. Ledger **78 → 77**.
 
 Oracle divergences remaining: `hexLiteral` (PR 5), `valuesTableSource` (PR 6), and the three
 `HAVING`-aggregate shapes recorded in §10.1 as pre-existing and out of phase-3 scope.
+
+---
+
+## 12. PR 5 results — hexadecimal literals, 2026-07-28
+
+### 12.1 The finding understated the defect, again
+
+Recorded as a **parse failure**. Only half true, and the wrong half. `SELECT 0x1F` did **not** fail:
+the lexer split it into the integer `0` and the identifier `x1F`, so the statement **succeeded and
+returned 0** under the alias `x1F`. Only `Flags & 0x0F` failed outright.
+
+A silently wrong number is the dangerous half. This is the fourth finding in phase 3 whose recorded
+symptom was milder than the measured behaviour — after `NOT BETWEEN` returning every row, the
+serializer's view corruption, and `EnsureDeleted` in phase 2.
+
+### 12.2 The semantics were measured, and the obvious choice was wrong
+
+Nine hex shapes were run against SQLite **before** anything was implemented:
+
+| Shape | SQLite |
+|---|---|
+| `0x0`, `0x1F`, `0xff`, `0XFF` | `0`, `31`, `255`, `255` — prefix and digits both case-insensitive |
+| `0x0000000000000010` | `16` — leading zeros do not count against the width limit |
+| `0x10 + 1`, `-0x10` | `17`, `-16` |
+| `0x7FFFFFFFFFFFFFFF` | `9223372036854775807` |
+| **`0xFFFFFFFFFFFFFFFF`** | **`-1`** |
+| `0x1FFFFFFFFFFFFFFFF` | error: `hex literal too big` |
+
+**The overflow row is the one that mattered.** This codebase widens an oversized *decimal* literal to
+`DECIMAL` to preserve its value — `ParseIntegerLiteral` does exactly that, deliberately, and says so.
+Following that precedent for hex would have produced `18446744073709551615` and disagreed with
+SQLite. Hex reinterprets its 64 bits as signed, which is the point of writing a bit pattern in hex.
+`ParseHexLiteral` is a separate method for that reason, and its remarks record why it must not mirror
+its neighbour.
+
+Past 64 bits SQLite raises rather than truncating, so this does too — truncating silently would be
+the same class of defect the whole fix is about.
+
+### 12.3 The instrument had a false-positive verdict, and it is fixed
+
+The agreement theory reported `0x1FFFFFFFFFFFFFFFF` as DISAGREE once both engines rejected it,
+because it compared error *strings* and the messages differ. Both refusing is **parity**. The verdict
+logic now distinguishes "both reject" from "one failed and the other did not", so the oracle stops
+manufacturing a finding out of matching behaviour.
+
+### 12.4 Guards against the lexer change reaching too far
+
+Adding `HEX_LITERAL` before `INTEGER_LITERAL` changes tokenisation, so three tests pin what must
+*not* move: `SELECT 0 x1F` with a space is still an integer aliased `x1F`; a column genuinely named
+`x1F` still resolves; and `X'DEADBEEF'` blob literals are untouched (a different rule — `X` followed
+by a quote).
+
+### 12.5 Counts after PR 5
+
+| Suite | After PR 4 | After PR 5 |
+|---|---|---|
+| `Parser.Tests` | 728 / 10 skipped / 738 | **729 / 9 / 738** |
+| `Tests` (`Category!=Performance`) | 1927 / 31 / 1958 | **1941 / 31 / 1972** |
+
+Fourteen new engine tests, every expected value taken from the oracle. Whole solution green under the
+CI filter. Ledger unchanged at **77** — the hex marker was a `TestCase`-level `Ignore =` property,
+which the ledger command does not count either way (§8.4).
+
+Oracle divergences remaining: **`valuesTableSource` only** (PR 6), plus the three `HAVING`-aggregate
+shapes recorded as pre-existing and out of scope.
