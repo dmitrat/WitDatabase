@@ -52,26 +52,20 @@ public sealed partial class WitSqlEngine
         if (m_currentTransaction == null)
             return;
 
-        // First, commit the transaction to persist actual data
+        // The row counts, row-id counters and row version are already inside this transaction: each
+        // is written through it at the moment it changes, so committing makes them durable in the
+        // same atomic step as the rows they describe.
+        //
+        // What used to be here was a best-effort persist AFTER the commit had returned, outside the
+        // flush the commit performed, inside a try/catch that swallowed every failure. A crash in
+        // that window left the rows on the media and the numbers describing them behind: SELECT
+        // returned every row while COUNT(*) reported none, and the row-id counter came back at zero
+        // so the next insert took an identity already in use. Both were proven by the
+        // out-of-process crash runner and are now closed.
+        //
+        // Removing it also stops every commit rewriting every table's counters, touched or not.
         m_currentTransaction.Commit();
-        
-        // Now persist metadata BEFORE disposing transaction
-        // This ensures metadata is written even if there's a crash
-        // after transaction commit but before dispose.
-        // Note: If metadata persist fails, the data is still committed
-        // but metadata can be recovered by scanning on next startup.
-        try
-        {
-            m_schema.PersistRowCountsToStore();
-            m_schema.PersistRowIdsToStore();
-            m_schema.PersistRowVersionToStore();
-        }
-        catch
-        {
-            // Best effort - metadata can be recovered on startup
-            // by scanning actual data. Don't fail the commit.
-        }
-        
+
         m_currentTransaction.Dispose();
         m_currentTransaction = null;
         m_rowCountDeltaSinceSavepoint = null;

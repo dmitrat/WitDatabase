@@ -251,7 +251,7 @@ depends on. **Subject 6 lands after subject 2, never before.**
 | 2 | Instrument B — modelled cut, fsync counter, C4–C6 | none — **§7**; `WithStorage` already existed |
 | 3 | WAL truncation on partial replay (+ the `RollbackJournal` relative path) | recovery — **§8**, and the same fix was needed in the LSM WAL |
 | 4 | Savepoint replay | journal — **§9**, compensating records, no format change |
-| 5 | Rowid counters | engine metadata — **§10: still open**, both routes refuted; an MVCC namespace collision fixed instead |
+| 5 | Rowid counters | engine metadata — an MVCC namespace collision fixed in **§10**; the subject itself closed in **§13** |
 | 6 | SSTable fsync **and the LSM file seam** | LSM — **§11** |
 | 7 | Compaction crash window | LSM — **§12**, atomic publish rather than a manifest |
 | 8 | Statement atomicity / implicit per-statement transaction | engine write path |
@@ -672,7 +672,56 @@ Ledger unchanged at **72 + 13**.
 
 ---
 
-## 13. The four standing rules, applied to this phase
+## 13. PR 8 results — the numbers commit with the rows they describe, 2026-07-29
+
+Subject 3, and the row-count defect beside it. **Both markers close**, and the route that works is a
+third one — neither of the two PR 5 refuted.
+
+### 13.1 What PR 5 got wrong about its own refutation
+
+PR 5 concluded that writing metadata through the transaction was impossible, because it made every
+commit collide on the MVCC write set: 3140 of 3142 conformance tests failed. That was true of **what
+it tried** — `PersistRow*ToStore` at commit time writes **every table's** counters, so each commit
+contended with the previous one over tables it had never touched.
+
+The distinction was not in the routing. It was in **which keys, and when**. Writing each counter
+through the transaction *at the moment it is allocated from* puts only the touched tables in the write
+set. Measured: **EF stays green at 552 passed**, and both crash markers turn.
+
+The lesson is narrower than "the route is closed": a refutation is only as wide as the thing that was
+actually run, and PR 5's write-up said "through the transaction" when what it had tested was "every
+table's counters at commit". Recorded here rather than left standing.
+
+### 13.2 What the fix is
+
+`SaveTableRowId`, `SaveTableRowCount` and `SaveRowVersion` write through the transaction when there is
+one, instead of updating only the in-memory cache and deferring to a post-commit pass. Repeated writes
+to the same key inside a transaction collapse to one entry in its buffer, so the cost is one write-set
+entry per table touched, not one per row.
+
+Two things fall out of it:
+
+- **Rollback gets simpler, not harder** than the old comment feared. A discarded transaction discards
+  the metadata with it, instead of needing the cache reloaded from the store afterwards.
+- **The post-commit persist is gone.** It was best-effort inside a `try { } catch { }` that swallowed
+  every failure, and every commit rewrote every table's counters whether or not they had changed.
+
+### 13.3 Measured, before and after
+
+| | before | after |
+|---|---|---|
+| next insert after a crash, 20 rows with ids to 20 | **id 1** — an identity already in use | **id 21** |
+| after a crash: `SELECT` / `COUNT(*)` | 20 rows / **0** | 20 rows / **20** |
+
+### 13.4 Counts after PR 8
+
+Engine suite **1949 → 1951 passed, 34 → 32 skipped**; Core unchanged at 2239; whole solution green on
+both frameworks. Ledger **72 → 70** attributes plus 13 `[TestCase(… Ignore =)]` — **83 suppressed
+entries**.
+
+---
+
+## 14. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -692,7 +741,7 @@ Ledger unchanged at **72 + 13**.
 
 ---
 
-## 14. Acceptance
+## 15. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.

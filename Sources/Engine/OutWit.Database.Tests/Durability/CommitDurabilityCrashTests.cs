@@ -136,15 +136,6 @@ public sealed class CommitDurabilityCrashTests
     /// counting one: closed cleanly, the same workload reports 20 and 20.
     /// </remarks>
     [Test]
-    [Ignore("CONFIRMED 2026-07-29, and not in the audit's 104: after a commit through a bare "
-            + "Data Source= connection string and a hard kill, SELECT returns all 20 rows and "
-            + "SELECT COUNT(*) returns 0. The rows are on the media - a raw scan under the MVCC "
-            + "layer finds 24 records - and the number describing them is not, because the row "
-            + "count is persisted by PersistRowCountsToStore after the commit and outside the flush "
-            + "the commit performed. Closed cleanly the same workload reports 20 and 20. "
-            + "STILL OPEN, same reason as RowIdIsNotReusedAfterACrashTest: both routes to making "
-            + "the metadata commit with the data were tried and refuted by measurement. "
-            + "Engine/WitSqlEngine.Transactions.cs:65")]
     public void RowCountAgreesWithTheRowsAfterACrashTest()
     {
         using (var run = CrashRunnerHarness.Start(Scenarios.ADONET_COMMIT_KILL, m_databasePath, ROWS))
