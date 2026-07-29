@@ -781,7 +781,60 @@ with **nothing skipped**. Whole solution green on both frameworks. Ledger **70 �
 
 ---
 
-## 15. The four standing rules, applied to this phase
+## 15. PR 10–11 results — the race CI found, and the last finding, 2026-07-29
+
+### 15.1 A race that had always been there, exposed by making commits frequent
+
+PR 9 went red on CI and green on this machine. The failure was **not the change under review**:
+`ObjectDisposedException: Cannot access a closed file`, from `SSTableReader.ReadBlockFromDisk`
+reached through `MvccKeyValueStore.CommitTransaction`.
+
+`StoreLsm.Scan` takes the SSTable read lock only long enough to collect an enumerable from each
+reader, then lets it go — the files are read afterwards, as the caller pulls. Compaction takes the
+write lock, **disposes every reader** and clears the list. Making commits frequent, and each commit
+scans the whole store, widened a window that had always been open until it was routinely hit.
+
+**Second time this project has learned that a not-reproduced verdict is provisional until a second
+machine agrees.** The first was `LsmParallelWriter.FlushAllAsync`.
+
+A reader is now closed when the last holder lets go rather than when its owner does — acquired under
+the read lock, where compaction cannot yet have released it, and released in a `finally` inside the
+iterator so an abandoned scan cannot hold files open.
+
+**The fixture took three attempts to test anything**, and the third is the instructive one: it passed
+with the fix reverted, because at the default block size each table fits in one block, so the merge
+reads every source while priming its heap and never touches a file again. A small block and no block
+cache make the later reads real. **That is the fifth instrument in this phase that was wrong before
+its subject was.**
+
+### 15.2 The last finding, and the seam paid for itself again
+
+`core-lsm`'s remaining entry — *a failed flush leaves `m_immutableMemTable` populated forever, and the
+next flush loses the data* — was recorded as **mechanism only**, because reproducing it needed an
+injected I/O failure the `StoreLsm` surface offered no way to arrange. `LsmOptions.SstableFileFactory`,
+cut for the fsync work, is that way.
+
+Measured: after a failed flush and a successful one, **5 of 10 accepted rows were still readable**. The
+first flush's entries existed nowhere a reader looks — not in the active table, not in the immutable
+one, and not in any SSTable, because the one that would have held them was never written.
+
+The quiet part matters: the WAL is not truncated on a failed flush, so a **restart** replays them and
+nothing is lost for good — but a **running** process went on answering reads without them.
+
+The failure path now puts those entries back into the active memtable, with anything written since
+winning, including tombstones. Three tests plus a control: readable by point read, visible to a scan
+(different paths through the memtables — a fix repairing one could leave the other), and a newer write
+not undone by the rows coming back.
+
+### 15.3 Counts after PR 11
+
+Core suite **2241 → 2247 passed**, 23 skipped; engine unchanged at 1953/30. Whole solution green on
+both frameworks. Ledger unchanged at **68 + 13** — this finding was carried as a comment, not a
+marker, and the comment now records the fix.
+
+---
+
+## 16. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -801,7 +854,7 @@ with **nothing skipped**. Whole solution green on both frameworks. Ledger **70 �
 
 ---
 
-## 16. Acceptance
+## 17. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.

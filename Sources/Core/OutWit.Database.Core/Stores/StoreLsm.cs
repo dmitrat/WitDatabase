@@ -612,24 +612,32 @@ namespace OutWit.Database.Core.Stores
             var sstableId = m_nextSstableId++;
             var sstablePath = Path.Combine(m_directory, $"sst_{sstableId:D6}.sst");
 
-            using (var builder = new SSTableBuilder(sstablePath, m_options.BlockSize, m_options.Encryptor, m_options.SstableFileFactory))
-            {
-                foreach (var entry in oldActive.GetAllEntries())
-                {
-                    builder.Add(entry.Key, entry.Value);
-                }
-                builder.Finish();
-            }
-
-            // Add new SSTable to list (write lock to prevent concurrent reads during add)
-            m_sstableLock.EnterWriteLock();
             try
             {
-                m_sstables.Add(new SSTableReader(sstablePath, m_options.Encryptor, m_blockCache));
+                using (var builder = new SSTableBuilder(sstablePath, m_options.BlockSize, m_options.Encryptor, m_options.SstableFileFactory))
+                {
+                    foreach (var entry in oldActive.GetAllEntries())
+                    {
+                        builder.Add(entry.Key, entry.Value);
+                    }
+                    builder.Finish();
+                }
+
+                // Add new SSTable to list (write lock to prevent concurrent reads during add)
+                m_sstableLock.EnterWriteLock();
+                try
+                {
+                    m_sstables.Add(new SSTableReader(sstablePath, m_options.Encryptor, m_blockCache));
+                }
+                finally
+                {
+                    m_sstableLock.ExitWriteLock();
+                }
             }
-            finally
+            catch
             {
-                m_sstableLock.ExitWriteLock();
+                TakeBackEntriesFromAFailedFlush(oldActive);
+                throw;
             }
 
             // Clear immutable MemTable
@@ -651,6 +659,40 @@ namespace OutWit.Database.Core.Stores
                     ExecuteCompaction();
                 }
             }
+        }
+
+        /// <summary>
+        /// Puts the entries of a flush that failed back where readers will find them.
+        /// </summary>
+        /// <remarks>
+        /// A flush moves the active table to <c>m_immutableMemTable</c> and starts a fresh active one.
+        /// If writing the SSTable then failed, the immutable pointer was simply left as it was - and
+        /// the <b>next</b> flush overwrote it with its own table. The entries of the first flush then
+        /// existed nowhere a reader looks: not in the active table, not in the immutable one, and not
+        /// in any SSTable, because the one that would have held them was never written.
+        ///
+        /// They were not lost for good - the WAL is not truncated on a failed flush, so a restart
+        /// replays them - but a running process went on answering reads without them, which is the
+        /// quiet kind of wrong.
+        ///
+        /// Anything written since the flush began is newer and wins: a key already present in the new
+        /// active table - including as a tombstone - is left alone.
+        /// </remarks>
+        private void TakeBackEntriesFromAFailedFlush(MemTable failed)
+        {
+            foreach (var (key, value) in failed.GetAllEntries())
+            {
+                if (m_activeMemTable.TryGet(key, out _))
+                    continue;
+
+                if (value == null)
+                    m_activeMemTable.Delete(key);
+                else
+                    m_activeMemTable.Put(key, value);
+            }
+
+            Volatile.Write(ref m_immutableMemTable, null);
+            failed.Dispose();
         }
 
         private void Recover()

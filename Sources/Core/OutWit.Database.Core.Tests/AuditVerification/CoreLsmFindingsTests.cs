@@ -144,10 +144,13 @@ public class CoreLsmFindingsTests
     // See Durability/SstableFsyncTests.cs, which also pins that Flush() no longer REDUCES
     // durability: it used to replace a synced WAL with an unsynced SSTable and then truncate the WAL.
     //
-    // STILL OPEN, but no longer unreachable - "a failed flush leaves m_immutableMemTable populated
-    // forever" (StoreLsm.cs:550). This note said reproducing it needs an injected I/O failure that
-    // the StoreLsm surface offers no way to arrange. The surface now exists:
-    // LsmOptions.SstableFileFactory can hand out a file whose write or sync throws.
+    // FIXED 2026-07-29 - "a failed flush leaves m_immutableMemTable populated forever"
+    // (StoreLsm.cs:550). This note said reproducing it needs an injected I/O failure the StoreLsm
+    // surface offered no way to arrange; LsmOptions.SstableFileFactory, cut for the fsync work above,
+    // is that way. Measured with it: after a failed flush and a successful one, 5 of 10 accepted rows
+    // were still readable - the next flush overwrote the only pointer holding the first batch. The
+    // failure path now puts those entries back into the active memtable, with anything written since
+    // winning. See Durability/FailedFlushTests.cs.
 
     #endregion
 }
