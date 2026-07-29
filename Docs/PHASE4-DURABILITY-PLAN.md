@@ -248,11 +248,11 @@ depends on. **Subject 6 lands after subject 2, never before.**
 |---|---|---|
 | 0 | This plan, plus the engine-suite baseline | none — **merged as #38** |
 | 1 | Instrument A — crash runner, C1–C3, verdict classification | none — **§6** |
-| 2 | Instrument B — storage seam, modelled cut, fsync counter, C4–C6 | narrow internal factory in Core |
+| 2 | Instrument B — modelled cut, fsync counter, C4–C6 | none — **§7**; `WithStorage` already existed |
 | 3 | WAL truncation on partial replay (+ the `RollbackJournal` relative path) | recovery |
 | 4 | Savepoint replay | journal |
 | 5 | Rowid counters | engine metadata |
-| 6 | SSTable fsync, and `SyncWrites` documented for what it does | LSM |
+| 6 | SSTable fsync, `SyncWrites` documented for what it does, **and the LSM file seam** | LSM |
 | 7 | Compaction manifest | LSM |
 | 8 | Statement atomicity / implicit per-statement transaction | engine write path |
 
@@ -322,7 +322,68 @@ were already there.
 
 ---
 
-## 7. The four standing rules, applied to this phase
+## 7. PR 2 results — the modelled power cut, measured 2026-07-29
+
+`Sources/Core/OutWit.Database.Core.Tests/Durability/`. **Six tests, all green — four controls and two
+pins**, and the pins are results worth having rather than defects.
+
+### 7.1 No production change was needed after all
+
+The plan assumed a seam would have to be cut into the storage path. It does not:
+`WitDatabaseBuilder.WithStorage(IStorage)` already exists, so the model is a decorator a test can
+supply, and PR 2 touches no shipped code at all.
+
+### 7.2 The controls, and the model was wrong first
+
+| Control | Claim |
+|---|---|
+| **C4** | a flushed write survives the cut |
+| **C5** | an unflushed write does not — and the flushed one beside it still does |
+| **C5b** | before the cut, a cached page is indistinguishable from a durable one |
+| **C6** | the flush counter can see a real flush, so a **zero** elsewhere is evidence |
+
+**C5 went red on the first run**, and it was the model that was wrong: after the cut the media had
+never been extended, so reading the lost page threw `ArgumentOutOfRangeException` instead of showing
+the page missing. That is faithful media behaviour and a badly posed control. It now asserts *values*
+in both directions in one shape — page 0 flushed and intact, page 1 unflushed and gone, storage one
+page long — rather than an exception type. **Three instruments in this project have now been wrong
+before their subject was, and all three were caught by a control.**
+
+### 7.3 What it says about the commit path
+
+With `WithBTree().WithTransactions()`:
+
+- **A commit asks for durability** — flush count goes 0 → 1 across the commit, and no pages are left
+  at risk. Counted, not inferred, which is why a zero would have been unambiguous.
+- **Committed data survives a modelled power cut** — 20 of 20, with 0 unflushed pages discarded.
+
+Both are **pins**, not fixes: they state a property that currently holds, so a later change to the
+write path cannot quietly remove it. That matters because phase 4 is about to change that path.
+
+This also sharpens the crash runner's result. Instrument A showed a committed transaction surviving a
+process kill, which is the weaker claim - the operating system is still running afterwards. The model
+says the write was made durable rather than merely handed to something that would have died with the
+machine.
+
+### 7.4 The LSM seam is deferred to the PR that needs it
+
+The plan bundled a seam for `Core/LSM/` into this PR, because `SSTableBuilder` opens its own
+`FileStream` and nothing can be injected into it. That is still true and still needed — but building
+it here would mean shipping a production change with no test pointing at it. It moves to **PR 6**,
+where the SSTable fsync finding gives it a purpose, and it still carries the second reason to exist:
+it is the injection point for the `core-lsm` finding recorded as "mechanism only".
+
+### 7.5 A finding instrument A has already proven, waiting for its PR
+
+C3 in the crash fixture is currently recorded rather than asserted: **an autocommit statement that
+returned successfully is lost entirely by a crash, schema included.** Autocommit durability is below
+the minimum-set line — PostgreSQL, SQL Server and SQLite all provide it — so this is a defect and not
+a trade-off, and it is the same missing per-statement transaction that statement atomicity needs. It
+becomes a marked test in the PR that fixes it rather than a marker opened now against no fix.
+
+---
+
+## 8. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -342,7 +403,7 @@ were already there.
 
 ---
 
-## 8. Acceptance
+## 9. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.
