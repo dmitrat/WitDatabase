@@ -29,15 +29,19 @@ rework early, and that would be a mistake.
 The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: each marker is a
 confirmed defect with a test already written that turns green when it is fixed.
 
-> **State at 2026-07-28.** 2.1.0 and 2.2.0 are published — seven packages each, tags `v2.1.0` and
-> `v2.2.0`, PRs #7–#15 merged. **Phases 0, 1 and 2 are done**, phase 2 shipping as 2.3.0 (PRs
-> #16–#23: conformance harness, SQLite oracle, nine suites wired) and 2.4.0 (PRs #24–#27: the rest
-> of the EF batch). Resume at **Phase 3 — the grammar, all of it at once.**
-> **74 `[Ignore]` markers**, plus 3 `[Explicit]` (running them kills the host process). It went to
-> 102 when the conformance harness landed, back to 100 when the finding those two recorded was
-> corrected, and then down through the EF batch. Count before trusting it:
-> `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l`. The second ledger is the baseline in
-> `WitComplianceTest` — **325 unimplemented conformance suites**.
+> **State at 2026-07-29. Phases 0, 1, 2 and 3 are done.** 2.1.0–2.4.0 published, seven packages each.
+> Phase 3 is PRs #28–#35, prepared for release as **3.0.0** — major, because it changes answers the
+> previous releases gave. Resume at **Phase 4 — durability and crash recovery.**
+>
+> **77 `[Ignore]` markers**, plus 3 `[Explicit]`. The count went *up* across phase 3 and that is
+> honest: it closed six and opened five, every one of the five a defect that was already there and is
+> now on the books with a failing test waiting. Count before trusting it:
+> `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l` — and note the command over-counts prose
+> mentions of the marker and misses `Ignore =` properties on individual `[TestCase]`s. The second
+> ledger is the baseline in `WitComplianceTest` — **325 unimplemented conformance suites**.
+>
+> **Full record of phase 3: [PHASE3-GRAMMAR-PLAN.md](PHASE3-GRAMMAR-PLAN.md)**, including the
+> capability backlog in its §14 and the scope correction at its head.
 
 ### Phase 0 — Measurement the suite does not yet have *(hours)*
 
@@ -205,7 +209,27 @@ the migrations and bulk-update families that the EF batch of `[Ignore]` markers 
 oracle shows `FindTestBase` does not run on SQLite either without suppressing that same limit — so
 it is **not** a good yardstick suite, and the next step is to wire suites the oracle shows green.
 
-### Phase 3 — Grammar, all of it at once *(a week, candidate for 3.0.0)*
+### Phase 3 — Grammar, all of it at once — **DONE, prepared as 3.0.0**
+
+> **Closed 2026-07-29, PRs #28–#35.** `BETWEEN` is fixed by the
+> `searchCondition`/`predicate`/`valueExpression` split; the grammar went from 7 ambiguous corpus
+> entries to 0 and parses about twice as fast; `INSERT … DEFAULT VALUES` and hexadecimal literals
+> landed; the EF provider stopped emitting `APPLY` its own parser could not read.
+>
+> **It also found four defects nobody had recorded**, none of them in the audit's 104: `NOT BETWEEN`
+> returning *every* row (so a `DELETE` removed what the `WHERE` was written to protect), the
+> serializer replacing every subquery with the literal text `SELECT ...` — which corrupts stored view
+> bodies and partial-index filters — an aggregate inside `BETWEEN`/`IN` in a `HAVING` clause throwing,
+> and `SELECT 0x1F` returning `0` rather than failing.
+>
+> **The scope premise was corrected mid-phase and it matters for what comes next.** "SQLite rejects it
+> too, therefore it is not a defect" is invalid: WitDatabase substitutes for PostgreSQL and SQL
+> Server, so SQLite is a *minimum set* and an attribution oracle, never a ceiling. Above that floor
+> each feature is weighed — value and frequency of use against cost and engine risk — and a skip is
+> allowed if it is documented. See PHASE3-GRAMMAR-PLAN.md §14 for the resulting backlog.
+
+<details><summary>Original scope</summary>
+
 
 Workstream A (`BETWEEN` precedence) **together with** every other grammar-level fix:
 `INSERT … DEFAULT VALUES`, hexadecimal literals, `CROSS APPLY`/`OUTER APPLY`/`VALUES`, user-defined
@@ -218,7 +242,9 @@ redone; one made *separately after* it means touching the visitor twice. So: **d
 grammar until this phase**, and enter it with the densest possible test net — currently 100
 specifications plus the existing suite, which is a far better position than July's.
 
-### Phase 4 — Durability and crash recovery
+</details>
+
+### Phase 4 — Durability and crash recovery — **NEXT**
 
 Has a **prerequisite**: two findings cannot be reproduced with the current test surface. Rowid
 counter reuse needs a second process, because a file engine opens its storage with `FileShare.None`

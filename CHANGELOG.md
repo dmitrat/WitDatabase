@@ -1,5 +1,76 @@
 # Changelog
 
+## 3.0.0
+
+Closes phase 3, the grammar. **Major rather than minor because this changes answers the previous
+releases gave** — and in two cases the old answer was silently destructive rather than merely wrong.
+
+The headline is `BETWEEN`. `WHERE Age BETWEEN 18 AND 65 AND Active = TRUE` used to return **nothing**,
+and `WHERE Age NOT BETWEEN 1 AND 20 AND Active = 0` used to return **everything** — so
+`DELETE … WHERE x NOT BETWEEN a AND b AND …` removed exactly the rows the `WHERE` clause was written
+to protect. If you worked around either, remove the workaround.
+
+### Behaviour changes
+
+- **`BETWEEN` no longer swallows the conjunct that follows it.** The boolean layer is lifted out of
+  the flat `expression` rule into `searchCondition` / `predicate` / `valueExpression`, so `BETWEEN`'s
+  bounds sit one layer below `AND` and cannot reach it. The old parse produced
+  `Between(Age, lower = (1 AND 10), upper = (Flag = 1))`.
+
+  The defect is narrower than it was recorded as, and the correction is worth knowing: it fired only
+  when `BETWEEN` was followed by `AND`. A trailing `OR`, a `BETWEEN` inside a `CASE`, and
+  parenthesised subquery bounds were always correct.
+
+- **`SELECT 0x1F` returns 31.** It used to return **0**: the lexer split the literal into the integer
+  `0` and the identifier `x1F`, so the statement succeeded under an accidental alias. `Flags & 0x0F`
+  did not parse at all. Hexadecimal literals are now 64-bit two's complement — `0xFFFFFFFFFFFFFFFF`
+  is `-1`, not `18446744073709551615` — and a literal wider than 64 bits is refused rather than
+  truncated.
+
+- **`INSERT … DEFAULT VALUES` is accepted.** One row built from column defaults, auto-increment and
+  `ROWVERSION`. `NOT NULL` is still enforced, so a table with a non-nullable defaultless column still
+  refuses the insert.
+
+- **A query needing `CROSS`/`OUTER APPLY` is refused at translation time.** The EF Core provider
+  inherited `VisitCrossApply`/`VisitOuterApply` and emitted SQL its own parser could not read, so a
+  correlated `Take` built a clean model and then died at execution with a syntax error naming a
+  construct you never wrote. It now fails early with a message that names the LINQ shape and a way
+  out. **This is a stopgap, not a settled limit** — the engine has no lateral joins yet.
+
+- **`NOT EXISTS` produces the same AST by a single route.** The grammar carried the optional `NOT` in
+  two places, which ANTLR resolved silently by alternative order. No visible change; recorded because
+  the parse tree shape differs.
+
+### Fixed
+
+- An aggregate inside `BETWEEN` or `IN` in a `HAVING` clause is still refused — **not** fixed here,
+  and now recorded with a failing test. `HAVING COUNT(*) > 1` works; `HAVING COUNT(*) BETWEEN 1 AND 5`
+  raises. Pre-existing, confirmed against the parent commit.
+
+- The expression serializer still replaces every subquery with the literal text `SELECT ...` — **not**
+  fixed here, and now recorded with failing tests. It matters because the DDL path persists schema
+  through it: **a view whose body contains a subquery is created successfully and then throws a parse
+  error on every query against it.** Partial-index filters and `CHECK` constraints are affected the
+  same way.
+
+### Under the hood
+
+- The grammar parses roughly **twice as fast** (193-entry corpus, 104 µs → ~53 µs per parse), and has
+  **no ambiguous parses** where it previously had seven.
+- The `LIKE` two-alternative workaround is collapsed back into one alternative with an optional
+  `ESCAPE`; the `CASE` visitor no longer infers simple-vs-searched by counting expressions.
+- New regression instruments: a 193-entry grammar corpus checked for ambiguity and serializer
+  round-tripping, and a differential oracle that compares **answers** against SQLite rather than only
+  whether SQL is accepted.
+
+### Documentation
+
+`WitSQL.md` now carries per-section status notes where it described unshipped behaviour: §22
+user-defined functions and §23 stored procedures are **not implemented and still planned**, and §2.8
+`CREATE TRIGGER` is **partly** implemented — reading `OLD`/`NEW` and `SIGNAL` work, assigning to `NEW`
+does not parse.
+
+
 ## 2.4.0
 
 Closes phase 2. Every one of the 2026-07 audit's 29 EF Core findings is now either fixed or restated
