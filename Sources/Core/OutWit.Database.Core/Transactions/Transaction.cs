@@ -317,10 +317,65 @@ namespace OutWit.Database.Core.Transactions
                 throw new ArgumentException($"Savepoint '{name}' does not exist.", nameof(name));
 
             var savepoint = m_savepoints[index];
+
+            // What the journal has already been told about each key. Put and Delete log eagerly, at
+            // the moment they are called, while the store itself is not touched until Commit - so
+            // restoring the in-memory change set is not enough on its own. Without the compensation
+            // below, recovery replayed writes the transaction had discarded before it committed.
+            var logged = new Dictionary<byte[], (byte[]? Value, byte[]? Original)>(m_comparer);
+            foreach (var (key, (newValue, oldValue)) in m_changes)
+                logged[key] = (newValue, oldValue);
+
             savepoint.Restore(m_changes, m_deletedKeys);
+
+            if (m_journal != null)
+                CompensateJournal(logged);
 
             // Remove all savepoints created after this one
             m_savepoints.RemoveRange(index + 1, m_savepoints.Count - index - 1);
+        }
+
+        /// <summary>
+        /// Tells the journal what the rollback put back, for every key whose logged value no longer
+        /// matches where the transaction now stands.
+        /// </summary>
+        /// <remarks>
+        /// A compensating record rather than a new entry type on purpose: the replay visitor applies
+        /// a transaction's operations in the order they were logged, so a later record simply wins,
+        /// and no change to the log format or its version is needed.
+        ///
+        /// The subtle case is a key the transaction touched after the savepoint but that already
+        /// existed in the store beforehand. Restoring drops it from the change set entirely, and the
+        /// correct compensation is not a delete - it is a put of the value the store held when the
+        /// transaction first touched it, which is exactly what OldValue records.
+        /// </remarks>
+        private void CompensateJournal(Dictionary<byte[], (byte[]? Value, byte[]? Original)> logged)
+        {
+            foreach (var (key, (loggedValue, original)) in logged)
+            {
+                var restored = m_changes.TryGetValue(key, out var entry)
+                    ? entry.NewValue
+                    : original;
+
+                if (BytesEqual(loggedValue, restored))
+                    continue;
+
+                if (restored == null)
+                    m_journal!.LogDelete(TransactionId, key, loggedValue ?? ReadOnlySpan<byte>.Empty);
+                else
+                    m_journal!.LogPut(TransactionId, key, restored, loggedValue ?? ReadOnlySpan<byte>.Empty);
+            }
+        }
+
+        private static bool BytesEqual(byte[]? left, byte[]? right)
+        {
+            if (ReferenceEquals(left, right))
+                return true;
+
+            if (left == null || right == null)
+                return false;
+
+            return left.AsSpan().SequenceEqual(right);
         }
 
         /// <inheritdoc/>

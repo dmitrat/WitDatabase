@@ -250,7 +250,7 @@ depends on. **Subject 6 lands after subject 2, never before.**
 | 1 | Instrument A — crash runner, C1–C3, verdict classification | none — **§6** |
 | 2 | Instrument B — modelled cut, fsync counter, C4–C6 | none — **§7**; `WithStorage` already existed |
 | 3 | WAL truncation on partial replay (+ the `RollbackJournal` relative path) | recovery — **§8**, and the same fix was needed in the LSM WAL |
-| 4 | Savepoint replay | journal |
+| 4 | Savepoint replay | journal — **§9**, compensating records, no format change |
 | 5 | Rowid counters | engine metadata |
 | 6 | SSTable fsync, `SyncWrites` documented for what it does, **and the LSM file seam** | LSM |
 | 7 | Compaction manifest | LSM |
@@ -456,7 +456,52 @@ frameworks identical. Whole solution green under the CI filter. Ledger **75 → 
 
 ---
 
-## 9. The four standing rules, applied to this phase
+## 9. PR 4 results — a rolled-back write stays rolled back, 2026-07-29
+
+One marker closed. Proven red first: with the `[Ignore]` removed, replay brought the discarded write
+back — `Expected: null, But was: <50>`, the byte for `"2"`.
+
+### 9.1 No change to the log format, because of how replay already works
+
+`Put` and `Delete` write to the journal the moment they are called, while the store is not touched
+until commit. Rolling back to a savepoint restored only the in-memory change set, so the journal kept
+its account of writes the transaction had thrown away.
+
+The obvious fix — a new `RollbackToSavepoint` entry type that replay has to interpret — would change
+the log format and its version. It is unnecessary: `WalReplayVisitorTransactional` buffers a
+transaction's operations **in order** and applies them on commit, so a **compensating record** logged
+at rollback simply wins. `RollbackToSavepoint` now logs, for every key whose logged value no longer
+matches where the transaction stands, what the rollback put back.
+
+### 9.2 The dangerous case is not the obvious one
+
+A key created after the savepoint compensates to a delete — easy, and the case the finding describes.
+A key that **already existed in the store** and was only modified after the savepoint must compensate
+to a *put of its original value*: compensating with a delete there would destroy a row the transaction
+never owned, turning a fix for silent resurrection into a cause of silent deletion.
+
+`OldValue` — captured when the transaction first touched the key — is what makes the distinction, and
+`SavepointReplayTests` carries a case for each, plus a control that writes before the savepoint still
+survive (without it, a compensation that simply discarded the whole transaction would pass everything
+else) and a case where a rewrite after the rollback must beat the compensation.
+
+### 9.3 An observation about the suite, not a finding
+
+These fixtures cost seconds per test on this machine — the same file-backed journal test runs in 74 ms
+alone and 16 s alongside others, and that includes the pre-existing test which has no compensating
+records at all. It is the cost of `Flush(flushToDisk: true)` per journal record on this volume under
+the suite's parallelism, not something this PR introduced. No test here asserts on elapsed time, so it
+is a note for phase 5 rather than a risk — recorded because a number that surprising should not sit
+unexplained.
+
+### 9.4 Counts after PR 4
+
+Core suite **2223 → 2228 passed, 24 → 23 skipped**, both frameworks identical; whole solution green.
+Ledger **73 → 72** attributes plus 13 `[TestCase(… Ignore =)]` — **85 suppressed entries**.
+
+---
+
+## 10. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -476,7 +521,7 @@ frameworks identical. Whole solution green under the CI filter. Ledger **75 → 
 
 ---
 
-## 10. Acceptance
+## 11. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.
