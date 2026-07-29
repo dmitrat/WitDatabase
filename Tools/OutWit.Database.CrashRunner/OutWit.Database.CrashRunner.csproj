@@ -1,0 +1,24 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <!-- Both frameworks, because the tests that launch it run on both and each picks its own. -->
+    <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
+    <Nullable>enable</Nullable>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <IsPackable>false</IsPackable>
+    <RootNamespace>OutWit.Database.CrashRunner</RootNamespace>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\..\Sources\Engine\OutWit.Database\OutWit.Database.csproj" />
+
+    <!--
+      The ADO.NET provider is here because the engine API and the provider are two different
+      durability configurations, and only the second is what a consumer actually gets. Crashing one
+      says nothing about the other.
+    -->
+    <ProjectReference Include="..\..\Sources\Providers\OutWit.Database.AdoNet\OutWit.Database.AdoNet.csproj" />
+  </ItemGroup>
+
+</Project>

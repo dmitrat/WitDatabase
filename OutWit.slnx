@@ -54,6 +54,7 @@
     <Project Path="Sources/Providers/OutWit.Database.EntityFramework.Specification.Tests/OutWit.Database.EntityFramework.Specification.Tests.csproj" />
   </Folder>
   <Folder Name="/Tools/">
+    <Project Path="Tools/OutWit.Database.CrashRunner/OutWit.Database.CrashRunner.csproj" />
     <Project Path="Tools/OutWit.Database.Studio.Tests/OutWit.Database.Studio.Tests.csproj" />
     <Project Path="Tools/OutWit.Database.Studio/OutWit.Database.Studio.csproj" />
   </Folder>
