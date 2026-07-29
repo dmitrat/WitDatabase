@@ -196,7 +196,7 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
         {
             result?.Dispose();
             cancellationToken.ThrowIfCancellationRequested();
-            result = executor.Execute(statement);
+            result = ExecuteAtomically(executor, statement);
         }
 
         // Persist state for next call
@@ -205,6 +205,57 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
 
         return result!;
     }
+
+    /// <summary>
+    /// Runs one statement so that it either happens completely or not at all.
+    /// </summary>
+    /// <remarks>
+    /// A multi-row DML that failed part-way used to leave the rows it had already written: an INSERT
+    /// that threw on the third row kept the first two, and an UPDATE that threw on a later row left
+    /// an earlier one changed. Both were confirmed by the 2026-07 audit and are closed here.
+    ///
+    /// <b>Why not validate every row first.</b> That was the obvious fix and it is wrong:
+    /// intra-statement uniqueness depends on the earlier rows already being present, so a
+    /// pre-validating INSERT would happily accept two rows with the same key. A statement is a unit
+    /// of work, and the mechanism for a unit of work already exists.
+    ///
+    /// <b>What else this closes.</b> Autocommit opened no transaction at all, which meant nothing on
+    /// that path was ever committed or flushed - the crash runner's C3 control showed a killed
+    /// process losing every autocommit row <i>and the table it created</i>, because none of it had
+    /// reached the file. A statement-scoped transaction commits, and committing flushes.
+    ///
+    /// <b>The cost, stated rather than buried.</b> Every autocommit write now pays a commit, and a
+    /// commit flushes. That is the price of the D in ACID on this path and it is what PostgreSQL,
+    /// SQL Server and SQLite all charge; phase 5 measures it rather than guessing.
+    ///
+    /// Only data-modifying statements are wrapped. A SELECT needs no transaction, and the
+    /// transaction-control statements are how a caller opens one explicitly - wrapping those would
+    /// mean BEGIN opening a transaction inside a transaction.
+    /// </remarks>
+    private WitSqlResult ExecuteAtomically(StatementExecutor executor, Parser.Statements.WitSqlStatement statement)
+    {
+        // A database built without transactions cannot be given one, and asking would throw. That
+        // configuration has traded atomicity away deliberately - `Transactions=false` in the
+        // connection string, or WithoutTransactions() - so the statement runs as it always did.
+        if (m_currentTransaction != null || !m_database.SupportsTransactions || !ModifiesData(statement))
+            return executor.Execute(statement);
+
+        // The handle rolls back if the commit below never runs, which is what makes a statement that
+        // throws part-way leave nothing behind.
+        using var transaction = BeginTransaction();
+
+        var result = executor.Execute(statement);
+
+        Commit();
+
+        return result;
+    }
+
+    private static bool ModifiesData(Parser.Statements.WitSqlStatement statement) =>
+        statement is Parser.Statements.WitSqlStatementInsert
+            or Parser.Statements.WitSqlStatementUpdate
+            or Parser.Statements.WitSqlStatementDelete
+            or Parser.Statements.WitSqlStatementMerge;
 
     #endregion
 

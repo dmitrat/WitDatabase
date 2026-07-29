@@ -100,8 +100,23 @@ public sealed class CrashHarnessControlTests
 
     #region C3 - what a kill costs when nothing was flushed
 
+    /// <summary>
+    /// Autocommit writes, killed without any explicit flush - and every row survives.
+    /// </summary>
+    /// <remarks>
+    /// <b>This was the C3 calibration and it is now an assertion, because what it measures changed.</b>
+    /// It used to record the baseline cost of a process kill when nothing had been flushed, and that
+    /// cost was total: not merely the rows but <i>the table itself</i> - the reopen failed with
+    /// <c>Table 'T' not found</c>, because autocommit opened no transaction, so nothing was ever
+    /// committed and nothing had reached the file at all. The operating system's write-back cache
+    /// never entered into it.
+    ///
+    /// A statement now runs inside an implicit transaction, so it commits, and committing flushes.
+    /// The baseline is no longer a measure of unavoidable loss - it is a property, and it is asserted
+    /// as one.
+    /// </remarks>
     [Test]
-    public void ControlKillWithoutFlushIsRecordedNotAssertedTest()
+    public void AutocommitWritesSurviveAProcessCrashTest()
     {
         using (var run = CrashRunnerHarness.Start(Scenarios.CONTROL_AUTOCOMMIT_KILL, m_databasePath, rows: 20))
         {
@@ -123,14 +138,12 @@ public sealed class CrashHarnessControlTests
             outcome = $"the database could not be reopened at all: {e.GetType().Name}: {e.Message}";
         }
 
-        TestContext.Out.WriteLine($"C3 calibration - autocommit, no flush, killed: {outcome}");
+        TestContext.Out.WriteLine($"autocommit, no explicit flush, killed: {outcome}");
 
-        // Deliberately not an assertion about how much survives. A process kill leaves the operating
-        // system free to write its page cache back, so on most platforms most of this survives - and
-        // that is exactly the point of recording it: a finding has to lose MORE than this baseline,
-        // or lose it differently, before the kill can be credited with showing anything.
-        Assert.That(survivors, Is.LessThanOrEqualTo(20),
-            "more rows than were ever written cannot survive - that would be a harness defect");
+        Assert.That(survivors, Is.EqualTo(20),
+            "a statement that returned successfully must survive the process dying. Autocommit used "
+            + "to open no transaction at all, so nothing was committed and nothing reached the file - "
+            + "this same scenario lost every row and the table with them");
     }
 
     #endregion

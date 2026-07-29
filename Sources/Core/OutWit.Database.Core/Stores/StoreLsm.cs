@@ -529,7 +529,7 @@ namespace OutWit.Database.Core.Stores
             var outputPath = Path.Combine(m_directory, $"sst_{outputId:D6}.sst");
 
             // Perform compaction (outside of any locks)
-            var compactor = new Compactor(m_directory, m_options.BlockSize, m_options.SstableFileFactory);
+            var compactor = new Compactor(m_directory, m_options.BlockSize, m_options.SstableFileFactory, m_options.Encryptor);
             var result = compactor.Compact(filesToCompact, outputPath);
             
             m_statistics.RecordCompaction();
