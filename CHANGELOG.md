@@ -1,5 +1,90 @@
 # Changelog
 
+## 4.0.0
+
+Closes phase 4, durability and crash recovery. **Major, because it changes answers the previous
+releases gave — and in several cases the old answer was silence.**
+
+The headline is that a crash no longer costs you data the database told you it had accepted. Before
+this release, a process that died took every autocommit write with it **including the tables those
+writes had created**, because autocommit opened no transaction and therefore never committed and
+never flushed. A statement is now a unit of work.
+
+Thirteen defects, six of which were in no audit and were found only because two instruments were
+built first: an out-of-process crash runner, and a modelled power cut at the storage seam.
+
+### Behaviour changes
+
+- **A statement either happens completely or not at all.** A multi-row `INSERT` that failed on the
+  third row used to leave the first two; an `UPDATE` that failed on a later row left the earlier ones
+  changed. A data-modifying statement executed outside an explicit transaction now runs inside an
+  implicit one. Pre-validating the rows would have been the wrong fix — intra-statement uniqueness
+  depends on the earlier rows already being present.
+
+- **Autocommit writes are durable.** They follow from the same change: a statement commits, and a
+  commit flushes. **This costs about 1.5× on the write path** — 1000 autocommit inserts measured at
+  0.26 s against 0.17 s before — which is the price of the D in ACID and what PostgreSQL, SQL Server
+  and SQLite all charge. Use an explicit transaction around a batch to pay it once.
+
+- **A damaged write-ahead log is reported instead of being truncated past.** Recovery used to stop at
+  the first record that failed verification, return what it had managed as though the log ended there,
+  and then truncate — so one bad record destroyed every committed transaction behind it, silently.
+  Measured: 2 of 5 committed transactions recovered, no error. It now raises `WalReplayException`
+  carrying how many entries were replayed, how many the header knew about, and the offset — and it
+  leaves the log intact rather than checkpointing over the evidence. **A database whose log is damaged
+  mid-way now fails to open rather than opening with fewer transactions than it has.** A torn tail —
+  the half-written record an ordinary crash leaves — is still recovered from as before, told apart by
+  the log's own entry counter. The same silence existed in the LSM write-ahead log and is fixed there
+  too.
+
+- **A write rolled back to a savepoint stays rolled back.** `Put` and `Delete` write to the journal
+  when they are called, while the store is not touched until commit, so rolling back to a savepoint
+  left the journal holding writes the transaction had discarded and recovery replayed them.
+
+- **Row counts and row-id counters commit with the rows they describe.** After a crash, `SELECT`
+  returned every row while `SELECT COUNT(*)` returned **0**, and the row-id counter came back at zero
+  so the next insert took an identity that was already in use — and so did every insert after it.
+
+- **A key beginning with `$` written inside an MVCC transaction is visible after commit.** The MVCC
+  store skipped every such key when marking a transaction's records committed, though it owns exactly
+  one of them. The transaction reported success and the value was gone.
+
+- **An SSTable is on the media before the log holding the same data is truncated.** The LSM path never
+  asked for durability: finalisation ended at a buffer flush, and the write-ahead log was dropped
+  immediately afterwards. `Flush()` therefore *reduced* durability — it replaced a log the caller may
+  have synced with a table that was never synced.
+
+- **A crash while writing an SSTable leaves nothing behind.** Tables were written straight to the name
+  recovery looks for, so a half-written one was loaded as the newest table in the store and the next
+  open failed outright with `Invalid SSTable magic`. Tables are now written under a name the store
+  ignores and renamed into place, which is atomic. A table that *is* damaged is still reported rather
+  than skipped.
+
+- **Compaction of an encrypted store works.** The compactor was never given the store's encryptor, so
+  compacting an encrypted store failed outright — and had the reads succeeded, every row would have
+  been rewritten in clear text.
+
+- **A scan keeps working when compaction replaces the tables under it.** Readers are closed when the
+  last holder lets go rather than when compaction disposes them; a scan in flight used to read from a
+  closed file.
+
+- **The rows of a failed memtable flush stay readable.** The next flush overwrote the only pointer
+  still holding them, so a running process went on answering reads without rows it had accepted. They
+  were never lost for good — the log still had them — but only a restart would have shown that.
+
+- **A rollback journal accepts a bare relative path.** `Journal=rollback` with `Data Source=x.witdb`
+  threw `ArgumentException`; and for a path at a filesystem root it created a *directory* named after
+  the journal file.
+
+### Under the hood
+
+- Two new instruments, both carrying their own controls: `Tools/OutWit.Database.CrashRunner`, which
+  runs a scenario in its own process so it can be killed, and a modelled power cut over `IStorage`
+  that promotes writes to the media only on flush. Crash tests run in CI — they are deterministic
+  assertions about this code, not timing measurements.
+- `LsmOptions.SstableFileFactory` is a seam for the SSTable output file. It settled three findings the
+  audit had recorded as unreachable.
+
 ## 3.0.1
 
 **A release-process fix, not a code change.** No behaviour differs from 3.0.0; use this instead.

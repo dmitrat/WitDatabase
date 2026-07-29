@@ -29,11 +29,12 @@ rework early, and that would be a mistake.
 The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: each marker is a
 confirmed defect with a test already written that turns green when it is fixed.
 
-> **State at 2026-07-29. Phases 0, 1, 2 and 3 are done; phase 4 is open.** 2.1.0–2.4.0 published,
+> **State at 2026-07-29. Phases 0–4 are done.** 2.1.0–2.4.0 published,
 > seven packages each. Phase 3 is PRs #28–#35, released as **3.0.0** and then **3.0.1** — major,
 > because it changes answers the previous releases gave. **Use 3.0.1**: 3.0.0 published only five of
 > the seven packages, and `AdoNet 3.0.0` went out depending on `OutWit.Database 2.4.0`. Phase 4 —
-> durability and crash recovery — is now **in progress**, see below.
+> durability and crash recovery — is **closed**, released as **4.0.0**: thirteen defects, six of them
+> in no audit. Resume at **phase 5 — performance**.
 >
 > **77 `[Ignore]` markers**, plus 3 `[Explicit]`. The count went *up* across phase 3 and that is
 > honest: it closed six and opened five, every one of the five a defect that was already there and is
@@ -252,9 +253,9 @@ specifications plus the existing suite, which is a far better position than July
 
 </details>
 
-### Phase 4 — Durability and crash recovery — **IN PROGRESS**
+### Phase 4 — Durability and crash recovery — **DONE, released as 4.0.0**
 
-> **Opened 2026-07-29. Full record: [PHASE4-DURABILITY-PLAN.md](PHASE4-DURABILITY-PLAN.md)**, which
+> **Closed 2026-07-29, PRs #38–#49. Full record: [PHASE4-DURABILITY-PLAN.md](PHASE4-DURABILITY-PLAN.md)**, which
 > carries the re-measured baseline, the mechanisms read out of the current `main` with file and line,
 > the design of both instruments with their controls, and the PR sequence.
 >
