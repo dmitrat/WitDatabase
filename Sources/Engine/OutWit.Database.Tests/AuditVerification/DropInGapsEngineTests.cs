@@ -100,22 +100,57 @@ public sealed class DropInGapsEngineTests : WitSqlEngineTestsBase
 
     #region CROSS APPLY / OUTER APPLY / VALUES table sources
 
-    private const string ApplyIgnore =
-        "CONFIRMED 2026-07-27: the grammar cannot parse this shape. EF Core emits CROSS/OUTER APPLY " +
-        "for filtered or limited collection includes and for correlated Take, and VALUES for " +
-        "inlined lists, so these queries fail at runtime rather than at model build. " +
-        "dropin-gaps / ef-translation, Parser/Grammars/WitSqlParser.g4:157";
+    /// <summary>
+    /// Table-source shapes WitSQL does not support yet. <b>Unbuilt capability, not correct
+    /// rejection.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The original finding justified these by "EF Core emits them". Phase 3 measured that and it is
+    /// largely false for this provider: collections translate to <c>IN (…)</c>, and the one shape the
+    /// generator really did emit — <c>OUTER APPLY</c>, for a correlated <c>Take</c> — is now refused
+    /// at translation time rather than emitted unparseably (see <c>GeneratedSqlIsParseableTests</c>).
+    /// </para>
+    /// <para>
+    /// <b>That does not make these shapes unwanted.</b> The target is a drop-in replacement for the
+    /// large engines, so the yardstick is PostgreSQL and SQL Server, not SQLite:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// <c>CROSS APPLY</c> / <c>OUTER APPLY</c> is T-SQL; PostgreSQL spells the same thing
+    /// <c>LATERAL</c>. Both support it. Supporting it here needs <b>lateral execution</b> — the right
+    /// side re-evaluated per left row — which is engine work, not grammar.
+    /// </description></item>
+    /// <item><description>
+    /// A <c>VALUES</c> table source with a derived column list <c>AS V(Id)</c> is <b>standard SQL</b>
+    /// and works on both PostgreSQL and SQL Server. SQLite happens to reject it; that is SQLite's
+    /// limitation, and no reason for WitSQL to inherit it.
+    /// </description></item>
+    /// <item><description>
+    /// <c>TOP n</c> is T-SQL's row limiter. <c>LIMIT</c> already covers the capability, so this one
+    /// is dialect surface rather than a missing feature — worth having for SQL Server source
+    /// compatibility, not urgent.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// Kept as executable specifications so each turns green the day it is built.
+    /// </para>
+    /// </remarks>
+    private const string TableSourceIgnore =
+        "UNBUILT CAPABILITY, re-scoped 2026-07-28. Not justified by 'EF Core emits it' - measured, " +
+        "and it mostly does not - but by the actual target: PostgreSQL and SQL Server both support " +
+        "these, and WitSQL is not meant to be a SQLite clone. APPLY needs lateral execution (engine " +
+        "work, not grammar); the derived column list AS V(Id) is standard SQL that only SQLite " +
+        "lacks; TOP duplicates LIMIT and is source-compatibility surface. None is phase-3 scope.";
 
-    [TestCase("SELECT * FROM A CROSS APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = ApplyIgnore)]
-    [TestCase("SELECT * FROM A OUTER APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = ApplyIgnore)]
-    [TestCase("SELECT * FROM (VALUES (1), (2)) AS V(Id)", Ignore = ApplyIgnore)]
-    public void EfShapedTableSourceParsesTest(string sql)
+    [TestCase("SELECT * FROM A CROSS APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = TableSourceIgnore)]
+    [TestCase("SELECT * FROM A OUTER APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = TableSourceIgnore)]
+    [TestCase("SELECT * FROM (VALUES (1), (2)) AS V(Id)", Ignore = TableSourceIgnore)]
+    [TestCase("SELECT * FROM (VALUES (1), (2))", Ignore = TableSourceIgnore)]
+    public void LargeEngineTableSourceParsesTest(string sql)
     {
-        // Finding: WitSqlParser.g4:157 - EF Core emits CROSS APPLY / OUTER APPLY for filtered or
-        // limited collection includes and for correlated Take, and VALUES for inlined parameter
-        // lists. If the grammar cannot parse them the query fails at runtime, not at model build.
         Assert.That(() => WitSql.Parse(sql), Throws.Nothing,
-            "EF Core generates this shape, so a drop-in provider must be able to parse it");
+            "PostgreSQL and SQL Server accept this shape, and WitSQL targets those rather than SQLite");
     }
 
     #endregion

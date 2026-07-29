@@ -177,6 +177,17 @@ public class GrammarSyntaxOracle
         Add("hexTooWide", "SELECT 0x1FFFFFFFFFFFFFFFF");
         Add("hexLeadingZeros", "SELECT 0x0000000000000010");
 
+        // VALUES as a table source. PR 0 established that the BARE form is a real gap and that the
+        // derived column list `AS V(Id)` is not - SQLite rejects that too. These pin down what the
+        // accepted form actually produces, since a table source has to have column names.
+        Add("valuesBare", "SELECT * FROM (VALUES (1), (2))");
+        Add("valuesAliased", "SELECT * FROM (VALUES (1), (2)) AS V");
+        Add("valuesMultiColumn", "SELECT * FROM (VALUES (1, 'a'), (2, 'b'))");
+        Add("valuesDefaultColumnName", "SELECT column1 FROM (VALUES (1), (2))");
+        Add("valuesStandalone", "VALUES (1), (2)");
+        Add("valuesJoined", "SELECT T.Id FROM T INNER JOIN (VALUES (1), (2)) AS V ON T.Id = V.column1 ORDER BY T.Id");
+        Add("valuesInSubqueryFilter", "SELECT Id FROM T WHERE Id IN (SELECT column1 FROM (VALUES (1), (2))) ORDER BY Id");
+
         // Controls: shapes with no known divergence, so a red here means the harness is wrong.
         Add("control", "SELECT Id FROM T WHERE Age > 18 AND Active = 1 ORDER BY Id");
         Add("control", "SELECT COUNT(*) FROM T");
