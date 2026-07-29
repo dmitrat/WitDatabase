@@ -834,7 +834,62 @@ marker, and the comment now records the fix.
 
 ---
 
-## 16. The four standing rules, applied to this phase
+## 16. Phase 4, closed
+
+| PR | Subject | Outcome |
+|---|---|---|
+| #38 | The plan | Ledger decomposed; two design decisions taken before any code |
+| #39 | Instrument A — out-of-process crash runner | Three defects on the first run; caught its own measurement error first |
+| #40 | Instrument B — modelled power cut | No production change needed; two pins on the commit path |
+| #41 | WAL partial replay | Fixed, and the same silence found on a second path |
+| #42 | Savepoint replay | Fixed with compensating records, no log-format change |
+| #43 | MVCC `$` namespace | A defect found while refuting the intended fix for another |
+| #44 | SSTable fsync | Settled by counting, not by a power cut |
+| #45 | Compaction crash window | The unrecorded half was worse: the database would not open |
+| #46 | Row counts and row-id counters | Closed by a third route, after PR 5 refuted two |
+| #47 | Statement atomicity | Autocommit became durable; revealed the compactor's missing encryptor |
+| #48 | Scan/compaction race | Found by CI, not by this machine |
+| #49 | Failed memtable flush | The last finding the audit called unreachable |
+
+**Thirteen defects fixed. Six were in no audit**, and each was found by an instrument rather than by
+reading: the LSM log was as silent as the transactional one; `RollbackJournal` created a *directory*
+named after the journal file; the MVCC store swallowed the `$` namespace the engine keeps its schema
+in; a crash while writing an SSTable made the database unopenable; the compactor was never given the
+store's encryptor and would have rewritten every row in clear text; and a scan read from a file
+compaction had closed underneath it.
+
+**The instruments were wrong before their subjects were, five times**, and every time a control or a
+deliberate revert caught it:
+
+1. the crash verification asserted on `COUNT(*)` — a cached counter, not the rows — and manufactured a
+   false report of lost commits;
+2. the power-cut model read past the end of the media and threw where it should have shown a page
+   missing;
+3. the torn-tail control synced and *then* truncated, which is acknowledged data vanishing rather than
+   a torn tail, and would have pinned the defect as correct;
+4. the same control, rewritten, went red *after* the fix because `Dispose` updates the header;
+5. the compaction fixture passed with the fix reverted, twice over — once because `Compact()` silently
+   did nothing, once because at the default block size a table fits in one block and the merge never
+   reads a file again after priming its heap.
+
+**What phase 4 changed about the method**, worth carrying into phase 5:
+
+- **Count rather than crash.** The SSTable fsync finding was filed as needing a real power cut. It
+  needed the count: a store that never asks for durability cannot have achieved it, and zero is
+  unambiguous where a surviving-row count is not.
+- **A refutation is only as wide as what was actually run.** PR 5 concluded that metadata could not go
+  through the transaction; what it had tested was *every table's counters at commit*. Per-allocation
+  writes work, and PR 8 closed both markers with them.
+- **A second machine is still the only way to settle a race.** CI found the scan/compaction race; this
+  machine never did.
+
+**One caveat recorded rather than closed:** on POSIX, syncing a file's contents does not sync the
+directory entry naming it, and .NET exposes no portable way to do so. Recovery tolerates a missing
+SSTable — the log is the fallback — and closing it properly needs a platform-specific call.
+
+---
+
+## 17. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -854,7 +909,7 @@ marker, and the comment now records the fix.
 
 ---
 
-## 17. Acceptance
+## 18. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.
