@@ -34,9 +34,12 @@ confirmed defect with a test already written that turns green when it is fixed.
 > because it changes answers the previous releases gave. **Use 3.0.1**: 3.0.0 published only five of
 > the seven packages, and `AdoNet 3.0.0` went out depending on `OutWit.Database 2.4.0`. Phase 4 —
 > durability and crash recovery — is **closed**, released as **4.0.0**: thirteen defects, six of them
-> in no audit. Resume at **phase 5 — performance**.
+> in no audit. **The remaining work was re-planned the same day** into five audit-then-fix phases with
+> performance moved to the end — see "Phases 5–10" below. Resume at **phase 5 — concurrency**.
 >
-> **77 `[Ignore]` markers**, plus 3 `[Explicit]`. The count went *up* across phase 3 and that is
+> **68 `[Ignore]` attributes plus 13 `[TestCase(… Ignore =)]` — 81 suppressed entries**, and 3
+> `[Explicit]`, after phase 4 closed eight and opened none that survived it. Counted 2026-07-29, not
+> carried. Historical note, kept because the shape recurs: the count went *up* across phase 3 and that is
 > honest: it closed six and opened five, every one of the five a defect that was already there and is
 > now on the books with a failing test waiting. Count before trusting it:
 > `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l` — and note the command over-counts prose
@@ -282,22 +285,246 @@ and the WAL is truncated the moment the memtable is flushed into an SSTable that
 writes durable up to the next memtable flush and no further, while its own doc comment sells it as the
 durable mode.
 
-### Phase 5 — Performance *(workstream C)*
+---
+
+## Phases 5–10, planned 2026-07-29 after phase 4 closed
+
+Written after reading what four phases left behind, and **each of the five new phases is shaped the
+same way: audit the area first, then work it.** That shape is not a formality — it is what the last
+four phases showed to be the difference between fixing a list and fixing a subject. Phase 2's
+conformance suite added findings before it fixed any; phase 3's corpus found the grammar already
+ambiguous; phase 4 found **six defects in no audit**, one of which made the database unopenable. An
+area is never as small as its recorded findings.
+
+**Performance moves to the end** for the reason it was last before and one new one: phases 5, 6 and 7
+all change the lock and write paths, and phase 4 has just made the write path ~1.5× slower, so a
+number taken now describes something that is about to change twice more.
+
+**A standing caution for all five.** The 68 markers are a *lower bound*. Every phase so far has found
+defects nobody had recorded, and the ratio has not fallen: 6 of 13 in phase 4. Each audit below should
+expect to *add* findings, and the phase is not going badly when it does.
+
+### Phase 5 — Concurrency and concurrent access — **NEXT**
+
+The only remaining area of the same severity as what phases 1 and 4 closed: it contains a defect that
+**corrupts data**, and it is the area an application meets first in one of the three deployment shapes
+the goal names.
+
+**Already measured — 15 markers, and one access question that is bigger than all of them.**
+
+- **Data corruption.** `Clear()` recycles a pooled buffer while its write is still in flight: the page
+  that reached storage held `0xFF` — the next borrower's fill — instead of the `0xAB` the caller
+  wrote. `Evict()` refuses correctly on the same condition; `Clear()` does not.
+- **Row locks do not release.** `IsLocked` still reports true after the handle is disposed, and from
+  the caller's side a second transaction cannot take the row at all. Deadlock detection is an empty
+  `if` body carrying the comment "full implementation would track all holders", so two deadlocked
+  transactions both time out after the full 2 s instead of one being told.
+- **`ReleaseAllLocks` runs foreign code while holding the sync lock** — measured at 1007 ms for a
+  waiter whose continuation sleeps 1000 ms.
+- **Page latches double-grant.** A second exclusive acquire is granted while another thread holds the
+  page, and the holder's release then throws `SynchronizationLockException`.
+- **The parallel LSM store does not read its own write** — `Get` returns null and `Scan` returns 0 rows
+  for a key written moments earlier *on the same thread*.
+- **`FlushAllAsync` discards another thread's buffered writes** — recorded as *not reproduced*, then
+  confirmed by CI on both PR runs.
+- **File locking does not exclude a second opener.**
+
+**And the access question.** `StorageFile` opens read-write with `FileShare.None`, so a second
+connection to the same file cannot open it at all. Four of the five parallel-access tests carry the
+note *"Multiple file connections not supported for embedded database"* — a design statement, never
+verified as a decision. Meanwhile a `ConnectionPool` exists, keyed by connection string, unit-tested —
+and **nothing in the provider references it**: `WitDbConnection` never touches it. The mechanism that
+would let a web application's per-request `DbContext` share one engine is written and unwired.
+
+That is the shape of a demo deployment, one of the three use cases the goal names. It is the single
+most consequential open question in the project.
+
+**What the audit must establish**, before a line is fixed:
+
+1. **What the concurrency model is.** Single writer and many readers? One engine per file per process?
+   More than one process? Nothing states it, and the answer decides whether "multiple connections" is
+   a defect or a documented limit — which is the difference between a fix and a paragraph.
+2. **Which markers are reachable from the provider at all.** The audit already found one — the
+   connection-pool permit leak — real but unenterable. A defect in unreachable code is a different
+   priority, and saying so is not the same as dismissing it.
+3. **Whether parallel mode is a supported configuration or an unfinished experiment.** One marker
+   reads *"Parallel Mode=Buffered causes SQL parsing issues - requires investigation"*. That is a note,
+   not a verdict, and it has been carried for months.
+4. **Which findings survive a second machine.** Two of these were settled only by CI. Any "not
+   reproduced" here is provisional until a runner agrees.
+
+**Instrument.** Mostly built: the four techniques that settled `core-concurrency` deterministically —
+park the collaborator, time the wrong thread, cross a path boundary single-threaded, and reason about
+reachability before believing a passing test. What is missing is a **multi-process concurrent-access
+harness**: two processes, one file. `Tools/OutWit.Database.CrashRunner` is one scenario away from it.
+
+**Risk: the highest of the five.** Lock-ordering changes are where new deadlocks come from, and the
+suite's thin concurrency coverage is exactly what let these through. Every fix wants the deterministic
+shape, not a stress loop — a green stress run proves only that the race did not happen that time.
+
+**Acceptance.** Every marker fixed with a deterministic test, or reclassified as unreachable or
+by-design **with the model written down**. Parallel mode either supported and covered, or removed. The
+concurrency model stated in `WitSQL.md`, where a consumer will read it.
+
+### Phase 6 — The ADO.NET and EF Core contract
+
+Where "the application must not notice" fails first — not in the engine, but in the surface the
+application actually holds.
+
+**Already measured.**
+
+- **An abandoned `TransactionScope` leaves the write committed.** `EnlistTransaction` throws
+  `NotSupportedException`, so the connection never enlists and the write commits independently of the
+  ambient transaction. Silent, and through a standard .NET idiom.
+- **Savepoints are invisible through the contract.** `DbTransaction.SupportsSavepoints` is False, and
+  `Save` / `Rollback(string)` / `Release(string)` are declared `public void` rather than `override`, so
+  a caller holding a `DbTransaction` gets `NotSupportedException` while the same call on the concrete
+  type works. EF Core uses savepoints to retry `SaveChanges`.
+- **The requested isolation level is silently dropped** through ADO.NET — `WitSqlEngine.Execute` builds
+  a fresh execution context per call, so the level left pending never reaches the transaction.
+- **A reader keeps streaming after `Close()`** — `IsClosed` is False and four more rows arrive, on a
+  file-backed database. The rows were correct, so this is undefined behaviour that happens to work.
+- Two `[TestCase]` markers on `DbException`: a missing table and a syntax error do not surface as the
+  exception type ADO.NET callers catch.
+
+**What the audit must establish.** Enumerate, member by member, what `DbConnection`, `DbCommand`,
+`DbTransaction`, `DbDataReader` and `DbProviderFactory` promise, and for each: overridden, shadowed, or
+absent. **Shadowed is the dangerous middle** — it passes every test written against the concrete type
+and fails for the consumer. That is a rule this project has already paid for once.
+
+**Instrument.** Exists in method if not in code: write every provider test through the base types. The
+audit's own harness missed these because it held `WitDbConnection`, not `DbConnection`.
+
+**Risk: low technically, high in value.** Most of these are small; the reason they matter is that each
+is a place where an application built against PostgreSQL or SQL Server behaves differently without
+being told.
+
+**Acceptance.** No member reachable through a base type behaves differently from the concrete one.
+`TransactionScope` either works or refuses at enlist time — never commits silently outside the scope.
+
+### Phase 7 — Schema and DDL fidelity
+
+The database's description of itself, and whether it matches what was declared.
+
+**Already measured.**
+
+- **Named constraints declared in `CREATE TABLE` lose their names**, so `ALTER TABLE DROP CONSTRAINT`
+  can never remove them — for `CHECK`, `FOREIGN KEY` and `UNIQUE` alike. It fails loudly, which is the
+  one mercy: an EF `DropForeignKey` migration throws rather than silently leaving the constraint.
+- **`ALTER TABLE ADD COLUMN` silently discards `UNIQUE`, `PRIMARY KEY`, `CHECK` and `REFERENCES`.**
+  Every violating insert is accepted. The column reads as constrained in the DDL the user wrote and is
+  unconstrained in the database.
+- **`DROP COLUMN` leaves foreign-key and primary-key metadata** pointing at the dropped column, and the
+  next insert throws `KeyNotFoundException`. Index and `UNIQUE` metadata are cleaned up correctly, so
+  this is two of four.
+- **Declared sizes are never recorded at all.** After `CREATE TABLE T (S VARCHAR(5), V DECIMAL(5,2))`,
+  `MaxLength`, `Precision` and `Scale` are all null — so they cannot be enforced, and
+  `INFORMATION_SCHEMA` under-reports the schema for the same reason. **Not an audit finding**; it
+  surfaced only because enforcement was written and never fired.
+- **EF migrations drop `maxLength`, `precision` and `scale`** when emitting `AddColumn` — which
+  compounds with the row above: two independent defects covering for each other.
+
+**What the audit must establish.** For every DDL form the grammar accepts: what reaches the catalog,
+what `INFORMATION_SCHEMA` reports, and what is enforced. Those are three different questions, and the
+findings above show all three diverging.
+
+**Instrument — this one has to be built.** A **DDL round-trip corpus**, the same shape as the grammar
+corpus that worked in phase 3: declare, read the catalog back, compare against what was declared, and
+classify failures by cause rather than counting them. Nothing like it exists, which is why a whole
+class — declared sizes — went unrecorded through a 104-finding audit.
+
+**Risk: moderate.** The changes are localised, but enforcement that was never applied will start
+rejecting data that used to be accepted, and that is a behaviour change consumers will meet.
+
+**Acceptance.** Everything the DDL accepts is recorded, enforced, or refused at declaration time —
+never accepted and ignored. `INFORMATION_SCHEMA` describes what was declared.
+
+### Phase 8 — Serializer round-trip
+
+Everything the engine writes down and reads back: view bodies, partial-index filters, `CHECK`
+expressions, generated SQL.
+
+**Already measured.**
+
+- **The expression serializer replaces every subquery with the literal text `SELECT ...`.** A view whose
+  body contains a subquery is **created successfully and then throws a parse error on every query
+  against it**. A partial index's filter reads back as `(CustomerId IN (SELECT ...))`. `CHECK` the same.
+  Created-then-broken is the worst shape a drop-in can take.
+- **The reserved-word set holds 68 entries against roughly twice that documented.** `Using`, `With`,
+  `Row`, `Column`, `Cross`, `Interval` and `Partition` are emitted unquoted and then fail to re-parse.
+  `Order` and `Group`, used as controls, round-trip correctly.
+- `GrammarRoundTripTests` pins **69 known failures by cause** — deliberately by cause, so an unrelated
+  fix cannot mask a new break.
+
+**What the audit must establish.** Which of the 69 are the same defect wearing different clothes. The
+subquery placeholder alone may account for a large share, and the reserved-word list for much of the
+rest — but that is a hypothesis, and counting is not classifying.
+
+**Instrument.** Exists: the 193-entry corpus and the round-trip pins. This is the one phase whose
+instrument is already paid for, which is part of why it sits here rather than earlier.
+
+**Risk: low.** The serializer has no concurrency and no persistence semantics; a wrong fix produces a
+failing round-trip, not silent corruption.
+
+**Acceptance.** Nothing the engine persists can fail to re-parse. The reserved-word list is derived
+from the grammar rather than hand-maintained, so the two cannot drift again.
+
+### Phase 9 — Unbuilt capability
+
+Not an audit of defects — **a decision pass**, and the only phase here whose output may legitimately be
+"no, and here is why".
+
+**The list, all measured during phase 3 and collected in its §14:** lateral joins (`LATERAL` /
+`CROSS`/`OUTER APPLY`), a `VALUES` table source, a derived column list `AS V(Id)`, `TOP n`,
+user-defined functions, stored procedures, JSON columns. Plus **database-first scaffolding**, which
+cannot work at all: `WitDatabaseModelFactory` queries `sqlite_master` and SQLite `PRAGMA`s, and the
+first fails with "table not found" while the second does not parse. And `HAVING COUNT(*) BETWEEN 1 AND
+5`, which raises — pre-existing, and not a `BETWEEN` defect.
+
+**What the audit must establish**, per item, using the rule already agreed: **value for the drop-in
+goal × how often real code uses it**, against **implementation cost and the risk it adds to the
+engine**. Completeness is the priority but not the only term; a capability that needs a layer which
+materially slows the database and is rarely used is a legitimate skip.
+
+**The one hard rule: a skip must be documented** — silently missing is what breaks the illusion, a
+recorded and reasoned "not supported, here is why" does not.
+
+**Instrument.** The gap this phase inherits is that **every conformance instrument in the repository
+compares against SQLite**, which lacks most of this list. The successor argued for in phase 3 §14.2 is
+the same idea aimed one level up: run the same SQL against **PostgreSQL and SQL Server** —
+Testcontainers or a developer-supplied connection string, excluded from CI as the SQLite oracle is —
+and produce a **dialect coverage report** rather than a pass/fail gate. That would replace the
+hand-assembled list above with a measured one, and it is the cheapest way to stop the roadmap being
+assembled from recollection.
+
+**Risk: highest cost, lowest urgency.** UDFs and stored procedures are subsystems, not features.
+
+**Acceptance.** Every item either built, or documented as a reasoned skip with a marked test that turns
+green if it is ever built.
+
+### Phase 10 — Performance *(workstream C)*
 
 Run the 78 benchmarks that have never been run, fix what the profile actually shows
 (`CommitTransaction` scanning the whole store on every commit; GC reclaiming nothing), re-measure.
 
-**Why last:** phases 1 and 4 both change the write path, so measuring before them means measuring
-twice. The one exception is the **baseline** — it depends on nothing, costs a couple of hours, and
-is worth taking early precisely because nobody has it.
+**Why last, now with a second reason.** Phases 5, 6 and 7 all change the lock and write paths, so
+measuring before them means measuring twice — the same argument that put it after phases 1 and 4. And
+phase 4 has just made the write path **~1.5× slower** on autocommit (1000 inserts, 0.26 s against
+0.17 s) in exchange for durability, so today's numbers describe a system about to change again.
+
+**The exception stands and is now overdue.** The **baseline** depends on nothing, costs a couple of
+hours, and is worth taking at any time — precisely because the 1.5× above is currently a number
+without a context. Every performance claim in existence still comes from the least discriminating
+workload: 78 of the suite's benchmarks have never been run.
 
 ### What would reorder this
 
 The order above optimises for "don't lose data, then don't redo work". Two things would change it:
 
-- **If an honest "drop-in" claim is the nearer goal**, phase 2 moves to the front: it decides what is
-  worth fixing at all, and could reclassify part of phase 1 as lower priority.
-- **If performance is pressing** — a consumer hitting a wall — the phase 5 baseline moves into phase
+- **If a consumer deploys onto real concurrent load**, phase 5 is already first and nothing changes;
+  if one deploys onto EF Core with a per-request `DbContext`, the connection/engine-sharing question
+  inside phase 5 becomes the whole of it and the rest can wait.
+- **If performance is pressing** — a consumer hitting a wall — the phase 10 baseline moves into phase
   0. It depends on nothing.
 
 One thing should not move under any circumstance: **the grammar goes after everything else that
