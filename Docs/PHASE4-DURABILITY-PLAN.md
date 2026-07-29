@@ -253,7 +253,7 @@ depends on. **Subject 6 lands after subject 2, never before.**
 | 4 | Savepoint replay | journal — **§9**, compensating records, no format change |
 | 5 | Rowid counters | engine metadata — **§10: still open**, both routes refuted; an MVCC namespace collision fixed instead |
 | 6 | SSTable fsync **and the LSM file seam** | LSM — **§11** |
-| 7 | Compaction manifest | LSM |
+| 7 | Compaction crash window | LSM — **§12**, atomic publish rather than a manifest |
 | 8 | Statement atomicity / implicit per-statement transaction | engine write path |
 
 Each PR waits for green CI before the next starts. A release is cut when enough has accumulated;
@@ -618,7 +618,61 @@ Ledger unchanged at **72 + 13** — this finding was carried as a comment, not a
 
 ---
 
-## 12. The four standing rules, applied to this phase
+## 12. PR 7 results — an unfinished table is not a table, 2026-07-29
+
+Subject 5. The audit's compaction finding covered one half of the crash window; **the other half was
+worse than the half that was recorded**, and nobody had looked at it.
+
+### 12.1 The half nobody looked at
+
+The recorded finding is a crash *after* the output is published with an input still on disk, and its
+verdict — mechanism confirmed, consequence not reproduced — was re-checked and still holds: the
+survivor is readmitted but loses, because the output sorts newer and keeps its tombstones.
+
+The other half is a crash *while writing*. Both the memtable flush and the compactor wrote straight to
+the final name, `sst_NNNNNN.sst`, so a crash part-way through left a truncated file already carrying
+the name recovery looks for — with the highest id, which made it the **newest** table in the store.
+
+Measured: **the next open failed outright** — `InvalidDataException: Invalid SSTable magic`. One crash
+at the wrong moment and the database could not be opened at all.
+
+### 12.2 Two questions, two different answers
+
+- **A table that was never finished must never appear.** Fixed: it is written under a name the store
+  ignores and renamed into place once complete and synced. A rename within one directory is atomic on
+  NTFS and on POSIX, so there is no manifest to keep consistent.
+- **A table that *is* damaged must be reported, not skipped.** Already true, and now pinned. This is
+  the same principle the WAL fix settled: a database may lose data to corruption, but it must say so.
+  Silently dropping an unreadable table would turn a hardware fault into missing rows nobody was told
+  about.
+
+The building name is a **prefix**, not an extra extension, and that detail is load-bearing: the store
+lists its tables with `Directory.GetFiles(directory, "sst_*.sst")`, and on Windows a three-character
+extension in a search pattern **also matches longer extensions beginning with it** — so
+`sst_000009.sst.building` would have been listed as a live table on exactly the platform the guard is
+meant to protect.
+
+### 12.3 The first version of the test passed with the fix reverted
+
+It used an injected write failure and a `using`. Disposing an unfinished builder deletes the fragment,
+so the cleanup masked whether the rename did anything at all — the test was green either way.
+
+**A crash runs no cleanup.** The test now abandons the builder without disposing it, releases the
+handle the way a dead process would, and only then looks at the directory. Reverted, it fails with
+*"Expected is String[1], actual is String[2]"* — the fragment listed as a table. The two mechanisms
+are now separate tests, because they are separate claims: the rename is what survives a crash, the
+cleanup is what keeps an ordinary failure from leaving litter.
+
+That is the fourth instrument in this phase that was wrong before its subject was.
+
+### 12.4 Counts after PR 7
+
+Core suite **2235 → 2239 passed**, 23 skipped, both frameworks identical; whole solution green.
+Ledger unchanged at **72 + 13**.
+
+---
+
+## 13. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -638,7 +692,7 @@ Ledger unchanged at **72 + 13** — this finding was carried as a comment, not a
 
 ---
 
-## 13. Acceptance
+## 14. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.

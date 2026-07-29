@@ -24,6 +24,22 @@ public interface ISstableFile : IDisposable
     /// Makes everything written so far durable - not merely handed to the operating system.
     /// </summary>
     void Sync();
+
+    /// <summary>
+    /// Closes the file and makes it visible under the name the store looks for.
+    /// </summary>
+    /// <remarks>
+    /// Until this is called the table is not part of the store, and that is the point. Both the
+    /// memtable flush and the compactor used to write straight to the final name, so a crash
+    /// part-way through left a truncated file already carrying the name recovery looks for - with the
+    /// highest id, which made it the newest table in the store. Measured: the next open failed
+    /// outright with <c>InvalidDataException: Invalid SSTable magic</c>. One crash at the wrong
+    /// moment and the database could not be opened at all.
+    ///
+    /// A table that was never finished must never appear. Publishing is a rename within one
+    /// directory, which is atomic on NTFS and on POSIX.
+    /// </remarks>
+    void Publish();
 }
 
 /// <summary>

@@ -270,6 +270,15 @@ namespace OutWit.Database.Core.LSM
                 try { Finish(); } catch { /* Best effort */ }
             }
 
+            m_writer.Flush();
+
+            // Only a finished table is published. Until then it sits under a name the store does not
+            // look for, so a crash part-way through leaves a fragment nobody will try to read - the
+            // next open used to fail outright on one, because both the memtable flush and the
+            // compactor wrote straight to the final name.
+            if (m_finished)
+                m_file.Publish();
+
             m_writer.Dispose();
             m_file.Dispose();
             m_currentBlock.Dispose();
