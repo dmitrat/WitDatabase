@@ -40,10 +40,6 @@ public class CoreDurabilityFindingsTests
     #region Savepoint rollback is invisible to the journal
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the discarded write came back during replay. The rollback to the "
-            + "savepoint removed it from the store and left its record in the journal, so recovery "
-            + "reapplied a write the transaction had already thrown away before committing. "
-            + "core-durability, Core/Transactions/Transaction.cs:310")]
     public void WalReplayDoesNotResurrectRolledBackWritesTest()
     {
         // Finding: Transaction.cs:310 - a rollback to a savepoint undoes the writes in the store but
