@@ -280,11 +280,21 @@ public class WriteAheadLogTests : IDisposable
 
     #region CRC32 Integrity Tests
 
+    /// <summary>
+    /// A corrupted entry stops the replay <b>and says so</b>.
+    /// </summary>
+    /// <remarks>
+    /// This test used to assert only <c>replayedCount &lt; 2</c> - that replay stopped - which pinned
+    /// the silent half of a confirmed data-loss defect as correct behaviour. Stopping is right;
+    /// stopping quietly is not, because the caller then truncates the log and every entry behind the
+    /// damage is destroyed with nothing reported. Fixed 2026-07-29 in phase 4; see
+    /// <c>CoreDurabilityFindingsTests.CorruptWalRecordDoesNotSilentlyDiscardLaterTransactionsTest</c>.
+    /// </remarks>
     [Test]
-    public void CorruptedEntryStopsReplayTest()
+    public void CorruptedEntryStopsReplayAndReportsItTest()
     {
         var walPath = Path.Combine(m_testDir, "corrupted.wal");
-        
+
         using (var wal = new WriteAheadLog(walPath, createNew: true))
         {
             wal.AppendPut(ToBytes("key1"), ToBytes("value1"));
@@ -294,21 +304,26 @@ public class WriteAheadLogTests : IDisposable
 
         // Corrupt the file
         var bytes = File.ReadAllBytes(walPath);
-        if (bytes.Length > 30)
-        {
-            bytes[25] ^= 0xFF; // Flip some bits in the middle
-            File.WriteAllBytes(walPath, bytes);
-        }
+        Assert.That(bytes, Has.Length.GreaterThan(30),
+            "the corruption below writes at offset 25, so a shorter file would leave the entries "
+            + "intact and the test would pass without testing anything");
 
-        var replayedCount = 0;
-        
-        using (var wal = new WriteAheadLog(walPath))
-        {
-            replayedCount = wal.Replay(new WalReplayVisitorSimple((_, _) => { }, _ => { }));
-        }
+        bytes[25] ^= 0xFF; // Flip some bits in the middle
+        File.WriteAllBytes(walPath, bytes);
 
-        // Should stop at corrupted entry
-        Assert.That(replayedCount, Is.LessThan(2));
+        using var reopened = new WriteAheadLog(walPath);
+
+        var reported = Assert.Throws<WalReplayException>(
+            () => reopened.Replay(new WalReplayVisitorSimple((_, _) => { }, _ => { })),
+            "the log holds two entries by its own header and one of them no longer verifies, so the "
+            + "replay must report the loss rather than return a short count that reads like a "
+            + "complete log");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(reported!.Replayed, Is.LessThan(2), "the damaged entry is not applied");
+            Assert.That(reported.Expected, Is.EqualTo(2), "and the header knew there were two");
+        });
     }
 
     #endregion

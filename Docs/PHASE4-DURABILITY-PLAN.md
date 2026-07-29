@@ -249,7 +249,7 @@ depends on. **Subject 6 lands after subject 2, never before.**
 | 0 | This plan, plus the engine-suite baseline | none — **merged as #38** |
 | 1 | Instrument A — crash runner, C1–C3, verdict classification | none — **§6** |
 | 2 | Instrument B — modelled cut, fsync counter, C4–C6 | none — **§7**; `WithStorage` already existed |
-| 3 | WAL truncation on partial replay (+ the `RollbackJournal` relative path) | recovery |
+| 3 | WAL truncation on partial replay (+ the `RollbackJournal` relative path) | recovery — **§8**, and the same fix was needed in the LSM WAL |
 | 4 | Savepoint replay | journal |
 | 5 | Rowid counters | engine metadata |
 | 6 | SSTable fsync, `SyncWrites` documented for what it does, **and the LSM file seam** | LSM |
@@ -383,7 +383,80 @@ becomes a marked test in the PR that fixes it rather than a marker opened now ag
 
 ---
 
-## 8. The four standing rules, applied to this phase
+## 8. PR 3 results — the WAL stops lying about what it lost, 2026-07-29
+
+Two markers closed, and the fix turned out to be needed in **two places rather than one**.
+
+### 8.1 Proven red first, as the rule requires
+
+Both `[Ignore]`d tests were unmarked and run against unfixed code before anything was changed:
+
+- `CorruptWalRecordDoesNotSilentlyDiscardLaterTransactionsTest` — *"after corrupting one mid-log
+  record: 2/5 transactions recovered, error reported: **none**"*, exactly as the audit recorded in
+  2026-07.
+- `RollbackJournalAcceptsABareRelativePathTest` — `ArgumentException: The value cannot be an empty
+  string. (Parameter 'path')`.
+
+### 8.2 The discriminator was already in the file
+
+Reporting every early stop would turn an ordinary crash into an unopenable database: a **torn tail** —
+the half-written record left by a crash during an append — is normal and must replay cleanly.
+
+The WAL header already carries an **entry counter**, written on sync and restored on open. That
+settles it exactly: a record in flight when the power went was never counted, so a short replay that
+matches the header is recovery working; a replay that comes up short *against the header* is data
+loss. No new format, no heuristic.
+
+`Replay` now distinguishes the two and throws `WalReplayException` carrying replayed, expected and the
+byte offset. `TransactionalStore.Recover` flushes the prefix it did apply, **skips the checkpoint** —
+truncating would destroy the records behind the damage along with any chance of recovering them by
+other means — and rethrows.
+
+### 8.3 The same silence existed on a second path
+
+The finding named `TransactionalStore.cs:403`. `Core/LSM/WriteAheadLog.cs` had the identical shape —
+stop at the first record that fails verification, return the count as though the log ended there, and
+let `StoreLsm` truncate on the next memtable flush. Proven separately (**3 of 8 entries replayed, no
+error**) and fixed with the same discriminator.
+
+Fixing only the named path would have repeated this project's own history: the 2.0.0 `DropTable`
+change fixed the schema half of a defect, left the storage half, and its comment was believed for
+months.
+
+### 8.4 The control was wrong twice, and both times it mattered
+
+The torn-tail control is what keeps the fix from being merely loud, and its first two constructions
+were both unfaithful:
+
+1. It synced eight records and then truncated the file. That is not a torn tail — those records were
+   acknowledged, so losing them quietly is the *defect*. As written it would have pinned the bug as
+   correct behaviour.
+2. Rewritten to append a ninth record through the WAL and abandon it — but `Dispose` calls
+   `UpdateHeader`, so the header counted the torn record too and the control went red **after** the
+   fix, for a reason a power failure never produces.
+
+It now appends raw bytes to the end of the file, leaving the header behind them, which is what a crash
+mid-append actually leaves.
+
+### 8.5 A test in the suite was pinning the defect
+
+`WriteAheadLogTests.CorruptedEntryStopsReplayTest` asserted only `replayedCount < 2` — that replay
+stops. Stopping is right; **stopping quietly is the defect**, and the test pinned the quiet half as
+correct. It is now `CorruptedEntryStopsReplayAndReportsItTest` and asserts the report, its counts, and
+that the corruption offset is actually inside the file rather than past its end.
+
+Worth stating plainly: **the existing suite contained an assertion that a confirmed data-loss
+behaviour was correct.** That is the same class of hole phase 0's mutation testing exists to find.
+
+### 8.6 Counts after PR 3
+
+Core suite **2219 → 2223 passed, 26 → 24 skipped** (two markers closed, two LSM tests added), both
+frameworks identical. Whole solution green under the CI filter. Ledger **75 → 73** attributes plus 13
+`[TestCase(… Ignore =)]` — **86 suppressed entries**.
+
+---
+
+## 9. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -403,7 +476,7 @@ becomes a marked test in the PR that fixes it rather than a marker opened now ag
 
 ---
 
-## 9. Acceptance
+## 10. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.
