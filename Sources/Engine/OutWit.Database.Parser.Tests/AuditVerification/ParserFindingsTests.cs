@@ -97,9 +97,7 @@ public class ParserFindingsTests
     #region Hexadecimal literals
 
     [TestCase("SELECT 0x1F")]
-    [TestCase("SELECT * FROM T WHERE Flags & 0x0F = 1",
-        Ignore = "CONFIRMED 2026-07-27: WitSqlParsingException, mismatched input 'x0F'. The lexer " +
-                 "splits 0x0F into 0 and x0F. parser, Parser/Grammars/WitSqlParser.g4:527")]
+    [TestCase("SELECT * FROM T WHERE Flags & 0x0F = 1")]
     public void HexadecimalLiteralParsesTest(string sql)
     {
         // Finding: WitSqlParser.g4:527 - no typed, prefixed or hexadecimal literal forms exist,
@@ -199,19 +197,29 @@ public class ParserFindingsTests
 
     #region Characterisation
 
+    /// <summary>
+    /// The behaviour this characterisation used to record has been deliberately changed, so it is now
+    /// an assertion rather than a print.
+    /// </summary>
+    /// <remarks>
+    /// Before phase 3, <c>SELECT 0x1F</c> parsed — which looked like partial hex support and was not:
+    /// the lexer took <c>0</c> as the value and <c>x1F</c> as a column alias, so the statement
+    /// <b>succeeded and returned 0</b>. That is worse than the parse failure the finding recorded,
+    /// because a wrong number is silent. It now returns 31, and the alias is gone.
+    /// </remarks>
     [Test]
-    public void HexLiteralInASelectListCharacterisationTest()
+    public void HexLiteralIsAValueAndNotAnAliasTest()
     {
-        // `SELECT 0x1F` parses, which looked at first like partial hex support. It is not: the lexer
-        // takes `0` as the value and `x1F` as a column alias. This prints what actually came out.
         var select = (WitSqlStatementSelect)WitSql.Parse("SELECT 0x1F")[0];
         var column = select.SelectList[0];
 
-        TestContext.Out.WriteLine(
-            $"expression = {WitSqlExpressionSerializer.Serialize(column.Expression!)}, " +
-            $"alias = {column.Alias ?? "<none>"}");
-
-        Assert.Pass("characterisation only - see the printed result");
+        Assert.Multiple(() =>
+        {
+            Assert.That(column.Alias, Is.Null,
+                "`x1F` used to be taken as a column alias; it is part of the literal now");
+            Assert.That((column.Expression as WitSqlExpressionLiteral)?.Value, Is.EqualTo(31L),
+                "0x1F is 31, and used to evaluate to 0");
+        });
     }
 
     [Test]

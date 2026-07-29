@@ -510,6 +510,11 @@ DOT: '.';
 // Literals
 // ============================================================================
 
+// Must precede INTEGER_LITERAL. Without it `0x1F` lexed as INTEGER_LITERAL `0` followed by the
+// IDENTIFIER `x1F`, so `SELECT 0x1F` did not fail - it SUCCEEDED and returned 0 under the alias
+// x1F, and `Flags & 0x0F` failed to parse. A silently wrong number is the worse of the two.
+HEX_LITERAL: '0' [xX] [0-9a-fA-F]+;
+
 INTEGER_LITERAL: DIGIT+;
 REAL_LITERAL: DIGIT+ DOT DIGIT* | DOT DIGIT+ | DIGIT+ DOT? DIGIT* [Ee] [+-]? DIGIT+;
 STRING_LITERAL: '\'' ( ~'\'' | '\'\'' )* '\'';
