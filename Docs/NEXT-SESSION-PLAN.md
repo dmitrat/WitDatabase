@@ -29,9 +29,11 @@ rework early, and that would be a mistake.
 The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: each marker is a
 confirmed defect with a test already written that turns green when it is fixed.
 
-> **State at 2026-07-29. Phases 0, 1, 2 and 3 are done.** 2.1.0–2.4.0 published, seven packages each.
-> Phase 3 is PRs #28–#35, prepared for release as **3.0.0** — major, because it changes answers the
-> previous releases gave. Resume at **Phase 4 — durability and crash recovery.**
+> **State at 2026-07-29. Phases 0, 1, 2 and 3 are done; phase 4 is open.** 2.1.0–2.4.0 published,
+> seven packages each. Phase 3 is PRs #28–#35, released as **3.0.0** and then **3.0.1** — major,
+> because it changes answers the previous releases gave. **Use 3.0.1**: 3.0.0 published only five of
+> the seven packages, and `AdoNet 3.0.0` went out depending on `OutWit.Database 2.4.0`. Phase 4 —
+> durability and crash recovery — is now **in progress**, see below.
 >
 > **77 `[Ignore]` markers**, plus 3 `[Explicit]`. The count went *up* across phase 3 and that is
 > honest: it closed six and opened five, every one of the five a defect that was already there and is
@@ -39,6 +41,12 @@ confirmed defect with a test already written that turns green when it is fixed.
 > `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l` — and note the command over-counts prose
 > mentions of the marker and misses `Ignore =` properties on individual `[TestCase]`s. The second
 > ledger is the baseline in `WitComplianceTest` — **325 unimplemented conformance suites**.
+>
+> **Decomposed 2026-07-29 so it stops being re-derived: `73 + 13`.** The command's 77 is 73 real
+> `[Ignore(...)]` attributes plus 4 prose mentions; it separately misses 13 `[TestCase(…, Ignore = …)]`
+> properties (7 reserved words in `ParserFindingsTests`, 4 table sources in `DropInGapsEngineTests`,
+> 2 in `CrossCuttingAdoNetTests`). So the real ledger is **86 suppressed test entries** plus 3
+> `[Explicit]`, and the two errors do not cancel — they are different sets. Report both numbers.
 >
 > **Full record of phase 3: [PHASE3-GRAMMAR-PLAN.md](PHASE3-GRAMMAR-PLAN.md)**, including the
 > capability backlog in its §14 and the scope correction at its head.
@@ -244,7 +252,18 @@ specifications plus the existing suite, which is a far better position than July
 
 </details>
 
-### Phase 4 — Durability and crash recovery — **NEXT**
+### Phase 4 — Durability and crash recovery — **IN PROGRESS**
+
+> **Opened 2026-07-29. Full record: [PHASE4-DURABILITY-PLAN.md](PHASE4-DURABILITY-PLAN.md)**, which
+> carries the re-measured baseline, the mechanisms read out of the current `main` with file and line,
+> the design of both instruments with their controls, and the PR sequence.
+>
+> **Two decisions taken at the start, both Dmitry's.** The fsync claims are settled by a **modelled
+> power cut at the storage seam plus an fsync counter**, not by a real power cut — deterministic, runs
+> in CI, and honest about proving that the code never *asks* for durability rather than about
+> behaviour on metal. And the out-of-process runner lives in `Tools/`, tagged `Category=Crash` but
+> **not** excluded from CI: crash tests are deterministic assertions about this code, unlike the
+> `Performance`, `Conformance` and `Oracle` exclusions.
 
 Has a **prerequisite**: two findings cannot be reproduced with the current test surface. Rowid
 counter reuse needs a second process, because a file engine opens its storage with `FileShare.None`
@@ -254,6 +273,13 @@ power cut, because a clean process kill still lets the OS write its cache back.
 So build the harness first — I/O fault injection plus an out-of-process runner — then fix WAL
 truncation on partial replay, savepoint replay, rowid counters, SSTable fsync and the compaction
 manifest.
+
+**One consumer-facing statement fell out of the reading and is worth flagging here:** `SyncWrites`
+syncs the WAL only ([StoreLsm.cs:155](../Sources/Core/OutWit.Database.Core/Stores/StoreLsm.cs#L155)),
+and the WAL is truncated the moment the memtable is flushed into an SSTable that was never fsynced
+([StoreLsm.cs:602](../Sources/Core/OutWit.Database.Core/Stores/StoreLsm.cs#L602)). So the option makes
+writes durable up to the next memtable flush and no further, while its own doc comment sells it as the
+durable mode.
 
 ### Phase 5 — Performance *(workstream C)*
 
