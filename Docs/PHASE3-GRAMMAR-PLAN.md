@@ -689,3 +689,53 @@ position stays represented and turns green when the aggregation defect is fixed.
 Twelve new passing pins, three new markers. Whole solution green under the CI filter, 14 projects,
 both frameworks. Ledger **75 → 78** — the increase is honest: three defects that were already there,
 now on the books with tests waiting.
+
+---
+
+## 11. PR 4 results — `INSERT … DEFAULT VALUES`, 2026-07-28
+
+One of the three shapes the oracle showed SQLite accepting and WitDatabase rejecting. EF Core emits
+it for an entity whose columns are all store-generated.
+
+### 11.1 The executor needed no change at all
+
+`DEFAULT VALUES` became an alternative of `insertStatement`, and the visitor turns it into a **single
+empty value row**. That is the whole implementation, because
+`BuildInsertRowWithAutoGenInfo` already:
+
+1. seeds every column with its default, auto-increment value or `ROWVERSION`, then
+2. applies the supplied values — in a loop bounded by the value count, so an empty row applies
+   nothing, then
+3. computes `STORED` computed columns and validates `NOT NULL`.
+
+Representing the feature as data the existing path already handles, rather than as a new flag with a
+new branch, means there is no second code path to keep correct. Grammar and visitor only.
+
+### 11.2 One test passed before the fix, for the wrong reason
+
+Six tests, run against unfixed `main` in a worktree first. **Five failed and one passed** —
+`NotNullColumnWithoutADefaultStillRefusesTest`, asserting `Throws.Exception`. It passed because the
+statement failed to **parse**, which is not the claim it makes.
+
+Tightened to `Throws.Exception.With.Message.Contains("NOT NULL")`, after which all six fail on
+unfixed code and all six pass on fixed code. This is the same trap recorded twice before in this
+project — asserting that *something* went wrong rather than *what* — and a bare `Throws.Exception` on
+a feature that does not parse yet will always find one.
+
+### 11.3 Coverage
+
+Six engine tests: the all-generated EF Core case including counter advance, declared string and
+integer defaults, a parenthesised expression default, `NOT NULL` still refused, `RETURNING`, and a
+row count. The parser-level marker in `ParserFindingsTests` is removed.
+
+### 11.4 Counts after PR 4
+
+| Suite | After PR 3 | After PR 4 |
+|---|---|---|
+| `Parser.Tests` | 727 / 11 skipped / 738 | **728 / 10 / 738** |
+| `Tests` (`Category!=Performance`) | 1921 / 31 / 1952 | **1927 / 31 / 1958** |
+
+Whole solution green under the CI filter. Ledger **78 → 77**.
+
+Oracle divergences remaining: `hexLiteral` (PR 5), `valuesTableSource` (PR 6), and the three
+`HAVING`-aggregate shapes recorded in §10.1 as pre-existing and out of phase-3 scope.

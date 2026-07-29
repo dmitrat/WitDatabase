@@ -270,6 +270,15 @@ internal sealed partial class WitSqlVisitor
                 values.Add(row);
             }
         }
+        else if (context.DEFAULT() != null)
+        {
+            // INSERT ... DEFAULT VALUES is one row that supplies no values. Representing it as a
+            // single empty row rather than as a new flag means the executor needs no change at all:
+            // BuildInsertRowWithAutoGenInfo already seeds every column with its default,
+            // auto-increment or ROWVERSION and only then applies the supplied values, and its
+            // positional loop is bounded by the value count, so an empty row applies nothing.
+            values = [[]];
+        }
 
         var conflictResolution = ConflictResolutionType.None;
         if (context.REPLACE() != null)

@@ -196,7 +196,13 @@ limitClause
 
 insertStatement
     : INSERT (OR (REPLACE | IGNORE))? INTO tableName (LPAREN columnName (COMMA columnName)* RPAREN)?
-      ( VALUES valuesList | selectStatement )
+      // DEFAULT VALUES inserts one row using every column's default. SQLite accepts it, and EF Core
+      // emits it for an entity whose columns are all store-generated. The visitor turns it into a
+      // single EMPTY value row, which the executor already handles: it seeds every column with its
+      // default, auto-increment or ROWVERSION first, then applies the supplied values - of which
+      // there are none. NOT NULL is still validated, so a table with a non-nullable, defaultless
+      // column still refuses the insert, as it should.
+      ( VALUES valuesList | DEFAULT VALUES | selectStatement )
       onConflictClause?
       returningClause?
     ;

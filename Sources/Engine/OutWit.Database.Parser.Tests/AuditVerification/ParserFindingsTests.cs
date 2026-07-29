@@ -53,9 +53,11 @@ public class ParserFindingsTests
 
     #region INSERT INTO t DEFAULT VALUES
 
+    // Fixed in phase 3. `DEFAULT VALUES` is now an alternative of insertStatement, and the visitor
+    // turns it into a single empty value row - which the executor already handled, since it seeds
+    // defaults first and applies supplied values second. End-to-end behaviour, including that it
+    // still honours NOT NULL, is covered by WitSqlEngineInsertDefaultValuesTests.
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: WitSqlParsingException with 2 errors. "
-            + "parser, Parser/Grammars/WitSqlParser.g4:194")]
     public void InsertDefaultValuesParsesTest()
     {
         // Finding: WitSqlParser.g4:194 - the form is absent from the grammar although the EF
