@@ -14,6 +14,8 @@ namespace OutWit.Database.Core.LSM
 
         private readonly int m_blockSize;
 
+        private readonly ISstableFileFactory? m_fileFactory;
+
         private readonly ByteArrayComparer m_comparer = ByteArrayComparer.Default;
 
         #endregion
@@ -25,10 +27,12 @@ namespace OutWit.Database.Core.LSM
         /// </summary>
         /// <param name="directory">Directory containing SSTables.</param>
         /// <param name="blockSize">Block size for output SSTables.</param>
-        public Compactor(string directory, int blockSize = 4096)
+        /// <param name="fileFactory">Where output files come from; null means ordinary files.</param>
+        public Compactor(string directory, int blockSize = 4096, ISstableFileFactory? fileFactory = null)
         {
             m_directory = directory;
             m_blockSize = blockSize;
+            m_fileFactory = fileFactory;
         }
 
         #endregion
@@ -60,7 +64,7 @@ namespace OutWit.Database.Core.LSM
                 int outputEntries = 0;
                 int tombstonesRemoved = 0;
 
-                using (var builder = new SSTableBuilder(outputFile, m_blockSize))
+                using (var builder = new SSTableBuilder(outputFile, m_blockSize, encryptor: null, m_fileFactory))
                 {
                     byte[]? lastKey = null;
 

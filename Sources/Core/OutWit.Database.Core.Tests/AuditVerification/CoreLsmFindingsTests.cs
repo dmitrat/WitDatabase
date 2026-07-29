@@ -135,17 +135,19 @@ public class CoreLsmFindingsTests
 
     #region SSTable durability
 
-    // CONFIRMED BY INSPECTION, consequence not reproduced - "the SSTable is never fsynced but the
-    // WAL is truncated immediately after" (SSTableBuilder.cs:184). The finalisation path ends with
-    // `m_writer.Flush()`, which pushes the BinaryWriter's buffer into the FileStream and no further:
-    // there is no `m_stream.Flush(flushToDisk: true)` anywhere in the file, so the SSTable is only
-    // in the OS page cache when the WAL that still holds the same data is truncated. Demonstrating
-    // the loss needs a real power cut - a clean process kill is not enough, because the OS still
-    // writes its cache back. Recorded rather than faked.
+    // FIXED 2026-07-29 in phase 4 - "the SSTable is never fsynced but the WAL is truncated
+    // immediately after" (SSTableBuilder.cs:184). It did not need the real power cut this note
+    // originally called for: it needed the COUNT. A store that never asks for durability cannot have
+    // achieved it, and zero is unambiguous where a surviving-row count after a process kill is not.
+    // Measured through a seam at 0 syncs per SSTable, then fixed - SSTableBuilder.Finish now syncs
+    // before returning, so the WAL copy is only destroyed after the SSTable is on the media.
+    // See Durability/SstableFsyncTests.cs, which also pins that Flush() no longer REDUCES
+    // durability: it used to replace a synced WAL with an unsynced SSTable and then truncate the WAL.
     //
-    // Same for "a failed flush leaves m_immutableMemTable populated forever" (StoreLsm.cs:550):
-    // reproducing it needs an injected I/O failure part-way through a flush, which the current
-    // StoreLsm surface offers no way to arrange.
+    // STILL OPEN, but no longer unreachable - "a failed flush leaves m_immutableMemTable populated
+    // forever" (StoreLsm.cs:550). This note said reproducing it needs an injected I/O failure that
+    // the StoreLsm surface offers no way to arrange. The surface now exists:
+    // LsmOptions.SstableFileFactory can hand out a file whose write or sync throws.
 
     #endregion
 }
