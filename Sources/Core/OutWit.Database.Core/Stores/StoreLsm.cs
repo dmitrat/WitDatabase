@@ -491,7 +491,7 @@ namespace OutWit.Database.Core.Stores
             var outputPath = Path.Combine(m_directory, $"sst_{outputId:D6}.sst");
 
             // Perform compaction (outside of any locks)
-            var compactor = new Compactor(m_directory, m_options.BlockSize);
+            var compactor = new Compactor(m_directory, m_options.BlockSize, m_options.SstableFileFactory);
             var result = compactor.Compact(filesToCompact, outputPath);
             
             m_statistics.RecordCompaction();
@@ -574,7 +574,7 @@ namespace OutWit.Database.Core.Stores
             var sstableId = m_nextSstableId++;
             var sstablePath = Path.Combine(m_directory, $"sst_{sstableId:D6}.sst");
 
-            using (var builder = new SSTableBuilder(sstablePath, m_options.BlockSize, m_options.Encryptor))
+            using (var builder = new SSTableBuilder(sstablePath, m_options.BlockSize, m_options.Encryptor, m_options.SstableFileFactory))
             {
                 foreach (var entry in oldActive.GetAllEntries())
                 {

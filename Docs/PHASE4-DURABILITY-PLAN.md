@@ -252,7 +252,7 @@ depends on. **Subject 6 lands after subject 2, never before.**
 | 3 | WAL truncation on partial replay (+ the `RollbackJournal` relative path) | recovery — **§8**, and the same fix was needed in the LSM WAL |
 | 4 | Savepoint replay | journal — **§9**, compensating records, no format change |
 | 5 | Rowid counters | engine metadata — **§10: still open**, both routes refuted; an MVCC namespace collision fixed instead |
-| 6 | SSTable fsync, `SyncWrites` documented for what it does, **and the LSM file seam** | LSM |
+| 6 | SSTable fsync **and the LSM file seam** | LSM — **§11** |
 | 7 | Compaction manifest | LSM |
 | 8 | Statement atomicity / implicit per-statement transaction | engine write path |
 
@@ -555,12 +555,70 @@ skip must not start treating that one as a versioned record.
 ### 10.3 Counts after PR 5
 
 Core suite **2228 → 2231 passed**, 23 skipped; engine suite back to **1949 / 34** with both markers
-restored. Whole solution green on both frameworks. Ledger **72 → 74** attributes plus 13
+restored. Whole solution green on both frameworks. Ledger **unchanged at 72** attributes plus 13
 `[TestCase(… Ignore =)]`.
 
 ---
 
-## 11. The four standing rules, applied to this phase
+## 11. PR 6 results — the SSTable reaches the media before the WAL is dropped, 2026-07-29
+
+Subject 4. **It did not need the real power cut this plan reserved for it — it needed the count.**
+
+### 11.1 Counting settled what a crash could not
+
+The audit filed this as *mechanism confirmed, consequence not reproduced*, on the reasoning that
+showing the loss needs a real power cut because a clean process kill lets the operating system write
+its cache back. True, and beside the point: **a store that never asks for durability cannot have
+achieved it**, and a count of zero is unambiguous in a way that a surviving-row count after a kill is
+not. Same move as "every commit scans the whole database" in the MVCC batch — count, do not time.
+
+Measured through the seam: **0 syncs per SSTable**. `SSTableBuilder.Finish` now syncs before
+returning, so the WAL copy is destroyed only after the table is on the media. Unconditional rather
+than tied to `SyncWrites`: a memtable flush is the moment the only other durable copy is dropped, and
+it happens once per memtable rather than per write.
+
+### 11.2 The consequence, stated the way a user would meet it
+
+**`Flush()` reduced durability.** It replaced a WAL the caller may have synced with an SSTable that
+was never synced, and truncated the WAL immediately afterwards — so asking for the data to be made
+safe was precisely what put it at risk. That is now pinned by a test rather than described.
+
+### 11.3 The seam, and the control that proves it is wired
+
+`ISstableFile` / `ISstableFileFactory` in `Core/LSM/`, defaulted to an ordinary file, reachable
+through `LsmOptions.SstableFileFactory`. `Sync()` is deliberately separate from a stream flush,
+because flushing a `BinaryWriter` or a `FileStream` pushes bytes into the operating system and no
+further — and the difference between the two is exactly what a power failure sees.
+
+Three controls, and the third is the one that matters:
+
+- the counter can see a sync that happened, so a zero elsewhere is evidence rather than a broken
+  counter;
+- an SSTable written through the seam is **byte-identical** to one written the ordinary way, so a
+  measurement taken through it is not a statement about the seam;
+- **a memtable flush driven through `StoreLsm` syncs** — everything else drives `SSTableBuilder` by
+  hand and would stay green if the option never reached the store.
+
+**A caveat recorded rather than half-done:** on POSIX this makes the file's *contents* durable, but
+the directory entry naming a newly created file is separate and .NET exposes no portable way to fsync
+a directory. Recovery already tolerates a missing SSTable — the WAL is the fallback — and closing it
+properly needs a platform-specific call.
+
+### 11.4 What the seam unlocks next
+
+The `core-lsm` finding recorded as *mechanism only* — a failed flush leaving `m_immutableMemTable`
+populated forever — said reproducing it needs an injected I/O failure the `StoreLsm` surface offers no
+way to arrange. **That surface now exists.** The note in `CoreLsmFindingsTests` has been corrected to
+say so.
+
+### 11.5 Counts after PR 6
+
+Core suite **2231 → 2235 passed**, 23 skipped, both frameworks identical; whole solution green.
+Ledger unchanged at **72 + 13** — this finding was carried as a comment, not a marker.
+
+---
+
+## 12. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -580,7 +638,7 @@ restored. Whole solution green on both frameworks. Ledger **72 → 74** attribut
 
 ---
 
-## 12. Acceptance
+## 13. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.

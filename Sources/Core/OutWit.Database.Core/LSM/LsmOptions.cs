@@ -100,6 +100,16 @@ namespace OutWit.Database.Core.LSM
         /// <summary>
         /// Creates default options.
         /// </summary>
+        /// <summary>
+        /// Where SSTable output files come from. Null uses ordinary files on disk.
+        /// </summary>
+        /// <remarks>
+        /// The seam exists so a test can count the syncs the LSM path asks for, or fail one
+        /// part-way. Both were impossible while SSTableBuilder opened its own FileStream, which is
+        /// why two findings about this path sat unverified.
+        /// </remarks>
+        public ISstableFileFactory? SstableFileFactory { get; set; }
+
         public static LsmOptions Default => new();
     }
 }

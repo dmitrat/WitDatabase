@@ -38,7 +38,8 @@ namespace OutWit.Database.Core.LSM
 
         #region Fields
 
-        private readonly FileStream m_stream;
+        private readonly ISstableFile m_file;
+        private readonly Stream m_stream;
         private readonly BinaryWriter m_writer;
         private readonly int m_targetBlockSize;
         private readonly IBlockEncryptor? m_encryptor;
@@ -62,15 +63,21 @@ namespace OutWit.Database.Core.LSM
         /// <param name="filePath">Output file path.</param>
         /// <param name="targetBlockSize">Target size for data blocks.</param>
         /// <param name="encryptor">Optional block encryptor.</param>
+        /// <param name="fileFactory">
+        /// Where the output file comes from. Defaults to an ordinary file on disk; a test supplies
+        /// its own to count the syncs this builder asks for, or to fail one part-way.
+        /// </param>
         public SSTableBuilder(
             string filePath, 
             int targetBlockSize = DEFAULT_BLOCK_SIZE, 
-            IBlockEncryptor? encryptor = null)
+            IBlockEncryptor? encryptor = null,
+            ISstableFileFactory? fileFactory = null)
         {
             FilePath = filePath;
             m_targetBlockSize = targetBlockSize;
             m_encryptor = encryptor;
-            m_stream = new FileStream(filePath, FileMode.Create, FileAccess.Write, FileShare.None, 4096);
+            m_file = (fileFactory ?? SstableFileFactory.Default).Create(filePath);
+            m_stream = m_file.Stream;
             m_writer = new BinaryWriter(m_stream);
         }
 
@@ -182,6 +189,17 @@ namespace OutWit.Database.Core.LSM
             m_writer.Write(MAGIC);               // 4 bytes [40-43] = total 44
 
             m_writer.Flush();
+
+            // And ask for the media, not just the operating system. Without this the WAL holding the
+            // same data was truncated while the SSTable was still in the page cache, so a power
+            // failure in that window lost everything the memtable had accumulated - with SyncWrites
+            // set as well, because SyncWrites only ever synced the WAL.
+            //
+            // It is unconditional rather than tied to SyncWrites: a memtable flush is the moment the
+            // only other durable copy is destroyed, and it happens once per memtable rather than per
+            // write, so the cost is one sync per few megabytes.
+            m_file.Sync();
+
             m_finished = true;
 
             return new SSTableInfo
@@ -253,7 +271,7 @@ namespace OutWit.Database.Core.LSM
             }
 
             m_writer.Dispose();
-            m_stream.Dispose();
+            m_file.Dispose();
             m_currentBlock.Dispose();
         }
 
