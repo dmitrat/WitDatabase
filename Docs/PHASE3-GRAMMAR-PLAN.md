@@ -967,18 +967,30 @@ list rather than re-deriving it.
 
 ### 14.1 Capability gaps, all measured during phase 3
 
-| Gap | Who has it | What it costs | Where it is tracked |
-|---|---|---|---|
-| **Lateral joins** — `LATERAL` (PostgreSQL), `CROSS`/`OUTER APPLY` (SQL Server) | both | engine: re-evaluate the right side per left row. Currently **refused** by the EF generator as a stopgap | `LargeEngineTableSourceParsesTest`, `GeneratedSqlIsParseableTests` |
-| **`VALUES` table source** | both | engine: materialise a row set | `LargeEngineTableSourceParsesTest` |
-| **Derived column list** `AS V(Id)` | both | grammar, small — and a better design than SQLite's positional `column1..columnN` | same |
-| **`TOP n`** | SQL Server | grammar only; `LIMIT` already covers the capability | same |
-| **User-defined functions** | both | subsystem: catalog, evaluator integration, persistence | `CreateFunctionIsSupportedTest` |
-| **Stored procedures** | both | subsystem: procedural interpreter, variables, `CALL` | `CreateProcedureIsSupportedTest` |
-| **JSON columns** | both | convention + query/update generator support — carried out of phase 2 | audit state |
+**These are candidates, not commitments.** The decision rule, set 2026-07-29: SQLite is a good
+yardstick as a **minimum set** — below that line there is nothing to argue about. Above it, each
+feature is **weighed**: value for the drop-in goal and how often real code uses it, against
+implementation cost and the risk it adds to the engine. Completeness is the priority but not the only
+term — this is a small embeddable engine, and if a capability needs a layer that materially slows the
+database while being rarely used, **skipping it is the right call**. The one hard rule is that a skip
+must be **documented**: silently missing breaks the illusion, a recorded and reasoned "not supported,
+here is why" does not.
 
-None of these is a defect in the sense the audit used the word. All of them are places where
-application code written against a large engine would notice the substitution — which is the bar.
+The "verdict" column below is a first read, not a decision.
+
+| Gap | Who has it | What it costs | First read | Where it is tracked |
+|---|---|---|---|---|
+| **Lateral joins** — `LATERAL` (PostgreSQL), `CROSS`/`OUTER APPLY` (SQL Server) | both | engine: re-evaluate the right side per left row. Currently **refused** by the EF generator as a stopgap | **weigh carefully** — highest cost here, and EF emits it only for correlated `Take`/filtered includes. A loud refusal may be the honest permanent answer | `LargeEngineTableSourceParsesTest`, `GeneratedSqlIsParseableTests` |
+| **`VALUES` table source** | both | engine: materialise a row set | **likely worth it** — self-contained, no effect on existing paths | `LargeEngineTableSourceParsesTest` |
+| **Derived column list** `AS V(Id)` | both | grammar, small — and a better design than SQLite's positional `column1..columnN` | **yes** — cheap, and it goes with `VALUES` | same |
+| **`TOP n`** | SQL Server | grammar only; `LIMIT` already covers the capability | **cheap, low value** — pure source compatibility, no new capability | same |
+| **User-defined functions** | both | subsystem: catalog, evaluator integration, persistence | **named by Dmitry as a drop-in gap** — high value, high cost | `CreateFunctionIsSupportedTest` |
+| **Stored procedures** | both | subsystem: procedural interpreter, variables, `CALL` | **named by Dmitry as a drop-in gap** — highest cost of the list | `CreateProcedureIsSupportedTest` |
+| **JSON columns** | both | convention + query/update generator support — carried out of phase 2 | **likely worth it** — EF Core maps owned collections this way by default | audit state |
+
+None of these is a defect in the sense the audit used the word. Each is a place where application
+code written against a large engine *could* notice the substitution — which makes it a candidate,
+and then the weighing above decides.
 
 ### 14.2 The instrument gap, and the natural successor to phase 3
 
@@ -1061,3 +1073,28 @@ it. **Build the control into the instrument, or the instrument will lie quietly.
 
 Next: phases 4 (durability) and 5 (performance) as planned, plus the capability backlog in §14 and the
 PostgreSQL/SQL Server dialect oracle it argues for.
+
+---
+
+## 17. A CI flake, and the one wall-clock assertion that could gate a build
+
+PR #35 went red on `SyncWritesDefaultIsFalseTest` — **1000 inserts took 5.9s and 7.5s** against an
+`Is.LessThan(5)` ceiling. The commit changed documentation and test-marker strings only, and the five
+preceding phase-3 runs were green, so it is a flake rather than a regression. Locally the same test
+takes **0.17 s** — a 35× spread, which is the whole story: it was measuring the runner.
+
+The threshold had **no margin by construction**. Its own comment reads "with `SyncWrites=true` it
+would take ~10+ seconds", so 5s sat between the two behaviours it was meant to separate. A moderately
+loaded runner lands in the gap.
+
+**Fixed by asserting the claim instead of a proxy.** "The default is false" is a *configuration* fact:
+the connection string sets no `SyncWrites`, the parameter is only applied when present, so the value
+falls through to `LsmOptions`' own default. That is now asserted directly, alongside the functional
+check that the 1000 rows landed. The elapsed time is **logged, not asserted**.
+
+**This was the only wall-clock assertion outside `Performance/`** — swept for with
+`grep -rn "Elapsed\.(TotalSeconds|TotalMilliseconds)"` filtered to assertions. The other 17 all carry
+`[Category("Performance")]` and are excluded from CI, as recorded in phase 0. So CI now has no
+timing-dependent gate at all, which is worth knowing rather than assuming: this failure is exactly the
+one phase 0 predicted would eventually happen and concluded was "already quarantined". It was not
+quite — one had escaped.
