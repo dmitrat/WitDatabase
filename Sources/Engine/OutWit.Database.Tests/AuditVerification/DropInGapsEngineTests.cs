@@ -101,70 +101,56 @@ public sealed class DropInGapsEngineTests : WitSqlEngineTestsBase
     #region CROSS APPLY / OUTER APPLY / VALUES table sources
 
     /// <summary>
-    /// The original finding, restated against measurement. <b>Two of its three shapes were wrong,
-    /// and the third was right for a different reason than the one recorded.</b>
+    /// Table-source shapes WitSQL does not support yet. <b>Unbuilt capability, not correct
+    /// rejection.</b>
     /// </summary>
     /// <remarks>
     /// <para>
-    /// The finding said the grammar must learn <c>CROSS APPLY</c>, <c>OUTER APPLY</c> and a
-    /// <c>VALUES</c> table source because EF Core emits all three. Phase 3 measured each claim:
+    /// The original finding justified these by "EF Core emits them". Phase 3 measured that and it is
+    /// largely false for this provider: collections translate to <c>IN (…)</c>, and the one shape the
+    /// generator really did emit — <c>OUTER APPLY</c>, for a correlated <c>Take</c> — is now refused
+    /// at translation time rather than emitted unparseably (see <c>GeneratedSqlIsParseableTests</c>).
+    /// </para>
+    /// <para>
+    /// <b>That does not make these shapes unwanted.</b> The target is a drop-in replacement for the
+    /// large engines, so the yardstick is PostgreSQL and SQL Server, not SQLite:
     /// </para>
     /// <list type="bullet">
     /// <item><description>
-    /// <b><c>TOP</c> and <c>APPLY</c> are T-SQL, and SQLite rejects them too</b>, so by the drop-in
-    /// bar neither is a WitDatabase defect. The two cases below were written in SQL Server syntax.
+    /// <c>CROSS APPLY</c> / <c>OUTER APPLY</c> is T-SQL; PostgreSQL spells the same thing
+    /// <c>LATERAL</c>. Both support it. Supporting it here needs <b>lateral execution</b> — the right
+    /// side re-evaluated per left row — which is engine work, not grammar.
     /// </description></item>
     /// <item><description>
-    /// <b><c>AS V(Id)</c> — a derived column list — is rejected by SQLite as well.</b> Requiring it
-    /// would make WitDatabase stricter than nothing and looser than SQLite, for no consumer.
+    /// A <c>VALUES</c> table source with a derived column list <c>AS V(Id)</c> is <b>standard SQL</b>
+    /// and works on both PostgreSQL and SQL Server. SQLite happens to reject it; that is SQLite's
+    /// limitation, and no reason for WitSQL to inherit it.
     /// </description></item>
     /// <item><description>
-    /// <b><c>APPLY</c> was nevertheless a real defect — emitted, not missing.</b> The provider's own
-    /// generator produced <c>OUTER APPLY</c> for a correlated <c>Take</c>, and its own parser
-    /// rejected it. Fixed in <c>WitQuerySqlGenerator</c> by refusing at translation time, the way
-    /// EF Core's SQLite provider does. See <c>GeneratedSqlIsParseableTests</c>.
+    /// <c>TOP n</c> is T-SQL's row limiter. <c>LIMIT</c> already covers the capability, so this one
+    /// is dialect surface rather than a missing feature — worth having for SQL Server source
+    /// compatibility, not urgent.
     /// </description></item>
     /// </list>
     /// <para>
-    /// So the parse-level assertions here are kept only as <b>parity pins</b>: these shapes must
-    /// stay rejected, because SQLite rejects them.
+    /// Kept as executable specifications so each turns green the day it is built.
     /// </para>
     /// </remarks>
-    [TestCase("SELECT * FROM A CROSS APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x")]
-    [TestCase("SELECT * FROM A OUTER APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x")]
-    [TestCase("SELECT * FROM (VALUES (1), (2)) AS V(Id)")]
-    public void EfShapedTableSourceIsRejectedJustAsSqliteRejectsItTest(string sql)
-    {
-        Assert.That(() => WitSql.Parse(sql), Throws.Exception,
-            "SQLite rejects this shape too, so parity means rejecting it rather than learning it");
-    }
+    private const string TableSourceIgnore =
+        "UNBUILT CAPABILITY, re-scoped 2026-07-28. Not justified by 'EF Core emits it' - measured, " +
+        "and it mostly does not - but by the actual target: PostgreSQL and SQL Server both support " +
+        "these, and WitSQL is not meant to be a SQLite clone. APPLY needs lateral execution (engine " +
+        "work, not grammar); the derived column list AS V(Id) is standard SQL that only SQLite " +
+        "lacks; TOP duplicates LIMIT and is source-compatibility surface. None is phase-3 scope.";
 
-    /// <summary>
-    /// The one shape from that finding where SQLite and WitDatabase genuinely differ — deliberately
-    /// left open.
-    /// </summary>
-    /// <remarks>
-    /// A <b>bare</b> <c>VALUES</c> table source is accepted by SQLite and rejected here, so it is a
-    /// real divergence. It is not, however, something the drop-in path needs: measured 2026-07-28,
-    /// WitDatabase's own EF provider translates both an inlined and a parameterised collection to
-    /// <c>IN (…)</c> — <c>IN (1, 2, 3)</c> and <c>IN (@ids1, @ids2, @ids3)</c> — and never emits
-    /// <c>VALUES</c>. The audit's claim that EF Core emits it for inlined lists does not hold for
-    /// this provider.
-    ///
-    /// Supporting it is more than grammar: the executor would have to materialise a row set, with
-    /// SQLite's <c>column1..columnN</c> naming. Deferred on that basis, with the measurement
-    /// recorded rather than the question left open.
-    /// </remarks>
-    [Test]
-    [Ignore("DEFERRED 2026-07-28, not a defect on the drop-in path. SQLite accepts " +
-            "`SELECT * FROM (VALUES (1), (2))` and WitDatabase rejects it, so it is a real " +
-            "divergence - but the EF provider never emits it: collections translate to IN (...), " +
-            "measured in GeneratedSqlIsParseableTests. Implementing it needs executor work to " +
-            "materialise a row set with column1..columnN naming, which phase 3 does not cover.")]
-    public void BareValuesTableSourceParsesTest()
+    [TestCase("SELECT * FROM A CROSS APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = TableSourceIgnore)]
+    [TestCase("SELECT * FROM A OUTER APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = TableSourceIgnore)]
+    [TestCase("SELECT * FROM (VALUES (1), (2)) AS V(Id)", Ignore = TableSourceIgnore)]
+    [TestCase("SELECT * FROM (VALUES (1), (2))", Ignore = TableSourceIgnore)]
+    public void LargeEngineTableSourceParsesTest(string sql)
     {
-        Assert.That(() => WitSql.Parse("SELECT * FROM (VALUES (1), (2))"), Throws.Nothing,
-            "SQLite accepts a bare VALUES table source");
+        Assert.That(() => WitSql.Parse(sql), Throws.Nothing,
+            "PostgreSQL and SQL Server accept this shape, and WitSQL targets those rather than SQLite");
     }
 
     #endregion

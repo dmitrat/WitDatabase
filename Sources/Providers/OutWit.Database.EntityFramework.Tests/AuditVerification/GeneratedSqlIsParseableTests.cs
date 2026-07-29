@@ -106,12 +106,16 @@ public class GeneratedSqlIsParseableTests
     /// a construct the caller never wrote, which is the worst place for this to surface.
     /// </para>
     /// <para>
-    /// The replacement behaviour was taken from the oracle rather than invented:
-    /// <c>OracleCorrelatedTakeOnSqliteCharacterisationTest</c> shows EF Core's SQLite provider
-    /// raising <i>"Translating this query requires the SQL APPLY operation, which is not supported on
-    /// SQLite"</i> for the identical query. Refusing is the correct answer, not a concession —
-    /// <c>APPLY</c> is a lateral join and no general rewrite into this engine's joins preserves its
-    /// semantics.
+    /// Refusing is correct <b>because the engine has no lateral execution</b>: <c>APPLY</c>
+    /// re-evaluates its right-hand side per left row, and no general rewrite into this engine's joins
+    /// preserves that. <c>OracleCorrelatedTakeOnSqliteCharacterisationTest</c> shows EF Core's SQLite
+    /// provider refusing the identical query in the same words — useful confirmation that the shape
+    /// of the answer is reasonable, not the reason for it.
+    /// </para>
+    /// <para>
+    /// <b>A stopgap, not a settled position.</b> PostgreSQL offers this as <c>LATERAL</c> and SQL
+    /// Server as <c>APPLY</c>, and WitDatabase aims to substitute for those - so when lateral
+    /// execution exists this refusal should become a translation.
     /// </para>
     /// </remarks>
     [Test]

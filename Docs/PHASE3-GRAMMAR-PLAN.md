@@ -19,6 +19,34 @@ v2.4.0 merge), tree clean. Phases 0–2 closed, 2.1.0–2.4.0 published.
 
 ---
 
+> ## Correction, 2026-07-28 — what the oracle is for
+>
+> **Several conclusions in this document used "SQLite rejects it too, therefore it is not a defect".
+> That reasoning is wrong, and it is corrected here rather than left in place.**
+>
+> WitDatabase is not aiming to be a SQLite clone. **The target is a drop-in replacement for the large
+> engines — PostgreSQL and SQL Server** — so WitSQL may legitimately accept *more* than SQLite, and
+> may be more convenient or more correct where the two differ.
+>
+> SQLite remains the right oracle, but for **attribution**, not as a ceiling. It answers "is this
+> WitDatabase getting something wrong, or is it a limit every file-backed engine shares" — which is
+> what corrected nine of 29 findings in phase 2. It does **not** answer "should WitSQL support this".
+>
+> Concretely, three conclusions below are restated:
+>
+> - **`CROSS`/`OUTER APPLY`** — not "correctly rejected because SQLite rejects it". PostgreSQL has it
+>   as `LATERAL`, SQL Server as `APPLY`. It is an **unbuilt capability**: it needs lateral execution.
+>   The generator refusing it (§13) is right *because we lack the capability*, and is a stopgap.
+> - **`VALUES … AS V(Id)`** — a derived column list is **standard SQL**, supported by PostgreSQL and
+>   SQL Server. SQLite's rejection is SQLite's limitation and no reason to inherit it.
+> - **UDFs and stored procedures** — §3.3 argued they are not required because SQLite lacks them.
+>   Both large engines have them. Splitting them out of phase 3 still stands, but only because they
+>   are subsystems rather than grammar — not because they are unwanted.
+>
+> What does **not** change: `BETWEEN`, the ambiguity work, `DEFAULT VALUES`, and hex literals. Those
+> were fixed because the behaviour was wrong on its own terms, and SQLite was used to pin the
+> expected values — a legitimate use, since on those points the large engines agree with it.
+
 ## 1. What the defect actually is
 
 ANTLR eliminates left recursion by compiling each alternative's recursive references with a
@@ -254,6 +282,13 @@ feature.
 > and stored procedures are planned separately as the features they are. The two `[Ignore]`s are
 > restated as "documented but unbuilt capability", not defects — the same shape as the JSON-columns
 > item carried out of phase 2.
+>
+> **Corrected 2026-07-28:** the argument above that "neither is needed for drop-in parity — SQLite has
+> neither" is **wrong**, and the correction at the top of this document explains why. PostgreSQL and
+> SQL Server both have functions and procedures, and they are exactly the engines WitDatabase means to
+> substitute for. The decision to split them out is unchanged, but the reason is that they are
+> **subsystems rather than grammar** — a procedural interpreter, a catalog, evaluator integration —
+> not that they are unwanted.
 
 ---
 
@@ -341,12 +376,20 @@ All three settled by Dmitry before implementation started.
 1. **UDFs and stored procedures — split out of phase 3, and correct `WitSQL.md` now.** §3.3.
 2. **`APPLY` — override the generator.** If PR 0 confirms the provider emits `CROSS`/`OUTER APPLY`
    that its own parser cannot read, the fix is to override `VisitCrossApply`/`VisitOuterApply` in
-   `WitQuerySqlGenerator` to emit a shape the engine already executes, **not** to build lateral
-   execution. A provider without lateral support should not generate lateral SQL. Grammar support for
-   `APPLY` is then not required at all, and PR 7 shrinks accordingly.
-3. **`TOP` — restate the tests to use `LIMIT`.** `TOP` is not added to the grammar. The two ignored
-   cases were written in SQL Server syntax; restated against `LIMIT` they test the feature actually
-   under examination. Scope is unchanged from the original phase-3 list.
+   `WitQuerySqlGenerator` rather than to build lateral execution now. A provider without lateral
+   support should not generate lateral SQL.
+
+   > **Corrected 2026-07-28.** The intended override was "emit a shape the engine already executes".
+   > There is no such shape: `APPLY` is a lateral join and no general rewrite preserves it, so the
+   > override **refuses** instead (§13.2). And the follow-on claim that "grammar support for `APPLY`
+   > is then not required at all" holds only for now — SQL Server spells this `APPLY`, PostgreSQL
+   > spells it `LATERAL`, and both are engines WitDatabase means to replace. The refusal is a
+   > stopgap until lateral execution exists.
+3. **`TOP` — restate the tests to use `LIMIT`.** `TOP` is not added in phase 3.
+
+   > **Corrected 2026-07-28.** The stated reason — "SQLite rejects `TOP` too" — is not a reason.
+   > `TOP` is T-SQL's row limiter and a candidate for SQL Server source compatibility. It stays out
+   > of phase 3 on **scope**, not because it is unwanted; `LIMIT` already covers the capability.
 
 ## 7. PR 0 results — measured 2026-07-28
 
@@ -421,11 +464,15 @@ inside a `CASE`, `BETWEEN` with a subquery bound. **All three already agree with
 defects; they are shapes the restructure must not break. PR 3 becomes pins written *before* PR 2 lands,
 which is more useful than the fixes it was scoped as.
 
-**d. `APPLY`, `TOP` and the derived column list are not defects by the drop-in bar.** All three are
-rejected by SQLite too. This confirms decisions §6.2 and §6.3 with measurement rather than
-recollection: **PR 7 needs no grammar work at all** — it is a generator override. The `VALUES` finding
-survives, but only in its bare form; `AS V(Id)` must come out of the restated test, because requiring it
-would make WitDatabase stricter than nothing and looser than SQLite for no consumer's benefit.
+**d. `APPLY`, `TOP` and the derived column list are all rejected by SQLite too** — so none of them is
+a case of WitDatabase getting something wrong that SQLite gets right, and PR 7 needs no grammar work
+*in this phase*.
+
+> **Corrected 2026-07-28.** This paragraph originally concluded they "are not defects by the drop-in
+> bar". That inverts what the oracle is for. SQLite's rejection tells us these are not *regressions*;
+> it says nothing about whether WitSQL should support them. PostgreSQL and SQL Server support all
+> three, and those are the engines WitDatabase substitutes for — so all three remain unbuilt
+> capability, tracked in `LargeEngineTableSourceParsesTest`.
 
 **e. `CREATE FUNCTION`/`CREATE PROCEDURE` parity confirms §6.1** — neither is a drop-in requirement.
 
@@ -853,27 +900,36 @@ This is the third time in the audit's history that the answer was "refuse loudly
 `AddPrimaryKey`/`DropPrimaryKey`/`RenameIndex`/`AlterColumn` in phase 2, where emitting a comment let
 a migration be recorded as applied.
 
-### 13.3 The original finding restated — two of its three shapes were wrong
+### 13.3 The original finding restated — its *justification* was wrong, not its subject
 
 `EfShapedTableSourceParsesTest` demanded the grammar learn `CROSS APPLY`, `OUTER APPLY` and
-`VALUES … AS V(Id)`. Measured: **SQLite rejects `TOP`, `APPLY` and the derived column list too.** The
-test is now `EfShapedTableSourceIsRejectedJustAsSqliteRejectsItTest` — the same three shapes as
-**parity pins**, asserting they stay rejected.
+`VALUES … AS V(Id)` **because EF Core emits them**. Measured, that is largely false for this provider:
+collections translate to `IN (…)`, and the one shape the generator really did emit — `OUTER APPLY` —
+is now refused at translation time.
 
-### 13.4 `VALUES` deferred, with the measurement on record
+> **Corrected 2026-07-28.** A first version of this section turned the three shapes into *parity
+> pins* asserting they must stay rejected, on the grounds that SQLite rejects them. That is the wrong
+> test to write. PostgreSQL and SQL Server accept all three, and they are the target — so these are
+> **unbuilt capability**, not correct behaviour. They are now ignored specifications in
+> `LargeEngineTableSourceParsesTest`, each turning green the day it is built.
 
-A bare `(VALUES …)` table source is a genuine divergence — SQLite accepts it, WitDatabase does not.
-It is deferred, because nothing on the drop-in path emits it and supporting it needs executor work to
-materialise a row set with SQLite's `column1..columnN` naming. `BareValuesTableSourceParsesTest`
-carries the marker with that reasoning, so the question is recorded rather than left open.
+### 13.4 `VALUES` deferred — on cost, not on desirability
+
+A `VALUES` table source is supported by PostgreSQL and SQL Server, so WitSQL should have it. It is
+deferred because it is **executor work, not grammar**: the engine has to materialise a row set and
+name its columns. Nothing on the current drop-in path forces the timing — the EF provider emits
+`IN (…)`, measured — so it can wait for a phase that budgets engine work.
+
+The derived column list `AS V(Id)` belongs with it, and is the better design of the two: naming the
+columns explicitly beats inheriting SQLite's positional `column1..columnN`.
 
 ### 13.5 Counts after PR 6
 
 | Suite | After PR 5 | After PR 6 |
 |---|---|---|
-| `Tests` (`Category!=Performance`) | 1941 / 31 skipped / 1972 | **1944 / 29 / 1973** |
+| `Tests` (`Category!=Performance`) | 1941 / 31 skipped / 1972 | **1941 / 32 / 1973** |
 | `EntityFramework.Tests` | 547 / 1 / 548 | **552 / 1 / 553** |
 
-Whole solution green under the CI filter, 14 projects, both frameworks. Ledger **77 → 78**: two
-`TestCase`-level markers removed as the shapes became parity pins, one new marker for the deferred
-`VALUES`, and the count moves by the usual ledger-command quirk (§8.4).
+Whole solution green under the CI filter, 14 projects, both frameworks. Ledger **77**, unchanged: the
+four table-source shapes stay marked as unbuilt capability (`TestCase`-level `Ignore =`, which the
+ledger command does not count — §8.4), and the five new EF tests are all passing.

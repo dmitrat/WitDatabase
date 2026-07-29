@@ -177,11 +177,17 @@ public sealed class WitQuerySqlGenerator : QuerySqlGenerator
     /// because the failure surfaces far from its cause.
     /// </para>
     /// <para>
-    /// Refusing rather than rewriting is what EF Core's SQLite provider does with the identical
-    /// query — <i>"Translating this query requires the SQL APPLY operation, which is not supported on
-    /// SQLite"</i> — and it is the honest answer here too: <c>APPLY</c> is a lateral join, so the
-    /// right-hand side is re-evaluated per left row, and no general rewrite into the joins this
-    /// engine has preserves that.
+    /// Refusing rather than rewriting is the honest answer <b>because the engine has no lateral
+    /// execution</b>: <c>APPLY</c> re-evaluates its right-hand side per left row, and no general
+    /// rewrite into the joins this engine has preserves that. EF Core's SQLite provider refuses the
+    /// identical query in the same words, which is useful confirmation that the shape of the answer
+    /// is reasonable — but the reason here is our own missing capability, not an intent to match
+    /// SQLite.
+    /// </para>
+    /// <para>
+    /// <b>This is a stopgap, not a settled position.</b> PostgreSQL supports the same operation as
+    /// <c>LATERAL</c> and SQL Server as <c>APPLY</c>, and WitDatabase aims to substitute for those.
+    /// When lateral execution exists, this refusal should become a translation.
     /// </para>
     /// </remarks>
     protected override Expression VisitCrossApply(CrossApplyExpression crossApplyExpression)
@@ -195,9 +201,10 @@ public sealed class WitQuerySqlGenerator : QuerySqlGenerator
 
     private static string ApplyNotSupported(string operation) =>
         $"Translating this query requires the SQL {operation} operation, which WitDatabase does not " +
-        "support. This usually comes from a correlated Take/Skip, or from a filtered or limited " +
-        "collection Include. Rewrite it as a join or a subquery, or materialise the outer query " +
-        "first with AsEnumerable().";
+        "support yet: it needs a lateral join, where the right-hand side is re-evaluated for each " +
+        "row of the left. This usually comes from a correlated Take/Skip, or from a filtered or " +
+        "limited collection Include. Rewrite it as a join or a subquery, or materialise the outer " +
+        "query first with AsEnumerable().";
 
     #endregion
 }
