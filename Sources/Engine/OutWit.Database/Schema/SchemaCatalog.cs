@@ -319,15 +319,22 @@ public sealed partial class SchemaCatalog : IDisposable
         Span<byte> rowIdBytes = stackalloc byte[8];
         System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(rowIdBytes, rowId);
         
-        // When a transaction is active, we only update the in-memory cache.
-        // The persisted row ID will be updated on COMMIT via PersistRowIdsToStore().
-        // Row IDs are monotonically increasing, so gaps after rollback are acceptable.
-        // This avoids lock recursion when TransactionalStore already holds the write lock.
+        // Written through the transaction when there is one, so the counter becomes durable in the
+        // same atomic step as the rows it names. It used to update only the in-memory cache and
+        // leave persistence to PersistRowIdsToStore() after the commit had already returned - which
+        // put it outside the flush the commit performed, so a crash in that window left the rows on
+        // the media with the counter behind them, and the next insert reused a live identity.
+        //
+        // Only this table's counter, and only when it is actually allocated from: persisting every
+        // table's counter at commit time is what made each commit collide with the previous one on
+        // the MVCC write set.
+        //
+        // Note it goes to the transaction's buffer, not to the store, so it does not reach for a
+        // write lock the transactional store already holds.
         if (transaction == null)
-        {
             m_store.Put(keyBytes.AsSpan(), rowIdBytes);
-        }
-        // else: only in-memory cache was updated by the caller
+        else
+            transaction.Put(keyBytes.AsSpan(), rowIdBytes);
     }
 
     private void LoadTableRowId(string tableName)
@@ -435,14 +442,12 @@ public sealed partial class SchemaCatalog : IDisposable
         Span<byte> valueBytes = stackalloc byte[8];
         System.Buffers.Binary.BinaryPrimitives.WriteUInt64LittleEndian(valueBytes, rowVersion);
         
-        // When a transaction is active, we only update the in-memory cache.
-        // Row version is persisted on COMMIT via PersistRowVersionToStore().
-        // This avoids lock recursion when TransactionalStore already holds the write lock.
+        // Through the transaction when there is one - same reasoning as the row counts and the row-id
+        // counters above, and it keeps all three consistent with each other.
         if (transaction == null)
-        {
             m_store.Put(ROWVERSION_KEY_BYTES.AsSpan(), valueBytes);
-        }
-        // else: only in-memory cache was updated
+        else
+            transaction.Put(ROWVERSION_KEY_BYTES.AsSpan(), valueBytes);
     }
     
     /// <summary>
@@ -783,16 +788,20 @@ public sealed partial class SchemaCatalog : IDisposable
         Span<byte> countBytes = stackalloc byte[8];
         System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(countBytes, count);
         
-        // When a transaction is active, we only update the in-memory cache.
-        // The persisted row count will be updated:
-        // - On COMMIT: we persist the final in-memory value
-        // - On ROLLBACK: we reload the in-memory cache from the persisted value
-        // This avoids writing metadata that might be rolled back.
+        // Through the transaction when there is one, for the same reason as the row-id counter: the
+        // count has to become durable in the same atomic step as the rows it counts. Persisting it
+        // after the commit left SELECT returning every row while COUNT(*) reported none.
+        //
+        // Writing it inside the transaction also makes the rollback case simpler rather than harder
+        // than the old comment feared - a discarded transaction discards the count with it, instead
+        // of needing the cache reloaded from the store afterwards.
+        //
+        // Repeated writes to the same key inside one transaction collapse to a single entry in its
+        // buffer, so this costs one write-set entry per table touched, not one per row.
         if (transaction == null)
-        {
             m_store.Put(keyBytes.AsSpan(), countBytes);
-        }
-        // else: only in-memory cache was updated by the caller
+        else
+            transaction.Put(keyBytes.AsSpan(), countBytes);
     }
 
     private void LoadTableRowCount(string tableName)
