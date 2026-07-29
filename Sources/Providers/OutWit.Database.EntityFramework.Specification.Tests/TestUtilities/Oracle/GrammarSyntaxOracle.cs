@@ -78,6 +78,13 @@ public class GrammarSyntaxOracle
         // What the engine already supports, as the control for decision 6.2/6.3.
         Add("lateralAlternative", "SELECT * FROM A LEFT JOIN B ON B.AId = A.Id");
 
+        // Chained comparisons. Added when the boolean layer was split: `predicate` is deliberately
+        // not left-recursive, so `a = b = c` can no longer parse as `(a = b) = c`. Whether that is a
+        // regression depends on what SQLite does, not on what reads well.
+        Add("chainedComparison", "SELECT * FROM T WHERE Age = 1 = 1");
+        Add("chainedComparison", "SELECT * FROM T WHERE Age < 5 < 3");
+        Add("parenthesisedComparison", "SELECT * FROM T WHERE (Age = 1) = 1");
+
         // 6/7 - UDFs and stored procedures. Split out of phase 3; recorded so the decision has a
         //       measurement behind it rather than an assumption.
         Add("createFunction", "CREATE FUNCTION Doubled(x INT) RETURNS INT BEGIN RETURN x * 2; END");

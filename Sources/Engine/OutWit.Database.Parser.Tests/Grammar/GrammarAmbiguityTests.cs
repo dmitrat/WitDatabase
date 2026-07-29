@@ -33,73 +33,32 @@ namespace OutWit.Database.Parser.Tests.Grammar;
 public class GrammarAmbiguityTests
 {
     /// <summary>
-    /// The seven corpus entries the grammar cannot currently decide, measured 2026-07-28 before any
-    /// rule was changed.
+    /// The corpus must be decided deterministically, end to end.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>Six of the seven are the same shape</b>: <c>BETWEEN … AND …</c> followed by <c>AND</c>. The
-    /// reported conflict is over the text starting at <c>BETWEEN</c>'s <c>AND</c> — literally the
-    /// question of which <c>AND</c> belongs to the <c>BETWEEN</c>. This is the phase-3 defect,
-    /// localised structurally by a tool that never executes a query.
+    /// <b>Before the split, 7 of 193 entries were ambiguous. After it, none are.</b>
     /// </para>
     /// <para>
-    /// It agrees exactly with what the SQLite oracle found by running queries: shapes where
-    /// <c>BETWEEN</c> is followed by <c>OR</c>, by <c>THEN</c>, by <c>AS</c>, or by end-of-clause are
-    /// <b>not</b> ambiguous and <b>do</b> return SQLite's answer. Two independent instruments, same
-    /// conclusion: the defect is <c>BETWEEN</c> followed by <c>AND</c>, not "the lower bound is
-    /// interior".
+    /// Six of the seven were one shape — <c>BETWEEN … AND …</c> followed by <c>AND</c>, with the
+    /// conflict reported over the text starting at <c>BETWEEN</c>'s own <c>AND</c>: literally the
+    /// question of which <c>AND</c> belonged to the <c>BETWEEN</c>. Moving the bounds down to
+    /// <c>valueExpression</c>, which cannot derive <c>AND</c>, removed the question rather than
+    /// answering it.
     /// </para>
     /// <para>
-    /// The seventh is unrelated and benign: <c>NOT EXISTS (…)</c> can be read as the <c>NOT</c> of
-    /// <c>existsExpr</c> or as <c>notExpr</c> applied to <c>EXISTS</c>. Both mean the same thing, so
-    /// nothing is currently wrong — but it is a real ambiguity resolved silently by alternative
-    /// order, and the rework should remove it rather than inherit it.
+    /// The seventh was <c>NOT EXISTS (…)</c>, derivable both as <c>existsExpr</c>'s own optional
+    /// <c>NOT</c> and as <c>notExpr</c> applied to <c>EXISTS</c>. Dropping the optional <c>NOT</c>
+    /// from the predicate and folding the negation back in the visitor removed that one too, with no
+    /// change to the emitted AST.
+    /// </para>
+    /// <para>
+    /// This assertion is now the guard for the rest of phase 3: the layers are mutually reachable, so
+    /// a later grammar edit can reintroduce ambiguity, and ANTLR would resolve it silently by
+    /// alternative order with no parse error to notice.
     /// </para>
     /// </remarks>
-    private static readonly string[] KnownAmbiguousEntries =
-    [
-        "CREATE TABLE F (Id INT, Age INT, CHECK (Age BETWEEN 0 AND 150 AND Id > 0))",
-        "SELECT * FROM T WHERE NOT EXISTS (SELECT 1 FROM S WHERE S.Id = T.Id)",
-        "SELECT * FROM T WHERE Age BETWEEN 1 AND 10 AND Flags = 1",
-        "SELECT * FROM T WHERE Age NOT BETWEEN 1 AND 10 AND Flags = 1",
-        "SELECT * FROM T WHERE Age BETWEEN 1 AND 10 AND Flags BETWEEN 1 AND 2",
-        "DELETE FROM T WHERE Age NOT BETWEEN 1 AND 10 AND Id = 5",
-        "UPDATE T SET Age = 0 WHERE Age BETWEEN 1 AND 10 AND Flags = 1",
-    ];
-
-    /// <summary>
-    /// Pins the ambiguity baseline, so that the rework cannot introduce a <b>new</b> one unnoticed.
-    /// </summary>
-    /// <remarks>
-    /// This is the test that matters while phase 3 is in flight. Making the layers mutually reachable
-    /// is what risks fresh ambiguity, and ANTLR resolves such a conflict silently by alternative
-    /// order — there is no parse error to notice. An exact-set assertion turns that into a build
-    /// failure the moment it happens.
-    /// </remarks>
     [Test]
-    public void AmbiguousCorpusEntriesMatchTheRecordedBaselineTest()
-    {
-        var ambiguous = GrammarCorpus.All
-            .Where(sql => Analyse(sql).Ambiguities.Count > 0)
-            .ToArray();
-
-        Assert.That(ambiguous, Is.EquivalentTo(KnownAmbiguousEntries),
-            "the set of ambiguous corpus entries changed. A new entry means the grammar became less " +
-            "decidable; a missing one means a defect was fixed and this baseline should shrink.");
-    }
-
-    /// <summary>
-    /// The state phase 3 is aiming at. Prints the full-context and context-sensitivity counts too:
-    /// neither is a defect, but a jump in either after the rework means the parser started doing
-    /// markedly more work for the same input.
-    /// </summary>
-    [Test]
-    [Ignore("CONFIRMED 2026-07-28: 7 of 193 corpus entries are ambiguous on the current grammar. " +
-            "Six are BETWEEN followed by AND - the phase-3 defect - and the seventh is the benign " +
-            "NOT EXISTS overlap between existsExpr and notExpr. Remove this marker in the PR that " +
-            "lands the searchCondition/predicate/valueExpression split. " +
-            "AmbiguousCorpusEntriesMatchTheRecordedBaselineTest pins the current set meanwhile.")]
     public void CorpusIsFreeOfAmbiguityTest()
     {
         var ambiguous = new List<string>();

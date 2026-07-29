@@ -13,98 +13,140 @@ internal sealed partial class WitSqlVisitor
 {
     #region Expressions
 
-    public WitSqlExpression VisitExpression(WitSqlParser.ExpressionContext context)
+    /// <summary>
+    /// The entry point for every expression position in the grammar.
+    /// </summary>
+    /// <remarks>
+    /// <c>expression</c> is now a one-alternative rule over <c>searchCondition</c>, which is what
+    /// keeps all 29 <c>VisitExpression(ctx.expression())</c> call sites in the DML and DDL visitors
+    /// compiling unchanged while every one of them gains the full boolean layer.
+    /// </remarks>
+    public WitSqlExpression VisitExpression(WitSqlParser.ExpressionContext context) =>
+        VisitSearchCondition(context.searchCondition());
+
+    /// <summary>
+    /// The boolean layer: <c>OR</c>, <c>AND</c> and prefix <c>NOT</c>.
+    /// </summary>
+    /// <remarks>
+    /// Splitting the flat rule into three changes the parse tree everywhere, but <b>not</b> the AST:
+    /// <see cref="WitSqlExpression"/> has no boolean/value distinction, so all three dispatchers
+    /// return the same type and everything downstream of the parser is unaffected.
+    /// </remarks>
+    public WitSqlExpression VisitSearchCondition(WitSqlParser.SearchConditionContext context)
     {
         return context switch
         {
-            WitSqlParser.LiteralExprContext lit => VisitLiteral(lit.literal()),
-            WitSqlParser.ColumnRefExprContext col => VisitColumnRef(col.columnRef()),
-            WitSqlParser.FunctionCallExprContext func => VisitFunctionCall(func.functionCall()),
-            WitSqlParser.ParameterExprContext param => VisitParameter(param.parameter()),
-            WitSqlParser.ParenExprContext paren => VisitExpression(paren.expression()),
-            WitSqlParser.SubqueryExprContext sub => new WitSqlExpressionSubquery
+            WitSqlParser.PredicateExprContext pred => VisitPredicate(pred.predicate()),
+            WitSqlParser.AndExprContext and => new WitSqlExpressionBinary
             {
-                Line = sub.Start.Line,
-                Column = sub.Start.Column,
-                Query = VisitQueryExpression(sub.queryExpression())
+                Line = and.Start.Line,
+                Column = and.Start.Column,
+                Left = VisitSearchCondition(and.searchCondition(0)),
+                Operator = BinaryOperatorType.And,
+                Right = VisitSearchCondition(and.searchCondition(1))
             },
-            WitSqlParser.ExistsExprContext exists => new WitSqlExpressionExists
+            WitSqlParser.OrExprContext or => new WitSqlExpressionBinary
             {
-                Line = exists.Start.Line,
-                Column = exists.Start.Column,
-                Query = VisitQueryExpression(exists.queryExpression()),
-                IsNot = exists.NOT() != null
+                Line = or.Start.Line,
+                Column = or.Start.Column,
+                Left = VisitSearchCondition(or.searchCondition(0)),
+                Operator = BinaryOperatorType.Or,
+                Right = VisitSearchCondition(or.searchCondition(1))
             },
-            WitSqlParser.UnaryExprContext unary => new WitSqlExpressionUnary
+            WitSqlParser.NotExprContext not => NegateSearchCondition(not),
+            _ => throw new InvalidOperationException($"Unknown search condition type: {context.GetType()}")
+        };
+    }
+
+    /// <summary>
+    /// Applies prefix <c>NOT</c>, folding <c>NOT EXISTS (…)</c> back into a single
+    /// <see cref="WitSqlExpressionExists"/> with <c>IsNot</c> set.
+    /// </summary>
+    /// <remarks>
+    /// The grammar's <c>existsExpr</c> no longer carries its own optional <c>NOT</c>. Carrying it in
+    /// both places made <c>NOT EXISTS (…)</c> derivable two ways, which ANTLR resolved silently by
+    /// alternative order — one of the seven ambiguities the corpus harness found on the old grammar.
+    /// Folding it here keeps the emitted AST byte-identical to the old one, which matters because
+    /// <c>ExpressionEvaluator.Subquery</c> reads <c>exists.IsNot</c> directly.
+    /// </remarks>
+    private WitSqlExpression NegateSearchCondition(WitSqlParser.NotExprContext context)
+    {
+        var operand = VisitSearchCondition(context.searchCondition());
+
+        if (operand is WitSqlExpressionExists { IsNot: false } exists)
+        {
+            return new WitSqlExpressionExists
             {
-                Line = unary.Start.Line,
-                Column = unary.Start.Column,
-                Operator = WitSqlVisitor.ParseUnaryOperator(unary),
-                Operand = VisitExpression(unary.expression())
-            },
-            WitSqlParser.MulDivExprContext mulDiv => new WitSqlExpressionBinary
-            {
-                Line = mulDiv.Start.Line,
-                Column = mulDiv.Start.Column,
-                Left = VisitExpression(mulDiv.expression(0)),
-                Operator = WitSqlVisitor.ParseMulDivOperator(mulDiv),
-                Right = VisitExpression(mulDiv.expression(1))
-            },
-            WitSqlParser.AddSubExprContext addSub => new WitSqlExpressionBinary
-            {
-                Line = addSub.Start.Line,
-                Column = addSub.Start.Column,
-                Left = VisitExpression(addSub.expression(0)),
-                Operator = addSub.PLUS() != null ? BinaryOperatorType.Add : BinaryOperatorType.Subtract,
-                Right = VisitExpression(addSub.expression(1))
-            },
-            WitSqlParser.ConcatExprContext concat => new WitSqlExpressionBinary
-            {
-                Line = concat.Start.Line,
-                Column = concat.Start.Column,
-                Left = VisitExpression(concat.expression(0)),
-                Operator = BinaryOperatorType.Concat,
-                Right = VisitExpression(concat.expression(1))
-            },
+                Line = context.Start.Line,
+                Column = context.Start.Column,
+                Query = exists.Query,
+                IsNot = true
+            };
+        }
+
+        return new WitSqlExpressionUnary
+        {
+            Line = context.Start.Line,
+            Column = context.Start.Column,
+            Operator = UnaryOperatorType.Not,
+            Operand = operand
+        };
+    }
+
+    /// <summary>
+    /// The comparison and pattern layer.
+    /// </summary>
+    /// <remarks>
+    /// The <b>left</b> operand of each alternative is a recursive <c>predicate</c> reference, so
+    /// comparisons still chain — <c>a = 1 = 1</c> parses as <c>(a = 1) = 1</c>, which is what SQLite
+    /// does. Every <b>other</b> operand is a <c>valueExpression</c>, a different rule, and therefore
+    /// cannot derive <c>AND</c>: that is what stops <c>BETWEEN</c> reaching past its upper bound to
+    /// swallow the following conjunct.
+    /// </remarks>
+    public WitSqlExpression VisitPredicate(WitSqlParser.PredicateContext context)
+    {
+        return context switch
+        {
+            WitSqlParser.ValuePredicateContext value => VisitValueExpression(value.valueExpression()),
             WitSqlParser.CompareExprContext comp => new WitSqlExpressionBinary
             {
                 Line = comp.Start.Line,
                 Column = comp.Start.Column,
-                Left = VisitExpression(comp.expression(0)),
+                Left = VisitPredicate(comp.predicate()),
                 Operator = WitSqlVisitor.ParseCompareOperator(comp),
-                Right = VisitExpression(comp.expression(1))
+                Right = VisitValueExpression(comp.valueExpression())
             },
             WitSqlParser.EqualityExprContext eq => new WitSqlExpressionBinary
             {
                 Line = eq.Start.Line,
                 Column = eq.Start.Column,
-                Left = VisitExpression(eq.expression(0)),
+                Left = VisitPredicate(eq.predicate()),
                 Operator = eq.EQ() != null ? BinaryOperatorType.Equal : BinaryOperatorType.NotEqual,
-                Right = VisitExpression(eq.expression(1))
+                Right = VisitValueExpression(eq.valueExpression())
             },
             WitSqlParser.IsNullExprContext isNull => new WitSqlExpressionIsNull
             {
                 Line = isNull.Start.Line,
                 Column = isNull.Start.Column,
-                Expression = VisitExpression(isNull.expression()),
+                Expression = VisitPredicate(isNull.predicate()),
                 IsNot = isNull.NOT() != null
             },
             WitSqlParser.BetweenExprContext between => new WitSqlExpressionBetween
             {
                 Line = between.Start.Line,
                 Column = between.Start.Column,
-                Expression = VisitExpression(between.expression(0)),
-                Low = VisitExpression(between.expression(1)),
-                High = VisitExpression(between.expression(2)),
+                Expression = VisitPredicate(between.predicate()),
+                Low = VisitValueExpression(between.valueExpression(0)),
+                High = VisitValueExpression(between.valueExpression(1)),
                 IsNot = between.NOT() != null
             },
             WitSqlParser.InExprContext inExpr => new WitSqlExpressionIn
             {
                 Line = inExpr.Start.Line,
                 Column = inExpr.Start.Column,
-                Expression = VisitExpression(inExpr.expression(0)),
+                Expression = VisitPredicate(inExpr.predicate()),
                 Values = inExpr.queryExpression() == null
-                    ? inExpr.expression().Skip(1).Select(VisitExpression).ToList()
+                    ? inExpr.expression().Select(VisitExpression).ToList()
                     : null,
                 Subquery = inExpr.queryExpression() is { } inQuery ? VisitQueryExpression(inQuery) : null,
                 IsNot = inExpr.NOT() != null
@@ -113,43 +155,94 @@ internal sealed partial class WitSqlVisitor
             {
                 Line = like.Start.Line,
                 Column = like.Start.Column,
-                Expression = VisitExpression(like.expression(0)),
-                Pattern = VisitExpression(like.expression(1)),
+                Expression = VisitPredicate(like.predicate()),
+                Pattern = VisitValueExpression(like.valueExpression(0)),
+                // The ESCAPE operand is optional again. It only needed its own alternative while the
+                // pattern was an interior reference of the flat rule; inside `predicate` it is not.
+                Escape = like.ESCAPE() != null ? VisitValueExpression(like.valueExpression(1)) : null,
                 IsNot = like.NOT() != null
             },
-            WitSqlParser.LikeEscapeExprContext likeEscape => new WitSqlExpressionLike
+            WitSqlParser.GlobExprContext glob => new WitSqlExpressionGlob
             {
-                Line = likeEscape.Start.Line,
-                Column = likeEscape.Start.Column,
-                Expression = VisitExpression(likeEscape.expression(0)),
-                Pattern = VisitExpression(likeEscape.expression(1)),
-                Escape = VisitExpression(likeEscape.expression(2)),
-                IsNot = likeEscape.NOT() != null
+                Line = glob.Start.Line,
+                Column = glob.Start.Column,
+                Expression = VisitPredicate(glob.predicate()),
+                Pattern = VisitValueExpression(glob.valueExpression()),
+                IsNot = glob.NOT() != null
             },
-            WitSqlParser.NotExprContext not => new WitSqlExpressionUnary
+            WitSqlParser.QuantifiedExprContext quantified => VisitQuantifiedExpression(quantified),
+            WitSqlParser.ExistsExprContext exists => new WitSqlExpressionExists
             {
-                Line = not.Start.Line,
-                Column = not.Start.Column,
-                Operator = UnaryOperatorType.Not,
-                Operand = VisitExpression(not.expression())
+                Line = exists.Start.Line,
+                Column = exists.Start.Column,
+                Query = VisitQueryExpression(exists.queryExpression()),
+                IsNot = false
             },
-            WitSqlParser.AndExprContext and => new WitSqlExpressionBinary
+            _ => throw new InvalidOperationException($"Unknown predicate type: {context.GetType()}")
+        };
+    }
+
+    /// <summary>
+    /// The value layer: literals, references, arithmetic, and everything that produces a value.
+    /// </summary>
+    public WitSqlExpression VisitValueExpression(WitSqlParser.ValueExpressionContext context)
+    {
+        return context switch
+        {
+            WitSqlParser.LiteralExprContext lit => VisitLiteral(lit.literal()),
+            WitSqlParser.ColumnRefExprContext col => VisitColumnRef(col.columnRef()),
+            WitSqlParser.FunctionCallExprContext func => VisitFunctionCall(func.functionCall()),
+            WitSqlParser.ParameterExprContext param => VisitParameter(param.parameter()),
+            // Parentheses carry no meaning of their own once the tree is built; the serializer adds
+            // its own back on the way out.
+            WitSqlParser.ParenExprContext paren => VisitExpression(paren.expression()),
+            WitSqlParser.SubqueryExprContext sub => new WitSqlExpressionSubquery
             {
-                Line = and.Start.Line,
-                Column = and.Start.Column,
-                Left = VisitExpression(and.expression(0)),
-                Operator = BinaryOperatorType.And,
-                Right = VisitExpression(and.expression(1))
+                Line = sub.Start.Line,
+                Column = sub.Start.Column,
+                Query = VisitQueryExpression(sub.queryExpression())
             },
-            WitSqlParser.OrExprContext or => new WitSqlExpressionBinary
+            WitSqlParser.UnaryExprContext unary => new WitSqlExpressionUnary
             {
-                Line = or.Start.Line,
-                Column = or.Start.Column,
-                Left = VisitExpression(or.expression(0)),
-                Operator = BinaryOperatorType.Or,
-                Right = VisitExpression(or.expression(1))
+                Line = unary.Start.Line,
+                Column = unary.Start.Column,
+                Operator = WitSqlVisitor.ParseUnaryOperator(unary),
+                Operand = VisitValueExpression(unary.valueExpression())
             },
-            WitSqlParser.CaseExprContext caseExpr => VisitCaseExpression(caseExpr),
+            WitSqlParser.MulDivExprContext mulDiv => new WitSqlExpressionBinary
+            {
+                Line = mulDiv.Start.Line,
+                Column = mulDiv.Start.Column,
+                Left = VisitValueExpression(mulDiv.valueExpression(0)),
+                Operator = WitSqlVisitor.ParseMulDivOperator(mulDiv),
+                Right = VisitValueExpression(mulDiv.valueExpression(1))
+            },
+            WitSqlParser.AddSubExprContext addSub => new WitSqlExpressionBinary
+            {
+                Line = addSub.Start.Line,
+                Column = addSub.Start.Column,
+                Left = VisitValueExpression(addSub.valueExpression(0)),
+                Operator = addSub.PLUS() != null ? BinaryOperatorType.Add : BinaryOperatorType.Subtract,
+                Right = VisitValueExpression(addSub.valueExpression(1))
+            },
+            WitSqlParser.BitwiseExprContext bitwise => VisitBitwiseExpression(bitwise),
+            WitSqlParser.ConcatExprContext concat => new WitSqlExpressionBinary
+            {
+                Line = concat.Start.Line,
+                Column = concat.Start.Column,
+                Left = VisitValueExpression(concat.valueExpression(0)),
+                Operator = BinaryOperatorType.Concat,
+                Right = VisitValueExpression(concat.valueExpression(1))
+            },
+            WitSqlParser.CollateExprContext collate => new WitSqlExpressionCollate
+            {
+                Line = collate.Start.Line,
+                Column = collate.Start.Column,
+                Operand = VisitValueExpression(collate.valueExpression()),
+                CollationName = collate.collationName().GetText().ToUpperInvariant()
+            },
+            WitSqlParser.SimpleCaseExprContext simpleCase => VisitSimpleCase(simpleCase),
+            WitSqlParser.SearchedCaseExprContext searchedCase => VisitSearchedCase(searchedCase),
             WitSqlParser.CastExprContext cast => new WitSqlExpressionCast
             {
                 Line = cast.Start.Line,
@@ -164,14 +257,6 @@ internal sealed partial class WitSqlVisitor
                 Expression = VisitExpression(convert.expression()),
                 TargetType = VisitDataType(convert.dataType())
             },
-            WitSqlParser.GlobExprContext glob => new WitSqlExpressionGlob
-            {
-                Line = glob.Start.Line,
-                Column = glob.Start.Column,
-                Expression = VisitExpression(glob.expression(0)),
-                Pattern = VisitExpression(glob.expression(1)),
-                IsNot = glob.NOT() != null
-            },
             WitSqlParser.IifExprContext iif => new WitSqlExpressionIif
             {
                 Line = iif.Start.Line,
@@ -180,16 +265,7 @@ internal sealed partial class WitSqlVisitor
                 TrueValue = VisitExpression(iif.expression(1)),
                 FalseValue = VisitExpression(iif.expression(2))
             },
-            WitSqlParser.BitwiseExprContext bitwise => VisitBitwiseExpression(bitwise),
-            WitSqlParser.QuantifiedExprContext quantified => VisitQuantifiedExpression(quantified),
-            WitSqlParser.CollateExprContext collate => new WitSqlExpressionCollate
-            {
-                Line = collate.Start.Line,
-                Column = collate.Start.Column,
-                Operand = VisitExpression(collate.expression()),
-                CollationName = collate.collationName().GetText().ToUpperInvariant()
-            },
-            _ => throw new InvalidOperationException($"Unknown expression type: {context.GetType()}")
+            _ => throw new InvalidOperationException($"Unknown value expression type: {context.GetType()}")
         };
     }
 
@@ -211,7 +287,7 @@ internal sealed partial class WitSqlVisitor
         {
             Line = context.Start.Line,
             Column = context.Start.Column,
-            Expression = VisitExpression(context.expression()),
+            Expression = VisitPredicate(context.predicate()),
             Operator = op,
             QuantifierType = quantifierType,
             Subquery = VisitQueryExpression(context.queryExpression())
@@ -229,9 +305,9 @@ internal sealed partial class WitSqlVisitor
         {
             Line = context.Start.Line,
             Column = context.Start.Column,
-            Left = VisitExpression(context.expression(0)),
+            Left = VisitValueExpression(context.valueExpression(0)),
             Operator = op,
-            Right = VisitExpression(context.expression(1))
+            Right = VisitValueExpression(context.valueExpression(1))
         };
     }
 
@@ -537,57 +613,72 @@ internal sealed partial class WitSqlVisitor
         }
     }
 
-    private WitSqlExpressionCase VisitCaseExpression(WitSqlParser.CaseExprContext context)
+    /// <summary>
+    /// <c>CASE operand WHEN value THEN … END</c> — the simple form, where each <c>WHEN</c> holds a
+    /// value compared against the operand.
+    /// </summary>
+    /// <remarks>
+    /// The two <c>CASE</c> forms used to share one grammar alternative, and the visitor told them
+    /// apart by <b>counting</b> the context's expressions against
+    /// <c>whenCount * 2 + (hasElse ? 1 : 0)</c>. They are now structurally distinct, so the arithmetic
+    /// is gone along with whatever it got wrong at the edges.
+    /// </remarks>
+    private WitSqlExpressionCase VisitSimpleCase(WitSqlParser.SimpleCaseExprContext context)
     {
-        var expressions = context.expression();
-        var whenTokens = context.WHEN();
+        var results = context.expression();
+        var whenValues = context.valueExpression();
+        var hasElse = context.ELSE() != null;
 
-        WitSqlExpression? operand = null;
-        int exprOffset = 0;
-
-        // Check if this is simple CASE expr WHEN... or searched CASE WHEN...
-        // In simple CASE, there's one more expression than (WHEN count * 2) + optional ELSE
-        // For searched CASE: expressions = (WHEN count * 2) + optional ELSE
-        // For simple CASE: expressions = 1 + (WHEN count * 2) + optional ELSE
-        int whenCount = whenTokens.Length;
-        bool hasElse = context.ELSE() != null;
-        int searchedExprCount = whenCount * 2 + (hasElse ? 1 : 0);
-
-        if (expressions.Length > searchedExprCount)
-        {
-            // This is simple CASE - first expression is the operand
-            operand = VisitExpression(expressions[0]);
-            exprOffset = 1;
-        }
-
+        // valueExpression(0) is the operand; the rest are the WHEN values, one per WHEN.
         var whenClauses = new List<ClauseWhen>();
 
-        // Parse WHEN/THEN pairs
-        for (int i = 0; i < whenCount; i++)
+        for (var i = 0; i < context.WHEN().Length; i++)
         {
-            int whenIdx = exprOffset + (i * 2);
-            int thenIdx = whenIdx + 1;
             whenClauses.Add(new ClauseWhen
             {
-                When = VisitExpression(expressions[whenIdx]),
-                Then = VisitExpression(expressions[thenIdx])
+                When = VisitValueExpression(whenValues[i + 1]),
+                Then = VisitExpression(results[i])
             });
-        }
-
-        // ELSE clause
-        WitSqlExpression? elseResult = null;
-        if (hasElse)
-        {
-            elseResult = VisitExpression(expressions[^1]);
         }
 
         return new WitSqlExpressionCase
         {
             Line = context.Start.Line,
             Column = context.Start.Column,
-            Operand = operand,
+            Operand = VisitValueExpression(whenValues[0]),
             WhenClauses = whenClauses,
-            ElseResult = elseResult
+            ElseResult = hasElse ? VisitExpression(results[^1]) : null
+        };
+    }
+
+    /// <summary>
+    /// <c>CASE WHEN condition THEN … END</c> — the searched form, where each <c>WHEN</c> holds a
+    /// full boolean condition.
+    /// </summary>
+    private WitSqlExpressionCase VisitSearchedCase(WitSqlParser.SearchedCaseExprContext context)
+    {
+        var results = context.expression();
+        var conditions = context.searchCondition();
+        var hasElse = context.ELSE() != null;
+
+        var whenClauses = new List<ClauseWhen>();
+
+        for (var i = 0; i < conditions.Length; i++)
+        {
+            whenClauses.Add(new ClauseWhen
+            {
+                When = VisitSearchCondition(conditions[i]),
+                Then = VisitExpression(results[i])
+            });
+        }
+
+        return new WitSqlExpressionCase
+        {
+            Line = context.Start.Line,
+            Column = context.Start.Column,
+            Operand = null,
+            WhenClauses = whenClauses,
+            ElseResult = hasElse ? VisitExpression(results[^1]) : null
         };
     }
 
