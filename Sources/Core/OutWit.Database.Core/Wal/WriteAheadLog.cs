@@ -91,17 +91,33 @@ public sealed class WriteAheadLog : WriteAheadLogBase, IWriteAheadLog
 
         lock (WriteLock)
         {
+            // What the header says this log holds, read before replaying anything. It is what tells
+            // a torn tail - the half-written record an ordinary crash leaves - apart from damage in
+            // the middle of the log: a tail that was never counted is not a record that went missing.
+            var expected = EntryCount;
+
             SeekTo(HeaderSize);
             using var reader = CreateReader();
             int count = 0;
             long entryId = 0;
+            long? stoppedAt = null;
 
             while (GetPosition() < GetLength())
             {
+                var position = GetPosition();
+
                 try
                 {
                     var entry = ReadEntry(reader, entryId++);
-                    if (entry == null) break;
+                    if (entry == null)
+                    {
+                        // ReadEntry returns null when the CRC does not verify, when a length is out
+                        // of range, or when the type byte is not one this format defines. All three
+                        // mean the same thing here: this record cannot be trusted, and everything
+                        // behind it is unreachable because there is no way to resynchronise.
+                        stoppedAt = position;
+                        break;
+                    }
 
                     switch (entry.Value.Type)
                     {
@@ -125,13 +141,21 @@ public sealed class WriteAheadLog : WriteAheadLogBase, IWriteAheadLog
                 }
                 catch (EndOfStreamException)
                 {
+                    stoppedAt = position;
                     break;
                 }
                 catch (CryptographicException)
                 {
+                    stoppedAt = position;
                     break;
                 }
             }
+
+            // Stopping early is only data loss if the header knew about entries this pass did not
+            // reach. Recovery used to stop here silently and then truncate the log, so one damaged
+            // record destroyed every committed transaction behind it and said nothing.
+            if (stoppedAt != null && count < expected)
+                throw new WalReplayException(count, expected, stoppedAt.Value);
 
             return count;
         }

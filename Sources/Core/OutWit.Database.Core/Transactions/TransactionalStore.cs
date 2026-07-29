@@ -1,6 +1,7 @@
 using System.Runtime.CompilerServices;
 using OutWit.Database.Core.Concurrency;
 using OutWit.Database.Core.Interfaces;
+using OutWit.Database.Core.Wal;
 
 namespace OutWit.Database.Core.Transactions;
 
@@ -402,12 +403,36 @@ public sealed class TransactionalStore : ITransactionalStore, IAsyncDisposable
 
     private void Recover()
     {
-        var recovered = m_journal?.Recover(m_store) ?? 0;
-        if (recovered > 0)
+        try
         {
-            m_store.Flush();
+            var recovered = m_journal?.Recover(m_store) ?? 0;
+            if (recovered > 0)
+            {
+                m_store.Flush();
+            }
+            m_journal?.Checkpoint();
         }
-        m_journal?.Checkpoint();
+        catch (WalReplayException)
+        {
+            // The prefix the replay did manage has already been applied to the store. Make it
+            // durable and then let the failure out - but do NOT checkpoint, because checkpointing
+            // truncates the log and would destroy the records behind the damage along with any
+            // chance of recovering them by other means.
+            //
+            // This is what makes the loss loud. It used to be silent: replay stopped at the first
+            // record that failed verification, the count it managed was returned as though it were
+            // the whole log, and the log was then truncated.
+            try
+            {
+                m_store.Flush();
+            }
+            catch
+            {
+                // A flush failure here must not replace the corruption report with its own.
+            }
+
+            throw;
+        }
     }
 
     private void ThrowIfDisposed()

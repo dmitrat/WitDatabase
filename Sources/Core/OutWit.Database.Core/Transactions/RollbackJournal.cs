@@ -48,7 +48,16 @@ namespace OutWit.Database.Core.Transactions
             m_basePath = basePath;
             m_encryptor = encryptor;
             m_isEncrypted = encryptor != null;
-            Directory.CreateDirectory(Path.GetDirectoryName(basePath) ?? basePath);
+
+            // Two ways the old one-liner went wrong, and only the first was reported.
+            // `Directory.CreateDirectory(Path.GetDirectoryName(basePath) ?? basePath)`:
+            // for a bare relative name GetDirectoryName returns the EMPTY STRING rather than null,
+            // so the `??` never fired and CreateDirectory("") threw. And when it does return null -
+            // a path at a root - the fallback created a *directory* named after the journal file,
+            // which is worse than doing nothing.
+            var directory = Path.GetDirectoryName(basePath);
+            if (!string.IsNullOrEmpty(directory))
+                Directory.CreateDirectory(directory);
         }
 
         /// <inheritdoc/>

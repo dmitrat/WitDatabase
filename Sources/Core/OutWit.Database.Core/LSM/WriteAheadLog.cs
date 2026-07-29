@@ -83,17 +83,30 @@ public sealed class WriteAheadLog : WriteAheadLogBase, IWriteAheadLog
 
         lock (WriteLock)
         {
+            // Same reasoning as the transactional WAL: the header's entry count is what tells a torn
+            // tail apart from damage in the middle. A record that was in flight when the power went
+            // was never counted, so losing it is recovery working; a record the header knows about
+            // going missing is data loss and has to be said out loud.
+            var expected = EntryCount;
+
             SeekTo(HeaderSize);
             using var reader = CreateReader();
             int count = 0;
             long entryId = 0;
+            long? stoppedAt = null;
 
             while (GetPosition() < GetLength())
             {
+                var position = GetPosition();
+
                 try
                 {
                     var entry = ReadEntry(reader, entryId++);
-                    if (entry == null) break;
+                    if (entry == null)
+                    {
+                        stoppedAt = position;
+                        break;
+                    }
 
                     switch (entry.Value.Type)
                     {
@@ -108,13 +121,18 @@ public sealed class WriteAheadLog : WriteAheadLogBase, IWriteAheadLog
                 }
                 catch (EndOfStreamException)
                 {
+                    stoppedAt = position;
                     break;
                 }
                 catch (CryptographicException)
                 {
+                    stoppedAt = position;
                     break;
                 }
             }
+
+            if (stoppedAt != null && count < expected)
+                throw new WalReplayException(count, expected, stoppedAt.Value);
 
             return count;
         }

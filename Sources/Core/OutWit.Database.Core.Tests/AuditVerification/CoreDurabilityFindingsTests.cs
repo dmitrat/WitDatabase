@@ -83,11 +83,6 @@ public class CoreDurabilityFindingsTests
     #region Recovery truncates the WAL after a partial replay
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and quantified: after corrupting 16 bytes in the middle of the log, "
-            + "only 2 of 5 committed transactions were recovered and NO error was reported. Three "
-            + "committed transactions vanished in silence, which is the half that matters - a "
-            + "database may lose data to corruption, but it must say so. "
-            + "core-durability, Core/Transactions/TransactionalStore.cs:403")]
     public void CorruptWalRecordDoesNotSilentlyDiscardLaterTransactionsTest()
     {
         // Finding: TransactionalStore.cs:403 - recovery truncates the WAL after a partial replay, so
@@ -142,10 +137,6 @@ public class CoreDurabilityFindingsTests
     #region RollbackJournal with a bare relative path
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: ArgumentException \"The value cannot be an empty string. (Parameter "
-            + "'path')\". Path.GetDirectoryName(\"relative.witdb\") returns the empty string rather "
-            + "than null, so the `?? basePath` fallback never fires and CreateDirectory(\"\") throws. "
-            + "core-durability, Core/Transactions/RollbackJournal.cs:51")]
     public void RollbackJournalAcceptsABareRelativePathTest()
     {
         // Finding: RollbackJournal.cs:51 - the constructor calls
