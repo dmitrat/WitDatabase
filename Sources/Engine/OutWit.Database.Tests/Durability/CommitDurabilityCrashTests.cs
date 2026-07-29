@@ -142,6 +142,8 @@ public sealed class CommitDurabilityCrashTests
             + "layer finds 24 records - and the number describing them is not, because the row "
             + "count is persisted by PersistRowCountsToStore after the commit and outside the flush "
             + "the commit performed. Closed cleanly the same workload reports 20 and 20. "
+            + "STILL OPEN, same reason as RowIdIsNotReusedAfterACrashTest: both routes to making "
+            + "the metadata commit with the data were tried and refuted by measurement. "
             + "Engine/WitSqlEngine.Transactions.cs:65")]
     public void RowCountAgreesWithTheRowsAfterACrashTest()
     {

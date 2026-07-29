@@ -251,7 +251,7 @@ depends on. **Subject 6 lands after subject 2, never before.**
 | 2 | Instrument B — modelled cut, fsync counter, C4–C6 | none — **§7**; `WithStorage` already existed |
 | 3 | WAL truncation on partial replay (+ the `RollbackJournal` relative path) | recovery — **§8**, and the same fix was needed in the LSM WAL |
 | 4 | Savepoint replay | journal — **§9**, compensating records, no format change |
-| 5 | Rowid counters | engine metadata |
+| 5 | Rowid counters | engine metadata — **§10: still open**, both routes refuted; an MVCC namespace collision fixed instead |
 | 6 | SSTable fsync, `SyncWrites` documented for what it does, **and the LSM file seam** | LSM |
 | 7 | Compaction manifest | LSM |
 | 8 | Statement atomicity / implicit per-statement transaction | engine write path |
@@ -501,7 +501,66 @@ Ledger **73 → 72** attributes plus 13 `[TestCase(… Ignore =)]` — **85 supp
 
 ---
 
-## 10. The four standing rules, applied to this phase
+## 10. PR 5 results — one defect fixed, and the intended fix refuted twice, 2026-07-29
+
+Subject 3 (row-id counters) and its sibling, the row count that disagrees with the rows. **Neither
+marker closes.** What this PR ships is a different defect, found while trying to close them — and the
+two refutations, which are the more valuable half.
+
+### 10.1 The intended fix, and why it does not work either way
+
+Both defects have one cause: the row counts, row ids and row version are written **after** the commit
+has returned, outside the flush the commit performed, inside a `try { } catch { }` that swallows every
+failure. Making them commit atomically with the rows they describe should close both. There are
+exactly two ways to do that, and **both were tried and both were refuted by measurement**:
+
+- **Write straight to the store, before the commit.** Throws `LockRecursionException` on
+  `TransactionalStore` — `BeginTransaction` holds the write lock for the transaction's whole life, and
+  `Put` reaches for it again. The original code carried a comment saying it deferred for exactly this
+  reason; that comment turns out to be right, which is worth recording because this project's habit is
+  to distrust them.
+- **Write through the transaction.** Puts the shared `$schema:` keys into the MVCC write set, and
+  since every commit persists **every** table's counters, each commit then collides with the one
+  before it. **3140 of 3142 conformance tests failed** with *"Transaction cannot commit due to
+  write-write conflict"*. Narrowing it to only the touched tables would trade the wholesale failure
+  for spurious serialization failures between honest concurrent writers — worse, not better.
+
+So the fix needs one of two things this PR does not build: metadata that commits atomically **without
+joining conflict detection**, or **reconstruction on open** when the persisted numbers are behind the
+data. The second is what the code's own comment has been promising all along — *"metadata can be
+recovered by scanning on next startup"* — and nothing implements it.
+
+Both markers stay, with what was tried written into them.
+
+### 10.2 What the attempt did find: a namespace the MVCC store was claiming
+
+Routing the metadata through the transaction failed a second way first, and that one **is** fixed here.
+`MvccKeyValueStore.CommitTransaction` skipped **every key beginning with `$`** when marking a
+transaction's records committed. It has exactly one metadata key of its own,
+`$mvcc:max_timestamp` — but the SQL engine keeps its entire schema catalog under `$schema:`.
+
+**A key beginning with `$` written inside an MVCC transaction was committed and then never became
+visible.** The transaction reported success; the value was gone. Proven with the same key written with
+and without the prefix: `null` against the value.
+
+The skip is now an exact-key comparison, which is how the rest of that class already filters its own
+metadata in two other places — and the `MvccRecord.TryDeserialize` check at every call site was
+already rejecting anything that is not a versioned record, so the prefix test was carrying no weight
+beyond its collision.
+
+`MvccMetadataKeyCollisionTests` holds it: the defect, a control with the same key minus the `$`, and a
+control that the store's own timestamp key still survives a commit untouched — because narrowing the
+skip must not start treating that one as a versioned record.
+
+### 10.3 Counts after PR 5
+
+Core suite **2228 → 2231 passed**, 23 skipped; engine suite back to **1949 / 34** with both markers
+restored. Whole solution green on both frameworks. Ledger **72 → 74** attributes plus 13
+`[TestCase(… Ignore =)]`.
+
+---
+
+## 11. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** Durability sits *below* the minimum-set
    line: PostgreSQL, SQL Server and SQLite all promise that a committed transaction survives a crash,
@@ -521,7 +580,7 @@ Ledger **73 → 72** attributes plus 13 `[TestCase(… Ignore =)]` — **85 supp
 
 ---
 
-## 11. Acceptance
+## 12. Acceptance
 
 - Baseline suite counts preserved or explained: Core.Tests **2213 passed / 26 skipped**, engine tests
   as recorded by PR 0.

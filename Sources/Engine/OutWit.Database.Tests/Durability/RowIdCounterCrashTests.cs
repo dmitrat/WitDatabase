@@ -76,6 +76,13 @@ public sealed class RowIdCounterCrashTests
             + "an identity that is already in use, and then every insert after it does the same. "
             + "The audit recorded this as 'not reproducible with the current surface'; it is "
             + "reproducible, and the surface it needed is this harness. "
+            + "STILL OPEN after two attempts, both measured and both refuted: writing the metadata "
+            + "straight to the store before the commit throws LockRecursionException on "
+            + "TransactionalStore, because the transaction already holds the write lock; routing it "
+            + "through the transaction puts the shared '$schema:' keys into the MVCC write set, and "
+            + "every commit then collides with the last one - 3140 of 3142 conformance tests failed "
+            + "on write-write conflicts. The fix needs metadata that commits atomically WITHOUT "
+            + "joining conflict detection, or reconstruction on open. "
             + "core-durability, Engine/WitSqlEngine.Transactions.cs:66")]
     public void RowIdIsNotReusedAfterACrashTest()
     {

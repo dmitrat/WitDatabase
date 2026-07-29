@@ -774,11 +774,22 @@ namespace OutWit.Database.Core.Stores
         }
         
         /// <summary>
-        /// Checks if a key is a metadata key (starts with $).
+        /// Checks whether a key is this store's own metadata rather than a versioned record.
         /// </summary>
+        /// <remarks>
+        /// This used to be "starts with <c>$</c>", which swallowed a whole namespace that is not this
+        /// store's to claim. The SQL engine keeps its schema catalog under <c>$schema:</c>, so a row
+        /// count written inside a transaction was committed and then skipped here - left uncommitted,
+        /// invisible to every reader, while the transaction reported success.
+        ///
+        /// There is exactly one metadata key, and the rest of this class already matches it exactly
+        /// (see the scan filters). The <c>MvccRecord.TryDeserialize</c> check at every call site
+        /// rejects anything that is not a versioned record anyway, so the prefix test was never
+        /// carrying its weight - only its collision.
+        /// </remarks>
         private static bool IsMetadataKey(byte[] key)
         {
-            return key.Length > 0 && key[0] == (byte)'$';
+            return key.AsSpan().SequenceEqual(MAX_TIMESTAMP_KEY);
         }
 
         /// <summary>
