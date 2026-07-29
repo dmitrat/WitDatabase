@@ -100,22 +100,71 @@ public sealed class DropInGapsEngineTests : WitSqlEngineTestsBase
 
     #region CROSS APPLY / OUTER APPLY / VALUES table sources
 
-    private const string ApplyIgnore =
-        "CONFIRMED 2026-07-27: the grammar cannot parse this shape. EF Core emits CROSS/OUTER APPLY " +
-        "for filtered or limited collection includes and for correlated Take, and VALUES for " +
-        "inlined lists, so these queries fail at runtime rather than at model build. " +
-        "dropin-gaps / ef-translation, Parser/Grammars/WitSqlParser.g4:157";
-
-    [TestCase("SELECT * FROM A CROSS APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = ApplyIgnore)]
-    [TestCase("SELECT * FROM A OUTER APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = ApplyIgnore)]
-    [TestCase("SELECT * FROM (VALUES (1), (2)) AS V(Id)", Ignore = ApplyIgnore)]
-    public void EfShapedTableSourceParsesTest(string sql)
+    /// <summary>
+    /// The original finding, restated against measurement. <b>Two of its three shapes were wrong,
+    /// and the third was right for a different reason than the one recorded.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The finding said the grammar must learn <c>CROSS APPLY</c>, <c>OUTER APPLY</c> and a
+    /// <c>VALUES</c> table source because EF Core emits all three. Phase 3 measured each claim:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// <b><c>TOP</c> and <c>APPLY</c> are T-SQL, and SQLite rejects them too</b>, so by the drop-in
+    /// bar neither is a WitDatabase defect. The two cases below were written in SQL Server syntax.
+    /// </description></item>
+    /// <item><description>
+    /// <b><c>AS V(Id)</c> — a derived column list — is rejected by SQLite as well.</b> Requiring it
+    /// would make WitDatabase stricter than nothing and looser than SQLite, for no consumer.
+    /// </description></item>
+    /// <item><description>
+    /// <b><c>APPLY</c> was nevertheless a real defect — emitted, not missing.</b> The provider's own
+    /// generator produced <c>OUTER APPLY</c> for a correlated <c>Take</c>, and its own parser
+    /// rejected it. Fixed in <c>WitQuerySqlGenerator</c> by refusing at translation time, the way
+    /// EF Core's SQLite provider does. See <c>GeneratedSqlIsParseableTests</c>.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// So the parse-level assertions here are kept only as <b>parity pins</b>: these shapes must
+    /// stay rejected, because SQLite rejects them.
+    /// </para>
+    /// </remarks>
+    [TestCase("SELECT * FROM A CROSS APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x")]
+    [TestCase("SELECT * FROM A OUTER APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x")]
+    [TestCase("SELECT * FROM (VALUES (1), (2)) AS V(Id)")]
+    public void EfShapedTableSourceIsRejectedJustAsSqliteRejectsItTest(string sql)
     {
-        // Finding: WitSqlParser.g4:157 - EF Core emits CROSS APPLY / OUTER APPLY for filtered or
-        // limited collection includes and for correlated Take, and VALUES for inlined parameter
-        // lists. If the grammar cannot parse them the query fails at runtime, not at model build.
-        Assert.That(() => WitSql.Parse(sql), Throws.Nothing,
-            "EF Core generates this shape, so a drop-in provider must be able to parse it");
+        Assert.That(() => WitSql.Parse(sql), Throws.Exception,
+            "SQLite rejects this shape too, so parity means rejecting it rather than learning it");
+    }
+
+    /// <summary>
+    /// The one shape from that finding where SQLite and WitDatabase genuinely differ — deliberately
+    /// left open.
+    /// </summary>
+    /// <remarks>
+    /// A <b>bare</b> <c>VALUES</c> table source is accepted by SQLite and rejected here, so it is a
+    /// real divergence. It is not, however, something the drop-in path needs: measured 2026-07-28,
+    /// WitDatabase's own EF provider translates both an inlined and a parameterised collection to
+    /// <c>IN (…)</c> — <c>IN (1, 2, 3)</c> and <c>IN (@ids1, @ids2, @ids3)</c> — and never emits
+    /// <c>VALUES</c>. The audit's claim that EF Core emits it for inlined lists does not hold for
+    /// this provider.
+    ///
+    /// Supporting it is more than grammar: the executor would have to materialise a row set, with
+    /// SQLite's <c>column1..columnN</c> naming. Deferred on that basis, with the measurement
+    /// recorded rather than the question left open.
+    /// </remarks>
+    [Test]
+    [Ignore("DEFERRED 2026-07-28, not a defect on the drop-in path. SQLite accepts " +
+            "`SELECT * FROM (VALUES (1), (2))` and WitDatabase rejects it, so it is a real " +
+            "divergence - but the EF provider never emits it: collections translate to IN (...), " +
+            "measured in GeneratedSqlIsParseableTests. Implementing it needs executor work to " +
+            "materialise a row set with column1..columnN naming, which phase 3 does not cover.")]
+    public void BareValuesTableSourceParsesTest()
+    {
+        Assert.That(() => WitSql.Parse("SELECT * FROM (VALUES (1), (2))"), Throws.Nothing,
+            "SQLite accepts a bare VALUES table source");
     }
 
     #endregion

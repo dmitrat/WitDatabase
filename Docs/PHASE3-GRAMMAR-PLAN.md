@@ -804,3 +804,76 @@ which the ledger command does not count either way (§8.4).
 
 Oracle divergences remaining: **`valuesTableSource` only** (PR 6), plus the three `HAVING`-aggregate
 shapes recorded as pre-existing and out of scope.
+
+---
+
+## 13. PR 6 results — `APPLY` refused, `VALUES` deferred, 2026-07-28
+
+This PR was scoped as "`VALUES` table source". **The measurement inverted it**: `APPLY` turned out to
+be the real defect and `VALUES` turned out not to be one.
+
+### 13.1 The check §7.5 left open, finally run
+
+`GeneratedSqlIsParseableTests` asks what the acceptance oracle cannot: **does WitDatabase's own EF
+provider generate SQL its own parser can read?** Three LINQ shapes, SQL captured with
+`ToQueryString()`, fed straight to `WitSql.Parse`.
+
+| LINQ shape | Generated SQL | Parses? |
+|---|---|---|
+| `EF.Constant(ids).Contains(r.Id)` | `WHERE "r"."Id" IN (1, 2, 3)` | yes |
+| `ids.Contains(r.Id)` | `WHERE "r"."Id" IN (@ids1, @ids2, @ids3)` | yes |
+| correlated `Take(1)` | **`OUTER APPLY ( … ) AS "r1"`** | **no** |
+
+**Both halves of §3.2's prediction are now settled by execution.**
+
+- **`APPLY` is emitted, and it is self-inflicted.** `WitQuerySqlGenerator` inherits
+  `VisitCrossApply`/`VisitOuterApply` from EF Core and never overrode them, so the provider produced
+  SQL its own engine rejects. The model builds cleanly and the query dies at execution with a syntax
+  error naming a construct the caller never wrote.
+- **`VALUES` is *not* emitted.** Collections translate to `IN (…)`, inlined or parameterised. The
+  audit's claim that EF Core emits `VALUES` for inlined lists **does not hold for this provider**.
+
+### 13.2 The oracle supplied the fix, not just the diagnosis
+
+Before choosing a replacement, EF Core's SQLite provider was asked the identical query. It raises:
+
+> `InvalidOperationException: Translating this query requires the SQL APPLY operation, which is not
+> supported on SQLite.`
+
+So it **refuses at translation time** rather than substituting another shape — and that corrects
+decision §6.2, which had offered "emit a shape the engine already runs". There is no general rewrite:
+`APPLY` is a lateral join, its right side re-evaluated per left row, and no join this engine has
+preserves that. Refusing is the correct implementation, not a concession.
+
+`VisitCrossApply` and `VisitOuterApply` now throw a message that names the provider, the LINQ shape
+that caused it, and a way out. Two tests: one that the query is refused, one that the refusal is
+*actionable* — a loud but useless error would pass the first alone.
+
+This is the third time in the audit's history that the answer was "refuse loudly": the same shape as
+`AddPrimaryKey`/`DropPrimaryKey`/`RenameIndex`/`AlterColumn` in phase 2, where emitting a comment let
+a migration be recorded as applied.
+
+### 13.3 The original finding restated — two of its three shapes were wrong
+
+`EfShapedTableSourceParsesTest` demanded the grammar learn `CROSS APPLY`, `OUTER APPLY` and
+`VALUES … AS V(Id)`. Measured: **SQLite rejects `TOP`, `APPLY` and the derived column list too.** The
+test is now `EfShapedTableSourceIsRejectedJustAsSqliteRejectsItTest` — the same three shapes as
+**parity pins**, asserting they stay rejected.
+
+### 13.4 `VALUES` deferred, with the measurement on record
+
+A bare `(VALUES …)` table source is a genuine divergence — SQLite accepts it, WitDatabase does not.
+It is deferred, because nothing on the drop-in path emits it and supporting it needs executor work to
+materialise a row set with SQLite's `column1..columnN` naming. `BareValuesTableSourceParsesTest`
+carries the marker with that reasoning, so the question is recorded rather than left open.
+
+### 13.5 Counts after PR 6
+
+| Suite | After PR 5 | After PR 6 |
+|---|---|---|
+| `Tests` (`Category!=Performance`) | 1941 / 31 skipped / 1972 | **1944 / 29 / 1973** |
+| `EntityFramework.Tests` | 547 / 1 / 548 | **552 / 1 / 553** |
+
+Whole solution green under the CI filter, 14 projects, both frameworks. Ledger **77 → 78**: two
+`TestCase`-level markers removed as the shapes became parity pins, one new marker for the deferred
+`VALUES`, and the count moves by the usual ledger-command quirk (§8.4).

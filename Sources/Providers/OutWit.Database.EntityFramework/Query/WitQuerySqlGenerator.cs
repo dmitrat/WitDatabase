@@ -165,5 +165,39 @@ public sealed class WitQuerySqlGenerator : QuerySqlGenerator
         return collateExpression;
     }
 
+    /// <summary>
+    /// Refuses <c>CROSS APPLY</c> instead of emitting it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The inherited implementation writes the literal text <c>CROSS APPLY</c>, which WitSQL cannot
+    /// parse. Measured, not assumed: a correlated <c>Take</c> produced
+    /// <c>OUTER APPLY ( … ) AS "r1"</c> and the provider's own parser then rejected its own SQL. A
+    /// query that builds a clean model and fails at execution is worse than one refused up front,
+    /// because the failure surfaces far from its cause.
+    /// </para>
+    /// <para>
+    /// Refusing rather than rewriting is what EF Core's SQLite provider does with the identical
+    /// query — <i>"Translating this query requires the SQL APPLY operation, which is not supported on
+    /// SQLite"</i> — and it is the honest answer here too: <c>APPLY</c> is a lateral join, so the
+    /// right-hand side is re-evaluated per left row, and no general rewrite into the joins this
+    /// engine has preserves that.
+    /// </para>
+    /// </remarks>
+    protected override Expression VisitCrossApply(CrossApplyExpression crossApplyExpression)
+        => throw new InvalidOperationException(ApplyNotSupported("CROSS APPLY"));
+
+    /// <summary>
+    /// Refuses <c>OUTER APPLY</c> instead of emitting it. See <see cref="VisitCrossApply"/>.
+    /// </summary>
+    protected override Expression VisitOuterApply(OuterApplyExpression outerApplyExpression)
+        => throw new InvalidOperationException(ApplyNotSupported("OUTER APPLY"));
+
+    private static string ApplyNotSupported(string operation) =>
+        $"Translating this query requires the SQL {operation} operation, which WitDatabase does not " +
+        "support. This usually comes from a correlated Take/Skip, or from a filtered or limited " +
+        "collection Include. Rewrite it as a join or a subquery, or materialise the outer query " +
+        "first with AsEnumerable().";
+
     #endregion
 }
