@@ -230,10 +230,32 @@ namespace OutWit.Database.Core.Stores
             ThrowIfDisposed();
             m_statistics.RecordScan();
 
+            return ScanInternal(startKey, endKey);
+        }
+
+        /// <summary>
+        /// The scan itself, as an iterator, so the readers it needs are held and let go within one
+        /// enumeration.
+        /// </summary>
+        /// <remarks>
+        /// A scan is lazy: the sources below are enumerables, and the files behind them are read long
+        /// after the SSTable lock has been let go. Compaction takes that lock, disposes every reader
+        /// and clears the list - so a scan in flight used to walk into <c>ObjectDisposedException:
+        /// Cannot access a closed file</c>. Each reader is now held for the life of the scan and
+        /// released in the finally, which runs when the enumeration ends, is broken out of, or is
+        /// abandoned.
+        ///
+        /// The acquisition sits inside the iterator rather than in <see cref="Scan"/> so that a caller
+        /// who asks for a scan and never enumerates it cannot leave readers held open forever.
+        /// </remarks>
+        private IEnumerable<(byte[] Key, byte[] Value)> ScanInternal(byte[]? startKey, byte[]? endKey)
+        {
+
             var comparer = ByteArrayComparer.Default;
             
             // Collect all sources with their priorities (higher = newer)
             var sources = new List<(IEnumerable<(byte[] Key, byte[]? Value)> Source, int Priority)>();
+            var held = new List<SSTableReader>();
             int priority = int.MaxValue;
 
             // 1. Active MemTable (highest priority)
@@ -252,7 +274,14 @@ namespace OutWit.Database.Core.Stores
             {
                 for (int i = m_sstables.Count - 1; i >= 0; i--)
                 {
-                    sources.Add((m_sstables[i].Scan(startKey, endKey), priority--));
+                    var reader = m_sstables[i];
+
+                    // Under the read lock the reader is still in the list, so compaction - which needs
+                    // the write lock to remove and release it - cannot have let go of it yet.
+                    reader.Acquire();
+                    held.Add(reader);
+
+                    sources.Add((reader.Scan(startKey, endKey), priority--));
                 }
             }
             finally
@@ -260,8 +289,17 @@ namespace OutWit.Database.Core.Stores
                 m_sstableLock.ExitReadLock();
             }
 
-            // Use heap-based merge to stream results
-            return MergeScan(sources, comparer);
+            try
+            {
+                // Use heap-based merge to stream results
+                foreach (var entry in MergeScan(sources, comparer))
+                    yield return entry;
+            }
+            finally
+            {
+                foreach (var reader in held)
+                    reader.Release();
+            }
         }
 
         /// <summary>

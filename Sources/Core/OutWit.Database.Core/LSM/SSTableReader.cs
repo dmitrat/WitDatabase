@@ -39,6 +39,7 @@ namespace OutWit.Database.Core.LSM
         private bool m_encrypted;
         private bool m_hasBloomFilter;
         private bool m_disposed;
+        private int m_references = 1;
 
         #endregion
 
@@ -526,12 +527,40 @@ namespace OutWit.Database.Core.LSM
 
         #region IDisposable
 
-        public void Dispose()
+        /// <summary>
+        /// Keeps this reader open past the point its owner lets go of it.
+        /// </summary>
+        /// <remarks>
+        /// A scan is lazy: <c>StoreLsm.Scan</c> collects an enumerable from every reader under the
+        /// SSTable read lock and then releases the lock, so the file is read long afterwards. Meanwhile
+        /// compaction takes the write lock, disposes every reader and clears the list - and a scan in
+        /// flight walked straight into <c>ObjectDisposedException: Cannot access a closed file</c>.
+        ///
+        /// So a reader is closed when the last holder lets go, not when its owner does. Acquiring
+        /// happens under the read lock, while the reader is still in the store's list, and compaction
+        /// takes the write lock - so a reader can never be acquired after its owner has released it.
+        /// </remarks>
+        internal void Acquire()
         {
-            if (m_disposed) return;
+            Interlocked.Increment(ref m_references);
+        }
+
+        /// <summary>
+        /// Lets go of this reader, closing the file if nobody else holds it.
+        /// </summary>
+        internal void Release()
+        {
+            if (Interlocked.Decrement(ref m_references) != 0)
+                return;
+
             m_disposed = true;
             m_stream.Dispose();
             // Note: We don't dispose the cache - it's shared
+        }
+
+        public void Dispose()
+        {
+            Release();
         }
 
         #endregion
