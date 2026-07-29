@@ -1,5 +1,23 @@
 # Changelog
 
+## 3.0.1
+
+**A release-process fix, not a code change.** No behaviour differs from 3.0.0; use this instead.
+
+3.0.0 shipped incompletely. A version bump to `OutWit.Database.csproj` was reverted by accident
+while undoing an unrelated change to the same file, so that package was packed as **2.4.0**. nuget.org
+answered `Conflict - already exists`, `--skip-duplicate` swallowed it, and the publish workflow
+reported **success** having published nothing. The next package in the chain,
+`OutWit.Database.AdoNet 3.0.0`, was then published for real carrying a dependency on the stale
+`OutWit.Database 2.4.0` — pairing it with `OutWit.Database.Core 3.0.0`, which it does not match.
+
+Packages on nuget.org are immutable, so 3.0.1 republishes all seven at a consistent version.
+**`OutWit.Database.AdoNet 3.0.0` should not be used**; `OutWit.Database 3.0.0` never existed.
+
+The publish workflow now refuses to push when the packed version does not match the release tag on
+`HEAD`, and fails loudly when `--skip-duplicate` means nothing was actually published.
+
+
 ## 3.0.0
 
 Closes phase 3, the grammar. **Major rather than minor because this changes answers the previous

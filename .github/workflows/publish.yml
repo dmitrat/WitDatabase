@@ -39,6 +39,11 @@ jobs:
 
     steps:
       - uses: actions/checkout@v4
+        with:
+          # The version guard below compares the packed version against the tag on HEAD,
+          # which a shallow checkout does not fetch.
+          fetch-depth: 0
+          fetch-tags: true
 
       - name: Setup Java (required for ANTLR4)
         uses: actions/setup-java@v4
@@ -97,6 +102,41 @@ jobs:
           echo "Collected packages:"
           ls -la NuGet/
 
+      # Guard added 2026-07-29 after a release shipped the wrong version silently.
+      #
+      # OutWit.Database was packed as 2.4.0 because a csproj version bump had been reverted by
+      # accident. nuget.org answered "Conflict - already exists", `--skip-duplicate` swallowed it,
+      # and the workflow reported SUCCESS having published nothing. The next package in the chain
+      # then shipped for real with a dependency on the stale version.
+      #
+      # So: if HEAD carries a release tag, the packed version must equal it, or nothing is pushed.
+      - name: Verify packed version matches the release tag
+        shell: bash
+        run: |
+          set -euo pipefail
+          tag=$(git tag --points-at HEAD | grep -E '^v[0-9]+\.[0-9]+\.[0-9]+' | head -1 || true)
+          echo "tag: ${tag:-<none>}"
+
+          if [ -z "$tag" ]; then
+            echo "::warning::HEAD carries no release tag - version guard skipped."
+            exit 0
+          fi
+
+          # Every collected package, not just the named one: a build can pack project references
+          # too, and all of them come from this commit so all of them must carry this version.
+          bad=0
+          for pkg in NuGet/*.nupkg; do
+            name=$(basename "$pkg" .nupkg)
+            version=$(echo "$name" | grep -oE '[0-9]+\.[0-9]+\.[0-9]+.*$' || true)
+            echo "  packed: $name  (version $version)"
+            if [ "$version" != "${tag#v}" ]; then
+              echo "::error::$name does not carry the tagged version ${tag#v}. Refusing to push - fix the <Version> in the csproj."
+              bad=1
+            fi
+          done
+          [ "$bad" = "0" ] || exit 1
+          echo "Version guard OK - everything matches $tag."
+
       - name: Add GitHub Packages source
         if: github.event.inputs.pushToGitHubPackages == 'true'
         run: >
@@ -107,13 +147,20 @@ jobs:
           --name github
           "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
 
+      # --skip-duplicate is kept so a partially-failed chain can be re-run, but a skip is no longer
+      # silent: if every package we meant to push already existed, this run published nothing and
+      # saying "success" would be a lie.
       - name: Push to nuget.org (.nupkg)
         if: github.event.inputs.pushToNuGet == 'true' && steps.collect.outputs.hasNupkg == 'true'
-        run: >
-          dotnet nuget push "NuGet/*.nupkg"
-          --api-key ${{ secrets.NUGET_API_KEY }}
-          --source https://api.nuget.org/v3/index.json
-          --skip-duplicate
+        shell: bash
+        run: |
+          set -euo pipefail
+          out=$(dotnet nuget push "NuGet/*.nupkg"             --api-key "${{ secrets.NUGET_API_KEY }}"             --source https://api.nuget.org/v3/index.json             --skip-duplicate 2>&1) || { echo "$out"; exit 1; }
+          echo "$out"
+          if echo "$out" | grep -q "already exists at feed" && ! echo "$out" | grep -q "Your package was pushed"; then
+            echo "::error::Nothing was published - the package already exists at the feed. This usually means the version was not bumped."
+            exit 1
+          fi
 
       - name: Push symbols to nuget.org (.snupkg)
         if: github.event.inputs.pushToNuGet == 'true' && steps.collect.outputs.hasSnupkg == 'true'
