@@ -6,6 +6,11 @@
 > it*, and phase 4 showed what happens when a phase fixes a list instead of a subject — six of its
 > thirteen defects were in no audit.
 >
+> **The target model, decided 2026-07-30 (§ 8): one process, one engine per database, many
+> connections, one writer at a time.** Cross-process access is out of scope by design; concurrent
+> connections *within* one host process are the supported shape, because the goal is drop-in for
+> ASP.NET Core services where the `DbContext`s are many and the host is one.
+>
 > Entry state: `main` at `d7e3e6e`, tag `v4.0.0`, seven packages published. Predecessors:
 > `Docs/PHASE3-GRAMMAR-PLAN.md`, `Docs/PHASE4-DURABILITY-PLAN.md`,
 > `Docs/NEXT-SESSION-PLAN.md` § "Phases 5–10".
@@ -219,42 +224,88 @@ meaningless. **A suite can be green, large, and about nothing.**
 
 ---
 
+## 6a. What the model probe says about the ASP.NET Core shape
+
+Recorded after § 8 was decided, because it changes which of the § 3 measurements is the important one.
+The supported deployment is one host process holding several `DbContext`s, so the load-bearing question
+is not "can a second process open the database" but **"can a second connection open it"** — and that is
+the row of § 3 that reads `IOException`.
+
+Two consequences for the work, both measured rather than assumed:
+
+- **The refusal is at the OS level, not in a policy layer.** `StorageFile` passes `FileShare.None` to
+  `FileStream`, so no amount of coordination above it makes a second `WitDbConnection` work. Sharing has
+  to be achieved by **not opening the file twice** — one engine, many handles — rather than by opening
+  it twice more politely.
+- **The engine already serialises writers in-process**, measured at 1 writer inside the store under the
+  default configuration (§ 3). So the shared-engine shape does not need a new lock hierarchy, which is
+  the risk the phase-5 plan called its highest. It needs the sharing, plus the serialisation it already
+  has, plus `FileLocking=false` no longer being able to switch that serialisation off.
+
+---
+
 ## 7. What this phase must still establish
 
 - **Question 2 — reachability of the 10 `core-concurrency` markers from the provider.** Not yet
   measured. The one already known — the pool permit leak — is real but unenterable, and now doubly
   so: nothing reaches the pool at all.
-- **Question 4 — a second machine, and a second process.** Every verdict above is from this machine.
-  The multi-process harness (`Tools/OutWit.Database.CrashRunner` is one scenario away) has a sharper
-  question than "is a second process refused", which `FileShare.None` already answers at the OS
-  level: **can a second process open the database after the first one crashed holding it**, which is
-  where phase 4's recovery work and this phase's access model meet.
-- **The design decision this audit cannot make.** See § 8.
+- **Question 4 — a second machine, and a second process.** Every verdict above is from this machine, and
+  a second machine has overturned a local verdict twice in this project. The multi-process harness is
+  **narrower than the plan expected**, now that § 8 rules cross-process access out of scope: "is a
+  second process refused" is answered by `FileShare.None` at the OS level, so the harness has one
+  question left worth the build — **can a process open the database after another crashed holding it**,
+  which is where phase 4's recovery work meets this phase's access model. `Tools/OutWit.Database.CrashRunner`
+  already kills a process mid-write; the missing half is the reopen.
+- **The shared-engine mechanism itself**, which § 8 turns from an open question into the phase's main
+  subject. Not yet designed; it wants its own PR and its own instrument, because "two connections see
+  each other's committed writes" is the property to test and nothing in the suite tests it today.
 
 ---
 
-## 8. The decision the audit hands back
+## 8. The decision the audit handed back — **taken 2026-07-30**
 
-The audit was asked to establish the model, and it has. It cannot decide **what the model should
-be**, because that is desirability, not attribution, and the standing rule is explicit that the
-SQLite oracle settles only the latter. Concretely, three of the findings above have no correct fix
-until this is answered:
+The audit was asked to establish the model, and it did. It could not decide **what the model should
+be**, because that is desirability, not attribution, and the standing rule is explicit that the SQLite
+oracle settles only the latter. So it was put to the owner, and the answer splits the question in a
+way neither option offered had:
 
-> **Is WitDatabase single-process and single-connection by design, or is concurrent access a
-> capability to build?**
+> **Single-process by design — "on to она и файловая база". But the target is drop-in for ASP.NET Core
+> services, where the host is one process and the `DbContext`s are many.**
 
-- If **single-process by design**: `FileLock` and the file-locking branch of `LockManager` are dead
-  weight to remove, `ConnectionPool` is a mechanism to remove or to reduce to a serialising gate, the
-  four "multiple file connections not supported" markers become a documented limit in `WitSQL.md`,
-  and the work in this area is the honest refusal — a typed exception at open time instead of a raw
-  Windows sharing violation.
-- If **concurrent access is to be built**: the cheapest first increment is already half-present —
-  honour read-only, and `StorageFile` gives many readers over one file for free. One writer with many
-  readers, in-process, is reachable without touching the lock hierarchy. Cross-process comes after,
-  and only then does `FileLock` earn its place.
+That is not "single-connection", and it is not "cross-process". It is a third model, and it is the one
+the phase now works toward:
 
-Either way, `FileLocking=false` silently removing write serialisation (§ 3) and read-only being
-dropped (§ 4) are defects, and both fixes are independent of the decision.
+> ### One process. One engine per database. **Many connections.** One writer at a time.
+
+Read against § 3, this decides every open item in the area:
+
+- **Cross-process access is out of scope by design.** `FileLock`, the file-locking branch of
+  `LockManager`, and the `LockHandle*Combined` handles that exist to pair a process handle with a file
+  handle are dead weight — unreachable today (§ 3) and unwanted tomorrow. `FileShare.None` is not the
+  defect; it is the enforcement of a deliberate limit, and it should say so with a typed exception
+  instead of a raw Windows sharing violation.
+- **`FileShare.None` *is* in the way of the supported shape.** A scoped `DbContext` is one connection
+  per request, and a host serves requests concurrently, so N live connections to one database inside
+  one process is the ordinary case — exactly what the model probe measured as an `IOException` today.
+- **The mechanism needed is not `ConnectionPool`.** The pool creates an independent `WitDbConnection`,
+  and therefore an independent engine, per pooled entry — which is why it collides with itself over a
+  file (§ 6). What the ASP.NET Core shape needs is the opposite: **one shared engine per data source
+  within the process, with connections as lightweight handles onto it.** The pool's ~30 tests describe
+  borrowing and eviction, not sharing, so almost none of that suite transfers.
+- **In-process write serialisation becomes load-bearing.** It is the only thing standing between two
+  concurrent requests, which makes `FileLocking=false` silently removing it (§ 3) a more serious
+  defect than it looked, not a lesser one.
+- **The four "multiple file connections not supported for embedded database" markers are half right.**
+  Multiple *processes*: correct, and now a documented limit. Multiple *connections*: to be built, so
+  those markers convert rather than close.
+
+`FileLocking=false` (§ 3) and read-only being dropped (§ 4) are defects under any reading, and neither
+fix depends on the decision. Read-only gains a second purpose under it: with a shared engine, it is how
+a connection declares it will not write.
+
+**Also decided: the reserved-word defect (§ 5) is fixed now**, rather than handed to phase 7. `Key` is
+an ordinary column name in every dialect the project targets, the defect is proved by execution, and it
+was found here.
 
 ---
 
@@ -286,8 +337,12 @@ dropped (§ 4) are defects, and both fixes are independent of the decision.
 Unchanged from `Docs/NEXT-SESSION-PLAN.md` § "Phase 5", with one item now answerable:
 
 - Every marker fixed with a deterministic test, or reclassified as unreachable or by-design **with
-  the model written down**. § 3 is that model; it belongs in `WitSQL.md` once § 8 is decided.
+  the model written down**. § 3 is the model as it stands and § 8 is the model as intended; **both**
+  belong in `WitSQL.md`, stated as what a consumer may rely on rather than as an implementation note.
 - Parallel mode either supported and covered, or removed — **decided: supported** (§ 5).
+- **New, from § 8:** two connections in one process see each other's committed writes, with a
+  deterministic test; and a second *process* is refused with a typed exception rather than a raw
+  `IOException` carrying a Windows sharing message.
 - CI green on both frameworks, with no timing-dependent gate introduced. This needed a correction
   during the PR rather than after it: the parked-collaborator probe first gave the second writer a
   2-second budget to enter the store, which on a loaded runner would have reported an **unserialised**
