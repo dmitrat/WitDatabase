@@ -235,10 +235,27 @@ public class ConcurrencyModelProbeTests
 
             // Counted by reading rows, never by COUNT(*): this engine keeps a cached per-table
             // counter, and phase 4 published a false catastrophe by trusting it.
+            var seenByFirst = CountRows(first, "SELECT Id FROM T");
+            var seenBySecond = CountRows(second, "SELECT Id FROM T");
+
             Report($"Q1 lsm two writers, rows visible to the FIRST engine [{Platform}]",
-                Observe(() => CountRows(first, "SELECT Id FROM T")));
+                new Outcome(false, null, null, $"Int32:{seenByFirst}"));
             Report($"Q1 lsm two writers, rows visible to the SECOND engine [{Platform}]",
-                Observe(() => CountRows(second, "SELECT Id FROM T")));
+                new Outcome(false, null, null, $"Int32:{seenBySecond}"));
+
+            // PINS THE DEFECT'S ACTUAL SHAPE. Measured 2026-07-30 on Linux: 1 and 2. The second
+            // engine sees both rows because it replayed wal.log at open, which already held the
+            // first engine's row; the first engine cannot see the second's row at all, because it
+            // lives in a memtable belonging to a different engine and nothing invalidates or
+            // notifies. So the cost of the missing exclusivity is not (in this case) a lost write -
+            // it is two engines holding divergent views of one database, each answering confidently.
+            Assert.Multiple(() =>
+            {
+                Assert.That(seenByFirst, Is.EqualTo(1),
+                    "the first engine's view changed - re-establish what the two engines see");
+                Assert.That(seenBySecond, Is.EqualTo(2),
+                    "the second engine's view changed - re-establish what the two engines see");
+            });
         }
 
         // Both engines are now closed. Whatever a fresh reader finds is what actually survived.
@@ -252,7 +269,10 @@ public class ConcurrencyModelProbeTests
             new Outcome(false, null, null, $"Int32:{reopenedRows}"));
 
         // Two rows were written and both were acknowledged. Anything less is data loss, and this
-        // assertion is the one that says so - it is NOT pinning current behaviour.
+        // assertion is the one that says so - it is NOT pinning current behaviour. Measured
+        // 2026-07-30 on Linux: 2, so this ordered, uncontended case does NOT lose a write, and the
+        // finding is stated as divergent views rather than as corruption. See the plan document
+        // section 3a for the contended experiment that is NOT yet run.
         Assert.That(reopenedRows, Is.EqualTo(2),
             $"two engines each acknowledged an INSERT, but {reopenedRows} row(s) survived");
     }

@@ -14,7 +14,9 @@
 > **The heaviest finding so far is § 3a, and only CI could have produced it: an LSM database has no
 > exclusivity on Linux.** A second connection opens and reads the first's data, because .NET maps
 > `FileShare.Read` to a *shared* advisory lock on Unix. That is the platform the target deployment runs
-> on, and the store chosen for write-heavy work.
+> on, and the store chosen for write-heavy work. Measured cost: the two engines **diverge** — one sees
+> one row, the other two. Data loss is the plausible next step and is **not** claimed, because the
+> experiment that would prove it has not been run.
 >
 > Entry state: `main` at `d7e3e6e`, tag `v4.0.0`, seven packages published. Predecessors:
 > `Docs/PHASE3-GRAMMAR-PLAN.md`, `Docs/PHASE4-DURABILITY-PLAN.md`,
@@ -154,12 +156,37 @@ target deployment lives is the platform with no protection, on the store chosen 
 workloads. It is also invisible: nothing fails, nothing warns, and the second engine returns correct
 answers right up until the two memtables disagree.
 
-**Recorded as a verdict-in-progress, not a closed finding.** `ProbeTwoLsmConnectionsBothWriteTest`
-asks the next question — two engines each acknowledge an `INSERT`, and how many rows survive after both
-close — and it asserts **2**, which is correct behaviour rather than observed behaviour. Its Linux
-verdict is what turns "no exclusivity" into either "and it loses data" or "and it happens to survive
-this case". That answer is not in yet, and the honest thing is that this section will be updated with
-it rather than predicting it.
+### What it costs — measured, and less than "corruption"
+
+`ProbeTwoLsmConnectionsBothWriteTest` asked the next question and the Linux runner answered it. The
+verdict is **divergent views, not a lost write** — stated that way deliberately, because the severity of
+a claim is a reason to check it harder, not to publish it faster:
+
+| Observation, Linux | Value |
+|---|---|
+| second `Open` | succeeds |
+| second engine's `INSERT` | succeeds |
+| rows visible to the **first** engine | **1** |
+| rows visible to the **second** engine | **2** |
+| rows on disk after both engines closed | **2** |
+
+Both writes survived. What did not survive is agreement: the second engine sees both rows because it
+**replayed `wal.log` at open**, which already held the first engine's row; the first engine cannot see
+the second's row at all, because it lives in a memtable belonging to another engine and nothing
+invalidates or notifies. Two engines, one database, both answering confidently, neither wrong by its own
+lights.
+
+**So the honest statement of the defect is:** on Linux an LSM database admits a second engine, and the
+two then diverge. **Not proven, and therefore not claimed:** that this loses data under contention. The
+mechanism for loss is visible — both engines flush memtables into the same directory and both rewrite
+the same log, and phase 4's scan/compaction race is exactly this hazard *within* one engine — but the
+experiment that would settle it has not been run. **The next experiment, named so it is not quietly
+dropped:** two engines interleaving flushes and a compaction over overlapping key ranges, with rows
+counted by reading them. It belongs with the fix, not with the audit, because it is a test of whatever
+mechanism closes § 3a.
+
+Both numbers above are pinned in the probe, so a change to what the two engines see fails the build
+rather than passing quietly.
 
 ### The cross-process mechanism exists and is unreachable
 
