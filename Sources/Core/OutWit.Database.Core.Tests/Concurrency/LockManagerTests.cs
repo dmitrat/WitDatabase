@@ -298,7 +298,19 @@ public class LockManagerTests : IDisposable
 
     [Test]
     [Category("Stress")]
-    [Ignore("Flaky due to file lock timing issues")]
+    // MARKER LIFTED 2026-07-30. The reason was "Flaky due to file lock timing issues" - a suspicion with
+    // no verdict behind it, carried unexamined. Re-run: 15 consecutive whole-fixture runs and two runs
+    // under the full project's load, all green.
+    //
+    // Worth knowing what this test actually covers, because the reason string pointed at it and got it
+    // backwards. The file-lock half of LockManager is NOT reachable from the product: WitDatabaseBuilder
+    // only ever calls `new LockManager(Options.LockTimeout)`, the overload that sets m_fileLock = null.
+    // The path-taking constructor this fixture uses is entered by tests alone - the third piece of
+    // unreachable machinery found in this area, after PageLatchManager and the ConnectionPool leak, and
+    // the same point the first half of phase 5 made about LockManager's class comment: accurate about
+    // the class, false about the system.
+    //
+    // So a failure here is a statement about LockManager's own file-lock path, not about the engine.
     public async Task MixedOperationsCompleteTest()
     {
         const int operationCount = 20;
