@@ -1,4 +1,4 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.LSM;
@@ -34,7 +34,7 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
 
     private readonly StoreLsm m_store;
     private readonly Channel<(LsmWriteBuffer Buffer, TaskCompletionSource<bool>? Completion)> m_bufferChannel;
-    private readonly ThreadLocal<LsmWriteBuffer> m_threadLocalBuffer;
+    private readonly ThreadLocal<BufferSlot> m_threadLocalSlot;
     private readonly Task m_mergeTask;
     private readonly CancellationTokenSource m_cts;
     private readonly int m_bufferSizeThreshold;
@@ -81,9 +81,10 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
                 FullMode = BoundedChannelFullMode.Wait
             });
 
-        // Thread-local buffers
-        m_threadLocalBuffer = new ThreadLocal<LsmWriteBuffer>(
-            () => new LsmWriteBuffer(sizeThreshold: bufferSizeThreshold),
+        // Thread-local buffers, each behind a slot the owner and a foreign flush share - see
+        // BufferSlot for why the indirection exists.
+        m_threadLocalSlot = new ThreadLocal<BufferSlot>(
+            () => new BufferSlot(new LsmWriteBuffer(sizeThreshold: bufferSizeThreshold)),
             trackAllValues: true);
 
         // Start background merge task
@@ -103,10 +104,16 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        var buffer = GetOrCreateBuffer();
-        buffer.Put(key, value);
+        var slot = GetOrCreateSlot();
+        bool shouldFlush;
 
-        if (buffer.ShouldFlush)
+        lock (slot.Gate)
+        {
+            slot.Buffer.Put(key, value);
+            shouldFlush = slot.Buffer.ShouldFlush;
+        }
+
+        if (shouldFlush)
         {
             FlushCurrentBuffer();
         }
@@ -119,10 +126,16 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        var buffer = GetOrCreateBuffer();
-        buffer.Put(key, value);
+        var slot = GetOrCreateSlot();
+        bool shouldFlush;
 
-        if (buffer.ShouldFlush)
+        lock (slot.Gate)
+        {
+            slot.Buffer.Put(key, value);
+            shouldFlush = slot.Buffer.ShouldFlush;
+        }
+
+        if (shouldFlush)
         {
             await FlushCurrentBufferAsync(cancellationToken);
         }
@@ -136,10 +149,16 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        var buffer = GetOrCreateBuffer();
-        buffer.Delete(key);
+        var slot = GetOrCreateSlot();
+        bool shouldFlush;
 
-        if (buffer.ShouldFlush)
+        lock (slot.Gate)
+        {
+            slot.Buffer.Delete(key);
+            shouldFlush = slot.Buffer.ShouldFlush;
+        }
+
+        if (shouldFlush)
         {
             FlushCurrentBuffer();
         }
@@ -152,10 +171,16 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        var buffer = GetOrCreateBuffer();
-        buffer.Delete(key);
+        var slot = GetOrCreateSlot();
+        bool shouldFlush;
 
-        if (buffer.ShouldFlush)
+        lock (slot.Gate)
+        {
+            slot.Buffer.Delete(key);
+            shouldFlush = slot.Buffer.ShouldFlush;
+        }
+
+        if (shouldFlush)
         {
             await FlushCurrentBufferAsync(cancellationToken);
         }
@@ -169,16 +194,23 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        var buffer = m_threadLocalBuffer.Value;
-        if (buffer == null || buffer.IsEmpty)
+        var slot = GetOrCreateSlot();
+
+        // Taken under the slot's gate, so the buffer that goes to the merge loop is one nobody can
+        // still be writing into - including this thread, which now has a fresh one.
+        var buffer = TakeBuffer(slot);
+        if (buffer == null)
             return;
 
-        // Submit buffer and create new one for this thread
         if (m_bufferChannel.Writer.TryWrite((buffer, null)))
         {
             Interlocked.Increment(ref m_buffersSubmitted);
-            m_threadLocalBuffer.Value = new LsmWriteBuffer(sizeThreshold: m_bufferSizeThreshold);
+            return;
         }
+
+        // The queue is full and this overload does not wait. Put the entries back rather than drop
+        // them: they are already out of the slot, so nothing else will ever flush them.
+        ReturnBuffer(slot, buffer);
     }
 
     /// <summary>
@@ -194,9 +226,13 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        var buffer = m_threadLocalBuffer.Value;
-        if (buffer == null || buffer.IsEmpty)
-            return;
+        var slot = GetOrCreateSlot();
+
+        lock (slot.Gate)
+        {
+            if (slot.Buffer.IsEmpty)
+                return;
+        }
 
         FlushCurrentBufferAsync().GetAwaiter().GetResult();
     }
@@ -208,8 +244,10 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     {
         ThrowIfDisposed();
 
-        var buffer = m_threadLocalBuffer.Value;
-        if (buffer == null || buffer.IsEmpty)
+        var slot = GetOrCreateSlot();
+
+        var buffer = TakeBuffer(slot);
+        if (buffer == null)
             return;
 
         // Create completion source to wait for merge
@@ -218,32 +256,51 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
         // Submit buffer
         await m_bufferChannel.Writer.WriteAsync((buffer, completion), cancellationToken);
         Interlocked.Increment(ref m_buffersSubmitted);
-        m_threadLocalBuffer.Value = new LsmWriteBuffer(sizeThreshold: m_bufferSizeThreshold);
 
         // Wait for merge to complete
         await completion.Task.WaitAsync(cancellationToken);
     }
 
     /// <summary>
-    /// Flushes all thread-local buffers and waits for all merges to complete.
+    /// Flushes every thread's buffer and waits for all merges to complete.
     /// </summary>
+    /// <remarks>
+    /// This reaches into buffers belonging to threads that are still running, and it has to: the
+    /// commit path calls it to make everything durable, so leaving another thread's entries behind
+    /// would lose acknowledged writes. What it must not do is take a buffer out from under the thread
+    /// that is writing into it.
+    ///
+    /// It used to do exactly that. The buffer went to the merge loop while its owner kept appending
+    /// to the same <c>List</c>, and the merge drained and disposed it: measured, a producer writing
+    /// 2000 entries alongside a flushing thread lost runs of eight and nine consecutive entries, and
+    /// the third round died inside <c>Drain</c> with "Destination array was not long enough" - a list
+    /// copied while it was being added to. It also reset only the CALLING thread's slot, so every
+    /// other owner was left holding a buffer that had already been merged and disposed.
+    ///
+    /// Each buffer is now taken under its slot's gate, which is the same gate the owner appends
+    /// under, and replaced with a fresh one in the same breath. The owner never touches a buffer that
+    /// has been handed away, and nothing is left unflushed.
+    /// </remarks>
     public async Task FlushAllAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
         var completions = new List<TaskCompletionSource<bool>>();
 
-        // Flush all thread-local buffers with completion tracking
-        foreach (var buffer in m_threadLocalBuffer.Values)
+        foreach (var slot in m_threadLocalSlot.Values)
         {
-            if (buffer != null && !buffer.IsEmpty)
-            {
-                var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
-                completions.Add(completion);
-                
-                await m_bufferChannel.Writer.WriteAsync((buffer, completion), cancellationToken);
-                Interlocked.Increment(ref m_buffersSubmitted);
-            }
+            if (slot == null)
+                continue;
+
+            var buffer = TakeBuffer(slot);
+            if (buffer == null)
+                continue;
+
+            var completion = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+            completions.Add(completion);
+
+            await m_bufferChannel.Writer.WriteAsync((buffer, completion), cancellationToken);
+            Interlocked.Increment(ref m_buffersSubmitted);
         }
 
         // Wait for all merges to complete
@@ -251,26 +308,100 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
         {
             await Task.WhenAll(completions.Select(c => c.Task)).WaitAsync(cancellationToken);
         }
-
-        // Reset thread-local buffers
-        m_threadLocalBuffer.Value = new LsmWriteBuffer(sizeThreshold: m_bufferSizeThreshold);
     }
 
     #endregion
 
     #region Background Processing
 
-    private LsmWriteBuffer GetOrCreateBuffer()
+    private BufferSlot GetOrCreateSlot()
     {
-        var buffer = m_threadLocalBuffer.Value;
-        
-        // Create new buffer if null or disposed (after FlushAllAsync)
-        if (buffer == null || buffer.IsDisposed)
+        var slot = m_threadLocalSlot.Value;
+
+        if (slot == null)
         {
-            buffer = new LsmWriteBuffer(sizeThreshold: m_bufferSizeThreshold);
-            m_threadLocalBuffer.Value = buffer;
+            slot = new BufferSlot(new LsmWriteBuffer(sizeThreshold: m_bufferSizeThreshold));
+            m_threadLocalSlot.Value = slot;
         }
-        return buffer;
+
+        return slot;
+    }
+
+    /// <summary>
+    /// Takes a slot's buffer for merging and leaves a fresh one in its place, or returns null when
+    /// there is nothing to flush. Taken under the slot's gate, so no writer is inside the buffer at
+    /// the moment it changes hands.
+    /// </summary>
+    private LsmWriteBuffer? TakeBuffer(BufferSlot slot)
+    {
+        lock (slot.Gate)
+        {
+            var buffer = slot.Buffer;
+
+            if (buffer.IsDisposed)
+            {
+                slot.Buffer = new LsmWriteBuffer(sizeThreshold: m_bufferSizeThreshold);
+                return null;
+            }
+
+            if (buffer.IsEmpty)
+                return null;
+
+            slot.Buffer = new LsmWriteBuffer(sizeThreshold: m_bufferSizeThreshold);
+            return buffer;
+        }
+    }
+
+    /// <summary>
+    /// Puts a taken buffer back, for the fire-and-forget flush that could not queue it. Its entries
+    /// go in front of anything written since, because that is the order they were written in.
+    /// </summary>
+    private static void ReturnBuffer(BufferSlot slot, LsmWriteBuffer buffer)
+    {
+        lock (slot.Gate)
+        {
+            var written = slot.Buffer;
+
+            // The common case is that nothing was written in between - only the owner thread appends,
+            // and it is the thread running this method.
+            if (!written.IsDisposed && !written.IsEmpty)
+            {
+                foreach (var (key, value, isDelete) in written.Drain())
+                {
+                    if (isDelete)
+                        buffer.Delete(key);
+                    else
+                        buffer.Put(key, value!);
+                }
+            }
+
+            slot.Buffer = buffer;
+
+            if (!ReferenceEquals(written, buffer))
+                written.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// A thread's write buffer, held behind a gate that both its owner and a foreign
+    /// <see cref="FlushAllAsync"/> take.
+    /// </summary>
+    /// <remarks>
+    /// The indirection is what makes a foreign flush safe. <see cref="ThreadLocal{T}"/> hands out
+    /// another thread's value but gives no way to REPLACE it, so a flush that wanted a thread's
+    /// buffer could only take it and leave the owner holding the same object - which the merge loop
+    /// then drained and disposed underneath it. With the buffer behind a slot, taking it and leaving
+    /// a fresh one is a single operation under one lock, and the owner's next append finds the fresh
+    /// buffer rather than a merged one.
+    /// </remarks>
+    private sealed class BufferSlot
+    {
+        public BufferSlot(LsmWriteBuffer buffer) => Buffer = buffer;
+
+        /// <summary>Held while appending to, or exchanging, <see cref="Buffer"/>.</summary>
+        public Lock Gate { get; } = new();
+
+        public LsmWriteBuffer Buffer { get; set; }
     }
 
     private async Task MergeLoopAsync()
@@ -510,11 +641,11 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
         m_cts.Cancel();
 
         // Dispose thread-local buffers
-        foreach (var buffer in m_threadLocalBuffer.Values)
+        foreach (var slot in m_threadLocalSlot.Values)
         {
-            buffer?.Dispose();
+            slot?.Buffer.Dispose();
         }
-        m_threadLocalBuffer.Dispose();
+        m_threadLocalSlot.Dispose();
 
         m_cts.Dispose();
     }
@@ -553,11 +684,11 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
         await m_cts.CancelAsync();
 
         // Dispose thread-local buffers
-        foreach (var buffer in m_threadLocalBuffer.Values)
+        foreach (var slot in m_threadLocalSlot.Values)
         {
-            buffer?.Dispose();
+            slot?.Buffer.Dispose();
         }
-        m_threadLocalBuffer.Dispose();
+        m_threadLocalSlot.Dispose();
 
         m_cts.Dispose();
     }
