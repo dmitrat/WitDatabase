@@ -140,8 +140,6 @@ public class CoreConcurrencyFindingsTests
     #region RowLockHandle.Dispose is an empty method
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: IsLocked still reports true after the handle is disposed. "
-            + "core-concurrency, Concurrency/RowLockHandle.cs:40")]
     public void DisposingARowLockHandleReleasesTheLockTest()
     {
         // Finding: RowLockHandle.cs:40 - Dispose() has an empty body, so a lock survives the handle
@@ -159,8 +157,6 @@ public class CoreConcurrencyFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the second transaction cannot take the row, because disposing the "
-            + "first handle released nothing. Same defect, from the caller's side.")]
     public void AnotherTransactionCanLockTheRowAfterTheHandleIsDisposedTest()
     {
         using var manager = new RowLockManager();
@@ -176,14 +172,90 @@ public class CoreConcurrencyFindingsTests
             "the row is no longer locked, so a second transaction must be able to take it");
     }
 
+    [Test]
+    public void DisposingOneSharedHandleLeavesTheOtherHoldersLockTest()
+    {
+        // A control on the fix rather than on the finding: releasing per-handle must release ONE
+        // holder, not the entry. A fix that dropped the whole LockEntry would pass the two tests
+        // above and silently unlock a row another transaction still holds.
+        using var manager = new RowLockManager();
+
+        var first = manager.AcquireLock(
+            new RowLockRequest(Key("k"), transactionId: 1, RowLockMode.Shared, RowLockWaitMode.NoWait));
+        manager.AcquireLock(
+            new RowLockRequest(Key("k"), transactionId: 2, RowLockMode.Shared, RowLockWaitMode.NoWait));
+
+        first!.Dispose();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(manager.IsLockedByTransaction(Key("k"), 1), Is.False,
+                "the disposed handle's transaction must no longer hold the row");
+            Assert.That(manager.IsLockedByTransaction(Key("k"), 2), Is.True,
+                "the other shared holder never disposed anything and must keep its lock");
+            Assert.That(manager.IsLocked(Key("k")), Is.True,
+                "the row is still locked, because a second transaction holds it");
+        });
+    }
+
+    [Test]
+    public void DisposingAHandleGrantsTheRowToAQueuedWaiterTest()
+    {
+        // The consequence for a caller that is already waiting: releasing through the handle has to
+        // run the same grant path ReleaseAllLocks does, or the waiter sits there until it times out.
+        using var manager = new RowLockManager();
+
+        var held = manager.AcquireLock(
+            new RowLockRequest(Key("k"), transactionId: 1, RowLockMode.Exclusive, RowLockWaitMode.NoWait));
+
+        var waiterEntered = new ManualResetEventSlim(false);
+        RowLockHandle? granted = null;
+        var waiter = Task.Run(async () =>
+        {
+            waiterEntered.Set();
+            granted = await manager.AcquireLockAsync(
+                new RowLockRequest(Key("k"), transactionId: 2, RowLockMode.Exclusive,
+                    RowLockWaitMode.Wait, TimeSpan.FromSeconds(10)));
+        });
+
+        waiterEntered.Wait();
+        Thread.Sleep(200); // let the waiter reach the await
+
+        held!.Dispose();
+
+        Assert.That(waiter.Wait(TimeSpan.FromSeconds(5)), Is.True,
+            "disposing the holder's handle must wake the queued waiter");
+        Assert.That(granted, Is.Not.Null);
+        Assert.That(manager.IsLockedByTransaction(Key("k"), 2), Is.True,
+            "the woken waiter now holds the row");
+    }
+
+    [Test]
+    public void DisposingAHandleTwiceDoesNotStealTheWaitersLockTest()
+    {
+        // Guards the nastier half of a per-handle release: once the row has been granted onward, a
+        // second Dispose of the same handle must not release the NEW holder's lock.
+        using var manager = new RowLockManager();
+
+        var first = manager.AcquireLock(
+            new RowLockRequest(Key("k"), transactionId: 1, RowLockMode.Exclusive, RowLockWaitMode.NoWait));
+        first!.Dispose();
+
+        var second = manager.AcquireLock(
+            new RowLockRequest(Key("k"), transactionId: 2, RowLockMode.Exclusive, RowLockWaitMode.NoWait));
+        Assert.That(second, Is.Not.Null);
+
+        first.Dispose(); // second time, on a handle that no longer owns anything
+
+        Assert.That(manager.IsLockedByTransaction(Key("k"), 2), Is.True,
+            "the second transaction's lock must survive a repeat Dispose of the first handle");
+    }
+
     #endregion
 
     #region RowLockManager completes waiters inline under its own lock
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and measured exactly: ReleaseAllLocks took 1007 ms for a waiter whose "
-            + "continuation sleeps 1000 ms. The releasing thread runs foreign code to completion while "
-            + "holding m_syncLock. core-concurrency, Concurrency/RowLockManager.cs:110")]
     public void ReleasingALockDoesNotRunTheWaitersContinuationInlineTest()
     {
         // Finding: RowLockManager.cs:110 - the TaskCompletionSource is created without
@@ -224,6 +296,50 @@ public class CoreConcurrencyFindingsTests
 
         Assert.That(sw.ElapsedMilliseconds, Is.LessThan(500),
             "the releasing thread must not execute the woken waiter's continuation inline");
+    }
+
+    [Test]
+    public void CancellingAQueuedTransactionDoesNotRunItsContinuationInlineTest()
+    {
+        // NOT AN AUDIT FINDING. Found 2026-07-30 by grepping for the SHAPE of the RowLockManager
+        // defect rather than the site the finding names: of the eight TaskCompletionSource
+        // constructions in Sources/, six already pass RunContinuationsAsynchronously. The two that
+        // did not were RowLockManager (above) and TransactionWaitQueue.
+        //
+        // Measured the same way - time the wrong thread. The queue's completion runs on whichever
+        // thread calls Cancel, because CancellationToken.Register callbacks are synchronous, so a
+        // caller cancelling one waiting transaction pays for whatever that transaction does next.
+        using var store = CreateStore();
+
+        var waiterEntered = new ManualResetEventSlim(false);
+        using var cts = new CancellationTokenSource();
+
+        var waiter = Task.Run(async () =>
+        {
+            waiterEntered.Set();
+            await store.WaitInQueueAsync(
+                transactionId: 1, isWriter: true, timeout: TimeSpan.FromSeconds(30),
+                cancellationToken: cts.Token);
+
+            // Stand-in for whatever the cancelled transaction does on its way out.
+            Thread.Sleep(1000);
+        });
+
+        waiterEntered.Wait();
+        Assert.That(SpinUntil(() => store.WaitQueue.WaitingCount > 0), Is.True,
+            "the transaction should be queued before it is cancelled");
+        Thread.Sleep(200); // let the waiter reach the await
+
+        var sw = Stopwatch.StartNew();
+        cts.Cancel();
+        sw.Stop();
+
+        waiter.Wait(TimeSpan.FromSeconds(15));
+
+        TestContext.Out.WriteLine($"Cancel took {sw.ElapsedMilliseconds} ms");
+
+        Assert.That(sw.ElapsedMilliseconds, Is.LessThan(500),
+            "the cancelling thread must not execute the cancelled waiter's continuation inline");
     }
 
     #endregion

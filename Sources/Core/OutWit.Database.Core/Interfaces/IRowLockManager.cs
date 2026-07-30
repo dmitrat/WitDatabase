@@ -31,6 +31,20 @@ namespace OutWit.Database.Core.Concurrency
         void ReleaseAllLocks(long transactionId);
 
         /// <summary>
+        /// Releases one transaction's lock on a single key, granting it to the next waiter if any.
+        /// </summary>
+        /// <remarks>
+        /// This is what <see cref="RowLockHandle.Dispose"/> calls. Note that the engine's own
+        /// transactions do <b>not</b> release locks this way: under two-phase locking a row lock is
+        /// held to the end of the transaction and released by <see cref="ReleaseAllLocks"/>, which is
+        /// why <c>MvccTransaction</c> never disposes the handles it acquires. This member exists for a
+        /// caller driving <see cref="IRowLockManager"/> directly.
+        /// </remarks>
+        /// <param name="key">The locked key.</param>
+        /// <param name="transactionId">The transaction whose lock is released.</param>
+        void ReleaseLock(ReadOnlySpan<byte> key, long transactionId);
+
+        /// <summary>
         /// Checks if a key is currently locked by any transaction.
         /// </summary>
         /// <param name="key">The key to check.</param>

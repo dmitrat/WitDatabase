@@ -789,6 +789,87 @@ loss. It belongs with whatever mechanism closes the remaining LSM work, not with
 
 ---
 
+## 8b. The second half — the remaining concurrency markers
+
+Work order taken from § "Question 2" rather than chosen again: the row-lock and MVCC deadlock-detector
+markers first, because they sit on the provider's default path (MVCC is the default, and
+`MvccTransactionalStore` constructs `RowLockManager` unconditionally).
+
+**Reachability re-confirmed before touching anything, because a reachability record is a claim like any
+other.** The SQL path does reach the row locks: `SELECT … FOR UPDATE` is planned in
+`QueryPlanner.Clauses.cs` → `IteratorLocking.cs:91` → `MvccTransaction.GetForUpdate` → `GetWithLock` →
+`IRowLockManager.AcquireLock`. So this is not a library-only corner.
+
+### 8b.1 Row locks release, and no waiter's continuation runs on the wrong thread — PR 1
+
+**Three markers closed, and a fourth defect found that was in no audit.** All three markers reproduced
+first, on unfixed code, with the numbers the ledger recorded:
+
+| Marker | Observed before the fix |
+|---|---|
+| `RowLockHandle.Dispose` releases nothing | `IsLocked` still **True** after `Dispose` |
+| …from the caller's side | second transaction got `RowLockException`, "Lock held by transaction 1" |
+| `ReleaseAllLocks` runs the waiter's continuation inline | **1023 ms** for a 1 s continuation (1007 ms when first recorded) |
+
+**What the fix is.** `RowLockHandle.Dispose` was an empty body carrying the comment *"Individual lock
+release is handled by the manager internally"* — which was false; there was no such path. `IRowLockManager`
+gained `ReleaseLock(key, transactionId)`, releasing **one holder** rather than the entry, and running the
+same grant-to-waiters path `ReleaseAllLocks` does. The two `TaskCompletionSource<bool>` constructions got
+`RunContinuationsAsynchronously`.
+
+**The engine deliberately does not use the new path, and that is now written down where it will be read.**
+`MvccTransaction.GetWithLock` acquires a handle and never disposes it: under two-phase locking a row lock
+is held to the end of the transaction and released by `ReleaseAllLocks` at commit or rollback. That is
+correct, and it is also why this marker was invisible in the engine's own tests. The remark on
+`IRowLockManager.ReleaseLock` says so, so the next reader does not "fix" the engine into an isolation bug.
+
+### 8b.2 A second inline-continuation defect, found by grepping for the shape — **in no audit**
+
+Rule: *fix every path with the shape, not the one the finding names.* Of the **eight**
+`TaskCompletionSource` constructions in `Sources/`, six already passed `RunContinuationsAsynchronously`.
+The two that did not were `RowLockManager` — the marker's own site — and
+**`TransactionWaitQueue.EnqueueAndWaitAsync`**, which no finding mentions.
+
+Measured the same way, *time the wrong thread*: **`cts.Cancel()` took 1004 ms** for a cancelled
+transaction whose continuation sleeps 1 s. `CancellationToken.Register` callbacks are synchronous, so the
+thread that cancels one waiting transaction pays for whatever that transaction does next.
+
+**Calibrated in both directions, because the two sites are not equally severe.** The row-lock one completes
+its waiter from *inside* `m_syncLock`, so the releasing thread ran foreign code under the manager's lock.
+The wait-queue one does not: `SignalNext` signals a wait handle and the
+`ThreadPool.RegisterWaitForSingleObject` callback completes the source on a pool thread, so only the
+**cancellation** path is measurable — and no production code enters the queue at all. `WaitInQueueAsync`
+has no caller outside tests; only the signal side (`SignalNextWaiting`, on every commit and rollback) is on
+the hot path, and it finds the queue empty. So this is public API a consumer can reach and the engine
+cannot, which is the third defect in this area of that kind. Fixed anyway — it is one constructor argument
+and the alternative is leaving a known-wrong idiom in place.
+
+### The revert counts
+
+| Fix reverted | Tests red |
+|---|---|
+| `RowLockHandle.Dispose` | **5** |
+| `RowLockManager` completion source | 1 |
+| `TransactionWaitQueue` completion source | 1 |
+
+The 5 is the point. The ledger's own two tests were the only ones covering handle release, so the revert
+would have painted **2**; three cases added with the fix took it to 5. They are deliberately controls on
+*the fix* rather than on the finding:
+
+- **a shared lock with two holders** — a fix that dropped the whole `LockEntry` would pass both ledger
+  tests and silently unlock a row another transaction still holds;
+- **a queued waiter** — releasing through the handle must run the grant path, or the waiter sits until it
+  times out;
+- **a repeat `Dispose`** — once the row has been granted onward, disposing the stale handle again must not
+  release the *new* holder's lock.
+
+**Ledger after this PR: 63 `[Ignore(…)]` + 14 `[TestCase(… Ignore =)]` = 77 suppressed entries** (from
+66 + 14 = 80). The concurrency area goes from 15 markers to **12**, plus the one `TestCase` property —
+which is in `Concurrency/SharedDatabaseTwoEnginesProbeTests.cs:189`, the `MVCC=false` divergence, and is
+the marker that sat on a continuation line and broke the count three times.
+
+---
+
 ## 9. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** SQLite is single-file and serialises

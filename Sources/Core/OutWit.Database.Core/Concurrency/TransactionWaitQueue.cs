@@ -156,7 +156,12 @@ namespace OutWit.Database.Core.Concurrency
 
             try
             {
-                var tcs = new TaskCompletionSource<bool>();
+                // RunContinuationsAsynchronously matters here for the same reason it does in
+                // RowLockManager: both completion paths run on a thread that must not be made to
+                // execute this transaction's continuation. CancellationToken.Register callbacks are
+                // synchronous, so without it the thread calling Cancel pays for whatever the cancelled
+                // transaction does next - measured at 1004 ms for a 1 s continuation.
+                var tcs = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
                 var registration = ThreadPool.RegisterWaitForSingleObject(
                     handle,
                     (state, timedOut) => ((TaskCompletionSource<bool>)state!).TrySetResult(!timedOut),
