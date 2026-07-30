@@ -748,40 +748,36 @@ public class ConcurrencyModelProbeTests
             $"[{string.Join(",", surviving.OrderBy(k => k))}]");
 
         // ===================================================================================
-        // PINS A DEFECT, NOT CORRECT BEHAVIOUR.
+        // THIS BLOCK PINNED A DEFECT AND HAS NOW BEEN INVERTED. The inversion is the proof.
         //
-        // Measured 2026-07-30, ten INSERTs every one of which reported success:
+        // What it recorded before the fix - ten INSERTs, every one of which reported success:
         //
         //   Synchronous Commit=True (the DEFAULT)  scan 1, after reopen 1, surviving [key0]
         //   ...and on a second run of the same code, 0 / 0 / []
         //   Synchronous Commit=False               scan 0, after reopen 0, surviving []
         //
-        // The reopen is what makes the verdict, and it is the harsher one: closing the connection
-        // disposes the engine and drains every buffer, so rows still absent afterwards were never
-        // written. This is LOST DATA in a supported configuration reachable from a connection string -
-        // not the "Get returns null" visibility problem the marker describes.
+        // The reopen was what made it a data-loss verdict rather than a visibility one: closing the
+        // connection disposes the engine and drains every buffer, and the rows were still absent.
         //
-        // HOW MANY survive is deliberately NOT pinned. It came out 1 on one run and 0 on the next, so
-        // an exact figure would be a timing-dependent gate, and this project has already had CI inherit
-        // one of those. What is pinned is the part that was stable across runs: rows are lost, both
-        // views agree, and the survivors are a prefix of what was written.
-        //
-        // INVERT TO: scanned == 10, afterReopen == 10, single == "String:value7", surviving == all ten.
-        // That inversion is the proof the fix landed.
+        // The cause was the two "small" LSM markers this phase set out to close. MVCC's commit protocol
+        // SCANS the store to find the versions it has just installed and rewrite them as committed
+        // (MvccKeyValueStore.CommitTransaction). Over LsmParallelStore that scan queued the buffer and
+        // read the store without waiting for the merge, so the loop found nothing to commit and every
+        // version stayed uncommitted for ever - present on disk, invisible to every reader, in every
+        // configuration. Read-your-own-writes is not a convenience here; the commit protocol is built
+        // on it.
         // ===================================================================================
         Assert.Multiple(() =>
         {
-            Assert.That(scannedCount, Is.LessThan(10),
-                "PINNED OBSERVATION: acknowledged INSERTs are missing; correct is 10");
-            Assert.That(single.Value, Is.EqualTo("<null>"),
-                "PINNED OBSERVATION: the single-key lookup finds nothing; correct is String:value7");
-            Assert.That(afterReopenCount, Is.EqualTo(scannedCount),
-                "PINNED OBSERVATION: a clean close and reopen recovers nothing, so the rows were lost " +
-                "rather than hidden - this is the assertion that makes it a data-loss verdict");
+            Assert.That(scannedCount, Is.EqualTo(10),
+                "every committed row must be visible to the connection that committed it");
+            Assert.That(single.Value, Is.EqualTo("String:value7"),
+                "and a single-key lookup must find it - this is the path LsmParallelStore.Get serves");
+            Assert.That(afterReopenCount, Is.EqualTo(10),
+                "and they must certainly be there after a clean close and reopen");
             Assert.That(surviving, Is.EqualTo(
-                    Enumerable.Range(0, scannedCount).Select(i => $"key{i}").ToArray()),
-                "PINNED OBSERVATION: the survivors are the FIRST rows written, not the last - the clue " +
-                "to where the writes go; correct is all ten keys");
+                    Enumerable.Range(0, 10).Select(i => $"key{i}").ToArray()),
+                "all ten keys, not a prefix");
         });
     }
 

@@ -874,6 +874,84 @@ nothing. Said explicitly because a PR that changes no count can still be the mos
 
 ---
 
+## 8b.7 The cause: MVCC's commit protocol is built on read-your-own-writes — PR 6
+
+**The two "small" LSM markers were the cause of the data loss in § 8b.6.** That is the finding, and it is
+the one worth carrying out of this phase.
+
+### How it was found — by bisection, after the first hypothesis was refuted
+
+The first hypothesis was the reordering in `MergeBuffersBatch` (all `Put`s applied before all `Delete`s).
+**It was implemented and it did not fix anything** — which is the only reason the real cause was looked
+for. Recorded because a plausible mechanism that survives a code read is still a guess.
+
+The bisection, each step a measurement:
+
+| Configuration | Rows readable |
+|---|---|
+| No transactions, parallel LSM | **0** |
+| Non-MVCC transactions, parallel LSM | 10 ✔ |
+| **MVCC transactions, parallel LSM** | **0** |
+| MVCC, **no** parallel wrapper *(control)* | 10 ✔ |
+| MVCC + parallel, reopened **without** the wrapper | **0** |
+| One `Put`, one transaction, MVCC + parallel | **0** |
+
+So it was not batching, not timing, and not a partial loss: **one write in one transaction was enough**,
+and no configuration could read it back. Then the SSTable was dumped raw, and it contained the versioned
+key with the *right* value bytes — so the write had happened. Comparing the record byte-for-byte against
+the working configuration showed two 8-byte fields **transposed**: `TransactionId` still set and
+`CommitTimestamp` zero, where the working one had the reverse. The version was **never marked committed**.
+
+### The mechanism
+
+`MvccKeyValueStore.CommitTransaction` **scans the store to find the versions it has just installed**, and
+rewrites each one as committed:
+
+```csharp
+foreach (var (key, data) in m_innerStore.Scan(null, null))
+    if (record.TransactionId == transactionId)
+        m_innerStore.Put(key, record.AsCommitted(commitTimestamp).Serialize());
+```
+
+Over `LsmParallelStore` the install `Put` sits in a thread-local buffer, and `Scan` called the
+fire-and-forget `FlushCurrentBuffer` — *"Does not wait for merge to complete"*, in its own doc comment. So
+the scan read a store the merge had not reached, **the loop found nothing to commit**, and every version
+stayed uncommitted for ever: on disk, invisible to every reader, unrecoverable.
+
+**Read-your-own-writes is not a convenience for this engine. The commit protocol is built on it.** That is
+why two markers filed as "Get returned null" were in fact a data-loss defect in a supported configuration.
+
+### The fix
+
+`FlushCurrentBufferAndWait()` on the writer, called by `Get` and `Scan`; `GetAsync` awaits the existing
+async flush. It flushes **the calling thread's own buffer only** — that is exactly read-your-own-writes,
+it is what the commit protocol needs (install and commit run on one thread), and it deliberately does not
+reach for other threads' buffers, which is the separate `FlushAllAsync` race still on the books.
+
+**Cost, stated rather than hidden:** a read on a thread with pending writes now pays a flush and a merge
+wait. A read on a thread with nothing buffered — the ordinary reader — returns without touching the
+channel, because an empty buffer short-circuits. So the cost falls precisely on the correctness
+requirement. Phase 10 should measure it.
+
+**The batch-ordering fix is kept**, as a separate defect in no audit: the buffer records operations in
+order and the merge must apply them in order. It has its own test and its own revert.
+
+### The revert counts
+
+| Fix reverted | Tests red |
+|---|---|
+| `Get`/`Scan` flush-and-wait | **5** — 3 in the core fixture, 2 in the SQL probe |
+| batch ordering | 1 |
+
+The five include the § 8b.6 pins **inverted**: they asserted the loss and now assert all ten rows, before
+and after a reopen, on both `Synchronous Commit` settings. That inversion is the proof the fix landed.
+
+**Ledger: 58 `[Ignore(…)]` + 14 = 72.** The concurrency area is down to **7 markers** plus the one
+`TestCase` property — 1 in `CoreConcurrencyFindingsTests` (the timing-dependent `FlushAllAsync` one),
+4 in `WitDbConnectionParallelAccessTests`, 1 in `LockManagerTests`, 1 in `ConnectionPoolFindingTests`.
+
+---
+
 ## 8b.5 The page-cache corruption window — PR 4
 
 The marker the original plan called *"corrupts data outright"*. Question 2 had already narrowed it: **no
