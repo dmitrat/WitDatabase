@@ -502,9 +502,39 @@ Two consequences for the work, both measured rather than assumed:
 
 ## 7. What this phase must still establish
 
-- **Question 2 — reachability of the 10 `core-concurrency` markers from the provider.** Not yet
-  measured. The one already known — the pool permit leak — is real but unenterable, and now doubly
-  so: nothing reaches the pool at all.
+### Question 2 — answered: which markers a consumer can actually reach
+
+Established by finding every production construction site of each subject and every production caller of
+the specific member the marker names. This is analysis of the call graph rather than a running test, and
+it is labelled as such — where it changes a priority, the sharper claim is the one about *callers*, not
+about types.
+
+| Marker subject | Reachable from the provider? |
+|---|---|
+| `MvccTransaction` — deadlock detector never fed | **Yes.** MVCC is the provider default |
+| `RowLockHandle` / `RowLockManager` — dispose releases nothing; continuation runs inline | **Yes.** `MvccTransactionalStore` constructs `RowLockManager` unconditionally |
+| `PageCacheShardedClock.Clear` — recycles a buffer mid-write | **Yes, but only through `Dispose`** — see below |
+| `LsmParallelStore` / `LsmParallelWriter` — does not read its own write; discards buffered writes | **Yes**, with `Store=lsm` and a parallel mode |
+| `PageLatchManager` — double-grant, then `SynchronizationLockException` | **No. Dead code** |
+| `ConnectionPool` permit leak *(already known)* | **No**, and now doubly so |
+
+**`PageLatchManager` is referenced by nothing but itself.** No production code constructs it or calls it —
+the only references in the whole of `Sources/` outside tests are its own declaration and its own nested
+`LatchHandle`. So its marker is a real defect in code no consumer can enter, which is the second such
+case in this area. Worth saying plainly: that is an argument about *priority*, not a dismissal, and the
+cheapest honest resolution is to delete the class rather than fix it.
+
+**The data-corruption marker is narrower than it reads, and this is the most useful thing question 2
+produced.** The marker says `Clear()` recycles a pooled buffer while its write is in flight, which is
+true. But **no production code calls `IPageCache.Clear()` from outside the cache** — the only caller is
+`Dispose`. So the window is not an ordinary write path; it is *closing the cache while a write is still in
+flight*, i.e. a disorderly shutdown. That makes it a durability-adjacent defect rather than a
+write-path one, and it changes what the fix has to guarantee: `Clear` must refuse a pinned page exactly as
+`Evict` already does, and `Dispose` must not be able to discard an unfinished write.
+
+**What this does not change.** Every one of these is still on the books. Reachability decides the order
+they are worked in, not whether they are worked — and the phase has already shown twice that a marker's
+own text can be wrong about its cause.
 ### Question 4 — answered in PR 7
 
 The claim was in prose, in two places — `WitSQL.md` § 15.0 and `DatabaseAlreadyOpenException`'s own
