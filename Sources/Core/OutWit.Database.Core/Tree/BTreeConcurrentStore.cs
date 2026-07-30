@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Managers;
 using OutWit.Database.Core.Stores;

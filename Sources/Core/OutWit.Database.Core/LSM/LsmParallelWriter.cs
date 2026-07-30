@@ -1,4 +1,4 @@
-﻿using System.Threading.Channels;
+using System.Threading.Channels;
 using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.LSM;

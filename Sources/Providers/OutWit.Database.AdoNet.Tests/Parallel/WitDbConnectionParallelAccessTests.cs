@@ -1,4 +1,4 @@
-﻿using OutWit.Database.AdoNet;
+using OutWit.Database.AdoNet;
 using OutWit.Database.Core.Builder;
 using TextEncoding = System.Text.Encoding;
 

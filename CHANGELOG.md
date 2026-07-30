@@ -1,5 +1,97 @@
 # Changelog
 
+## 6.0.0
+
+Closes phase 5, concurrency, apart from one named experiment. **Major, because two public types were
+deleted** — and because the heaviest fix in it is a supported configuration that acknowledged writes and
+then lost them.
+
+The headline: **`Store=lsm` with any parallel mode lost acknowledged writes, on default settings.** Ten
+`INSERT`s, every one reporting success, left 0 or 1 rows — and they were still missing after a clean
+close and reopen, so they had never been written at all. The cause was not in the LSM store:
+`MvccKeyValueStore.CommitTransaction` **scans the store to find the versions it has just installed** and
+rewrites them as committed, and over a buffering parallel store that scan read past its own write, found
+nothing to commit, and left every version uncommitted for ever. **Read-your-own-writes is not a
+convenience in this engine; the commit protocol is built on it.**
+
+### Breaking
+
+- **`PageLatch` and `PageLatchManager` are removed.** 551 lines that nothing constructed — the compiler
+  confirmed it, which is stronger than a search. `BTreeConcurrentStore` serialises with one store-wide
+  lock, so per-page latching bought nothing under the concurrency model this phase settled.
+
+- **A scan through `BTreeConcurrentStore` is no longer a snapshot.** It used to materialise the whole
+  range under one read lock; it now streams in chunks, and writes landing between chunks are visible to
+  the rest of the scan — which is what the unwrapped store has always done, so concurrent mode behaves
+  like the default mode rather than differently from it. The reason for the change is that materialising
+  charged the caller for everything it did not ask for: an open-ended index range whose consumer took
+  five entries cost **108 ms and 25.5 MB** on a 200,000-entry index, against 3.1 ms and nothing for the
+  unwrapped store. It is 82 KB now.
+
+- **Secondary index stores are serialised**, so `ISecondaryIndexFactory.ProviderKey` for a file-backed
+  B+Tree index reports `btree-concurrent` rather than `btree`. Nothing persists that value; index files
+  on disk are unchanged and open as they always did.
+
+### Fixed
+
+- **`Store=lsm` + any parallel mode lost acknowledged writes** (above). `Get` and `Scan` now flush the
+  calling thread's own buffer and wait for the merge, which is exactly read-your-own-writes. A reader
+  with nothing buffered pays nothing — an empty buffer returns without touching the channel.
+
+- **Concurrent connections corrupted a secondary index.** The builder wrapped the main store for
+  concurrent access and handed every index a bare `StoreBTree` with no locking at all, so two
+  connections inserting rows walked into the same B+Tree leaf split. Measured over ten runs of a
+  deterministic experiment: nine threw out of `BTreeNode.CollectLeafEntries`, and once nothing threw and
+  three entries were simply gone — two of them belonging to the writer that had already finished. Index
+  stores are now serialised, and not conditionally on a parallel mode, because a second connection is
+  enough.
+
+- **`Flush()` did not flush what the write threshold had already queued.** A buffer reaches the LSM
+  merge queue with no completion attached whenever `Put` crosses its size threshold, and
+  `FlushAllAsync` waited only for the buffers it handed over itself — so `LsmParallelStore.Flush` wrote
+  an SSTable while the entries behind it were still in the channel. Measured single-threaded:
+  **10,000 of 10,000** entries still in flight when the flush returned. The flush now queues an empty
+  buffer last and waits for that too, which the channel's FIFO order turns into "everything ahead of it
+  has been applied".
+
+- **`LsmParallelWriter.FlushAllAsync` took buffers their owners were still writing into**, and reset
+  only the calling thread's slot, leaving every other owner holding a buffer that had already been
+  merged and disposed. Measured: runs of eight and nine consecutive entries lost, and a flush dying
+  inside `List.ToList`. Buffers now change hands under the same gate their owner appends under.
+
+- **`BTreeConcurrentStore` held its lock across an await** in all four asynchronous entry points.
+  `ReaderWriterLockSlim` is thread-affine, so a continuation resuming on another thread threw
+  `SynchronizationLockException` out of the release — and left the lock held by a thread that had moved
+  on, deadlocking every later reader and writer.
+
+- **Row locks were never released, and ran waiters' continuations inline.** `ReleaseAllLocks` took
+  1023 ms with a one-second continuation attached to a waiter — measured on the releasing thread, which
+  is where that work should never have run.
+
+- **The MVCC deadlock detector was complete and was never fed a wait edge.** `SELECT … FOR UPDATE` now
+  reports `DeadlockException` naming the other participants, instead of both sides waiting out the lock
+  timeout and each getting a `TimeoutException`.
+
+- **`Clear()` on the page cache recycled a pooled buffer while a write was still using it** — in *both*
+  cache implementations. The second was found by grepping for the shape rather than for the name.
+
+- **`TransactionWaitQueue` completed waiters on the canceller's thread** (1004 ms, same measurement).
+
+- **The batch merge applied every `Put` before every `Delete`**, reordering operations within a batch —
+  which is what MVCC does on commit, so a delete could be applied to a store state that never existed.
+
+- **Closing a database refused a concurrent open.** `SharedDatabase.Release` removed its registry entry
+  inside the lock and disposed outside it, and disposal is what releases the exclusive file lock — so a
+  concurrent `Acquire` built a second engine and hit a lock the first had not let go of. Found by CI
+  after 15 consecutive green runs locally.
+
+### Ledger
+
+**52 `[Ignore(…)]` + 14 `[TestCase(… Ignore =)]` = 66 suppressed entries**, plus 2 `[Explicit]`, down
+from 66 + 14 = 80 at 5.0.0. The concurrency area is closed: `CoreConcurrencyFindingsTests` holds no
+markers at all, and what remains there is an unreachable `ConnectionPool` permit leak and a reclassified
+`MVCC=false` divergence — neither an open defect.
+
 ## 5.0.0
 
 Closes the first half of phase 5, concurrency and concurrent access. **Major, because it changes two
