@@ -10,6 +10,7 @@
 > |---|---|---|
 > | #52 | The plan, and instrument A — the concurrency-model probe | The model established; three defects in no audit; one marker refuted; CI found a fourth defect the dev machine could not |
 > | #53 | `KEY` usable as an identifier, and the keyword corpus | Marker closed (66 → 65). The corpus then measured the class at **118** keywords and handed it to phase 7 |
+> | #54 | One engine per database, enforced | § 3a and the `EnableWal` hole closed by an explicit guard; `FileLocking=false` no longer removes write serialisation. **Breaking — ships as 5.0.0** |
 >
 > **The target model, decided 2026-07-30 (§ 8): one process, one engine per database, many
 > connections, one writer at a time.** Cross-process access is out of scope by design; concurrent
@@ -194,7 +195,70 @@ mechanism closes § 3a.
 Both numbers above are pinned in the probe, so a change to what the two engines see fails the build
 rather than passing quietly.
 
-### The cross-process mechanism exists and is unreachable
+### 3b. Fixed in PR 3 — the limit is now enforced rather than inherited
+
+**The guard.** An exclusive `.lock` sidecar, taken in `WitDatabaseBuilder.Build`/`BuildAsync` **before any
+database file is opened** and released by `WitDatabase.Dispose` **after the store closes its files**. A
+second engine is refused with `DatabaseAlreadyOpenException` naming the database and explaining the
+limit, instead of whichever raw `IOException` a share-mode collision produced first.
+
+Why a sidecar rather than tightening the write-ahead log's `FileShare`:
+
+- `FileShare.None` is an **exclusive `flock`** on Unix, so the sidecar behaves identically on both
+  platforms — which is exactly what the log's `FileShare.Read` did not.
+- It does not depend on **which files a configuration happens to create**, which the `EnableWal=false`
+  hole showed is the real requirement. Tightening the log would have closed every case the ADO.NET
+  provider can produce and still left the Core API able to build an unprotected database.
+- The OS releases the handle when the owning process exits, so a crash does not leave a database
+  permanently locked. Phase 4 established that a crash runs no cleanup, so a guard that needed cleanup
+  would have been the wrong shape.
+
+**What the fix reversed about this document.** § 8 said `FileLock` was dead weight to remove. It is now
+the mechanism, unchanged apart from one addition — and the reasoning that reversed it is § 8's own
+caveat: ruling cross-process access out of *support* is not permission for the limit to go unenforced.
+
+**Three things caught during the fix, and none by reading:**
+
+1. **The guard nearly refused the first engine.** `AcquireExclusiveLock(TimeSpan.Zero)` computes
+   `deadline = UtcNow + timeout` and loops `while (UtcNow < deadline)`, so a zero timeout **skips the
+   body and reports a timeout without ever trying**. Hence the new `TryAcquireExclusiveLock`, and a test
+   that pins the trap so nobody expresses "try once" that way again.
+2. **`EnsureDeleted` reported success with the sidecar still on disk** — caught by an existing EF test
+   within minutes. `DatabaseFiles` exists precisely so "whoever creates those paths and whoever deletes
+   them cannot drift apart", and the sidecar drifted from it on the day it was introduced. The lock path
+   now comes from `DatabaseFiles.GetLockPath` and `Delete` removes it. **The suite caught this, which is
+   worth recording in a project whose usual finding is the opposite.**
+3. **A half-failed `Build` would have leaked the lock.** The guard is taken before the store, so anything
+   throwing afterwards has to release it — otherwise nothing ever would, and the database would be
+   permanently unopenable. The `try`/`catch` around the rest of `Build` is that release, and
+   `ProbeRefusedOpenLeavesNothingBehindTest` is the test for the shape.
+
+**The pins inverted, which is how the fix proved itself.** Two probes from PR 1 asserted the *defects*
+and were labelled to be inverted when fixed; both went red on the first run after the guard landed, and
+both now assert the fixed behaviour:
+
+| Probe | Before | After |
+|---|---|---|
+| `ProbeFileBackedDatabaseCreatesTheLockSidecarTest` | no sidecar — `FileLock` unreachable | sidecar present for the engine's lifetime |
+| `ProbeSecondWriterIsSerialisedWithFileLockingOffTest` | **2** writers inside the store | **1** |
+| `ProbeLsmWithoutWalIsStillExclusiveTest(false)` | `[Ignore]`d — a second engine opened | closed; refused with the typed exception |
+
+The LSM probes also **lost their platform branches**, which is the clearest statement that § 3a is
+closed: the expectation no longer depends on the platform or on the configuration, and all four
+`EnableWal`×`Transactions` combinations are asserted identically.
+
+**Breaking, deliberately, and it ships as 5.0.0.** On Linux, two connections to one LSM database used to
+work; they now throw. That configuration was unsafe — § 3a measured the two engines diverging — so
+refusing it is the fix rather than a regression. **It does not yet make the ASP.NET Core shape work**:
+each `WitDbConnection` still builds its own engine, so two connections in one process are still refused.
+That is the shared-engine subject in § 7, and the guard is what makes it safe to build.
+
+### The cross-process mechanism existed and was unreachable — *fixed in PR 3, § 3b*
+
+*As measured in PR 1. Kept as written because it is the finding the fix answers; `FileLock` is now the
+exclusivity guard, and `LockManager`'s file-locking constructor is still unused — the guard calls
+`FileLock` directly, since pairing it with an in-process handle was never what the exclusivity job
+needed.*
 
 `FileLock` is documented as the multi-process mechanism; `LockManager` has a constructor taking a
 database path in order to use it; `EnableFileLocking` defaults to true. None of that is reachable.
@@ -210,7 +274,7 @@ the control shows `FileLock` does create one when used directly.
 It could hardly matter, given that `FileShare.None` already prevents the second process the FileLock
 would have coordinated. But it does matter, in the opposite direction to the option's name:
 
-### `FileLocking=false` removes the only write serialisation there is — **a defect, in no audit**
+### `FileLocking=false` removes the only write serialisation there is — **a defect, in no audit** *(fixed, § 3b)*
 
 `EnableFileLocking` does not select *how* locking works; it decides **whether a `LockManager` exists
 at all**, and both transactional stores document `null` as "no locking". So a consumer who writes
@@ -412,17 +476,20 @@ the phase now works toward:
 
 Read against § 3, this decides every open item in the area:
 
-- **Cross-process access is out of scope by design.** `FileLock`, the file-locking branch of
-  `LockManager`, and the `LockHandle*Combined` handles that exist to pair a process handle with a file
-  handle are dead weight — unreachable today (§ 3) and unwanted tomorrow. `FileShare.None` is not the
-  defect; it is the enforcement of a deliberate limit, and it should say so with a typed exception
-  instead of a raw Windows sharing violation.
+- **Cross-process access is out of scope by design** — but the limit must be *enforced*, and this bullet
+  originally got that wrong. It read: "`FileLock`, the file-locking branch of `LockManager`, and the
+  `LockHandle*Combined` handles are dead weight — unreachable today and unwanted tomorrow."
 
-  **With one caveat that § 3a adds after the fact:** "out of scope" is a decision about what to
-  *support*, not permission for the limit to go unenforced. On Linux the LSM store enforces nothing, so
-  a second process opens a database the design says is single-process — silently. Ruling cross-process
-  out of scope makes that *more* urgent to close, not less, because the whole safety argument for the
-  single-process model rests on the second opener being refused.
+  **Corrected by its own caveat, and then by measurement.** The caveat was that "out of scope" is a
+  decision about what to *support*, not permission for the limit to go unenforced — and § 3a plus the
+  `EnableWal` hole then showed the limit was not enforced at all on Linux, nor anywhere for a log-less
+  LSM database. So `FileLock` is **not** dead weight: PR 3 made it the exclusivity guard (§ 3b), which is
+  a different job from the cross-process *write coordination* it was written for. What remains genuinely
+  unused is `LockManager`'s file-locking constructor and the `LockHandle*Combined` pair, because the
+  guard needs the sidecar alone, not a sidecar paired with an in-process handle.
+
+  `FileShare.None` is not the defect either; it was simply an inconsistent way to enforce the limit,
+  and the typed exception now says what the limit is.
 - **`FileShare.None` *is* in the way of the supported shape.** A scoped `DbContext` is one connection
   per request, and a host serves requests concurrently, so N live connections to one database inside
   one process is the ordinary case — exactly what the model probe measured as an `IOException` today.

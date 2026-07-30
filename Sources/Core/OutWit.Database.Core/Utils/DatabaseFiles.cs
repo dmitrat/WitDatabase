@@ -23,6 +23,11 @@ namespace OutWit.Database.Core.Utils
         /// </summary>
         public const string JOURNAL_EXTENSION = ".journal";
 
+        /// <summary>
+        /// Suffix of the lock sidecar that enforces one engine per database.
+        /// </summary>
+        public const string LOCK_SUFFIX = ".lock";
+
         #endregion
 
         #region Paths
@@ -63,6 +68,24 @@ namespace OutWit.Database.Core.Utils
                 : Path.Combine(directory, fileName);
         }
 
+        /// <summary>
+        /// Gets the lock sidecar that sits beside a database file or directory.
+        /// </summary>
+        /// <param name="databasePath">Path of the database data file, or the LSM directory.</param>
+        /// <returns>The lock path, or null when the database path is empty.</returns>
+        /// <remarks>
+        /// Unlike the other two this is appended to the whole path rather than replacing an extension,
+        /// so it works for an LSM database as well - where the "database" is a directory and the
+        /// sidecar sits next to it rather than inside it.
+        /// </remarks>
+        public static string? GetLockPath(string? databasePath)
+        {
+            if (string.IsNullOrEmpty(databasePath))
+                return null;
+
+            return databasePath + LOCK_SUFFIX;
+        }
+
         #endregion
 
         #region Delete
@@ -96,6 +119,17 @@ namespace OutWit.Database.Core.Utils
             if (indexDirectory != null && Directory.Exists(indexDirectory))
             {
                 Directory.Delete(indexDirectory, recursive: true);
+                deleted = true;
+            }
+
+            // The lock sidecar belongs to the database too, and it outlives the engine: the lock is
+            // released on Dispose but the file stays. Leaving it behind made EnsureDeleted report
+            // success with a file still on disk - the same drift this class exists to prevent, and the
+            // EF suite caught it within minutes of the guard landing.
+            var lockPath = GetLockPath(filePath);
+            if (lockPath != null && File.Exists(lockPath))
+            {
+                File.Delete(lockPath);
                 deleted = true;
             }
 

@@ -1073,6 +1073,42 @@ FOR UPDATE SKIP LOCKED;
 
 ## 15. Concurrency Control
 
+### 15.0 The concurrency model
+
+> **One process. One engine per database. Many connections. One writer at a time.**
+
+WitDatabase is an embedded, file-backed database, and this is the model a consumer may rely on. It was
+never written down before 5.0.0, and before 5.0.0 it was not enforced consistently either.
+
+| | Supported |
+|---|---|
+| Several `WitDbConnection`s in one process, to one database | **Yes** — they share one engine |
+| Concurrent readers | **Yes** |
+| Concurrent writers | Serialised: one writer at a time, transparently |
+| A second **process** opening the same database | **No** — `DatabaseAlreadyOpenException` |
+| A second engine in the same process (e.g. two `WitDatabase` instances) | **No** — same exception |
+
+**Why single-process.** Two engines over one database each keep their own page cache, memtable and
+write-ahead log, with nothing coordinating them. Measured before the limit was enforced: two engines over
+one LSM directory diverged, one seeing a row the other could not.
+
+**How it is enforced.** An exclusive lock is taken on a `<database>.lock` sidecar for as long as the
+engine is open, and a second engine is refused with `DatabaseAlreadyOpenException`. The operating system
+releases the lock when the owning process exits, so a process that dies without shutting down cleanly
+does **not** leave the database permanently locked. The sidecar file itself remains on disk after a
+clean shutdown; its presence does not mean anyone holds it, and `EnsureDeleted` removes it along with the
+rest of the database.
+
+`FileLocking=false` in a connection string disables the guard. It exists for filesystems where advisory
+locking is unreliable — network shares in particular — and it does **not** disable the in-process
+serialisation between writers, which is not optional.
+
+**Before 5.0.0**, exclusivity was a side effect of how each store happened to open its files: a B+Tree
+database refused a second engine on every platform, an LSM database refused one only on Windows and only
+with the write-ahead log enabled, and an LSM database with the log disabled refused none anywhere. Code
+that relied on opening one LSM database twice will now get `DatabaseAlreadyOpenException`; that
+configuration was unsafe.
+
 ### 15.1 Row Version Type
 
 ```sql

@@ -1,6 +1,7 @@
 using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Concurrency;
 using OutWit.Database.Core.Encryption;
+using OutWit.Database.Core.Exceptions;
 using OutWit.Database.Core.Indexes;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.LSM;
@@ -52,18 +53,33 @@ public sealed class WitDatabaseBuilder
         ValidateConfiguration();
         ValidateSyncBuildAllowed();
 
-        var store = BuildStoreInternal();
-        OnStoreBuilt?.Invoke(store);
+        // Taken BEFORE any database file is opened, so that a second engine is refused with
+        // DatabaseAlreadyOpenException rather than with whichever raw IOException a share-mode
+        // collision happens to produce first. Released by WitDatabase.Dispose.
+        var databaseLock = AcquireExclusiveLock();
 
-        var indexManager = BuildIndexManagerInternal();
-
-        if (Options.EnableTransactions)
+        try
         {
-            var transactionalStore = BuildTransactionalStoreInternal(store);
-            return new WitDatabase(transactionalStore, indexManager, disposeStore: true);
-        }
+            var store = BuildStoreInternal();
+            OnStoreBuilt?.Invoke(store);
 
-        return new WitDatabase(store, indexManager, disposeStore: true);
+            var indexManager = BuildIndexManagerInternal();
+
+            if (Options.EnableTransactions)
+            {
+                var transactionalStore = BuildTransactionalStoreInternal(store);
+                return new WitDatabase(transactionalStore, indexManager, disposeStore: true, databaseLock);
+            }
+
+            return new WitDatabase(store, indexManager, disposeStore: true, databaseLock);
+        }
+        catch
+        {
+            // A Build that fails half way must not leave the database locked - nothing would ever
+            // release it. ProbeRefusedOpenLeavesNothingBehindTest is the test for this shape.
+            databaseLock?.Dispose();
+            throw;
+        }
     }
 
     /// <summary>
@@ -73,20 +89,71 @@ public sealed class WitDatabaseBuilder
     {
         ValidateConfiguration();
 
-        var store = await BuildStoreInternalAsync(cancellationToken).ConfigureAwait(false);
-        OnStoreBuilt?.Invoke(store);
+        var databaseLock = AcquireExclusiveLock();
 
-        var indexManager = BuildIndexManagerInternal();
-
-        if (Options.EnableTransactions)
+        try
         {
-            var transactionalStore = BuildTransactionalStoreInternal(store);
-            return await WitDatabase.CreateAsync(transactionalStore, indexManager, disposeStore: true, cancellationToken)
+            var store = await BuildStoreInternalAsync(cancellationToken).ConfigureAwait(false);
+            OnStoreBuilt?.Invoke(store);
+
+            var indexManager = BuildIndexManagerInternal();
+
+            if (Options.EnableTransactions)
+            {
+                var transactionalStore = BuildTransactionalStoreInternal(store);
+                return await WitDatabase.CreateAsync(transactionalStore, indexManager, disposeStore: true,
+                        databaseLock, cancellationToken)
+                    .ConfigureAwait(false);
+            }
+
+            return await WitDatabase.CreateAsync(store, indexManager, disposeStore: true, databaseLock,
+                    cancellationToken)
                 .ConfigureAwait(false);
         }
+        catch
+        {
+            databaseLock?.Dispose();
+            throw;
+        }
+    }
 
-        return await WitDatabase.CreateAsync(store, indexManager, disposeStore: true, cancellationToken)
-            .ConfigureAwait(false);
+    /// <summary>
+    /// Takes the exclusive database lock that enforces one engine per database.
+    /// </summary>
+    /// <remarks>
+    /// The mechanism is a <c>.lock</c> sidecar opened with <see cref="FileShare.None"/>, which is
+    /// exclusive on Windows and an exclusive <c>flock</c> on Unix - so unlike the share modes of the
+    /// database's own files it behaves the same on both platforms, and it does not depend on which
+    /// files a given configuration happens to create. Before 5.0.0 exclusivity was a side effect of
+    /// those share modes, and an LSM database with the write-ahead log switched off had none at all.
+    ///
+    /// The operating system releases the handle when the owning process exits, so a process that dies
+    /// without running <c>Dispose</c> does not leave the database permanently locked. That matters
+    /// here: phase 4 established that a crash runs no cleanup.
+    ///
+    /// Returns null when there is nothing to lock - an in-memory database, or a caller-supplied store
+    /// whose path this builder does not know.
+    /// </remarks>
+    private FileLock? AcquireExclusiveLock()
+    {
+        if (!Options.EnableFileLocking)
+            return null;
+
+        var databasePath = Options.FilePath ?? Options.LsmDirectory;
+
+        if (string.IsNullOrEmpty(databasePath))
+            return null;
+
+        var fileLock = new FileLock(databasePath);
+
+        // One attempt, no waiting: the other holder is a whole engine, so waiting would turn a design
+        // limit into a stall. TryAcquireExclusiveLock exists because AcquireExclusiveLock(TimeSpan.Zero)
+        // reports a timeout without ever trying - see its remarks.
+        if (fileLock.TryAcquireExclusiveLock())
+            return fileLock;
+
+        fileLock.Dispose();
+        throw new DatabaseAlreadyOpenException(databasePath);
     }
 
     /// <summary>
@@ -597,9 +664,16 @@ public sealed class WitDatabaseBuilder
 
     private ITransactionalStore BuildTransactionalStoreInternal(IKeyValueStore store)
     {
-        var lockManager = Options.EnableFileLocking
-            ? new LockManager(Options.LockTimeout)
-            : null;
+        // ALWAYS a lock manager, whatever EnableFileLocking says. Until 5.0.0 this was
+        // `Options.EnableFileLocking ? new LockManager(...) : null`, and both transactional stores
+        // treat null as "no locking" - so `FileLocking=false`, which reads as "do not coordinate
+        // across processes", silently removed the mutual exclusion between two threads writing the
+        // same store. Measured: two writers inside the store at once, on two distinct threads.
+        //
+        // The two jobs are now separate. In-process write serialisation is not optional; what
+        // EnableFileLocking controls is the exclusive database lock in AcquireExclusiveLock, which is
+        // the cross-process guard the name was always describing.
+        var lockManager = new LockManager(Options.LockTimeout);
 
         var journal = BuildJournal();
 
