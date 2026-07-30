@@ -19,6 +19,12 @@ public sealed class PageCacheShardedClock : IPageCache
     private const int MIN_PAGES_PER_SHARD = 4;
 
     /// <summary>
+    /// How long <see cref="Dispose"/> waits for in-flight writes to finish before giving up on
+    /// recycling their buffers.
+    /// </summary>
+    private static readonly TimeSpan DISPOSE_DRAIN_TIMEOUT = TimeSpan.FromSeconds(30);
+
+    /// <summary>
     /// Provider key for sharded clock cache.
     /// </summary>
     public const string PROVIDER_KEY = "clock";
@@ -42,6 +48,17 @@ public sealed class PageCacheShardedClock : IPageCache
         private int m_clockHand;
         private int m_count;
         private int m_firstFreeSlot;
+
+        /// <summary>
+        /// Number of <see cref="FlushAllAsync"/> writes currently handed to the storage.
+        /// </summary>
+        /// <remarks>
+        /// A write in flight holds the page's <b>pooled</b> buffer, so nothing may return that array to
+        /// the pool until it completes. This is deliberately separate from the reference count: the
+        /// reference count also covers a page simply checked out by a caller, which is a different
+        /// question and never a reason to make <see cref="Dispose"/> wait.
+        /// </remarks>
+        private int m_writesInFlight;
         private bool m_disposed;
 
         #endregion
@@ -161,19 +178,44 @@ public sealed class PageCacheShardedClock : IPageCache
         {
             lock (m_lock)
             {
-                FlushAllInternal();
-
+                // Refuse on exactly the condition Evict refuses on, and refuse BEFORE anything is
+                // flushed or disposed, so a rejected Clear leaves the shard untouched rather than
+                // half emptied. Disposing a CachedPage returns its rented array to the pool, so
+                // doing it to a page someone else still holds - a caller, or a write in flight -
+                // hands live memory to the next borrower.
                 for (int i = 0; i < m_capacity; i++)
                 {
-                    m_pages[i]?.Dispose();
-                    m_pages[i] = null;
+                    var page = m_pages[i];
+                    if (page != null && page.ReferenceCount > 0)
+                        throw new InvalidOperationException($"Cannot clear pinned page {page.PageNumber}");
                 }
 
-                m_pageIndex.Clear();
-                m_count = 0;
-                m_clockHand = 0;
-                m_firstFreeSlot = 0;
+                FlushAllInternal();
+                DiscardAllPages(keepPinnedBuffers: false);
             }
+        }
+
+        /// <summary>
+        /// Empties the shard. With <paramref name="keepPinnedBuffers"/> the pooled array of a page that
+        /// is still pinned is <b>not</b> returned to the pool - the page is dropped and its buffer left
+        /// to the garbage collector. Leaking a rented array costs a reuse; returning one that a write is
+        /// still reading from corrupts the next borrower's page.
+        /// </summary>
+        private void DiscardAllPages(bool keepPinnedBuffers)
+        {
+            for (int i = 0; i < m_capacity; i++)
+            {
+                var page = m_pages[i];
+                if (page != null && !(keepPinnedBuffers && page.ReferenceCount > 0))
+                    page.Dispose();
+
+                m_pages[i] = null;
+            }
+
+            m_pageIndex.Clear();
+            m_count = 0;
+            m_clockHand = 0;
+            m_firstFreeSlot = 0;
         }
 
         #endregion
@@ -286,6 +328,9 @@ public sealed class PageCacheShardedClock : IPageCache
             if (dirtyPages == null)
                 return;
 
+            // Mark the whole write batch as in flight: every page in it holds a pooled buffer the
+            // storage is reading from, and Dispose has to wait for that rather than recycle it.
+            Interlocked.Increment(ref m_writesInFlight);
             try
             {
                 foreach (var page in dirtyPages)
@@ -301,6 +346,8 @@ public sealed class PageCacheShardedClock : IPageCache
             }
             finally
             {
+                Interlocked.Decrement(ref m_writesInFlight);
+
                 await m_asyncLock.WaitAsync(cancellationToken).ConfigureAwait(false);
                 try
                 {
@@ -526,17 +573,30 @@ public sealed class PageCacheShardedClock : IPageCache
 
         public void Dispose()
         {
-            if (!m_disposed)
+            if (m_disposed)
+                return;
+
+            // Dispose is the only production caller of Clear, so it cannot simply inherit Clear's
+            // refusal - shutting down has to succeed. What it must not do is throw away a write that is
+            // still in flight, so wait for the storage to finish with the buffers first. The wait is
+            // outside m_lock, because the flush's own bookkeeping runs under m_asyncLock and would
+            // otherwise have to queue behind us; and it is bounded, because a Dispose that can hang for
+            // ever is its own defect.
+            SpinWait.SpinUntil(() => Volatile.Read(ref m_writesInFlight) == 0, DISPOSE_DRAIN_TIMEOUT);
+
+            lock (m_lock)
             {
-                lock (m_lock)
-                {
-                    if (!m_disposed)
-                    {
-                        Clear();
-                        m_asyncLock.Dispose();
-                        m_disposed = true;
-                    }
-                }
+                if (m_disposed)
+                    return;
+
+                FlushAllInternal();
+
+                // Pinned pages keep their pooled buffer rather than returning it. In the ordinary case
+                // nothing is pinned by now; if the drain above timed out, a leak is the safe answer.
+                DiscardAllPages(keepPinnedBuffers: true);
+
+                m_asyncLock.Dispose();
+                m_disposed = true;
             }
         }
 
