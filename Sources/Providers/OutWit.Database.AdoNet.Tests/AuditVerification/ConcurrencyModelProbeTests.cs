@@ -324,16 +324,16 @@ public class ConcurrencyModelProbeTests
         var rows = Observe(() => Scalar(reader, "SELECT V FROM T WHERE Id = 2"));
         Report("Q1 Read Only=true, the row that write would have added", rows);
 
-        // PINS A DEFECT, NOT CORRECT BEHAVIOUR. Measured 2026-07-30: the INSERT succeeded and the
-        // row reads back as 'b'. WitDbConnection never reads options.ReadOnly - ConfigureStorage
-        // only asks whether the mode is Memory - so the setting is parsed and dropped. When it is
-        // honoured, the write must throw and these two assertions invert.
+        // INVERTED BY THE FIX. This asserted the defect: the INSERT used to succeed and the row read
+        // back as 'b', because WitDbConnection never read options.ReadOnly - ConfigureStorage only asked
+        // whether the mode was Memory, so the setting was parsed and dropped. Read-only is now enforced
+        // per session, and the message names the statement kind and how to get a writable connection.
         Assert.Multiple(() =>
         {
-            Assert.That(write.Threw, Is.False,
-                "a read-only connection now refuses writes - invert this and close the marker");
-            Assert.That(rows.Value, Is.EqualTo("String:b"),
-                "the write no longer lands - invert this and close the marker");
+            Assert.That(write.Threw, Is.True, "a read-only connection must refuse writes");
+            Assert.That(write.Message, Does.Contain("read-only"),
+                "and must say why, rather than failing obscurely");
+            Assert.That(rows.Value, Is.EqualTo("<null>"), "the write must not have landed");
         });
     }
 
@@ -676,10 +676,10 @@ public class ConcurrencyModelProbeTests
         var write = Observe(() => Execute(reader, "INSERT INTO T (Id, V) VALUES (1, 'a')"));
         Report("Q1 Mode=ReadOnly, a write through it", write);
 
-        // PINS A DEFECT. Measured 2026-07-30: the write succeeded. Both spellings of read-only are
-        // dropped, so neither is a way to open a second reader over one file.
-        Assert.That(write.Threw, Is.False,
-            "Mode=ReadOnly now refuses writes - invert this and close the marker");
+        // INVERTED BY THE FIX. Both spellings used to be dropped; both are honoured now, and the second
+        // spelling mattered - a consumer reaches for either, and fixing only `Read Only=true` would have
+        // left a silent hole behind the one that looks more like SQLite's.
+        Assert.That(write.Threw, Is.True, "Mode=ReadOnly must refuse writes too");
     }
 
     /// <summary>

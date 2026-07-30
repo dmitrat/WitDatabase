@@ -13,6 +13,7 @@
 > | #54 | One engine per database, enforced | § 3a and the `EnableWal` hole closed by an explicit guard; `FileLocking=false` no longer removes write serialisation. **Breaking — ships as 5.0.0** |
 > | #55 | Instrument B | Refuted the obvious shared-engine design; found the schema catalog is session-scoped state that must be database-scoped |
 > | #56 | **Many connections, one engine** | The phase's headline: the ASP.NET Core shape works. Closes § 6 as a side effect |
+> | #57 | Read-only honoured | § 4 closed, enforced per session so a reader can sit alongside writers. Found `Mode=ReadWrite` dropped the same way |
 >
 > **The target model, decided 2026-07-30 (§ 8): one process, one engine per database, many
 > connections, one writer at a time.** Cross-process access is out of scope by design; concurrent
@@ -334,6 +335,40 @@ This one compounds: `StorageFile` *does* grant `FileShare.Read` when opened read
 readers over one file is a shape the storage layer already supports**, and it is unreachable only
 because the provider drops the setting. The cheapest route to "one writer, many readers" runs through
 this defect.
+
+### 4a. Fixed in PR 6 — and the fix is not where § 4 assumed
+
+**§ 4 above reasoned toward the wrong mechanism.** It treated read-only as a *storage* property, whose
+value was that `StorageFile` grants `FileShare.Read` and so many readers could share a file. PR 5 removed
+the premise: connections already share one engine, so many readers over one file needs nothing from the
+storage layer. What read-only is actually *for* is a connection that must not write.
+
+So it is enforced **per session**, and that choice is load-bearing rather than cosmetic. As a storage
+property, a read-only connection and a writing connection would ask for different databases and one of
+them would be refused as an options mismatch — which forbids the pairing read-only exists to allow. `Read
+Only` and `Mode` are therefore excluded from the shared-database signature, and
+`ReadOnlyAndWritingConnectionsCoexistTest` is the test that says so.
+
+**Fail-closed.** A read-only session permits a named list of statement kinds — `SELECT`, `EXPLAIN`, and
+transaction control — and refuses everything else, so a statement kind added to WitSQL later is refused
+until somebody judges it safe. The other way round, a read-only guarantee would weaken silently every
+time the language grew.
+
+**The bulk API was a hole, and guarding `Execute` alone would have left it open.** `BulkInsert`,
+`BulkUpdate` and `BulkDelete` write without parsing anything, so they never pass the statement check —
+five public ways straight through a read-only connection. Each now calls `EnsureNotReadOnly`, and it is a
+named method precisely so the next write path that bypasses statement execution has something obvious to
+call.
+
+**The revert test: 16 of 19 red** with the flag no longer threaded through. The three that stay green are
+the read-allowing cases, which is correct — reads work either way.
+
+**Found on the way, recorded not fixed:** `Mode=ReadWrite` means "open an existing database, fail if it is
+not there", and it **silently creates one instead**, leaving the file behind. Same defect family — the
+other three `Mode` values are all dropped by `ConfigureStorage`, which only asks whether the mode is
+`Memory` — but a *database-level* fix (`FileMode.Open` against `OpenOrCreate`) that changes behaviour for
+anyone currently relying on a database being created for them. SQLite refuses the shape. Marker added, so
+the ledger goes 65 → 66 while § 4 closes.
 
 ---
 

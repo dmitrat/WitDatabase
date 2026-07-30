@@ -1117,6 +1117,25 @@ rest of the database.
 locking is unreliable — network shares in particular — and it does **not** disable the in-process
 serialisation between writers, which is not optional.
 
+### 15.0.1 Read-only connections
+
+`Read Only=true` — or equivalently `Mode=ReadOnly` — makes a connection refuse anything that could change
+data or schema: `INSERT`, `UPDATE`, `DELETE`, `TRUNCATE`, every `CREATE`/`ALTER`/`DROP`, and the bulk API.
+`SELECT`, `EXPLAIN` and transaction control are allowed, so wrapping reads in a transaction works as it
+does anywhere else; a transaction that then attempts a write is refused on the write.
+
+**It is a property of the connection, not of the file.** A read-only connection and a writing connection
+can address the same database at the same time, share one engine, and see each other's committed work —
+which is the shape it exists for. It is therefore *not* a way to open a database on read-only media; that
+is a separate capability and is not built.
+
+The restriction is fixed when the connection opens and cannot be lifted afterwards, and it is
+**fail-closed**: a read-only session permits a named list of statement kinds and refuses everything else,
+so a statement kind added to WitSQL later is refused until it is judged safe.
+
+Both settings were **parsed and ignored before 5.0.0** — a write through a read-only connection
+succeeded.
+
 **Before 5.0.0** two things were different, and they pull in opposite directions.
 
 *Exclusivity was a side effect* of how each store happened to open its files: a B+Tree database refused a
