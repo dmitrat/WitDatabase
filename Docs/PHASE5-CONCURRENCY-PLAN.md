@@ -201,7 +201,8 @@ ledger is unchanged at 66 and now accurate.
 
 ## 6. The access question — the pool cannot serve the shape it exists for
 
-`ConnectionPool` exists, is `sealed`, is keyed by connection string, has roughly thirty tests, and
+`ConnectionPool` exists, is `sealed`, is keyed by connection string, has **15** tests in
+`ConnectionPoolTests` (plus 9 in `PoolOptionsTests`, which cover the options record), and
 **nothing in the provider references it**: `Pooling`, `Min Pool Size` and `Max Pool Size` are parsed
 by `WitDbConnectionStringBuilder` and read by nothing outside `Pool/`. Measured, the mechanism does
 not work over a real database either:
@@ -215,8 +216,14 @@ not work over a real database either:
 The third row is the one that explains the first two surviving a green suite. **Every test in
 `ConnectionPoolTests` uses `Data Source=:memory:`**, and two `:memory:` connections are two separate
 databases — so the suite exercises borrowing, returning, lifetime and idle eviction, and never once
-the property the pool exists for: that the connections it hands out address the same data. Thirty
-green tests, and the load-bearing property is untested.
+the property the pool exists for: that the connections it hands out address the same data. Fifteen
+green tests, **zero of them file-backed**, and the load-bearing property is untested.
+
+*(Counted rather than estimated: this section first said "roughly thirty tests", which was wrong —
+`--filter FullyQualifiedName~ConnectionPoolTests` reports 15, and the `~Pool` filter's 50 sweeps in
+`PoolOptionsTests`, `ConnectionPoolFindingTests` and the connection-string builder's pool properties.
+Recorded because the section's whole argument is that a count can flatter a suite, and estimating my
+own would have been the same mistake one level up.)*
 
 This is the third instance of the same shape in three phases — phase 3's acceptance-only oracle,
 phase 4's `COUNT(*)` verification, and now a pool suite in a storage mode where sharing is
@@ -290,7 +297,7 @@ Read against § 3, this decides every open item in the area:
 - **The mechanism needed is not `ConnectionPool`.** The pool creates an independent `WitDbConnection`,
   and therefore an independent engine, per pooled entry — which is why it collides with itself over a
   file (§ 6). What the ASP.NET Core shape needs is the opposite: **one shared engine per data source
-  within the process, with connections as lightweight handles onto it.** The pool's ~30 tests describe
+  within the process, with connections as lightweight handles onto it.** The pool's 15 tests describe
   borrowing and eviction, not sharing, so almost none of that suite transfers.
 - **In-process write serialisation becomes load-bearing.** It is the only thing standing between two
   concurrent requests, which makes `FileLocking=false` silently removing it (§ 3) a more serious
