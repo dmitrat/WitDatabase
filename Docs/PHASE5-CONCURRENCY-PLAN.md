@@ -953,11 +953,41 @@ re-measured against the defect it is meant to catch.** The `Sleep(1)` version wa
 worthless, and only re-running it with the fix reverted showed that. Every version above was checked in
 **both** directions before the next was written.
 
+### 8b.11a `FlushAllAsync` did not flush what the size threshold had already queued — **found by CI**
+
+The fix above went to CI and the marker's own test **still failed** — losing `k19` on one framework and
+`k15..k19` on the other, after passing here 20 rounds out of 20. The two-thread reading of that failure
+was too narrow, and the real defect needs **no second thread at all**:
+
+> A buffer reaches the merge queue with **no completion attached** whenever `Put` crosses the size
+> threshold — the fire-and-forget path — and `FlushAllAsync` waited only for the buffers it handed over
+> itself. By then the thread's own slot is empty, so it handed over nothing, waited for nothing, and
+> returned with the writes still in the channel.
+
+`LsmParallelStore.Flush()` is `FlushAllAsync()` followed by `m_store.Flush()`, so the store was flushed
+to an SSTable *without* the entries still queued behind it. Measured single-threaded, with 50 batches of
+200 entries queued the fire-and-forget way:
+
+| | Entries still in flight when `FlushAllAsync` returned |
+|---|---|
+| Before | **10,000 of 10,000** |
+| After | 0 |
+
+**The fix:** `FlushAllAsync` now queues an **empty buffer last** and waits for that too. The channel is
+FIFO with a single reader, so a completion attached to the last thing in the queue fires only once
+everything ahead of it has been applied to the store. It is not counted as a submitted buffer, because
+it carries no writes.
+
+**This is the fourth defect of the PR and the second one CI found that this machine could not** — and
+the more useful half of the lesson is that the first fix was *correct and insufficient*: the marker was
+red for two separate reasons, and closing one of them left the test failing for the other.
+
 ### The revert counts
 
 | Fix reverted | Tests red |
 |---|---|
 | Buffers exchanged under the slot's gate | **2** — the contended probe and its control |
+| The flush barrier | 1 — and 10,000 of 10,000 entries in flight, single-threaded |
 
 With the fix reverted the contended probe fails **10 rounds out of 10**, measured three times (10 threw;
 8 threw and 2 lost entries; 10 threw), and its control fails with it because the flusher dies. With the

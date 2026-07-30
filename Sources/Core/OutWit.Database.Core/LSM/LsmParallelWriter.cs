@@ -303,11 +303,23 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
             Interlocked.Increment(ref m_buffersSubmitted);
         }
 
-        // Wait for all merges to complete
-        if (completions.Count > 0)
-        {
-            await Task.WhenAll(completions.Select(c => c.Task)).WaitAsync(cancellationToken);
-        }
+        // Everything ALREADY queued has to be merged too, not only what this call handed over.
+        // Buffers reach the queue with no completion attached - Put auto-flushes at the size
+        // threshold and FlushCurrentBuffer is fire-and-forget - so waiting for this call's own
+        // completions returned while another thread's entries were still in flight, and this is the
+        // method the commit path uses to make writes durable. Found by CI, which lost the tail of a
+        // batch that a second thread had queued moments earlier.
+        //
+        // The channel is FIFO with a single reader, so an empty buffer queued last completes only
+        // after every buffer ahead of it has been applied to the store. It is not counted as a
+        // submitted buffer, because it carries no writes.
+        var barrier = new TaskCompletionSource<bool>(TaskCreationOptions.RunContinuationsAsynchronously);
+        completions.Add(barrier);
+
+        await m_bufferChannel.Writer.WriteAsync(
+            (new LsmWriteBuffer(sizeThreshold: m_bufferSizeThreshold), barrier), cancellationToken);
+
+        await Task.WhenAll(completions.Select(c => c.Task)).WaitAsync(cancellationToken);
     }
 
     #endregion

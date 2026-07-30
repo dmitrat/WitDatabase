@@ -197,6 +197,68 @@ public class LsmParallelWriterFlushProbeTests
         });
     }
 
+    /// <summary>
+    /// Probe: <c>FlushAllAsync</c> has to make durable everything buffered before it was called -
+    /// including buffers that are already sitting in the merge queue. It is the method
+    /// <c>LsmParallelStore.Flush</c> calls, so a return that leaves entries in flight is a flush that
+    /// reports durability it does not have.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This needs no second thread at all</b>, which is the sharp version of the finding. A buffer
+    /// reaches the queue with no completion attached whenever <c>Put</c> crosses the size threshold -
+    /// the fire-and-forget path - and <c>FlushAllAsync</c> waited only for the buffers it handed over
+    /// itself. By then the thread's own slot is empty, so it handed over nothing, waited for nothing,
+    /// and returned with the writes still in the channel.
+    /// </para>
+    /// <para>
+    /// <b>Found by CI, not by this machine.</b> The marker's test lost <c>k19</c> on one framework and
+    /// <c>k15..k19</c> on the other after passing here 20 rounds out of 20, and the two-thread reading
+    /// of that failure was too narrow. This probe does not depend on any interleaving: it queues
+    /// enough work that no merge loop could have finished it in the moment between the last hand-off
+    /// and the flush returning. Measured with the fix reverted: <b>9,999 of 10,000</b> entries were
+    /// still in flight, twice.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void ProbeBFlushAllWaitsForWorkAlreadyQueuedTest()
+    {
+        const int BATCHES = 50;
+        const int PER_BATCH = 200;
+
+        var directory = Path.Combine(m_testDir, "queued");
+        Directory.CreateDirectory(directory);
+
+        using var store = new StoreLsm(directory);
+        using var writer = new LsmParallelWriter(store);
+
+        // One thread, no contention: buffer a batch, hand it over the fire-and-forget way, repeat.
+        // This is what crossing the size threshold does inside Put.
+        for (int batch = 0; batch < BATCHES; batch++)
+        {
+            for (int i = 0; i < PER_BATCH; i++)
+                writer.Put(Key(batch * PER_BATCH + i), Value(batch * PER_BATCH + i));
+
+            writer.FlushCurrentBuffer();
+        }
+
+        writer.FlushAllAsync().GetAwaiter().GetResult();
+
+        // Read the store directly, with no Flush and no second chance: everything queued before the
+        // flush must already be in it.
+        var missing = MissingKeys(store, BATCHES * PER_BATCH);
+
+        TestContext.Out.WriteLine(
+            $"PROBE  entries still in flight when FlushAllAsync returned  ->  {missing.Count} "
+            + $"of {BATCHES * PER_BATCH}");
+
+        // INVERTED BY THE FIX. FlushAllAsync now queues an empty buffer behind everything else and
+        // waits for that too, which the channel's FIFO order turns into "every buffer ahead of it has
+        // been applied to the store".
+        Assert.That(missing, Is.Empty,
+            "FlushAllAsync returned while buffers were still in the merge queue");
+    }
+
     #endregion
 
     #region Scenarios
