@@ -789,6 +789,91 @@ loss. It belongs with whatever mechanism closes the remaining LSM work, not with
 
 ---
 
+## 8b.6 `Store=lsm` + parallel mode loses acknowledged writes — **the heaviest defect of the phase** (PR 5, instrument)
+
+Going after two small LSM markers found something much larger, and this section is the instrument that
+puts it on the record. **No fix here** — the fix is the next PR, and these pins are what will prove it.
+
+### What was measured
+
+Ten `INSERT`s over `Data Source=…;Store=lsm;Parallel Mode=Buffered`, **every one of which reported
+success**:
+
+| `Synchronous Commit` | Rows a scan returns | After a clean close and reopen | Surviving keys |
+|---|---|---|---|
+| **`true` — the default** | 1 *(0 on a rerun)* | **1** *(0 on a rerun)* | `[key0]` *(`[]`)* |
+| `false` | 0 | **0** | `[]` |
+
+**The reopen is what makes the verdict, and it is the harsher one.** Closing the connection disposes the
+engine, which drains every write buffer. Rows still absent afterwards were *never written*. So this is
+**lost data**, not the visibility problem the marker describes — and it is the **default** setting for
+this store, reachable straight from a connection string.
+
+### The marker understated its own finding
+
+`ParallelLsmStoreReadsItsOwnWriteTest`'s reason said *"Get returned null for a key written moments
+earlier"*. True, and the small half. Both LSM markers also turned out to have **different causes**, which
+one reason string had been covering:
+
+- **`Get` does not flush at all.**
+- **`Scan` does flush** — through `FlushCurrentBuffer`, whose own doc comment reads *"Does not wait for
+  merge to complete"*. It queues the buffer and reads the store before the merge it just requested has
+  run. `ScanAsync` awaits the completion and is correct.
+
+Both reason strings are rewritten in place, because a marker is a claim and these two were wrong about
+their own cause.
+
+### How wide the earlier verdict actually was
+
+§ 5 of this document concluded **parallel mode is supported**, from probes that all run over the *default*
+store. `WitDatabaseBuilder` wraps `StoreBTree` in `BTreeConcurrentStore` — **a wrapper that does not
+buffer at all**. Only `Store=lsm` reaches `LsmParallelStore`. So the phase's own verdict was measured on
+the component that cannot exhibit this defect. Same lesson as phase 4's PR 43: *a refutation is only as
+wide as what was actually run.*
+
+### The controls, and they bracket the defect to one component
+
+| Control | Result | What it rules out |
+|---|---|---|
+| `Store=lsm`, **no** parallel mode, same ten INSERTs | **10 rows** ✔ | "the LSM store loses rows" — a much larger claim |
+| `Parallel Mode=Buffered` over the **btree** store (§ 5's existing probe) | **10 rows** ✔ | "parallel mode loses rows" in general |
+| `LsmParallelStore` driven **directly**, `Flush` after each write | **10 rows** ✔ | "the wrapper drops writes on its own" — it needs what the engine does differently |
+
+Three green controls, so the defect is bracketed to `LsmParallelStore` *as the engine drives it*. The
+third is the one that matters most for the fix: it stops the repair being aimed at the wrong layer.
+
+### How many rows survive is deliberately NOT pinned
+
+It came out **1 on one run and 0 on the next**, from identical code. An exact figure would be a
+timing-dependent gate, and this project has already had CI inherit one of those (§ "Question 2",
+`FlushAllAsync`). What is pinned is what was stable across runs:
+
+- fewer than ten rows survive;
+- the reopen count **equals** the pre-close count — the assertion that makes it a *data-loss* verdict
+  rather than a visibility one;
+- the survivors are the **first** rows written, not the last — which is the clue to where the writes go;
+- the single-key lookup returns `null`.
+
+Verified stable over three consecutive runs. **Invert to 10 / 10 / all ten keys / `value7` when the fix
+lands.**
+
+### Suspected mechanism, stated as a suspicion
+
+Not yet established, and deliberately not asserted anywhere:
+
+- `FlushAllAsync` resets the `ThreadLocal` buffer slot **only for the thread its `await` continuation
+  resumed on**, while the thread that did the writing keeps referring to a buffer that has been handed
+  away. This is the same root as the `FlushAllAsync` marker CI confirmed in the first half, seen from the
+  engine's side.
+- Separately and definitely: **`MergeBuffersBatch` applies every `Put` in a batch before every `Delete`**,
+  which reorders operations within the batch. `Put k` → `Delete k` → `Put k` in one batch ends deleted.
+  That is a second defect, in no audit, and it is not what loses these rows.
+
+**Ledger unchanged at 60 + 14 = 74** — this PR adds instruments and corrects two reason strings; it closes
+nothing. Said explicitly because a PR that changes no count can still be the most valuable one in a phase.
+
+---
+
 ## 8b.5 The page-cache corruption window — PR 4
 
 The marker the original plan called *"corrupts data outright"*. Question 2 had already narrowed it: **no

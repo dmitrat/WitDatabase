@@ -23,6 +23,17 @@ namespace OutWit.Database.AdoNet.Tests.AuditVerification;
 ///
 /// The probes print their observation with <see cref="TestContext.Out"/> and assert only what has
 /// already been observed, so a change to the model shows up as a failure here.
+///
+/// <para>
+/// <b>Extended 2026-07-30, in the second half of the phase.</b>
+/// <see cref="ProbeLsmParallelModeSeesItsOwnCommittedRowsTest"/> asks the parallel-mode question again
+/// over <c>Store=lsm</c>, and it found the heaviest defect of the phase: ten acknowledged INSERTs leave
+/// 0 or 1 rows, and a clean close and reopen recovers nothing, so they were <b>lost</b>. Every earlier
+/// parallel-mode probe here ran over the default btree store, which the builder wraps in
+/// <c>BTreeConcurrentStore</c> - a wrapper that does not buffer. So the phase's own "parallel mode is
+/// supported" verdict was measured on the component that cannot exhibit this, which is the same lesson
+/// as phase 4's: a refutation is only as wide as what was actually run.
+/// </para>
 /// </remarks>
 [TestFixture]
 [Category("AuditVerification")]
@@ -645,6 +656,170 @@ public class ConcurrencyModelProbeTests
                 "a column named Key must parse - it was the marker's actual cause, fixed in PR 2");
             Assert.That(renamed.Threw, Is.False,
                 "the same shape with an ordinary column name must keep working");
+        });
+    }
+
+    /// <summary>
+    /// Probe: parallel mode over an <b>LSM</b> store, which is a different wrapper from every probe
+    /// above.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Added 2026-07-30, and it exposes how narrow the earlier Q3 verdict was.</b> Every probe in
+    /// this region runs with the default store, so <c>WitDatabaseBuilder</c> wraps <c>StoreBTree</c> in
+    /// <c>BTreeConcurrentStore</c>. Only <c>Store=lsm</c> reaches <c>LsmParallelStore</c>, which buffers
+    /// writes per thread and answers reads from the underlying store. So "parallel mode is supported"
+    /// was measured on the wrapper that does not buffer, and said nothing about the one that does - a
+    /// refutation is only as wide as what was actually run.
+    /// </para>
+    /// <para>
+    /// Both spellings of the commit setting are run, because they are not equally protected:
+    /// <c>MvccTransaction.Commit</c> flushes the store only <c>if (SynchronousCommit)</c>, and
+    /// <c>LsmParallelStore.Flush</c> is what drains the write buffers. With the default
+    /// <c>true</c> the flush hides the read path entirely; with <c>Synchronous Commit=false</c> - a
+    /// connection-string setting, so a supported configuration - nothing drains them and the read path
+    /// is on its own.
+    /// </para>
+    /// </remarks>
+    [Test]
+    [TestCase(true, TestName = "LsmParallel_SynchronousCommit")]
+    [TestCase(false, TestName = "LsmParallel_AsynchronousCommit")]
+    public void ProbeLsmParallelModeSeesItsOwnCommittedRowsTest(bool synchronousCommit)
+    {
+        var directory = Path.Combine(m_testDir, $"lsm_parallel_{synchronousCommit}");
+        var cs = $"Data Source={directory};Store=lsm;Parallel Mode=Buffered;Max Writers=4;" +
+                 $"Synchronous Commit={synchronousCommit}";
+
+        using var conn = new WitDbConnection(cs);
+
+        var open = Observe(() => conn.Open());
+        Report($"Q3 LSM, Synchronous Commit={synchronousCommit}, Open", open);
+        if (open.Threw)
+            return;
+
+        var create = Observe(() => Execute(conn, "CREATE TABLE Data (K TEXT PRIMARY KEY, V TEXT)"));
+        Report($"Q3 LSM, Synchronous Commit={synchronousCommit}, CREATE TABLE", create);
+        if (create.Threw)
+            return;
+
+        var insert = Observe(() =>
+        {
+            for (var i = 0; i < 10; i++)
+                Execute(conn, $"INSERT INTO Data (K, V) VALUES ('key{i}', 'value{i}')");
+        });
+        Report($"Q3 LSM, Synchronous Commit={synchronousCommit}, 10 INSERTs", insert);
+        if (insert.Threw)
+            return;
+
+        // Counted by reading the rows, never by COUNT(*) - on this engine that is a cached counter,
+        // and phase 4 published a false catastrophe by trusting it.
+        var scannedCount = CountRows(conn, "SELECT K FROM Data");
+        TestContext.Out.WriteLine(
+            $"PROBE  Q3 LSM, Synchronous Commit={synchronousCommit}, rows a scan returns  ->  {scannedCount}");
+
+        var single = Observe(() => Scalar(conn, "SELECT V FROM Data WHERE K = 'key7'"));
+        Report($"Q3 LSM, Synchronous Commit={synchronousCommit}, single-key lookup of key7", single);
+
+        // LOSS OR INVISIBILITY? Closing the connection disposes the engine, which drains every write
+        // buffer on the way out. If the rows appear after a reopen they were written and merely
+        // unreadable; if they are still missing they never reached the store at all. The distinction
+        // decides whether this is a visibility defect or a data-loss one, and it is not guessable.
+        conn.Close();
+
+        using var reopened = new WitDbConnection(cs);
+        reopened.Open();
+        var afterReopenCount = CountRows(reopened, "SELECT K FROM Data");
+        TestContext.Out.WriteLine(
+            $"PROBE  Q3 LSM, Synchronous Commit={synchronousCommit}, rows after close and reopen  ->  " +
+            $"{afterReopenCount}");
+
+        // WHICH rows survived is the informative part: the first, the last, or an arbitrary subset says
+        // different things about where the writes go.
+        var surviving = new List<string>();
+        using (var cmd = reopened.CreateCommand())
+        {
+            cmd.CommandText = "SELECT K FROM Data";
+            using var reader = cmd.ExecuteReader();
+            while (reader.Read())
+                surviving.Add(reader.GetString(0));
+        }
+        TestContext.Out.WriteLine(
+            $"PROBE  Q3 LSM, Synchronous Commit={synchronousCommit}, surviving keys  ->  " +
+            $"[{string.Join(",", surviving.OrderBy(k => k))}]");
+
+        // ===================================================================================
+        // PINS A DEFECT, NOT CORRECT BEHAVIOUR.
+        //
+        // Measured 2026-07-30, ten INSERTs every one of which reported success:
+        //
+        //   Synchronous Commit=True (the DEFAULT)  scan 1, after reopen 1, surviving [key0]
+        //   ...and on a second run of the same code, 0 / 0 / []
+        //   Synchronous Commit=False               scan 0, after reopen 0, surviving []
+        //
+        // The reopen is what makes the verdict, and it is the harsher one: closing the connection
+        // disposes the engine and drains every buffer, so rows still absent afterwards were never
+        // written. This is LOST DATA in a supported configuration reachable from a connection string -
+        // not the "Get returns null" visibility problem the marker describes.
+        //
+        // HOW MANY survive is deliberately NOT pinned. It came out 1 on one run and 0 on the next, so
+        // an exact figure would be a timing-dependent gate, and this project has already had CI inherit
+        // one of those. What is pinned is the part that was stable across runs: rows are lost, both
+        // views agree, and the survivors are a prefix of what was written.
+        //
+        // INVERT TO: scanned == 10, afterReopen == 10, single == "String:value7", surviving == all ten.
+        // That inversion is the proof the fix landed.
+        // ===================================================================================
+        Assert.Multiple(() =>
+        {
+            Assert.That(scannedCount, Is.LessThan(10),
+                "PINNED OBSERVATION: acknowledged INSERTs are missing; correct is 10");
+            Assert.That(single.Value, Is.EqualTo("<null>"),
+                "PINNED OBSERVATION: the single-key lookup finds nothing; correct is String:value7");
+            Assert.That(afterReopenCount, Is.EqualTo(scannedCount),
+                "PINNED OBSERVATION: a clean close and reopen recovers nothing, so the rows were lost " +
+                "rather than hidden - this is the assertion that makes it a data-loss verdict");
+            Assert.That(surviving, Is.EqualTo(
+                    Enumerable.Range(0, scannedCount).Select(i => $"key{i}").ToArray()),
+                "PINNED OBSERVATION: the survivors are the FIRST rows written, not the last - the clue " +
+                "to where the writes go; correct is all ten keys");
+        });
+    }
+
+    /// <summary>
+    /// Attribution control for the probe above: the same LSM store with <b>no</b> parallel mode.
+    /// </summary>
+    /// <remarks>
+    /// Without this, "Store=lsm loses rows" and "the parallel wrapper loses rows" are indistinguishable,
+    /// and the first would be a far larger claim. Together with
+    /// <see cref="ProbeParallelModeOverAFileTest"/>, which runs <c>Parallel Mode=Buffered</c> over the
+    /// default btree store and returns all ten rows, this brackets the defect to exactly one component:
+    /// <c>LsmParallelStore</c>, the wrapper only <c>Store=lsm</c> reaches.
+    /// </remarks>
+    [Test]
+    public void ControlLsmWithoutParallelModeKeepsEveryRowTest()
+    {
+        var directory = Path.Combine(m_testDir, "lsm_no_parallel");
+        var cs = $"Data Source={directory};Store=lsm";
+
+        using var conn = new WitDbConnection(cs);
+        conn.Open();
+        Execute(conn, "CREATE TABLE Data (K TEXT PRIMARY KEY, V TEXT)");
+
+        for (var i = 0; i < 10; i++)
+            Execute(conn, $"INSERT INTO Data (K, V) VALUES ('key{i}', 'value{i}')");
+
+        var scanned = Observe(() => CountRows(conn, "SELECT K FROM Data"));
+        Report("Q3 LSM attribution control, no parallel mode, rows a scan returns", scanned);
+
+        var single = Observe(() => Scalar(conn, "SELECT V FROM Data WHERE K = 'key7'"));
+        Report("Q3 LSM attribution control, no parallel mode, single-key lookup of key7", single);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(scanned.Value, Is.EqualTo("Int32:10"),
+                "an LSM store without the parallel wrapper must keep every row");
+            Assert.That(single.Value, Is.EqualTo("String:value7"),
+                "and must find one by key");
         });
     }
 

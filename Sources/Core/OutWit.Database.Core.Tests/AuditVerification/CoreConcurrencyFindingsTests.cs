@@ -424,7 +424,15 @@ public class CoreConcurrencyFindingsTests
 
     [Test]
     [Ignore("CONFIRMED 2026-07-27: Get returned null for a key written moments earlier on the same "
-            + "thread. core-concurrency, Builder/LsmParallelStore.cs:83")]
+            + "thread. core-concurrency, Builder/LsmParallelStore.cs:83. "
+            + "REASON REWRITTEN 2026-07-30, because the original understated it and named one cause for "
+            + "two defects. Get does not flush at all; Scan DOES flush, through FlushCurrentBuffer, "
+            + "whose own doc comment says \"Does not wait for merge to complete\" - so it queues the "
+            + "buffer and reads the store before the merge runs. And the visible symptom is the small "
+            + "half: measured at SQL level over Store=lsm + Parallel Mode=Buffered, ten acknowledged "
+            + "INSERTs leave ONE row, and it is still one after a clean close and reopen - so writes are "
+            + "LOST, not merely unreadable. Pinned in "
+            + "AdoNet.Tests ConcurrencyModelProbeTests.ProbeLsmParallelModeSeesItsOwnCommittedRows.")]
     public void ParallelLsmStoreReadsItsOwnWriteTest()
     {
         // Finding: LsmParallelStore.cs:83 - Get/Scan query the underlying store without waiting for
@@ -447,7 +455,54 @@ public class CoreConcurrencyFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the scan returned 0 rows after a Put on the same thread.")]
+    public void ParallelLsmStoreKeepsEveryWriteItAcknowledgedTest()
+    {
+        // NOT AN AUDIT FINDING, and this is the CONTROL for something larger than the two markers
+        // around it. The SQL-level probe
+        // (AdoNet ConcurrencyModelProbeTests.ProbeLsmParallelModeSeesItsOwnCommittedRows) showed ten
+        // successful INSERTs over Store=lsm + Parallel Mode=Buffered leaving 0 or 1 rows - lost, not
+        // hidden, because a clean close and reopen recovers nothing.
+        //
+        // This walks the same shape one layer down and PASSES: driven directly, with a Flush after each
+        // write, the store keeps all ten. So the loss is not "LsmParallelStore drops writes" on its own -
+        // it needs whatever the engine does differently, and this test is what stops the eventual fix
+        // from being aimed at the wrong layer.
+        var directory = CreateTempDirectory();
+        try
+        {
+            using var store = new LsmParallelStore(directory);
+
+            for (var i = 0; i < 10; i++)
+            {
+                store.Put(Key($"k{i}"), Value($"v{i}"));
+                store.Flush();
+            }
+
+            var scanned = store.Scan(null, null).ToList();
+            var missing = Enumerable.Range(0, 10)
+                .Where(i => store.Get(Key($"k{i}")) == null)
+                .ToList();
+
+            TestContext.Out.WriteLine(
+                $"scan returned {scanned.Count} of 10; keys not readable: [{string.Join(",", missing)}]");
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(missing, Is.Empty, "every key flushed by its writer must be readable");
+                Assert.That(scanned, Has.Count.EqualTo(10), "and a scan must return all ten");
+            });
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    [Test]
+    [Ignore("CONFIRMED 2026-07-27: the scan returned 0 rows after a Put on the same thread. Cause "
+            + "established 2026-07-30 and it is NOT the same as the Get marker's: Scan does flush, but "
+            + "through the fire-and-forget FlushCurrentBuffer, so it reads the store before the merge "
+            + "it just queued has run.")]
     public void ParallelLsmStoreScanSeesItsOwnWriteTest()
     {
         var directory = CreateTempDirectory();
