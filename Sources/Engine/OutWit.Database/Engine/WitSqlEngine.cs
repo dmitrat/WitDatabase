@@ -40,12 +40,39 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
     /// <param name="database">The underlying WitDatabase instance.</param>
     /// <param name="ownsStore">If true, the engine will dispose the database when disposed.</param>
     public WitSqlEngine(WitDatabase database, bool ownsStore = false)
+        : this(database, new SchemaCatalog(database.Store), ownsStore)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new WitSqlEngine instance over a schema catalog it shares with other engines.
+    /// </summary>
+    /// <param name="database">The underlying WitDatabase instance.</param>
+    /// <param name="schema">
+    /// The catalog to use. Pass the <b>same instance</b> to every engine over a given database.
+    /// </param>
+    /// <param name="ownsStore">If true, the engine will dispose the database when disposed.</param>
+    /// <remarks>
+    /// An engine is a <b>session</b> - it holds the current transaction - while the schema is a property
+    /// of the <b>database</b>. Until 5.0.0 the two were fused: every engine built its own
+    /// <see cref="SchemaCatalog"/>, which loads the schema once in its constructor into plain
+    /// dictionaries of tables, indexes, views, triggers, sequences, row ids and row counts. Two sessions
+    /// over one database therefore diverged, and measurably so - a table created by one was
+    /// <c>Table not found</c> to the other, and a row inserted by one was visible to the other's scan
+    /// while that other's <c>COUNT(*)</c> still said zero.
+    ///
+    /// Several connections addressing one database is the supported deployment shape - an ASP.NET Core
+    /// host with scoped <c>DbContext</c>s - so this constructor exists for the caller that owns the
+    /// database to hand one catalog to every session on it. The engine does not dispose a catalog it was
+    /// given.
+    /// </remarks>
+    public WitSqlEngine(WitDatabase database, SchemaCatalog schema, bool ownsStore = false)
     {
         m_database = database;
-        m_schema = new SchemaCatalog(database.Store);
+        m_schema = schema ?? throw new ArgumentNullException(nameof(schema));
         m_planCache = new QueryPlanCache();
         m_ownsStore = ownsStore;
-        
+
         // Ensure physical indexes are created/synced for all schema indexes
         // This handles the case where schema indexes were persisted but physical indexes were not
         EnsurePhysicalIndexesExist();

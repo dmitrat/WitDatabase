@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using OutWit.Database.AdoNet.Engines;
 using OutWit.Database.AdoNet.Schema;
 using OutWit.Database.AdoNet.Utils;
 using OutWit.Database.Core.Builder;
@@ -29,6 +30,13 @@ public sealed class WitDbConnection : DbConnection
     private WitSqlEngine? m_engine;
     private WitDatabase? m_database;
     private WitDbTransaction? m_currentTransaction;
+
+    /// <summary>
+    /// This connection's share of a database held by <see cref="SharedDatabase"/>, for a file-backed
+    /// database. Null for an in-memory one, which is private to its connection, and null when the
+    /// connection was handed an engine directly.
+    /// </summary>
+    private SharedDatabaseLease? m_lease;
 
     #endregion
 
@@ -87,9 +95,27 @@ public sealed class WitDbConnection : DbConnection
                 if (m_engine == null)
                 {
                     var options = new WitDbConnectionStringBuilder(m_connectionString);
-                    m_database = BuildDatabase(options);
-                    m_engine = new WitSqlEngine(m_database, ownsStore: true);
-                    OwnsEngine = true;
+                    var key = SharedDatabaseKey.TryResolve(options);
+
+                    if (key == null)
+                    {
+                        // Nothing to share - an in-memory database, which is private to its connection
+                        // exactly as it was before 5.0.0 and as SQLite's is without Cache=Shared.
+                        m_database = BuildDatabase(options);
+                        m_engine = new WitSqlEngine(m_database, ownsStore: true);
+                        OwnsEngine = true;
+                    }
+                    else
+                    {
+                        // One database and one schema catalog per file, shared by every connection in
+                        // this process; the engine stays per-connection because it holds the current
+                        // transaction. This is what makes several scoped DbContexts work in one host.
+                        var signature = SharedDatabaseKey.BuildSignature(options);
+                        m_lease = SharedDatabase.Acquire(key, signature, () => BuildDatabase(options));
+                        m_database = m_lease.Database;
+                        m_engine = new WitSqlEngine(m_database, m_lease.Schema, ownsStore: false);
+                        OwnsEngine = false;
+                    }
                 }
 
                 m_state = ConnectionState.Open;
@@ -100,6 +126,12 @@ public sealed class WitDbConnection : DbConnection
                 m_engine?.Dispose();
                 m_engine = null;
                 m_database = null;
+
+                // The lease has to go back even when Open failed after taking it, or the shared database
+                // keeps a reference nobody holds and never closes - which would leave the file locked for
+                // the life of the process.
+                m_lease?.Dispose();
+                m_lease = null;
                 throw;
             }
         }
@@ -129,7 +161,19 @@ public sealed class WitDbConnection : DbConnection
                 m_currentTransaction = null;
             }
 
-            if (OwnsEngine && m_engine != null)
+            if (m_lease != null)
+            {
+                // The engine is this connection's own session and always goes; the database and its
+                // schema catalog are shared, and the lease disposes them only when this was the last
+                // connection using them.
+                m_engine?.Dispose();
+                m_engine = null;
+                m_database = null;
+
+                m_lease.Dispose();
+                m_lease = null;
+            }
+            else if (OwnsEngine && m_engine != null)
             {
                 m_engine.Dispose();
                 m_engine = null;

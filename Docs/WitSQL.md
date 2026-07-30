@@ -1083,10 +1083,24 @@ never written down before 5.0.0, and before 5.0.0 it was not enforced consistent
 | | Supported |
 |---|---|
 | Several `WitDbConnection`s in one process, to one database | **Yes** — they share one engine |
+| A connection seeing another's committed work | **Yes** — rows *and* `COUNT(*)`, including tables created after it opened |
 | Concurrent readers | **Yes** |
 | Concurrent writers | Serialised: one writer at a time, transparently |
+| Concurrent **transactions** in different connections | **Yes with MVCC** (the default). With `MVCC=false` a transaction holds a database-wide write lock |
 | A second **process** opening the same database | **No** — `DatabaseAlreadyOpenException` |
 | A second engine in the same process (e.g. two `WitDatabase` instances) | **No** — same exception |
+| Two `Data Source=:memory:` connections sharing data | **No** — each is its own database, as in SQLite without `Cache=Shared` |
+| One database opened with **different options** in one process | **No** — `InvalidOperationException` naming the mismatch |
+
+**How connections share.** The first connection to a database builds the engine; the rest attach to it,
+and it is disposed — releasing the exclusive lock — when the last one closes. What is shared is the
+storage *and the schema catalog*; each connection keeps its own session, so transactions are independent.
+That division matters: with a per-connection catalog, a table created by one connection was
+`Table not found` to another, and a row inserted by one was visible to the other's scan while that
+other's `COUNT(*)` still said zero.
+
+Connections are therefore cheap handles, and pooling them buys little — the expensive thing is the
+engine, and it is already shared.
 
 **Why single-process.** Two engines over one database each keep their own page cache, memtable and
 write-ahead log, with nothing coordinating them. Measured before the limit was enforced: two engines over
@@ -1103,11 +1117,21 @@ rest of the database.
 locking is unreliable — network shares in particular — and it does **not** disable the in-process
 serialisation between writers, which is not optional.
 
-**Before 5.0.0**, exclusivity was a side effect of how each store happened to open its files: a B+Tree
-database refused a second engine on every platform, an LSM database refused one only on Windows and only
-with the write-ahead log enabled, and an LSM database with the log disabled refused none anywhere. Code
-that relied on opening one LSM database twice will now get `DatabaseAlreadyOpenException`; that
-configuration was unsafe.
+**Before 5.0.0** two things were different, and they pull in opposite directions.
+
+*Exclusivity was a side effect* of how each store happened to open its files: a B+Tree database refused a
+second engine on every platform, an LSM database refused one only on Windows and only with the
+write-ahead log enabled, and an LSM database with the log disabled refused none anywhere. It is now
+enforced deliberately and identically everywhere.
+
+*A second connection did not work at all.* Every connection built its own engine, so opening two to one
+database failed — which is to say the shape above, several scoped `DbContext`s in one host, was not
+available. That is the change 5.0.0 exists for.
+
+So: **a second connection now succeeds where it used to fail**, and **a second process now fails
+predictably where it used to depend on the platform and the store**. Code that relied on opening one LSM
+database from two processes on Linux will get `DatabaseAlreadyOpenException`; that configuration was
+unsafe — the two engines diverged.
 
 ### 15.1 Row Version Type
 

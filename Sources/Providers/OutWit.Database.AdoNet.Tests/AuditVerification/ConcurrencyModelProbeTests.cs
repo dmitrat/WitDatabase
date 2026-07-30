@@ -129,7 +129,15 @@ public class ConcurrencyModelProbeTests
         var outcome = Observe(() => second.Open());
 
         Report("Q1 btree, second connection in the same process", outcome);
-        Assert.That(outcome.Threw, Is.True, "expected the second opener to be refused");
+
+        // INVERTED BY THE SHARED-DATABASE WORK, and this is the phase's headline. This probe asserted
+        // `Threw` for two releases' worth of behaviour: each connection built its own engine, and a
+        // database admits one engine, so the second connection failed - which meant a host with scoped
+        // DbContexts did not work at all. Connections now share one engine per database, so a second
+        // one opens. A second *engine* is still refused; that distinction is tested by
+        // SharedDatabaseConnectionTests.SecondEngineOverTheSameFileIsStillRefusedTest.
+        Assert.That(outcome.Threw, Is.False,
+            "a second connection in the same process is the supported shape - see plan doc section 8");
     }
 
     /// <summary>
@@ -164,23 +172,21 @@ public class ConcurrencyModelProbeTests
 
         Report($"Q1 lsm, second connection in the same process [{Platform}]", outcome);
 
-        if (!outcome.Threw)
-        {
-            var read = Observe(() => Scalar(second, "SELECT V FROM T WHERE Id = 1"));
-            Report($"Q1 lsm, the second connection reads a row the first wrote [{Platform}]", read);
-        }
+        var read = Observe(() => Scalar(second, "SELECT V FROM T WHERE Id = 1"));
+        Report($"Q1 lsm, the second connection reads a row the first wrote [{Platform}]", read);
 
-        // CLOSED BY THE 5.0.0 EXCLUSIVITY GUARD, and the platform branch this test used to carry is
-        // gone with it - which is the point. Before the fix the answer differed by platform: Windows
-        // refused with an IOException naming <dir>/wal.log, and Linux let the second connection in and
-        // let it read the first's row, because .NET maps FileShare.Read to a shared advisory lock on
-        // Unix. The guard is a .lock sidecar opened FileShare.None, so it behaves identically on both.
+        // This probe has now recorded three different models, which is worth keeping visible:
+        //   1. before 5.0.0 - refused on Windows via wal.log, ADMITTED on Linux, where .NET maps
+        //      FileShare.Read to a shared advisory lock, and the two engines then diverged (section 3a);
+        //   2. with the exclusivity guard - refused with DatabaseAlreadyOpenException on both platforms;
+        //   3. now - a second CONNECTION shares the one engine, so it opens, identically on both.
+        // The guard still refuses a second engine; connections are handles onto one.
         Assert.Multiple(() =>
         {
-            Assert.That(outcome.Threw, Is.True,
-                $"a second LSM connection opened on {Platform} - see plan doc section 3a");
-            Assert.That(outcome.ExceptionType, Is.EqualTo(nameof(DatabaseAlreadyOpenException)),
-                "the refusal must name the engine's own limit, not an OS sharing violation");
+            Assert.That(outcome.Threw, Is.False,
+                $"a second LSM connection was refused on {Platform} - connections share an engine");
+            Assert.That(read.Value, Is.EqualTo("String:a"),
+                "and it must see the row the first connection committed");
         });
     }
 
@@ -211,16 +217,8 @@ public class ConcurrencyModelProbeTests
             var opened = Observe(() => second.Open());
             Report($"Q1 lsm two writers, second Open [{Platform}]", opened);
 
-            if (opened.Threw)
-            {
-                // The expected path since the 5.0.0 guard, on every platform. Kept as a live probe
-                // rather than deleted because it is the regression test for the divergence it used to
-                // measure: before the fix, on Linux, the second engine opened and the two engines then
-                // saw 1 row and 2 rows of the same table.
-                Assert.That(opened.ExceptionType, Is.EqualTo(nameof(DatabaseAlreadyOpenException)),
-                    "a second engine was refused, but not by the exclusivity guard");
-                return;
-            }
+            Assert.That(opened.Threw, Is.False,
+                "the second connection must open - it shares the first one's engine");
 
             var secondWrite = Observe(() => Execute(second, "INSERT INTO T (Id, V) VALUES (2, 'second')"));
             Report($"Q1 lsm two writers, the second engine's INSERT [{Platform}]", secondWrite);
@@ -235,18 +233,18 @@ public class ConcurrencyModelProbeTests
             Report($"Q1 lsm two writers, rows visible to the SECOND engine [{Platform}]",
                 new Outcome(false, null, null, $"Int32:{seenBySecond}"));
 
-            // PINS THE DEFECT'S ACTUAL SHAPE. Measured 2026-07-30 on Linux: 1 and 2. The second
-            // engine sees both rows because it replayed wal.log at open, which already held the
-            // first engine's row; the first engine cannot see the second's row at all, because it
-            // lives in a memtable belonging to a different engine and nothing invalidates or
-            // notifies. So the cost of the missing exclusivity is not (in this case) a lost write -
-            // it is two engines holding divergent views of one database, each answering confidently.
+            // THE DEFECT THIS PROBE WAS BUILT FOR IS GONE, and its numbers are the record of that.
+            // Measured on Linux before the fix: 1 and 2 - two engines over one LSM directory, the
+            // second seeing both rows because it replayed wal.log at open, the first unable to see the
+            // second's row at all because it lived in another engine's memtable with nothing to
+            // invalidate or notify. There is now one engine, so both connections see both rows, and
+            // this asserts the agreement rather than the divergence.
             Assert.Multiple(() =>
             {
-                Assert.That(seenByFirst, Is.EqualTo(1),
-                    "the first engine's view changed - re-establish what the two engines see");
+                Assert.That(seenByFirst, Is.EqualTo(2),
+                    "both connections share one engine, so both must see both rows");
                 Assert.That(seenBySecond, Is.EqualTo(2),
-                    "the second engine's view changed - re-establish what the two engines see");
+                    "both connections share one engine, so both must see both rows");
             });
         }
 
@@ -364,12 +362,13 @@ public class ConcurrencyModelProbeTests
 
         Report("Q1 two Read Only=true connections to one file", outcome);
 
-        // PINS A DEFECT, downstream of the one above. StorageFile does grant FileShare.Read when
-        // opened read-only, so many readers over one file is a shape the storage layer already
-        // supports; it is unreachable only because the provider drops the setting. Measured
-        // 2026-07-30: IOException on the second opener.
-        Assert.That(outcome.Threw, Is.True,
-            "two read-only connections now share a file - invert this and close the marker");
+        // Two read-only connections now open - but NOT because read-only works. They share one engine
+        // like any two connections, and that engine is read-write, because the provider still drops the
+        // setting (see ProbeReadOnlyConnectionIsHonouredTest, still pinning that defect). So this test
+        // no longer says anything about read-only; it is kept because it is the shape a consumer reaches
+        // for when they want many readers, and it should keep working once read-only is honoured.
+        Assert.That(outcome.Threw, Is.False,
+            "two connections to one file must open, read-only or not");
     }
 
     /// <summary>
@@ -418,19 +417,12 @@ public class ConcurrencyModelProbeTests
                 Observe(() => new Outcome(false, null, null, $"Int32:{CountRows(second, "SELECT Id FROM T")}").Value!));
         }
 
-        // The whole point of the 5.0.0 guard is that this expectation no longer depends on the
-        // configuration or the platform. Before it, the answer varied on both axes: the log's share
-        // mode was the only thing refusing anyone, so an LSM database was exclusive on Windows and not
-        // on Linux, and a database with no log was exclusive nowhere. All four combinations are
-        // asserted the same way now, and the files on disk are still reported because a change to
-        // which files exist used to change the answer.
-        Assert.Multiple(() =>
-        {
-            Assert.That(outcome.Threw, Is.True,
-                $"a second engine opened an LSM database with {label} on {Platform}");
-            Assert.That(outcome.ExceptionType, Is.EqualTo(nameof(DatabaseAlreadyOpenException)),
-                $"refused for the wrong reason with {label}");
-        });
+        // One expectation for all four configurations and both platforms, which is the point. Before
+        // 5.0.0 the answer varied on both axes, because the write-ahead log's share mode was the only
+        // thing refusing anyone. Now a second connection shares the engine whatever the configuration,
+        // and the files on disk are still reported because which files exist used to change the answer.
+        Assert.That(outcome.Threw, Is.False,
+            $"a second connection was refused with {label} on {Platform} - connections share an engine");
     }
 
     #endregion
@@ -449,17 +441,14 @@ public class ConcurrencyModelProbeTests
         var outcome = Observe(() => ConnectionPool.GetPool(cs));
         Report("Q1 pool over a file, Min Pool Size=2", outcome);
 
-        // PINS A DEFECT. Measured 2026-07-30: IOException, "the process cannot access the file
-        // ... because it is being used by another process." The pool's constructor pre-opens
-        // MinPoolSize connections; the second one hits the first one's FileShare.None handle. So the
-        // pool cannot be constructed at all over a file-backed database with Min Pool Size >= 2.
-        Assert.Multiple(() =>
-        {
-            Assert.That(outcome.Threw, Is.True,
-                "the pool now pre-creates two file connections - invert this and close the marker");
-            Assert.That(outcome.ExceptionType, Is.EqualTo(nameof(DatabaseAlreadyOpenException)),
-                "the failure changed shape; re-read what it is now before trusting this test");
-        });
+        // CLOSED AS A SIDE EFFECT, which is worth recording because it was not the goal. The pool used
+        // to fail in its own constructor over a file-backed database: it pre-opens MinPoolSize
+        // connections, and the second hit the first one's exclusive handle. Nothing in the pool changed
+        // - pooled connections are ordinary connections, and connections now share an engine, so
+        // pre-creating several works. The pool is still unreferenced by the provider (§ 6), so no
+        // consumer reaches this unless they construct it themselves.
+        Assert.That(outcome.Threw, Is.False,
+            "the pool must be constructible over a file-backed database");
     }
 
     /// <summary>
@@ -479,16 +468,16 @@ public class ConcurrencyModelProbeTests
         var second = Observe(() => pool.GetConnection());
         Report("Q1 pool over a file, second simultaneous borrow", second);
 
-        // PINS A DEFECT, and it is the one the phase-5 plan calls the most consequential open
-        // question in the project. Measured 2026-07-30: the first borrow succeeds, the second throws
-        // IOException. A web application holding a per-request DbContext borrows more than one
-        // connection at a time, so the pool cannot serve the demo-deployment shape at all. Nothing
-        // in the provider references ConnectionPool either, so no consumer reaches this today.
+        // THE PHASE-5 PLAN CALLED THIS THE MOST CONSEQUENTIAL OPEN QUESTION IN THE PROJECT, and it is
+        // now closed. Before: the first borrow succeeded and the second threw, so a web application
+        // holding a per-request DbContext could not be served at all. Both borrows now work, because
+        // the connections share one engine. Note what did NOT fix it: the pool. Sharing the engine is
+        // what the shape needed, and the pool was only ever pooling the cheap half.
         Assert.Multiple(() =>
         {
             Assert.That(first.Threw, Is.False, "the first borrow should succeed");
-            Assert.That(second.Threw, Is.True,
-                "two simultaneous borrows over a file now work - invert this and close the marker");
+            Assert.That(second.Threw, Is.False,
+                "two simultaneous borrows over one file must work - this is the demo-deployment shape");
         });
     }
 
@@ -713,10 +702,16 @@ public class ConcurrencyModelProbeTests
 
             using var second = new WitDbConnection(cs);
             var refused = Observe(() => second.Open());
-            Report("Q1 refused open, the exception", refused);
+            Report("Q1 second open, formerly refused", refused);
 
-            Assert.That(second.State, Is.EqualTo(ConnectionState.Closed),
-                "a connection whose Open failed should report Closed");
+            // Was "a refused Open leaves nothing behind" - the second connection is no longer refused,
+            // so what this now checks is the other half it always checked: that opening a second
+            // connection does not disturb the first, and that the file is fully released afterwards.
+            Assert.Multiple(() =>
+            {
+                Assert.That(refused.Threw, Is.False, "a second connection shares the engine");
+                Assert.That(second.State, Is.EqualTo(ConnectionState.Open));
+            });
 
             firstStillWorks = Scalar(first, "SELECT V FROM T WHERE Id = 1");
         }

@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <TargetFrameworks>net9.0;net10.0</TargetFrameworks>
@@ -9,6 +9,15 @@
     <Description>ADO.NET data provider for WitDatabase. Full System.Data compatibility with connection pooling, transactions, and parameterized queries.</Description>
     <PackageTags>OutWit;database;ado-net;data-provider;sql;connection;transactions;dotnet</PackageTags>
   </PropertyGroup>
+
+  <ItemGroup>
+    <!--
+      SharedDatabase is internal: it is a process-wide registry, not API. The tests need to assert on
+      its reference counting, because "the database is disposed when the last connection closes and not
+      before" is the property the ASP.NET Core shape depends on and it is not observable from outside.
+    -->
+    <InternalsVisibleTo Include="OutWit.Database.AdoNet.Tests" />
+  </ItemGroup>
 
   <ItemGroup>
     <ProjectReference Include="..\..\Engine\OutWit.Database\OutWit.Database.csproj" />

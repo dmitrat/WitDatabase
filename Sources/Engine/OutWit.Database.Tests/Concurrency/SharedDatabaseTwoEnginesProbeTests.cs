@@ -1,5 +1,6 @@
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Engine;
+using OutWit.Database.Schema;
 
 namespace OutWit.Database.Tests.Concurrency;
 
@@ -105,15 +106,16 @@ public class SharedDatabaseTwoEnginesProbeTests
     /// <summary>
     /// Probe: a table created by the first engine <i>after</i> the second one exists.
     /// </summary>
+    /// <remarks>
+    /// <b>Re-decided once the fix landed: this is a documented sharp edge, not an open defect.</b> It was
+    /// <c>[Ignore]</c>d as a confirmed defect while there was no way to get agreement; there now is -
+    /// <c>new WitSqlEngine(database, sharedCatalog)</c> - and
+    /// <see cref="SharedCatalogMakesATableVisibleToBothSessionsTest"/> asserts it. So this test is active
+    /// again and pins what the <i>single-argument</i> constructor does: each engine builds its own
+    /// catalog and therefore its own idea of the schema. Anyone putting two engines on one database has
+    /// to share the catalog, and this is the test that says why.
+    /// </remarks>
     [Test]
-    [Ignore("CONFIRMED 2026-07-30: the second engine raises InvalidOperationException \"Table 'Later' "
-            + "not found\" for a table the first engine created and committed. SchemaCatalog loads the "
-            + "schema ONCE in its constructor into plain dictionaries, and WitSqlEngine constructs its "
-            + "own catalog, so two sessions over one database each get a private and immediately stale "
-            + "idea of the schema. ReloadMetadataFromStore refreshes only the counters, not the table "
-            + "list. This is the blocker for the shared-engine work: sharing the WitDatabase alone is "
-            + "not enough, the catalog has to be shared too - it is database-level state that is "
-            + "currently session-level. core-concurrency, Engine/WitSqlEngine.cs:45")]
     public void ProbeSecondEngineSeesATableCreatedAfterItTest()
     {
         using var database = CreateDatabase();
@@ -125,28 +127,28 @@ public class SharedDatabaseTwoEnginesProbeTests
         first.Execute("INSERT INTO Later (Id, V) VALUES (1, 'a')");
 
         var outcome = Observe(() => ReadRows(second, "SELECT V FROM Later"));
-        Report("a table created after the second engine existed", outcome);
+        Report("a table created after the second engine existed, separate catalogs", outcome);
 
-        // ASSERTS CORRECT BEHAVIOUR. Two sessions on one database must agree that a committed table
-        // exists; this is the property the shared-engine design needs and the one to build toward.
-        Assert.That(outcome.Error, Is.Null,
-            "the second engine cannot see a table the first one created - a per-connection engine "
-            + "over a shared database would give each connection its own idea of the schema");
+        // PINS THE SHARP EDGE OF THE SINGLE-ARGUMENT CONSTRUCTOR, not a defect: each engine built its
+        // own catalog, so each has its own schema. If this ever starts passing, the catalog has become
+        // a live view over the store and the shared-catalog constructor is no longer needed.
+        Assert.That(outcome.Error, Is.InstanceOf<InvalidOperationException>(),
+            "two engines with separate catalogs no longer diverge - if the catalog now reads through "
+            + "to the store, the sharing constructor and this test can both go");
     }
 
     /// <summary>
     /// Probe: rows inserted by the first engine into a table <i>both</i> engines already know about.
     /// This is the read path with no schema change involved.
     /// </summary>
+    /// <remarks>
+    /// The other half of the sharp edge, and the more insidious one: the <b>rows</b> come off the shared
+    /// store so a scan sees them, while the <b>count</b> comes from the engine's own catalog counter. A
+    /// query and its own count therefore disagreed across sessions with no crash involved - the same
+    /// split phase 4 met after a process kill. Also re-decided from defect to documented behaviour:
+    /// <see cref="SharedCatalogMakesRowsAndTheirCountAgreeAcrossSessionsTest"/> asserts the fix.
+    /// </remarks>
     [Test]
-    [Ignore("CONFIRMED 2026-07-30, and it is the more insidious half: a scan through the second engine "
-            + "returns the row (1), while SELECT COUNT(*) through the same engine returns 0. The rows "
-            + "come off the shared store, but the count comes from the second engine's own "
-            + "SchemaCatalog counter, which the first engine's INSERT incremented in ITS catalog. So a "
-            + "query and its own count disagree ACROSS sessions - the same rows-versus-counter split "
-            + "phase 4 met after a crash, now reachable with no crash at all. Only caught because the "
-            + "probe measured both; a COUNT(*)-only test would have reported no rows and a rows-only "
-            + "test would have reported success. core-concurrency, Engine/WitSqlEngine.cs:45")]
     public void ProbeSecondEngineSeesRowsWrittenByTheFirstTest()
     {
         using var database = CreateDatabase();
@@ -164,14 +166,17 @@ public class SharedDatabaseTwoEnginesProbeTests
         var counted = Observe(() => Scalar(second, "SELECT COUNT(*) FROM T"));
         Report("the same rows as the second engine COUNTs them", counted);
 
-        // Rows and their count are separate state on this engine - phase 4 published a false
-        // catastrophe by trusting COUNT(*) - so both are reported and both are asserted.
+        // PINS THE SHARP EDGE, and the asymmetry is the whole point: the scan sees the row because the
+        // store is shared, the count does not because the catalog is not. Both are asserted, because a
+        // test of either alone would have reported the wrong thing - the rows-only version would have
+        // said "works" and the count-only version would have said "sees nothing".
         Assert.Multiple(() =>
         {
             Assert.That(scanned.Value, Is.EqualTo("1"),
-                "a committed row must be visible to the other session");
-            Assert.That(counted.Value, Is.EqualTo("1"),
-                "and its count must agree with it");
+                "the row is in the shared store, so a scan must find it");
+            Assert.That(counted.Value, Is.EqualTo("Integer:0"),
+                "and the separate catalog's counter must still be stale - if it is not, the counter "
+                + "now reads through to the store and the sharing constructor can go");
         });
     }
 
@@ -217,6 +222,116 @@ public class SharedDatabaseTwoEnginesProbeTests
             Assert.That(firstBegin.Error, Is.Null, "the first transaction must start");
             Assert.That(secondBegin.Error, Is.Null,
                 "two sessions on one database must be able to hold transactions at the same time");
+        });
+    }
+
+    #endregion
+
+    #region The shared catalog - the same questions, asked of the fix
+
+    /// <summary>
+    /// The two divergence probes above, repeated with <b>one catalog shared</b> between the sessions.
+    /// This is the design instrument B was built to validate, so these assert the fix.
+    /// </summary>
+    [Test]
+    public void SharedCatalogMakesATableVisibleToBothSessionsTest()
+    {
+        using var database = CreateDatabase(mvcc: true);
+        using var schema = new SchemaCatalog(database.Store);
+
+        using var first = new WitSqlEngine(database, schema);
+        using var second = new WitSqlEngine(database, schema);
+
+        first.Execute("CREATE TABLE Later (Id BIGINT PRIMARY KEY, V TEXT)");
+        first.Execute("INSERT INTO Later (Id, V) VALUES (1, 'a')");
+
+        var scanned = Observe(() => ReadRows(second, "SELECT V FROM Later"));
+        Report("shared catalog: a table created after the second session existed", scanned);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(scanned.Error, Is.Null, "the second session must see the table");
+            Assert.That(scanned.Value, Is.EqualTo("1"), "and the row in it");
+        });
+    }
+
+    /// <summary>
+    /// And the half that a <c>COUNT(*)</c>-only test would have missed: rows and their cached counter
+    /// must agree across sessions, not just within one.
+    /// </summary>
+    [Test]
+    public void SharedCatalogMakesRowsAndTheirCountAgreeAcrossSessionsTest()
+    {
+        using var database = CreateDatabase(mvcc: true);
+        using var schema = new SchemaCatalog(database.Store);
+
+        using var first = new WitSqlEngine(database, schema);
+        first.Execute("CREATE TABLE T (Id BIGINT PRIMARY KEY, V TEXT)");
+
+        using var second = new WitSqlEngine(database, schema);
+
+        first.Execute("INSERT INTO T (Id, V) VALUES (1, 'a')");
+
+        var scanned = Observe(() => ReadRows(second, "SELECT V FROM T"));
+        var counted = Observe(() => Scalar(second, "SELECT COUNT(*) FROM T"));
+
+        Report("shared catalog: rows the other session inserted, scanned", scanned);
+        Report("shared catalog: the same rows, counted", counted);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(scanned.Value, Is.EqualTo("1"), "the row must be visible");
+            Assert.That(counted.Value, Is.EqualTo("Integer:1"), "and its count must agree");
+        });
+    }
+
+    /// <summary>
+    /// The risk a shared catalog introduces: it guards itself with a
+    /// <see cref="ReaderWriterLockSlim"/> created <c>NoRecursion</c>, so two sessions interleaving DDL
+    /// and DML through one catalog is a new way to deadlock or to throw
+    /// <see cref="LockRecursionException"/>. Driven from one thread on purpose - recursion is
+    /// thread-affine, so a single thread is the harshest case for it, and it needs no interleaving to
+    /// be exact.
+    /// </summary>
+    [Test]
+    public void SharedCatalogSurvivesInterleavedWorkFromBothSessionsTest()
+    {
+        using var database = CreateDatabase(mvcc: true);
+        using var schema = new SchemaCatalog(database.Store);
+
+        using var first = new WitSqlEngine(database, schema);
+        using var second = new WitSqlEngine(database, schema);
+
+        var outcome = Observe<object?>(() =>
+        {
+            first.Execute("CREATE TABLE A (Id BIGINT PRIMARY KEY, V TEXT)");
+            second.Execute("CREATE TABLE B (Id BIGINT PRIMARY KEY, V TEXT)");
+
+            first.Execute("INSERT INTO A (Id, V) VALUES (1, 'a')");
+            second.Execute("INSERT INTO B (Id, V) VALUES (1, 'b')");
+
+            first.Execute("CREATE INDEX ix_a ON A (V)");
+            second.Execute("CREATE INDEX ix_b ON B (V)");
+
+            first.Execute("INSERT INTO B (Id, V) VALUES (2, 'via-first')");
+            second.Execute("INSERT INTO A (Id, V) VALUES (2, 'via-second')");
+
+            first.Execute("DROP TABLE B");
+
+            return "ok";
+        });
+
+        Report("shared catalog: interleaved DDL and DML from both sessions", outcome);
+
+        Assert.That(outcome.Error, Is.Null,
+            "a shared catalog must tolerate two sessions using it - this is the deadlock and "
+            + "lock-recursion risk the sharing introduces");
+
+        // And the surviving table is consistent through both sessions.
+        Assert.Multiple(() =>
+        {
+            Assert.That(ReadRows(first, "SELECT V FROM A"), Is.EqualTo(2));
+            Assert.That(ReadRows(second, "SELECT V FROM A"), Is.EqualTo(2));
         });
     }
 

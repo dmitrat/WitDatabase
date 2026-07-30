@@ -11,6 +11,8 @@
 > | #52 | The plan, and instrument A — the concurrency-model probe | The model established; three defects in no audit; one marker refuted; CI found a fourth defect the dev machine could not |
 > | #53 | `KEY` usable as an identifier, and the keyword corpus | Marker closed (66 → 65). The corpus then measured the class at **118** keywords and handed it to phase 7 |
 > | #54 | One engine per database, enforced | § 3a and the `EnableWal` hole closed by an explicit guard; `FileLocking=false` no longer removes write serialisation. **Breaking — ships as 5.0.0** |
+> | #55 | Instrument B | Refuted the obvious shared-engine design; found the schema catalog is session-scoped state that must be database-scoped |
+> | #56 | **Many connections, one engine** | The phase's headline: the ASP.NET Core shape works. Closes § 6 as a side effect |
 >
 > **The target model, decided 2026-07-30 (§ 8): one process, one engine per database, many
 > connections, one writer at a time.** Cross-process access is out of scope by design; concurrent
@@ -524,10 +526,58 @@ instead of always building one.
 all defects that were in no audit, and the phase predicted the ledger would rise before it falls. The
 third of them also exposed the counting error in § 1.
 
-**Why this PR stops at the measurement.** The fix is a real architecture change — moving the schema
+**Why PR 4 stopped at the measurement.** The fix is a real architecture change — moving the schema
 catalog from session scope to database scope and adding a `WitSqlEngine` constructor that accepts one —
 and the shape of it was only knowable *after* these results. Landing the instrument first is the same
 order phase 4 used, where the instrument PR preceded every fix and each fix then had a verdict to aim at.
+
+### 7b. Fixed in PR 5 — the ASP.NET Core shape works
+
+**What was built.** `SharedDatabase`, a reference-counted process-wide registry keyed by the resolved
+full path of the data source, holding one `WitDatabase` **and one `SchemaCatalog`** per database. Each
+connection takes a lease, builds its **own** `WitSqlEngine` over the shared pair, and gives the lease
+back on close; the last one out disposes the database and releases the exclusive lock. Plus
+`WitSqlEngine(WitDatabase, SchemaCatalog, bool)`, so a caller that owns a database can hand one catalog
+to every session on it.
+
+**The division of labour, which § 7a is what settled:** the engine is a *session* — it holds the current
+transaction — while storage and schema are properties of the *database*. Sharing the store alone was not
+enough, and that was measured, not guessed.
+
+**What now works, tested through `DbConnection` rather than the concrete type:** a second connection
+opens; it sees another's committed rows *and* their `COUNT(*)`; it sees a table created after it opened;
+writes are visible in both directions; ten overlapping connections behave like scoped contexts; the
+database is disposed only when the last connection closes; `Close()` then `Dispose()` releases one share,
+not two; reopening after the last close builds a fresh engine and finds the data.
+
+**Refusals that remain, deliberately.** A second *engine* — `DatabaseAlreadyOpenException`, because that
+means a second process. One database opened with **different options** in one process —
+`InvalidOperationException` naming the mismatch, because handing the second caller an engine built to
+somebody else's configuration is worse than refusing. `:memory:` connections stay private to their
+connection, as they were and as SQLite's are without `Cache=Shared`; making them shared would be an
+opt-in feature, and doing it silently would turn every test that wants a clean in-memory database into
+one that shares.
+
+**§ 6 closes as a side effect, and the side effect is instructive.** `ConnectionPool` now works over a
+file-backed database — `Min Pool Size=2` constructs, two simultaneous borrows succeed — and **nothing in
+the pool changed.** Pooled connections are ordinary connections, and connections now share an engine. The
+pool was only ever pooling the cheap half; sharing the engine is what the demo-deployment shape actually
+needed. The pool is still referenced by nothing in the provider, so whether to wire it at all is now a
+question about connection-object reuse rather than about making the shape work.
+
+**The revert test found a hole in my own suite, which is exactly what it is for.** With the shared
+catalog reverted and the shared database kept, only **one** of eleven tests went red. The others create
+and populate the table *before* the second connection opens, so its catalog picks the state up at
+construction and they pass either way — and none of them checked a `COUNT(*)` taken after the second
+connection was already open, which is the precise thing that used to be stale. Adding that case and the
+missing count assertions took the revert from **1 red to 3 red**. A suite that passes with the fix
+removed is measuring something else, and there is no way to discover that except to remove it.
+
+**Ledger: 67 → 65.** The two instrument-B markers are **re-decided rather than closed**: with a supported
+way to get agreement, per-catalog divergence stops being an open defect and becomes a documented sharp
+edge of the single-argument constructor. Both are active tests again, pinning the divergence with a note
+that says a future pass would mean the catalog reads through to the store and the sharing constructor
+could go. Reclassifying is not the same as fixing, and the distinction is in the tests.
 
 ---
 
