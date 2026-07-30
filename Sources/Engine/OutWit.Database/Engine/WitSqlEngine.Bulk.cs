@@ -39,6 +39,8 @@ public sealed partial class WitSqlEngine
     public int BulkInsert(string tableName, IReadOnlyList<string> columns, 
         IEnumerable<object?[]> rows, CancellationToken cancellationToken = default)
     {
+        EnsureNotReadOnly(nameof(BulkInsert));
+
         if (columns.Count == 0)
             throw new ArgumentException("At least one column must be specified.", nameof(columns));
 
@@ -97,6 +99,8 @@ public sealed partial class WitSqlEngine
     public int BulkInsert<T>(string tableName, IEnumerable<T> objects, 
         CancellationToken cancellationToken = default) where T : class
     {
+        EnsureNotReadOnly(nameof(BulkInsert));
+
         // Check if T is a dictionary type - if so, redirect to the dictionary overload
         if (typeof(IDictionary<string, object?>).IsAssignableFrom(typeof(T)))
         {
@@ -162,6 +166,8 @@ public sealed partial class WitSqlEngine
     public int BulkInsert(string tableName, IEnumerable<IDictionary<string, object?>> rows, 
         CancellationToken cancellationToken = default)
     {
+        EnsureNotReadOnly(nameof(BulkInsert));
+
         // Get first row to determine columns
         var rowsList = rows.ToList();
         if (rowsList.Count == 0)
@@ -230,6 +236,8 @@ public sealed partial class WitSqlEngine
         string? whereCondition = null, IDictionary<string, object?>? whereParameters = null,
         CancellationToken cancellationToken = default)
     {
+        EnsureNotReadOnly(nameof(BulkUpdate));
+
         if (setValues.Count == 0)
             throw new ArgumentException("At least one SET value must be specified.", nameof(setValues));
 
@@ -288,6 +296,8 @@ public sealed partial class WitSqlEngine
         IDictionary<string, object?>? whereParameters = null,
         CancellationToken cancellationToken = default)
     {
+        EnsureNotReadOnly(nameof(BulkDelete));
+
         var sql = $"DELETE FROM {tableName}";
 
         if (!string.IsNullOrEmpty(whereCondition))

@@ -7,6 +7,7 @@ using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Utils;
 using OutWit.Database.Engine;
+using OutWit.Database.Schema;
 
 namespace OutWit.Database.AdoNet;
 
@@ -97,12 +98,17 @@ public sealed class WitDbConnection : DbConnection
                     var options = new WitDbConnectionStringBuilder(m_connectionString);
                     var key = SharedDatabaseKey.TryResolve(options);
 
+                    // Read-only is a property of this session, not of the storage: connections share a
+                    // database, so one of them being read-only must not stop the others writing.
+                    var readOnly = options.ReadOnly || options.Mode == WitDbConnectionMode.ReadOnly;
+
                     if (key == null)
                     {
                         // Nothing to share - an in-memory database, which is private to its connection
                         // exactly as it was before 5.0.0 and as SQLite's is without Cache=Shared.
                         m_database = BuildDatabase(options);
-                        m_engine = new WitSqlEngine(m_database, ownsStore: true);
+                        m_engine = new WitSqlEngine(m_database, new SchemaCatalog(m_database.Store),
+                            ownsStore: true, readOnly);
                         OwnsEngine = true;
                     }
                     else
@@ -113,7 +119,7 @@ public sealed class WitDbConnection : DbConnection
                         var signature = SharedDatabaseKey.BuildSignature(options);
                         m_lease = SharedDatabase.Acquire(key, signature, () => BuildDatabase(options));
                         m_database = m_lease.Database;
-                        m_engine = new WitSqlEngine(m_database, m_lease.Schema, ownsStore: false);
+                        m_engine = new WitSqlEngine(m_database, m_lease.Schema, ownsStore: false, readOnly);
                         OwnsEngine = false;
                     }
                 }

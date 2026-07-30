@@ -32,7 +32,20 @@ internal static class SharedDatabaseKey
         "Pooling",
         "Min Pool Size",
         "Max Pool Size",
-        "Default Timeout"
+        "Default Timeout",
+
+        // Read-only is enforced per session, not by opening the storage differently, so a read-only
+        // connection and a writing one share the same database - which is the point of it. Including
+        // this in the signature would refuse that pairing as an options mismatch, and a read-only
+        // reader alongside writers is exactly what a consumer reaches for.
+        "Read Only",
+
+        // Mode is safe to exclude, but only because of what its four values do here. Memory never
+        // reaches this comparison at all - TryResolve returns null for it, so those connections do not
+        // share. ReadOnly is the session-level flag above. ReadWriteCreate and ReadWrite differ only in
+        // whether the file may be created, which cannot matter to the second connection: by the time it
+        // arrives the database is open.
+        "Mode"
     };
 
     #endregion

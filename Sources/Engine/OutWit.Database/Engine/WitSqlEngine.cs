@@ -23,6 +23,12 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
     private readonly SchemaCatalog m_schema;
     private readonly QueryPlanCache m_planCache;
     private readonly bool m_ownsStore;
+
+    /// <summary>
+    /// When true this session refuses any statement that could write. Set at construction and never
+    /// changed, so a caller cannot promote a read-only connection to a writing one.
+    /// </summary>
+    private readonly bool m_readOnly;
     private ITransaction? m_currentTransaction;
 
     /// <summary>
@@ -67,11 +73,35 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
     /// given.
     /// </remarks>
     public WitSqlEngine(WitDatabase database, SchemaCatalog schema, bool ownsStore = false)
+        : this(database, schema, ownsStore, readOnly: false)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new WitSqlEngine instance, optionally as a read-only session.
+    /// </summary>
+    /// <param name="database">The underlying WitDatabase instance.</param>
+    /// <param name="schema">The catalog to use; pass the same instance to every engine over a database.</param>
+    /// <param name="ownsStore">If true, the engine will dispose the database when disposed.</param>
+    /// <param name="readOnly">
+    /// If true, this session refuses every statement that could change data or schema.
+    /// </param>
+    /// <remarks>
+    /// Read-only is a property of the <b>session</b>, not of the storage, because several connections
+    /// share one database and one of them being read-only must not stop the others writing. So a
+    /// read-only session is a restriction on what may be executed through it, which is also the
+    /// semantics a consumer expects from <c>Read Only=true</c> on a connection string.
+    ///
+    /// Opening the <i>storage</i> read-only - for genuinely read-only media - is a different feature and
+    /// is not this flag.
+    /// </remarks>
+    public WitSqlEngine(WitDatabase database, SchemaCatalog schema, bool ownsStore, bool readOnly)
     {
         m_database = database;
         m_schema = schema ?? throw new ArgumentNullException(nameof(schema));
         m_planCache = new QueryPlanCache();
         m_ownsStore = ownsStore;
+        m_readOnly = readOnly;
 
         // Ensure physical indexes are created/synced for all schema indexes
         // This handles the case where schema indexes were persisted but physical indexes were not
@@ -172,6 +202,68 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
         }
     }
 
+    /// <summary>
+    /// Refuses any statement on a read-only session that is not known to be incapable of writing.
+    /// </summary>
+    /// <remarks>
+    /// <b>Fail closed.</b> The list below is what a read-only session <i>allows</i>, and everything else
+    /// is refused - so a statement kind added to the grammar tomorrow is refused until somebody decides
+    /// it is safe, rather than allowed until somebody notices it is not. A read-only guarantee that
+    /// enumerated the writing statements instead would quietly weaken every time the language grew.
+    ///
+    /// Transaction control is allowed: it changes no data by itself, and refusing it would break
+    /// ordinary consumer code - EF Core opens a transaction around <c>SaveChanges</c> and ADO.NET
+    /// callers wrap reads in one routinely. A transaction that then tries to write is refused on the
+    /// writing statement, which is where the error belongs.
+    /// </remarks>
+    /// <summary>
+    /// Refuses a write that does not arrive as a SQL statement, so it cannot slip past
+    /// <see cref="EnsureStatementsAreReadOnly"/>.
+    /// </summary>
+    /// <remarks>
+    /// The bulk API writes directly and never parses anything, so guarding <c>Execute</c> alone would
+    /// have left <c>BulkInsert</c>, <c>BulkUpdate</c> and <c>BulkDelete</c> as five ways through a
+    /// read-only connection. Any future write path that bypasses statement execution needs this call
+    /// too - which is the argument for it being a named method rather than an inline check.
+    /// </remarks>
+    internal void EnsureNotReadOnly(string operation)
+    {
+        if (!m_readOnly)
+            return;
+
+        throw new InvalidOperationException(
+            $"This connection is read-only, so {operation} is not allowed on it. Open a connection "
+            + "without 'Read Only=true' (or without 'Mode=ReadOnly') to modify data or schema.");
+    }
+
+    private static void EnsureStatementsAreReadOnly(IReadOnlyList<Parser.Statements.WitSqlStatement> statements)
+    {
+        foreach (var statement in statements)
+        {
+            var allowed = statement is
+                Parser.Statements.WitSqlStatementSelect or
+                Parser.Statements.WitSqlStatementExplain or
+                Parser.Statements.WitSqlStatementBeginTransaction or
+                Parser.Statements.WitSqlStatementCommit or
+                Parser.Statements.WitSqlStatementRollback or
+                Parser.Statements.WitSqlStatementSavepoint or
+                Parser.Statements.WitSqlStatementReleaseSavepoint or
+                Parser.Statements.WitSqlStatementSetTransaction;
+
+            if (allowed)
+                continue;
+
+            var kind = statement.GetType().Name;
+
+            if (kind.StartsWith("WitSqlStatement", StringComparison.Ordinal))
+                kind = kind["WitSqlStatement".Length..].ToUpperInvariant();
+
+            throw new InvalidOperationException(
+                $"This connection is read-only, so {kind} is not allowed on it. Open a connection "
+                + "without 'Read Only=true' (or without 'Mode=ReadOnly') to modify data or schema.");
+        }
+    }
+
     private WitSqlResult ExecuteInternal(string sql,
         IDictionary<string, object?>? parameters,
         CancellationToken cancellationToken)
@@ -196,6 +288,9 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
                 m_planCache.Add(sql, statements[0]);
             }
         }
+
+        if (m_readOnly)
+            EnsureStatementsAreReadOnly(statements);
 
         var context = new ContextExecution
         {
