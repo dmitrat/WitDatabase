@@ -65,6 +65,25 @@ public static class Scenarios
     /// </summary>
     public const string MVCC_ENGINE_COMMIT_KILL = "mvcc-engine-commit-kill";
 
+    /// <summary>
+    /// Open the database, hold the exclusive lock, and park - without writing anything.
+    /// </summary>
+    /// <remarks>
+    /// The subject is the lock rather than the data. 5.0.0 enforces one engine per database with a
+    /// <c>.lock</c> sidecar, and both <c>WitSQL.md</c> and
+    /// <c>DatabaseAlreadyOpenException</c>'s own message promise that the operating system releases the
+    /// handle when the owning process exits - so a process that dies without running <c>Dispose</c>
+    /// does not leave the database permanently unopenable. That promise was written in prose and never
+    /// executed, and it is exactly the kind of claim phase 4 learned not to trust: a crash runs no
+    /// cleanup, so nothing in this process's own code can be what releases the lock.
+    ///
+    /// This scenario makes the claim testable from both sides. While it is parked the lock is held by a
+    /// <b>different process</b>, so the test can check that a second opener is really refused - which no
+    /// in-process test can establish, because the guard would then be arguing with itself. After the
+    /// kill, the test checks that the database opens again.
+    /// </remarks>
+    public const string LOCK_HELD_KILL = "lock-held-kill";
+
     #endregion
 
     #region Functions
@@ -82,6 +101,7 @@ public static class Scenarios
         ADONET_CONTROL_CLEAN => AdoNetControlClean(context),
         ADONET_COMMIT_KILL => AdoNetCommitKill(context),
         MVCC_ENGINE_COMMIT_KILL => MvccEngineCommitKill(context),
+        LOCK_HELD_KILL => LockHeldKill(context),
         _ => null
     };
 
@@ -94,12 +114,42 @@ public static class Scenarios
         ROWID_COMMIT_KILL,
         ADONET_CONTROL_CLEAN,
         ADONET_COMMIT_KILL,
-        MVCC_ENGINE_COMMIT_KILL
+        MVCC_ENGINE_COMMIT_KILL,
+        LOCK_HELD_KILL
     };
 
     #endregion
 
     #region Scenarios
+
+    /// <summary>
+    /// Opens the database through the ADO.NET provider - the surface a consumer holds - and parks with
+    /// the exclusive lock held. Writes one row first, so the test can also tell that the database is
+    /// usable afterwards rather than merely openable.
+    /// </summary>
+    private static int LockHeldKill(ScenarioContext context)
+    {
+        var connection = new WitDbConnection(ConnectionString(context));
+        connection.Open();
+
+        context.Ready();
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = $"CREATE TABLE {context.Table} (Id BIGINT PRIMARY KEY, V INT)";
+            command.ExecuteNonQuery();
+        }
+
+        using (var command = connection.CreateCommand())
+        {
+            command.CommandText = $"INSERT INTO {context.Table} (Id, V) VALUES (1, 42)";
+            command.ExecuteNonQuery();
+        }
+
+        // No Dispose, no Close: the lock must still be held when the kill arrives, because a lock this
+        // process released itself would prove nothing about what happens when a process dies.
+        return context.Park(("lockPath", context.Path + ".lock"));
+    }
 
     private static int ControlClean(ScenarioContext context)
     {

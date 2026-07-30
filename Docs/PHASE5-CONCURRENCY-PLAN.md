@@ -14,6 +14,7 @@
 > | #55 | Instrument B | Refuted the obvious shared-engine design; found the schema catalog is session-scoped state that must be database-scoped |
 > | #56 | **Many connections, one engine** | The phase's headline: the ASP.NET Core shape works. Closes § 6 as a side effect |
 > | #57 | Read-only honoured | § 4 closed, enforced per session so a reader can sit alongside writers. Found `Mode=ReadWrite` dropped the same way |
+> | #58 | The lock, across a process boundary | Question 4 answered: the guard refuses a second process, and the OS releases it when that process dies — both claims were prose until now |
 >
 > **The target model, decided 2026-07-30 (§ 8): one process, one engine per database, many
 > connections, one writer at a time.** Cross-process access is out of scope by design; concurrent
@@ -504,7 +505,38 @@ Two consequences for the work, both measured rather than assumed:
 - **Question 2 — reachability of the 10 `core-concurrency` markers from the provider.** Not yet
   measured. The one already known — the pool permit leak — is real but unenterable, and now doubly
   so: nothing reaches the pool at all.
-- **Question 4 — a second machine, and a second process.** Every verdict above is from this machine, and
+### Question 4 — answered in PR 7
+
+The claim was in prose, in two places — `WitSQL.md` § 15.0 and `DatabaseAlreadyOpenException`'s own
+message: *the operating system releases the handle when the owning process exits, so a process that dies
+without shutting down cleanly does not leave the database permanently unopenable.* Nothing executed it.
+
+**Neither half is provable in one process.** "A second process is refused" would have the guard arguing
+with itself; "the lock is released when a process dies" would be measuring `Dispose`, because **a crash
+runs no cleanup** — so nothing in the dying process's own code can be what releases the lock. Phase 4
+built the out-of-process runner for exactly this class of claim.
+
+New scenario `lock-held-kill`: open through the ADO.NET provider, write a row, and park with the lock
+held and **no** `Close` or `Dispose`. The test then, in one method because each half is the other's
+control:
+
+| | Observed |
+|---|---|
+| `.lock` sidecar exists while the other process is parked | ✔ |
+| Opening here, with that process holding it | `DatabaseAlreadyOpenException`, naming the database |
+| Opening here after that process is **killed** | ✔ succeeds |
+| The row the killed process committed | ✔ still readable |
+
+Split into two tests these would both pass while meaning nothing — a "refused" test passes if opening
+never works at all, and a "reopens" test passes if the lock was never taken. Asserting the exception
+**type** also shows the guard fires *before* `StorageFile`'s share mode, which is what makes this a test
+of the guard rather than of `FileShare.None`.
+
+**Not covered separately:** the same crossing for an LSM database. The mechanism is the same sidecar and
+the same code path, and the LSM cases are covered in-process, but a cross-process LSM scenario would be
+the more complete statement.
+
+- **Question 4, original scoping.** Every verdict above is from this machine, and
   a second machine has overturned a local verdict twice in this project. The multi-process harness is
   **narrower than the plan expected**, now that § 8 rules cross-process access out of scope: "is a
   second process refused" is answered by `FileShare.None` at the OS level, so the harness has one
