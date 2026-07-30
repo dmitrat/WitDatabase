@@ -423,16 +423,6 @@ public class CoreConcurrencyFindingsTests
     #region LsmParallelStore does not read its own writes
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: Get returned null for a key written moments earlier on the same "
-            + "thread. core-concurrency, Builder/LsmParallelStore.cs:83. "
-            + "REASON REWRITTEN 2026-07-30, because the original understated it and named one cause for "
-            + "two defects. Get does not flush at all; Scan DOES flush, through FlushCurrentBuffer, "
-            + "whose own doc comment says \"Does not wait for merge to complete\" - so it queues the "
-            + "buffer and reads the store before the merge runs. And the visible symptom is the small "
-            + "half: measured at SQL level over Store=lsm + Parallel Mode=Buffered, ten acknowledged "
-            + "INSERTs leave ONE row, and it is still one after a clean close and reopen - so writes are "
-            + "LOST, not merely unreadable. Pinned in "
-            + "AdoNet.Tests ConcurrencyModelProbeTests.ProbeLsmParallelModeSeesItsOwnCommittedRows.")]
     public void ParallelLsmStoreReadsItsOwnWriteTest()
     {
         // Finding: LsmParallelStore.cs:83 - Get/Scan query the underlying store without waiting for
@@ -499,10 +489,6 @@ public class CoreConcurrencyFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the scan returned 0 rows after a Put on the same thread. Cause "
-            + "established 2026-07-30 and it is NOT the same as the Get marker's: Scan does flush, but "
-            + "through the fire-and-forget FlushCurrentBuffer, so it reads the store before the merge "
-            + "it just queued has run.")]
     public void ParallelLsmStoreScanSeesItsOwnWriteTest()
     {
         var directory = CreateTempDirectory();
@@ -515,6 +501,84 @@ public class CoreConcurrencyFindingsTests
 
             Assert.That(scanned, Has.Count.EqualTo(1),
                 "a scan must see the write the same caller just made");
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    [Test]
+    public void MvccOverAParallelLsmStoreCommitsWhatItAcknowledgedTest()
+    {
+        // THE DEFECT THE TWO MARKERS ABOVE ACTUALLY CAUSE, and it is far larger than their wording.
+        //
+        // MvccKeyValueStore.CommitTransaction SCANS the store to find the versions it has just
+        // installed and rewrite them as committed. Over LsmParallelStore that scan read a store the
+        // queued merge had not reached, so the loop found nothing to commit: the version stayed
+        // uncommitted for ever - written to the SSTable, invisible to every reader, in every
+        // configuration, and unrecoverable by reopening without the parallel wrapper.
+        //
+        // One Put in one transaction was enough. The reopen below is the half that makes this a
+        // durability test rather than a visibility one.
+        var directory = CreateTempDirectory();
+        try
+        {
+            using (var database = new WitDatabaseBuilder()
+                       .WithLsmTree(directory)
+                       .WithParallelWrites(ParallelMode.Buffered)
+                       .WithTransactions()
+                       .WithMvcc()
+                       .Build())
+            {
+                using var transaction = database.BeginTransaction();
+                transaction.Put(Key("k"), Value("v"));
+                transaction.Commit();
+
+                Assert.That(database.Get(Key("k")), Is.EqualTo(Value("v")),
+                    "a committed row must be readable by the session that committed it");
+            }
+
+            using var reopened = new WitDatabaseBuilder()
+                .WithLsmTree(directory)
+                .WithParallelWrites(ParallelMode.Buffered)
+                .WithTransactions()
+                .WithMvcc()
+                .Build();
+
+            Assert.That(reopened.Get(Key("k")), Is.EqualTo(Value("v")),
+                "and it must still be there after a clean close - otherwise the commit never happened");
+        }
+        finally
+        {
+            DeleteDirectory(directory);
+        }
+    }
+
+    [Test]
+    public void ParallelLsmStoreAppliesBufferedOperationsInOrderTest()
+    {
+        // NOT AN AUDIT FINDING, and NOT the cause of the commit loss above - it was the first
+        // hypothesis for it and was refuted by execution, which is the only reason it was found.
+        //
+        // MergeBuffersBatch split each batch into puts and deletes "for better locality" and applied
+        // every put before every delete, so a caller that wrote a key, deleted it and wrote it again
+        // within one batch got the delete applied last. The buffer holds the operations in order; the
+        // merge must keep it.
+        var directory = CreateTempDirectory();
+        try
+        {
+            using var store = new LsmParallelStore(directory);
+
+            // All three land in one buffer, so they are merged as one batch.
+            store.Put(Key("k"), Value("first"));
+            store.Delete(Key("k"));
+            store.Put(Key("k"), Value("second"));
+
+            store.Flush();
+
+            Assert.That(store.Get(Key("k")), Is.EqualTo(Value("second")),
+                "the last operation on the key was a Put, so the key must exist with its value");
         }
         finally
         {

@@ -83,7 +83,12 @@ public sealed class LsmParallelStore : IKeyValueStore, IKeyValueStoreStatistics,
     public byte[]? Get(ReadOnlySpan<byte> key)
     {
         ThrowIfDisposed();
-        // Reads go directly to underlying store
+
+        // Read your own writes. This used to go straight to the underlying store, so a key written by
+        // this thread and still sitting in its buffer read back as absent - and that is not merely
+        // inconvenient, it silently breaks the MVCC commit protocol, which reads the store to find the
+        // versions it just installed and mark them committed. See the class remarks.
+        m_writer.FlushCurrentBufferAndWait();
         return m_store.Get(key);
     }
 
@@ -91,6 +96,8 @@ public sealed class LsmParallelStore : IKeyValueStore, IKeyValueStoreStatistics,
     public async ValueTask<byte[]?> GetAsync(byte[] key, CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
+
+        await m_writer.FlushCurrentBufferAsync(cancellationToken);
         return await m_store.GetAsync(key, cancellationToken);
     }
 
@@ -141,8 +148,11 @@ public sealed class LsmParallelStore : IKeyValueStore, IKeyValueStoreStatistics,
     public IEnumerable<(byte[] Key, byte[] Value)> Scan(byte[]? startKey, byte[]? endKey)
     {
         ThrowIfDisposed();
-        // Flush pending writes before scan
-        m_writer.FlushCurrentBuffer();
+
+        // Flush pending writes before scan AND WAIT. FlushCurrentBuffer only queues the buffer - its
+        // own doc comment says "Does not wait for merge to complete" - so this line used to read a
+        // store the merge it had just requested had not reached.
+        m_writer.FlushCurrentBufferAndWait();
         return m_store.Scan(startKey, endKey);
     }
 

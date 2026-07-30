@@ -182,6 +182,26 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// Flushes the current thread's buffer and blocks until the merge has been applied to the store.
+    /// </summary>
+    /// <remarks>
+    /// This is what a synchronous read has to call before it queries the store. The fire-and-forget
+    /// <see cref="FlushCurrentBuffer"/> is not enough: it queues the buffer and returns, so a read that
+    /// follows it still sees a store the merge has not reached. Cheap when there is nothing pending -
+    /// an empty buffer returns without touching the channel.
+    /// </remarks>
+    public void FlushCurrentBufferAndWait()
+    {
+        ThrowIfDisposed();
+
+        var buffer = m_threadLocalBuffer.Value;
+        if (buffer == null || buffer.IsEmpty)
+            return;
+
+        FlushCurrentBufferAsync().GetAwaiter().GetResult();
+    }
+
+    /// <summary>
     /// Flushes the current thread's buffer and waits for merge to complete.
     /// </summary>
     public async Task FlushCurrentBufferAsync(CancellationToken cancellationToken = default)
@@ -355,20 +375,16 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
         // Single batch write to store
         try
         {
-            // Group by operation type for better locality
-            var puts = allEntries.Where(e => !e.IsDelete).ToList();
-            var deletes = allEntries.Where(e => e.IsDelete).ToList();
-            
-            // Batch puts
-            foreach (var (key, value, _) in puts)
+            // Apply in the order the caller issued them. Grouping by operation type "for better
+            // locality" reordered every Delete after every Put in the batch, so a caller that wrote a
+            // key and then deleted a DIFFERENT version of it - which is exactly what MVCC does on
+            // commit - had the delete applied to a store state that never existed.
+            foreach (var (key, value, isDelete) in allEntries)
             {
-                m_store.Put(key, value!);
-            }
-            
-            // Batch deletes
-            foreach (var (key, _, _) in deletes)
-            {
-                m_store.Delete(key);
+                if (isDelete)
+                    m_store.Delete(key);
+                else
+                    m_store.Put(key, value!);
             }
             
             // Update stats
