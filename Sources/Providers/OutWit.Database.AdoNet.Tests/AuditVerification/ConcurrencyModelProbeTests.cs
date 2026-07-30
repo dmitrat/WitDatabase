@@ -135,6 +135,18 @@ public class ConcurrencyModelProbeTests
     /// Probe: the same question for the LSM store, which is a directory of files rather than one
     /// file, and whose readers open with <c>FileShare.Read</c>.
     /// </summary>
+    /// <remarks>
+    /// <b>This is the one row of the model that differs by platform, and CI is what found it.</b>
+    /// The first version of this probe asserted <c>outcome.Threw</c> unconditionally, having measured
+    /// it on Windows - and went red on the Linux runner, which is the instrument over-claiming rather
+    /// than the engine changing.
+    ///
+    /// The mechanism: .NET emulates <c>FileShare</c> on Unix with advisory <c>flock</c>, where
+    /// <c>FileShare.None</c> becomes an exclusive lock and anything else becomes a shared one. btree
+    /// passes <c>FileShare.None</c> and is refused on both platforms; the LSM write-ahead log opens
+    /// <c>ReadWrite</c>/<c>FileShare.Read</c>, which Windows treats as "no second writer" and Unix
+    /// treats as "shared - come in".
+    /// </remarks>
     [Test]
     public void ProbeSecondConnectionToSameLsmDirectoryTest()
     {
@@ -149,27 +161,100 @@ public class ConcurrencyModelProbeTests
         using var second = new WitDbConnection(cs);
         var outcome = Observe(() => second.Open());
 
-        Report("Q1 lsm, second connection in the same process", outcome);
+        Report($"Q1 lsm, second connection in the same process [{Platform}]", outcome);
 
         if (!outcome.Threw)
         {
             var read = Observe(() => Scalar(second, "SELECT V FROM T WHERE Id = 1"));
-            Report("Q1 lsm, the second connection reads a row the first wrote", read);
+            Report($"Q1 lsm, the second connection reads a row the first wrote [{Platform}]", read);
         }
 
-        // PINS AN OBSERVATION, and the interesting part is *where* it fails. Measured 2026-07-30:
-        // IOException on <dir>/wal.log, not on the store. The LSM store's own files are shareable -
-        // SSTableReader opens FileShare.Read - so exclusivity for an LSM database comes from the
-        // write-ahead log, which opens ReadWrite/FileShare.Read. The model is therefore the same
-        // "one engine per database" as btree, but enforced by a different file, which matters
-        // because the failure lands part-way through opening the engine.
-        Assert.Multiple(() =>
+        if (OperatingSystem.IsWindows())
         {
-            Assert.That(outcome.Threw, Is.True,
-                "a second LSM connection now opens - the model changed, update the plan doc");
-            Assert.That(outcome.Message, Does.Contain("wal.log"),
-                "LSM exclusivity no longer comes from the WAL; re-establish where it comes from");
-        });
+            // PINS AN OBSERVATION. Measured 2026-07-30 on Windows: IOException on <dir>/wal.log, not
+            // on the store. The LSM store's own files are shareable - SSTableReader opens
+            // FileShare.Read - so exclusivity comes from the write-ahead log, which matters because
+            // the failure lands part-way through opening the engine.
+            Assert.Multiple(() =>
+            {
+                Assert.That(outcome.Threw, Is.True,
+                    "a second LSM connection now opens on Windows too - update the plan doc");
+                Assert.That(outcome.Message, Does.Contain("wal.log"),
+                    "LSM exclusivity no longer comes from the WAL; re-establish where it does");
+            });
+
+            return;
+        }
+
+        // PINS A DEFECT, and a data-corruption one. Measured 2026-07-30 on the Linux CI runner: the
+        // second connection OPENED and read the first connection's row. Two independent engines are
+        // then live over one LSM directory, each with its own memtable and its own handle on the same
+        // write-ahead log, and nothing coordinates them - see
+        // ProbeTwoLsmConnectionsBothWriteTest for what that costs. The fix inverts this assertion.
+        Assert.That(outcome.Threw, Is.False,
+            "a second LSM connection is now refused on Unix - if that is the fix, invert this "
+            + "assertion and close the marker");
+    }
+
+    /// <summary>
+    /// Probe: the consequence of the platform split above. Where a second LSM connection opens, two
+    /// engines write the same directory - so what does each see, and what survives on disk?
+    /// </summary>
+    /// <remarks>
+    /// "It opens" is a possibility; this asks for the cost. Deterministic and single-threaded: the
+    /// writes are ordered by the test, so nothing here depends on an interleaving. On Windows the
+    /// second connection cannot open at all and the probe reports that and stops.
+    /// </remarks>
+    [Test]
+    public void ProbeTwoLsmConnectionsBothWriteTest()
+    {
+        var dir = Path.Combine(m_testDir, "lsm_two_writers");
+        var cs = $"Data Source={dir};Store=lsm";
+
+        int reopenedRows;
+
+        using (var first = new WitDbConnection(cs))
+        {
+            first.Open();
+            Execute(first, "CREATE TABLE T (Id BIGINT PRIMARY KEY, V TEXT)");
+            Execute(first, "INSERT INTO T (Id, V) VALUES (1, 'first')");
+
+            using var second = new WitDbConnection(cs);
+            var opened = Observe(() => second.Open());
+            Report($"Q1 lsm two writers, second Open [{Platform}]", opened);
+
+            if (opened.Threw)
+            {
+                Assert.That(OperatingSystem.IsWindows(), Is.True,
+                    "the second connection was refused on a platform where it had opened before");
+                return;
+            }
+
+            var secondWrite = Observe(() => Execute(second, "INSERT INTO T (Id, V) VALUES (2, 'second')"));
+            Report($"Q1 lsm two writers, the second engine's INSERT [{Platform}]", secondWrite);
+
+            // Counted by reading rows, never by COUNT(*): this engine keeps a cached per-table
+            // counter, and phase 4 published a false catastrophe by trusting it.
+            Report($"Q1 lsm two writers, rows visible to the FIRST engine [{Platform}]",
+                Observe(() => CountRows(first, "SELECT Id FROM T")));
+            Report($"Q1 lsm two writers, rows visible to the SECOND engine [{Platform}]",
+                Observe(() => CountRows(second, "SELECT Id FROM T")));
+        }
+
+        // Both engines are now closed. Whatever a fresh reader finds is what actually survived.
+        using (var reopened = new WitDbConnection(cs))
+        {
+            reopened.Open();
+            reopenedRows = CountRows(reopened, "SELECT Id FROM T");
+        }
+
+        Report($"Q1 lsm two writers, rows on disk after both closed [{Platform}]",
+            new Outcome(false, null, null, $"Int32:{reopenedRows}"));
+
+        // Two rows were written and both were acknowledged. Anything less is data loss, and this
+        // assertion is the one that says so - it is NOT pinning current behaviour.
+        Assert.That(reopenedRows, Is.EqualTo(2),
+            $"two engines each acknowledged an INSERT, but {reopenedRows} row(s) survived");
     }
 
     /// <summary>
@@ -558,6 +643,12 @@ public class ConcurrencyModelProbeTests
     #endregion
 
     #region Tools
+
+    /// <summary>
+    /// Named in every report line, because one row of the model differs by platform and a verdict
+    /// without the platform on it is what made the first version of the LSM probe wrong.
+    /// </summary>
+    private static string Platform => OperatingSystem.IsWindows() ? "windows" : "unix";
 
     private string FileConnectionString(string fileName) =>
         $"Data Source={Path.Combine(m_testDir, fileName)}";

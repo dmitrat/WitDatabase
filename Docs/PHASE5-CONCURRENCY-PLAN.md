@@ -11,6 +11,11 @@
 > connections *within* one host process are the supported shape, because the goal is drop-in for
 > ASP.NET Core services where the `DbContext`s are many and the host is one.
 >
+> **The heaviest finding so far is § 3a, and only CI could have produced it: an LSM database has no
+> exclusivity on Linux.** A second connection opens and reads the first's data, because .NET maps
+> `FileShare.Read` to a *shared* advisory lock on Unix. That is the platform the target deployment runs
+> on, and the store chosen for write-heavy work.
+>
 > Entry state: `main` at `d7e3e6e`, tag `v4.0.0`, seven packages published. Predecessors:
 > `Docs/PHASE3-GRAMMAR-PLAN.md`, `Docs/PHASE4-DURABILITY-PLAN.md`,
 > `Docs/NEXT-SESSION-PLAN.md` § "Phases 5–10".
@@ -93,12 +98,16 @@ merely report a number. That is the property a stress loop never has.
 beside it.** Every route to a second concurrent holder of a database is closed, and the storage layer
 closes it at the OS level rather than by policy.
 
-| Configuration | Second concurrent opener | Enforced by |
-|---|---|---|
-| btree over a file (default) | `IOException` — "used by another process" | `StorageFile` → `FileShare.None` |
-| LSM over a directory | `IOException` on `<dir>/wal.log` | the write-ahead log, **not** the store |
-| `Read Only=true` | `IOException` — the setting is dropped, see § 4 | `FileShare.None` again |
-| `Data Source=:memory:` | Opens, and is **a different database** | nothing is keyed by connection string |
+| Configuration | Second opener, Windows | Second opener, Linux | Enforced by |
+|---|---|---|---|
+| btree over a file (default) | `IOException` | `IOException` | `StorageFile` → `FileShare.None` |
+| LSM over a directory | `IOException` on `<dir>/wal.log` | **opens, and reads the first's data** | the WAL — and only on Windows |
+| `Read Only=true` | `IOException` — setting dropped, § 4 | `IOException` | `FileShare.None` again |
+| `Data Source=:memory:` | opens, **a different database** | opens, **a different database** | nothing keyed by connection string |
+
+**Exactly one row differs by platform, and it is the dangerous one — see § 3a.** Every other verdict in
+this document was identical on both. The model above is therefore the *Windows* model; on Linux an LSM
+database has no exclusivity at all.
 
 Three consequences worth stating separately, because each was a guess before it was a measurement:
 
@@ -113,6 +122,44 @@ Three consequences worth stating separately, because each was a guess before it 
    `DbException` does not catch it, and the message names a Windows sharing violation rather than the
    engine's own limit. That is a phase-6 shaped defect discovered in phase 5; recorded, not fixed
    here.
+
+### 3a. An LSM database has no exclusivity on Linux — **a defect, in no audit, found by CI**
+
+The instrument's first version asserted that a second LSM connection is refused, full stop, having
+measured exactly that on Windows. **The Linux runner disagreed**, and the probe's own output says what
+happened:
+
+```
+PROBE  Q1 lsm, second connection in the same process [unix]        ->  OK, value <null>
+PROBE  Q1 lsm, the second connection reads a row the first wrote [unix]  ->  OK, value String:a
+```
+
+The second connection **opened, and read the row the first connection had written.** Two independent
+engines are then live over one LSM directory, each with its own memtable and its own handle on the same
+write-ahead log, and nothing coordinates them — `FileLock` would have been the mechanism, and § 3 has
+just established that it is unreachable.
+
+**The mechanism, and it explains why btree is unaffected.** .NET emulates `FileShare` on Unix with
+advisory `flock`: `FileShare.None` becomes an exclusive lock, and every other value becomes a *shared*
+one. So:
+
+- `StorageFile` passes `FileShare.None` → exclusive → btree is refused on both platforms.
+- `WriteAheadLogBase` opens `FileAccess.ReadWrite, FileShare.Read` → **shared** on Unix. Windows reads
+  that share mode as "no second writer"; Unix reads it as "come in". `SSTableReader` is
+  `FileShare.Read` too, so nothing else in the LSM store stands in the way.
+
+**Why this matters more than the marker count.** Linux is where an ASP.NET Core service is most likely
+to be deployed, and § 8 makes concurrent connections the supported shape. So the platform where the
+target deployment lives is the platform with no protection, on the store chosen for write-heavy
+workloads. It is also invisible: nothing fails, nothing warns, and the second engine returns correct
+answers right up until the two memtables disagree.
+
+**Recorded as a verdict-in-progress, not a closed finding.** `ProbeTwoLsmConnectionsBothWriteTest`
+asks the next question — two engines each acknowledge an `INSERT`, and how many rows survive after both
+close — and it asserts **2**, which is correct behaviour rather than observed behaviour. Its Linux
+verdict is what turns "no exclusivity" into either "and it loses data" or "and it happens to survive
+this case". That answer is not in yet, and the honest thing is that this section will be updated with
+it rather than predicting it.
 
 ### The cross-process mechanism exists and is unreachable
 
@@ -291,6 +338,12 @@ Read against § 3, this decides every open item in the area:
   handle are dead weight — unreachable today (§ 3) and unwanted tomorrow. `FileShare.None` is not the
   defect; it is the enforcement of a deliberate limit, and it should say so with a typed exception
   instead of a raw Windows sharing violation.
+
+  **With one caveat that § 3a adds after the fact:** "out of scope" is a decision about what to
+  *support*, not permission for the limit to go unenforced. On Linux the LSM store enforces nothing, so
+  a second process opens a database the design says is single-process — silently. Ruling cross-process
+  out of scope makes that *more* urgent to close, not less, because the whole safety argument for the
+  single-process model rests on the second opener being refused.
 - **`FileShare.None` *is* in the way of the supported shape.** A scoped `DbContext` is one connection
   per request, and a host serves requests concurrently, so N live connections to one database inside
   one process is the ordinary case — exactly what the model probe measured as an `IOException` today.
@@ -336,6 +389,20 @@ was found here.
 4. **Build the control into the instrument.** Six controls, § 2, all green on the first run. The
    attribution control is the one that changed a verdict: without running the marker's own statement
    with parallel mode removed, the misattribution would have survived this phase too.
+
+   **And the instrument was wrong before its subject was — the sixth time in this project.** The LSM
+   probe asserted `Threw` unconditionally, generalising a Windows measurement into a claim about the
+   model. It went **red on the Linux runner**, which is the *good* direction: the failure was the
+   instrument over-claiming, and it surfaced a data-corruption defect (§ 3a) that no control on this
+   machine could have caught. Two things to carry forward:
+
+   - **A verdict without a platform on it is a guess about the other platform.** Every report line in
+     the model probe now carries `[windows]` or `[unix]`, and the assertions branch on
+     `OperatingSystem.IsWindows()` rather than assuming one model.
+   - **A second machine is *still* the only thing that settles this — third time now.** Phase 4 had
+     two (the scan/compaction race and `LsmParallelWriter.FlushAllAsync`); this is the third, and the
+     first where the two machines disagree about *by-design behaviour* rather than about a race. The
+     rule needs widening: CI is not only the arbiter of timing, it is the arbiter of **platform**.
 
 ---
 
