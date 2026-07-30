@@ -1,5 +1,74 @@
 # Changelog
 
+## 5.0.0
+
+Closes the first half of phase 5, concurrency and concurrent access. **Major, because it changes two
+answers the previous releases gave — and in opposite directions.**
+
+The headline: **several connections to one database in one process now work.** That is the shape an
+ASP.NET Core service has — one host, a scoped `DbContext` per request — and until this release it did
+not work at all. Every connection built its own engine, a database admits one engine, so the second
+concurrent connection simply failed.
+
+The counterpart: **a second *process* is now refused deliberately and identically everywhere.** It used
+to depend on the platform and the store, and on Linux an LSM database refused nobody — two engines would
+open it and then quietly diverge.
+
+The audit that preceded the fixes had to establish what the concurrency model even was, because nothing
+in the project stated it. It is now written down in `WitSQL.md` § 15.0:
+
+> **One process. One engine per database. Many connections. One writer at a time.**
+
+### Behaviour changes
+
+- **Several connections to one database, in one process, share one engine.** They see each other's
+  committed work — rows *and* `COUNT(*)`, including tables created after a connection opened. The engine
+  is created by the first connection and disposed when the last one closes. Connections are cheap
+  handles now; the expensive thing was always the engine.
+
+- **A second process is refused with `DatabaseAlreadyOpenException`** instead of a raw `IOException`
+  carrying an operating-system sharing message. Enforcement is an exclusive `.lock` sidecar held for the
+  engine's lifetime, which behaves the same on Windows and Linux and does not depend on which files a
+  given configuration happens to create.
+
+  **This is the breaking half.** Before 5.0.0 exclusivity was a side effect of file-sharing modes: a
+  B+Tree database refused a second engine everywhere, an LSM database only on Windows and only with the
+  write-ahead log enabled, and an LSM database with the log disabled refused nobody at all. Code that
+  opened one LSM database from two processes on Linux will now get an exception. That configuration was
+  unsafe — the two engines diverged, one seeing a row the other could not.
+
+  The operating system releases the lock when a process exits, so a crash does **not** leave a database
+  permanently unopenable. That is now tested across a real process boundary, not asserted in prose.
+
+- **`Read Only=true` and `Mode=ReadOnly` are honoured.** Both were parsed and dropped: a write through a
+  read-only connection succeeded. A read-only connection now refuses everything that could change data
+  or schema, including the bulk API, and permits `SELECT`, `EXPLAIN` and transaction control. It is a
+  property of the **connection**, not of the file, so a read-only connection and a writing one can
+  address the same database at once — which is what it is for.
+
+- **`FileLocking=false` no longer disables in-process write serialisation.** The flag decided whether a
+  lock manager existed *at all*, and both transactional stores treat "no lock manager" as "no locking" —
+  so a setting that reads *"do not coordinate across processes"* removed the mutual exclusion between two
+  threads writing the same store. Write serialisation is no longer optional; the flag now controls only
+  the cross-process guard, which is the job its name always described.
+
+- **`CREATE TABLE T (Key TEXT)` parses.** `KEY` was a lexer token with no way in as an identifier. The
+  failure had been recorded for months against `Parallel Mode=Buffered`, in a concurrency fixture.
+  Parallel mode was never the cause and is a supported configuration.
+
+### Known and unchanged
+
+- **Concurrent transactions in different connections need MVCC**, which is the provider default. With
+  `MVCC=false` a transaction holds a database-wide write lock and a second session's `BEGIN` reports a
+  lock-recursion error.
+- **Two `Data Source=:memory:` connections are still two databases**, as in SQLite without
+  `Cache=Shared`. Sharing them would be an opt-in feature, not a silent change.
+- **`Mode=ReadWrite` still creates a database that is not there**, instead of failing as its name
+  promises. Recorded with a failing test; it is a database-level change and did not belong in this one.
+- **118 keywords cannot be used as bare column names** where SQLite accepts them — measured against the
+  oracle, mostly type names such as `Text`, `Int` and `Decimal`. Recorded and pinned by name; the fix
+  belongs with the DDL work.
+
 ## 4.0.0
 
 Closes phase 4, durability and crash recovery. **Major, because it changes answers the previous
