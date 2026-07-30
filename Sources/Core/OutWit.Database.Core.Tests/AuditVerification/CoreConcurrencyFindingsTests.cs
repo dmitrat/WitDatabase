@@ -795,21 +795,18 @@ public class CoreConcurrencyFindingsTests
     #region LsmParallelWriter.FlushAllAsync and other threads' buffers
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27 by CI, after this test was first recorded as NOT REPRODUCED. It " +
-            "passed on the development machine and failed on both PR runs, losing the tail of the " +
-            "producer's second batch - k18,k19 on one run and k17,k18,k19 on the other. Those are " +
-            "exactly the entries written AFTER the foreign FlushAllAsync, so the flush really does " +
-            "take a buffer another thread is still using. " +
-            "core-concurrency, Core/LSM/LsmParallelWriter.cs:217. " +
-            "The test is [Ignore]d rather than left running because it is timing-dependent: as an " +
-            "active test it fails intermittently on a loaded machine. Its own fixture note says a " +
-            "passing stress run proves only that the race did not happen that time - and this is " +
-            "the verdict that ignored it.")]
     public void FlushAllDoesNotDiscardAnotherThreadsBufferedWritesTest()
     {
-        // Finding: LsmParallelWriter.cs:217 - FlushAllAsync drains and disposes thread-local
-        // buffers belonging to threads that are still using them, so a writer thread can lose the
-        // entries it had buffered, or keep writing into a disposed buffer.
+        // FIXED 2026-07-30, and this marker is un-ignored with the fix. FlushAllAsync used to hand
+        // the merge loop a buffer whose owner was still appending to it, and reset only the CALLING
+        // thread's slot, leaving every other owner holding a buffer that had been drained and
+        // disposed. Each buffer is now taken under the same gate its owner appends under and
+        // replaced with a fresh one in the same operation.
+        //
+        // Kept active but not treated as the proof: this scenario PARKS the producer while the
+        // foreign flush runs, so the writes never overlap it - measured, it failed 0 times in 20
+        // rounds here before the fix, and it took CI to fail it at all. The evidence is
+        // LsmParallelWriterFlushProbeTests, which overlaps them and was red on this machine.
         var directory = CreateTempDirectory();
         try
         {

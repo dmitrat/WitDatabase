@@ -810,9 +810,19 @@ public sealed class WitDatabaseBuilder
                     storage = new StorageFile(indexPath, storagePageSize);
                 }
 
-                return new StoreBTree(storage, cacheSize / 4, ownsStorage: true);
+                var indexStore = new StoreBTree(storage, cacheSize / 4, ownsStorage: true);
+
+                // Serialised, and unconditionally. One index store is shared by every connection to
+                // the database and by every thread inside a connection, and StoreBTree is the only
+                // store this factory can hand out that has no locking of its own - StoreInMemory and
+                // StoreLsm both lock internally. Left bare, two writers walk into the same leaf split
+                // and rewrite it from two snapshots: measured, one of them throws out of
+                // BTreeNode.CollectLeafEntries, and when it does not, entries are simply gone.
+                // Not conditional on a parallel mode, because a second CONNECTION is enough - which
+                // is the shape 5.0.0 exists for.
+                return new Tree.BTreeConcurrentStore(indexStore, options: null, ownsStore: true);
             },
-            StoreBTree.PROVIDER_KEY);
+            Tree.BTreeConcurrentStore.PROVIDER_KEY);
     }
 
     /// <summary>

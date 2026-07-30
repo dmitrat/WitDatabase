@@ -778,6 +778,19 @@ schema catalog made two connections disagree about both tables and row counts.
 
 ### What remains in the area
 
+> **CLOSED 2026-07-30 by PR 8 (§ 8b.10 – § 8b.12).** The two markers that needed an instrument before
+> they could be worked have both been instrumented and fixed, and a third defect fell out of the first
+> fix. `CoreConcurrencyFindingsTests` now holds **no markers at all**, and the concurrency area is down
+> to the two entries that are deliberately not defects: the unreachable `ConnectionPool` permit leak
+> (confirmed twice) and the reclassified `MVCC=false` divergence `TestCase` on
+> `SharedDatabaseTwoEnginesProbeTests`.
+>
+> **Ledger: 52 `[Ignore(…)]` + 14 `[TestCase(… Ignore =)]` = 66 suppressed entries**, plus 2
+> `[Explicit]` — counted with the § 1 commands, which is the only form that sees a marker on a
+> continuation line.
+>
+> The original scoping is kept below, because the *order* it argued for is what the work followed.
+
 **15 `[Ignore(…)]` markers plus one `TestCase` property**, and reachability (§ "Question 2") is the order
 to work them in. The severity ranking has changed: the marker the plan called "corrupts data outright" is
 reachable only through `Dispose`, which makes it durability-adjacent, while the row-lock and MVCC
@@ -785,7 +798,252 @@ deadlock-detector markers sit on the provider's default path.
 
 **Still open, and named so it is not quietly dropped:** two engines interleaving flushes and a compaction
 over overlapping key ranges — the contended experiment § 3a said would settle whether divergence becomes
-loss. It belongs with whatever mechanism closes the remaining LSM work, not with the audit.
+loss. It belongs with whatever mechanism closes the remaining LSM work, not with the audit. **Still not
+done as of 2026-07-30**, and still the last open piece of phase 5.
+
+---
+
+## 8b.10 Secondary indexes had no serialisation at all — instrument, then fix (PR 8)
+
+The last two markers both needed an instrument before they could be worked, and this is the first of
+them. **`HighConcurrencyStressTest` fails about 3 times in 27 whole-fixture runs**, so no number of green
+runs could have proved a fix. It was replaced with an exact experiment.
+
+### The seam, chosen from a measurement
+
+`SecondaryIndexConcurrencyProbeTests` parks a writer *inside* a B+Tree leaf split. The seam was not
+guessed — it was measured first, and the measurement is kept as a control:
+
+> With a warm page cache, an index `Add` that fits in the leaf makes **no storage call at all**; the only
+> storage traffic during an insert is the `SetSize` that `SplitLeaf` makes when it allocates the new leaf.
+
+So parking a thread on its first storage call parks it inside the split, after `CollectLeafEntries` has
+snapshotted the leaf and before `node.Clear()` rewrites it. The parking storage records *which* call it
+parked on and the probes assert it was the allocation, so the seam cannot silently move.
+
+### What the experiment shows, and it is worse than the marker said
+
+One writer parked mid-split, a second let into the same leaf, the first released. Over **ten runs**:
+
+| Outcome | Runs |
+|---|---|
+| The second writer throws `ArgumentOutOfRangeException` / `IndexOutOfRangeException`, its entry lost | 9 |
+| **Nothing throws and three entries are simply gone** — two of them the *first* writer's, already inserted | 1 |
+
+**The exception is the lucky outcome.** The marker recorded only the crash; the quiet version loses rows
+that were never in doubt. What is pinned is what was stable across all ten: damage occurred, and the
+second writer's entry is missing. The *shape* is deliberately not pinned, for the same reason § 8b.6 did
+not pin a row count.
+
+### The mechanism, and a second finding inside it
+
+`WitDatabaseBuilder` wraps the **main** store in `BTreeConcurrentStore`; `CreateBTreeIndexFactory` handed
+every index a bare `StoreBTree`, which has **no locking of any kind**. `StoreInMemory` and `StoreLsm` —
+the other two stores that factory can produce — both lock internally, so the gap was specific to the
+file-backed B+Tree index, which is the default for a file database.
+
+The instrument also measured something not in the finding: **`PageManager.AllocatePage` holds its lock
+across the `SetSize`**, so the second writer *does* block — but only when it asks for a page of its own,
+long after it has walked into the leaf and snapshotted it. **The allocator's lock delays the corruption
+instead of preventing it.** That is why "the second writer had to wait" is reported by the probe and
+never asserted on: it is true in both directions.
+
+### The fix, and the regression it had to avoid
+
+The obvious fix — hand index stores the wrapper the main store already gets — was **measured before it
+was accepted**, because `BTreeConcurrentStore.Scan` materialised the whole range under one read lock:
+
+| Store | `FindRange(x, null)` on a 200,000-entry index, consumer takes 5 | Allocated |
+|---|---|---|
+| Bare `StoreBTree` | 3.1 ms | ~0 MB |
+| `BTreeConcurrentStore` as it was | **108.3 ms** | **25.5 MB** |
+
+That is the shape a `LIMIT` produces, and it is the commonest thing an index does. Fixing the corruption
+that way would have paid for it with a 35× regression on the read path.
+
+So the wrapper's scan was rewritten to **stream in chunks**: each chunk is read under the read lock with
+no writer inside the tree, the lock is released before the chunk reaches the consumer, and the next chunk
+re-seeks from the key immediately after the last one returned — a position a concurrent split cannot
+invalidate, unlike a page-and-slot cursor. Measured after: **82 KB** for the same query.
+
+Holding the read lock across the enumeration instead was considered and rejected by reasoning that has a
+test of its own: the engine deletes rows *through* an index range scan, so the consumer writes to the
+store while its scan is open, and the read-to-write upgrade on one thread throws. `ScanAllowsTheConsumer
+ToWriteWhileEnumeratingTest` pins that this stays possible.
+
+**The semantic this buys is stated rather than hidden: a scan is no longer a snapshot.** Writes landing
+between chunks are visible to the rest of the scan — which is exactly what the unwrapped store does, so
+concurrent mode now behaves like the default mode instead of differently from it.
+
+Index stores are then wrapped **unconditionally**, not only under a parallel mode: a second *connection*
+is enough to reach the defect, and that is the shape 5.0.0 exists for.
+
+### The marker, and what un-ignoring it is worth
+
+`HighConcurrencyStressTest` is un-ignored, and the comparison is like-for-like: its recorded rate was
+**about 3 failures in 27 whole-fixture runs**, and after the fix it is **0 in 27**, run the same way.
+That is a signal, not a proof, and the test says so in place — the proof is the deterministic experiment.
+
+### The revert counts, and the thin one is reported as thin
+
+| Fix reverted | Tests red |
+|---|---|
+| Index stores wrapped | **2** — both cases of the wiring probe |
+| Chunked scan | 1 |
+
+**Two is thin, and worth being honest about.** The product-level claim this fix can make deterministically
+is a wiring claim: *the builder now hands secondary indexes a serialised store*. The behavioural claim —
+*that wrapper is exactly what prevents the corruption* — is proved by the parked-collaborator probe over a
+store built the way the factory builds it, in both directions. There is no deterministic product-level
+test between the two, because the factory builds its storage from a path and nothing can be parked inside
+it without adding a seam to production code for a test's benefit.
+
+---
+
+## 8b.11 `FlushAllAsync` took buffers their owners were still writing into (PR 8)
+
+The other marker that needed an instrument. It was recorded as **not reproduced**, then confirmed by CI on
+both PR runs, and left suppressed as timing-dependent.
+
+### Why it needed CI: the scenario never contended
+
+The marker's own test **parks the producer** while the foreign flush runs, so the writes never overlap the
+flush at all. Measured here: **0 failures in 20 rounds**. An instrument that cannot reach the window is
+not a weak instrument, it is the wrong experiment.
+
+`LsmParallelWriterFlushProbeTests` overlaps them — a producer writing while another thread flushes every
+thread's buffer — and the defect reproduces on an ordinary development machine:
+
+| Round | Result before the fix |
+|---|---|
+| 0 | lost **8 consecutive** entries |
+| 1 | lost **9 consecutive** entries |
+| 2 | `ArgumentException: Destination array was not long enough` inside `LsmWriteBuffer.Drain` |
+
+A list copied while another thread is adding to it, and a contiguous run of losses — which is the
+signature CI reported, *the tail of a batch*: the entries appended after the merge loop had taken its copy.
+
+### The mechanism
+
+`FlushAllAsync` iterated `ThreadLocal.Values` and handed each buffer to the merge loop, which drains and
+**disposes** it — while the owning thread was still appending to the same `List`. It then reset only the
+**calling** thread's slot, so every other owner was left holding a buffer that had already been merged and
+thrown away.
+
+The reset could not have been done any other way: `ThreadLocal<T>` hands out another thread's value but
+gives **no way to replace it**. So the buffer now sits behind a per-thread `BufferSlot`, and taking it is
+an exchange under the slot's gate — the same gate the owner appends under. The owner never touches a
+buffer that has been handed away, and a flush still reaches every thread, which the commit path needs
+(§ 8b.7: read-your-own-writes is what the commit protocol is built on).
+
+### The instrument was wrong before its subject — the seventh time in this project
+
+The first version of this probe was **not** the version that ships, and the corrections are the useful
+part. Each was caught by a control, and each would have shipped a probe that measured nothing:
+
+| Version | What it did | Why it was wrong |
+|---|---|---|
+| Unbounded producer, tight flush loop | 10/10 rounds caught the defect | Did not converge — the producer outran the merges, each flush handed over a bigger buffer, a round took **minutes** |
+| Bounded producer, tight flush loop | Caught it 10/10 | Under a **whole-fixture** load one round had the flusher do 50 flushes while the producer wrote **one** entry, and another had the producer write 10× its quota before the flusher managed two. Its control went red inside the full run |
+| Flusher waits for new entries, `Thread.Sleep(1)` | Stable, and its control passed | **Lost its power.** 2000 buffered writes take a millisecond and the flush that merges them takes a hundred, so a round held ONE overlapping flush — and with the fix reverted it then caught the defect in **one run out of two** |
+| Credit window, flusher yields | 20 overlapping flushes per round, ~0.4 s | Ships |
+
+**A control that only proves the subject was exercised is not enough — the instrument also has to be
+re-measured against the defect it is meant to catch.** The `Sleep(1)` version was green, stable and
+worthless, and only re-running it with the fix reverted showed that. Every version above was checked in
+**both** directions before the next was written.
+
+### 8b.11a `FlushAllAsync` did not flush what the size threshold had already queued — **found by CI**
+
+The fix above went to CI and the marker's own test **still failed** — losing `k19` on one framework and
+`k15..k19` on the other, after passing here 20 rounds out of 20. The two-thread reading of that failure
+was too narrow, and the real defect needs **no second thread at all**:
+
+> A buffer reaches the merge queue with **no completion attached** whenever `Put` crosses the size
+> threshold — the fire-and-forget path — and `FlushAllAsync` waited only for the buffers it handed over
+> itself. By then the thread's own slot is empty, so it handed over nothing, waited for nothing, and
+> returned with the writes still in the channel.
+
+`LsmParallelStore.Flush()` is `FlushAllAsync()` followed by `m_store.Flush()`, so the store was flushed
+to an SSTable *without* the entries still queued behind it. Measured single-threaded, with 50 batches of
+200 entries queued the fire-and-forget way:
+
+| | Entries still in flight when `FlushAllAsync` returned |
+|---|---|
+| Before | **10,000 of 10,000** |
+| After | 0 |
+
+**The fix:** `FlushAllAsync` now queues an **empty buffer last** and waits for that too. The channel is
+FIFO with a single reader, so a completion attached to the last thing in the queue fires only once
+everything ahead of it has been applied to the store. It is not counted as a submitted buffer, because
+it carries no writes.
+
+**This is the fourth defect of the PR and the second one CI found that this machine could not** — and
+the more useful half of the lesson is that the first fix was *correct and insufficient*: the marker was
+red for two separate reasons, and closing one of them left the test failing for the other.
+
+### The revert counts
+
+| Fix reverted | Tests red |
+|---|---|
+| Buffers exchanged under the slot's gate | **2** — the contended probe and its control |
+| The flush barrier | 1 — and 10,000 of 10,000 entries in flight, single-threaded |
+
+With the fix reverted the contended probe fails **10 rounds out of 10**, measured three times (10 threw;
+8 threw and 2 lost entries; 10 threw), and its control fails with it because the flusher dies. With the
+fix applied the whole `Core.Tests` fixture is green three runs out of three, and the round reports 20
+overlapping flushes every time.
+
+The marker's own test stays **green** with the fix reverted — which is the whole point of § 8b.11 and the
+reason it is kept but not treated as the evidence.
+
+---
+
+## 8b.12 A thread-affine lock held across an await — **a third defect, in no audit** (PR 8)
+
+Found by the fallout of § 8b.10 rather than by looking for it: with secondary indexes now using
+`BTreeConcurrentStore`, two index tests failed with
+
+```
+SynchronizationLockException: The write lock is being released without being held
+  at ReaderWriterLockSlim.ExitWriteLock()
+  at BTreeConcurrentStore.FlushAsync
+  at IndexManager.FlushAsync
+  at WitDatabase.FlushAsync
+```
+
+**`ReaderWriterLockSlim` is thread-affine** — it records which *thread* holds the lock. All four
+asynchronous entry points on this store took the lock, awaited the inner store, and released: when the
+continuation resumed on another thread the release threw, and — the half that matters — **the lock stayed
+held by a thread that had moved on**, so every later reader and writer would wait for ever.
+
+This shipped in 5.0.0. It was silent because only the main store used the wrapper and its awaits happened
+to complete inline; an index flush is a genuinely asynchronous path, so wrapping index stores lit it up
+immediately.
+
+**Found by grepping the shape, not the place** — the same technique that found `TransactionWaitQueue` and
+`PageCacheLru` in the first half. A scan of every `Enter*Lock … await … Exit*Lock` window in the product
+returns exactly four hits, all in this one file, and `StoreLsm` is safe by construction because a `lock`
+block cannot contain an await at all.
+
+**The fix:** the asynchronous methods do their work through the synchronous ones. That is what they
+effectively did before — the lock was held for the whole await regardless, so no concurrency is lost —
+and it removes the hazard rather than narrowing it.
+
+**The test is deterministic, not hopeful.** The storage underneath completes its asynchronous flush from
+a thread of its own with continuations forced asynchronous, and the caller is a dedicated thread rather
+than a pool thread, so the resuming thread *cannot* be the one that entered the lock. It then asserts the
+second half as well: that another thread can still take the write lock afterwards.
+
+| Fix reverted | Tests red |
+|---|---|
+| Async entry points made synchronous under the lock | **2–3**, and the spread is the finding |
+
+Measured twice with the fix reverted: the first run turned **three** red — the deterministic test and both
+index-metadata tests — and the second turned **two**, because one of the index tests happened to resume
+its continuation on the thread that took the lock. **The deterministic test is red every time; the two
+that found it in the first place are red only sometimes.** That spread is exactly why the defect survived
+a release, and why the instrument does not rely on them.
 
 ---
 

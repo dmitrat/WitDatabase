@@ -1,4 +1,4 @@
-using OutWit.Database.AdoNet;
+﻿using OutWit.Database.AdoNet;
 using OutWit.Database.Core.Builder;
 using TextEncoding = System.Text.Encoding;
 
@@ -346,21 +346,18 @@ public class WitDbConnectionParallelAccessTests : IDisposable
 
     [Test]
     [Category("Stress")]
-    [Ignore("REASON REPLACED 2026-07-30, and the old one was false. It said \"Multiple file connections "
-            + "not supported for embedded database\"; PR #56 made that untrue, and the three tests above "
-            + "were un-ignored on the strength of it - 15 consecutive green runs each. This one is "
-            + "different: it stays suppressed because it exposes a REAL and previously unrecorded defect. "
-            + "Under load it fails with ArgumentOutOfRangeException \"Index out of range, Actual value "
-            + "was 146\" inside BTreeNode.CollectLeafEntries during BTree.SplitLeaf, reached from "
-            + "SecondaryIndexKeyValueStore.Add via WitSqlEngine.UpdateIndexesOnInsert - i.e. a B+Tree "
-            + "leaf split corrupted by concurrent writers. Established by construction: "
-            + "WitDatabaseBuilder wraps the MAIN store in BTreeConcurrentStore when a parallel mode is "
-            + "set, but CreateBTreeIndexFactory hands every SECONDARY INDEX a raw StoreBTree with no "
-            + "serialisation at all. Measured: about 3 failures in 27 runs, and 0 in 12 when the test "
-            + "runs alone - it needs the load of the rest of the fixture. Left [Ignore]d rather than "
-            + "active precisely because it is load-dependent: a flaky gate is what this project has "
-            + "already had CI inherit once. See Docs/PHASE5-CONCURRENCY-PLAN.md 8b.8.")]
-    public void HighConcurrencyStressTest()
+    // UN-IGNORED 2026-07-30 with the fix. Its suppressed reason was a real and unrecorded defect:
+    // WitDatabaseBuilder wrapped the MAIN store for concurrent access while CreateBTreeIndexFactory
+    // handed every SECONDARY INDEX a raw StoreBTree with no serialisation, so concurrent connections
+    // corrupted a B+Tree leaf split inside an index - ArgumentOutOfRangeException out of
+    // BTreeNode.CollectLeafEntries, reached from SecondaryIndexKeyValueStore.Add. Index stores are
+    // now serialised the way the main store is.
+    //
+    // This test is not the proof and cannot be: it failed about 3 times in 27 whole-fixture runs, so
+    // no number of green runs would settle it. The proof is the deterministic experiment in
+    // Core.Tests/AuditVerification/SecondaryIndexConcurrencyProbeTests. What this run adds is the
+    // like-for-like comparison against that measured rate, repeated the same way.
+public void HighConcurrencyStressTest()
     {
         var dbPath = Path.Combine(m_testDir, "stress.witdb");
         var cs = $"Data Source={dbPath};Parallel Mode=Auto;Transactions=false";
