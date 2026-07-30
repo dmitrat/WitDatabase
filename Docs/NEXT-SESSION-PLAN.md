@@ -37,20 +37,27 @@ confirmed defect with a test already written that turns green when it is fixed.
 > in no audit. **The remaining work was re-planned the same day** into five audit-then-fix phases with
 > performance moved to the end — see "Phases 5–10" below. Resume at **phase 5 — concurrency**.
 >
-> **68 `[Ignore]` attributes plus 13 `[TestCase(… Ignore =)]` — 81 suppressed entries**, and 3
-> `[Explicit]`, after phase 4 closed eight and opened none that survived it. Counted 2026-07-29, not
-> carried. Historical note, kept because the shape recurs: the count went *up* across phase 3 and that is
-> honest: it closed six and opened five, every one of the five a defect that was already there and is
-> now on the books with a failing test waiting. Count before trusting it:
-> `grep -rho "\[Ignore" --include=*.cs Sources/ | wc -l` — and note the command over-counts prose
-> mentions of the marker and misses `Ignore =` properties on individual `[TestCase]`s. The second
-> ledger is the baseline in `WitComplianceTest` — **325 unimplemented conformance suites**.
+> **66 `[Ignore(…)]` attributes plus 13 `[TestCase(… Ignore =)]` — 79 suppressed entries**, and **2**
+> `[Explicit]`, after phase 4 closed eight and opened none that survived it. **Recounted 2026-07-30 at
+> the start of phase 5, correcting 81 to 79 and 3 to 2** — the previous figure filtered `\[Ignore` for
+> non-comment lines, which still admits two prose mentions of `[Ignore]` sitting inside test reason
+> *strings*, and the third `[Explicit]` is prose inside the second one's reason. The counting *method*
+> was the thing that was wrong, so it is written out in full in
+> `Docs/PHASE5-CONCURRENCY-PLAN.md` § 1. Historical note, kept because the shape recurs: the count went
+> *up* across phase 3 and that is honest: it closed six and opened five, every one of the five a defect
+> that was already there and is now on the books with a failing test waiting. Count before trusting it:
+> `grep -rho "\[Ignore(" --include=*.cs Sources/ | wc -l` for the attributes, and
+> `grep -rn "Ignore *=" --include=*.cs Sources/ | grep -c "TestCase"` for the rest — the bare
+> `\[Ignore` form over-counts prose mentions and misses `Ignore =` properties on individual
+> `[TestCase]`s, and a `private const string …Ignore =` field decl inflates the second command if the
+> `TestCase` filter is dropped. The second ledger is the baseline in `WitComplianceTest` —
+> **325 unimplemented conformance suites**.
 >
-> **Decomposed 2026-07-29 so it stops being re-derived: `73 + 13`.** The command's 77 is 73 real
-> `[Ignore(...)]` attributes plus 4 prose mentions; it separately misses 13 `[TestCase(…, Ignore = …)]`
-> properties (7 reserved words in `ParserFindingsTests`, 4 table sources in `DropInGapsEngineTests`,
-> 2 in `CrossCuttingAdoNetTests`). So the real ledger is **86 suppressed test entries** plus 3
-> `[Explicit]`, and the two errors do not cancel — they are different sets. Report both numbers.
+> **Superseded, kept for the method.** Decomposed *before* phase 4 closed as `73 + 13` = 86 suppressed
+> entries; phase 4 then closed eight, which is where the current 66 + 13 comes from. The durable part
+> is the decomposition itself: the `[TestCase(…, Ignore = …)]` entries are 7 reserved words in
+> `ParserFindingsTests`, 4 table sources in `DropInGapsEngineTests` and 2 in `CrossCuttingAdoNetTests`,
+> and the two grep errors **do not cancel** — they are different sets, so both numbers get reported.
 >
 > **Full record of phase 3: [PHASE3-GRAMMAR-PLAN.md](PHASE3-GRAMMAR-PLAN.md)**, including the
 > capability backlog in its §14 and the scope correction at its head.
@@ -300,17 +307,26 @@ area is never as small as its recorded findings.
 all change the lock and write paths, and phase 4 has just made the write path ~1.5× slower, so a
 number taken now describes something that is about to change twice more.
 
-**A standing caution for all five.** The 68 markers are a *lower bound*. Every phase so far has found
+**A standing caution for all five.** The 66 markers are a *lower bound*. Every phase so far has found
 defects nobody had recorded, and the ratio has not fallen: 6 of 13 in phase 4. Each audit below should
 expect to *add* findings, and the phase is not going badly when it does.
 
-### Phase 5 — Concurrency and concurrent access — **NEXT**
+### Phase 5 — Concurrency and concurrent access — **IN PROGRESS**
+
+> **Working record: [PHASE5-CONCURRENCY-PLAN.md](PHASE5-CONCURRENCY-PLAN.md).** The audit is under way;
+> questions 1 and 3 below are answered there by execution, and § 8 of that document hands one design
+> decision back — *is WitDatabase single-process by design, or is concurrent access a capability to
+> build* — because three of the findings have no correct fix until it is taken.
 
 The only remaining area of the same severity as what phases 1 and 4 closed: it contains a defect that
 **corrupts data**, and it is the area an application meets first in one of the three deployment shapes
 the goal names.
 
-**Already measured — 15 markers, and one access question that is bigger than all of them.**
+**Already measured — 17 markers, and one access question that is bigger than all of them.** *(Counted
+2026-07-30: 10 in `CoreConcurrencyFindingsTests`, 5 in `WitDbConnectionParallelAccessTests`, 1 in
+`LockManagerTests`, 1 in `ConnectionPoolFindingTests`. The plan said 15; the two it missed are the
+"flaky due to file lock timing issues" marker and the pool permit leak. The audit's own record of the
+area was already a lower bound — see `Docs/PHASE5-CONCURRENCY-PLAN.md` § 1.)*
 
 - **Data corruption.** `Clear()` recycles a pooled buffer while its write is still in flight: the page
   that reached storage held `0xFF` — the next borrower's fill — instead of the `0xAB` the caller
