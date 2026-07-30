@@ -123,7 +123,11 @@ public class WitDbConnectionParallelAccessTests : IDisposable
     #region Multi-Connection Parallel Tests
 
     [Test]
-    [Ignore("Multiple file connections not supported for embedded database. Use single connection with parallel commands instead.")]
+    // MARKER LIFTED 2026-07-30. The reason string said "Multiple file connections not supported for
+    // embedded database" - a design statement that PR #56 made false: several connections to one
+    // database in one process is the shape 5.0.0 exists for. The marker was a record of a past state
+    // that the phase had already overtaken, which is why records get re-run rather than trusted.
+    // Stable over 15 consecutive runs before being made active.
     public void MultipleConnectionsReadTest()
     {
         var dbPath = Path.Combine(m_testDir, "multi_read.witdb");
@@ -186,7 +190,8 @@ public class WitDbConnectionParallelAccessTests : IDisposable
     }
 
     [Test]
-    [Ignore("Multiple file connections not supported for embedded database. Use single connection with parallel commands instead.")]
+    // MARKER LIFTED 2026-07-30, same reason as MultipleConnectionsReadTest above. Stable over 15
+    // consecutive runs before being made active.
     public void MultipleConnectionsWriteTest()
     {
         var dbPath = Path.Combine(m_testDir, "multi_write.witdb");
@@ -251,7 +256,8 @@ public class WitDbConnectionParallelAccessTests : IDisposable
     #region Mixed Read/Write Tests
 
     [Test]
-    [Ignore("Multiple file connections not supported for embedded database. Use single connection with parallel commands instead.")]
+    // MARKER LIFTED 2026-07-30, same reason as MultipleConnectionsReadTest above. Stable over 15
+    // consecutive runs before being made active.
     public void ConcurrentReadWriteTest()
     {
         var dbPath = Path.Combine(m_testDir, "concurrent_rw.witdb");
@@ -340,7 +346,20 @@ public class WitDbConnectionParallelAccessTests : IDisposable
 
     [Test]
     [Category("Stress")]
-    [Ignore("Multiple file connections not supported for embedded database. Use single connection with parallel commands instead.")]
+    [Ignore("REASON REPLACED 2026-07-30, and the old one was false. It said \"Multiple file connections "
+            + "not supported for embedded database\"; PR #56 made that untrue, and the three tests above "
+            + "were un-ignored on the strength of it - 15 consecutive green runs each. This one is "
+            + "different: it stays suppressed because it exposes a REAL and previously unrecorded defect. "
+            + "Under load it fails with ArgumentOutOfRangeException \"Index out of range, Actual value "
+            + "was 146\" inside BTreeNode.CollectLeafEntries during BTree.SplitLeaf, reached from "
+            + "SecondaryIndexKeyValueStore.Add via WitSqlEngine.UpdateIndexesOnInsert - i.e. a B+Tree "
+            + "leaf split corrupted by concurrent writers. Established by construction: "
+            + "WitDatabaseBuilder wraps the MAIN store in BTreeConcurrentStore when a parallel mode is "
+            + "set, but CreateBTreeIndexFactory hands every SECONDARY INDEX a raw StoreBTree with no "
+            + "serialisation at all. Measured: about 3 failures in 27 runs, and 0 in 12 when the test "
+            + "runs alone - it needs the load of the rest of the fixture. Left [Ignore]d rather than "
+            + "active precisely because it is load-dependent: a flaky gate is what this project has "
+            + "already had CI inherit once. See Docs/PHASE5-CONCURRENCY-PLAN.md 8b.8.")]
     public void HighConcurrencyStressTest()
     {
         var dbPath = Path.Combine(m_testDir, "stress.witdb");

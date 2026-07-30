@@ -952,6 +952,67 @@ and after a reopen, on both `Synchronous Commit` settings. That inversion is the
 
 ---
 
+## 8b.8 Four markers whose reason was already false — and one that hid a new defect (PR 7)
+
+All four `WitDbConnectionParallelAccessTests` markers carried the **same** reason:
+
+> *"Multiple file connections not supported for embedded database. Use single connection with parallel
+> commands instead."*
+
+**That is a design statement, and PR #56 made it false** — several connections to one database in one
+process is the shape 5.0.0 exists for. So these were records of a state the phase had already overtaken.
+Rule 3 again, and this is now the fourth time in phase 5 that a carried reason string was wrong.
+
+**Three are simply green.** `MultipleConnectionsReadTest`, `MultipleConnectionsWriteTest` and
+`ConcurrentReadWriteTest` pass — and were run **15 consecutive times** before being made active, because
+"it passed once" is exactly how CI inherits a flake.
+
+### The fourth one is not flaky. It is a real, unrecorded data-integrity defect
+
+`HighConcurrencyStressTest` fails under load with
+
+```
+ArgumentOutOfRangeException: Index out of range (Parameter 'index'). Actual value was 146.
+  at BTreeNode.CollectLeafEntries          (BTreeNode.Split.cs:142)
+  at BTree.SplitLeaf                       (BTree.Insert.cs:557)
+  at StoreBTree.Put                        (StoreBTree.cs:240)
+  at SecondaryIndexKeyValueStore.Add       (SecondaryIndexKeyValueStore.cs:234)
+  at WitSqlEngine.UpdateIndexesOnInsert    (WitSqlEngine.Dml.IndexUpdates.cs:46)
+```
+
+— a **B+Tree leaf split corrupted by concurrent writers**, on the write path of a *secondary index*.
+
+**The cause is visible in the construction, and it is a gap rather than a race in the tree.**
+`WitDatabaseBuilder` wraps the **main** store in `BTreeConcurrentStore` when a parallel mode is set
+(`store is StoreBTree btreeStore → new BTreeConcurrentStore(...)`), but `CreateBTreeIndexFactory` hands
+every **secondary index** a bare `StoreBTree`:
+
+```csharp
+return new StoreBTree(storage, cacheSize / 4, ownsStorage: true);   // no wrapper, no serialisation
+```
+
+So concurrent connections serialise on the table's store and race freely on its indexes. This is a
+data-integrity defect in the exact deployment shape 5.0.0 was built for, and it is **in no audit**.
+
+### Why it is left suppressed rather than fixed here
+
+- **It is load-dependent, not deterministic:** about **3 failures in 27** whole-fixture runs, and **0 in
+  12** when the test runs alone — it needs the rest of the fixture running beside it. An active
+  load-dependent test is a flaky gate, and this project has already had CI inherit one.
+- **A fix cannot be proved by this test.** "It passed twenty times" is not evidence against a 10% race.
+  The fix needs a *deterministic* instrument first — park the collaborator, as in § 2 — and that is its
+  own piece of work, not a rider on a marker sweep.
+
+The marker therefore stays, but its reason string is **replaced with the true one**, naming the stack, the
+construction site, and the measured rate. That is the distinction this phase keeps making: the count did
+not go down here, and it should not have.
+
+**Ledger: 55 `[Ignore(…)]` + 14 = 69.** Concurrency area **4 markers** plus the one `TestCase` property —
+`FlushAllAsync` (timing-dependent), `HighConcurrencyStressTest` (above), `LockManagerTests`, and the
+unreachable `ConnectionPoolFindingTests` pool leak.
+
+---
+
 ## 8b.5 The page-cache corruption window — PR 4
 
 The marker the original plan called *"corrupts data outright"*. Question 2 had already narrowed it: **no
