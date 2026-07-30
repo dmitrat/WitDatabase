@@ -380,6 +380,75 @@ public class ConcurrencyModelProbeTests
             "two read-only connections now share a file - invert this and close the marker");
     }
 
+    /// <summary>
+    /// Probe: an LSM database with the write-ahead log turned off. § 3a established that LSM
+    /// exclusivity comes from <c>wal.log</c> - so what protects a database that has no log?
+    /// </summary>
+    /// <remarks>
+    /// <c>EnableWal</c> is reachable from a connection string, and <c>StoreLsm.m_wal</c> is nullable
+    /// and gated on it. If nothing else provides exclusivity then this hole is open on <b>both</b>
+    /// platforms, which decides whether fixing the log's share mode is sufficient or whether the
+    /// limit needs enforcing explicitly.
+    /// </remarks>
+    [Test]
+    [TestCase(true, true, TestName = "ProbeLsmExclusivity_WalOn_TransactionsOn")]
+    [TestCase(false, true, TestName = "ProbeLsmExclusivity_WalOff_TransactionsOn")]
+    [TestCase(true, false, TestName = "ProbeLsmExclusivity_WalOn_TransactionsOff")]
+    [TestCase(false, false, TestName = "ProbeLsmExclusivity_WalOff_TransactionsOff")]
+    public void ProbeLsmExclusivityAcrossWalAndTransactionsTest(bool wal, bool transactions)
+    {
+        var label = $"EnableWal={wal}, Transactions={transactions}";
+        var dir = Path.Combine(m_testDir, $"lsm_{wal}_{transactions}");
+        var cs = $"Data Source={dir};Store=lsm;EnableWal={wal};Transactions={transactions}";
+
+        using var first = new WitDbConnection(cs);
+        first.Open();
+        Execute(first, "CREATE TABLE T (Id BIGINT PRIMARY KEY, V TEXT)");
+        Execute(first, "INSERT INTO T (Id, V) VALUES (1, 'a')");
+
+        var files = Directory.Exists(dir)
+            ? string.Join(", ", Directory.GetFiles(dir).Select(Path.GetFileName))
+            : "<none>";
+        TestContext.Out.WriteLine($"PROBE  Q1 lsm <{label}> files on disk [{Platform}]  ->  {files}");
+
+        using var second = new WitDbConnection(cs);
+        var outcome = Observe(() => second.Open());
+
+        Report($"Q1 lsm <{label}>, second connection [{Platform}]", outcome);
+
+        if (!outcome.Threw)
+        {
+            Report($"Q1 lsm <{label}>, the second engine writes too [{Platform}]",
+                Observe(() => Execute(second, "INSERT INTO T (Id, V) VALUES (2, 'b')")));
+            Report($"Q1 lsm <{label}>, rows visible to the FIRST engine [{Platform}]",
+                Observe(() => new Outcome(false, null, null, $"Int32:{CountRows(first, "SELECT Id FROM T")}").Value!));
+            Report($"Q1 lsm <{label}>, rows visible to the SECOND engine [{Platform}]",
+                Observe(() => new Outcome(false, null, null, $"Int32:{CountRows(second, "SELECT Id FROM T")}").Value!));
+        }
+
+        // Through the provider a wal.log appears in ALL FOUR combinations - measured 2026-07-30,
+        // including with EnableWal=false and Transactions=false - so the provider cannot produce a
+        // log-less LSM database and the share mode of the log governs every case. Which platform is
+        // being measured therefore decides the expectation, exactly as in
+        // ProbeSecondConnectionToSameLsmDirectoryTest.
+        Assert.That(files, Does.Contain("wal.log"),
+            $"no wal.log for {label}: the provider can now produce a log-less LSM database, which "
+            + "has no exclusivity on any platform - see ProbeLsmWithoutWalIsStillExclusiveTest");
+
+        if (OperatingSystem.IsWindows())
+        {
+            Assert.That(outcome.Threw, Is.True,
+                $"a second engine opened an LSM database with {label} on Windows");
+            return;
+        }
+
+        // PINS THE SECTION 3a DEFECT across all four configurations: on Unix FileShare.Read is a
+        // shared advisory lock, so the log refuses nobody. The fix inverts this.
+        Assert.That(outcome.Threw, Is.False,
+            $"a second engine is now refused with {label} on Unix - if that is the fix, invert this "
+            + "assertion and close the marker");
+    }
+
     #endregion
 
     #region Q1 - the connection pool against a real database

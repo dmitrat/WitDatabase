@@ -170,6 +170,74 @@ public class ConcurrencyModelWiringProbeTests
         Report($"the sidecar for <{label}>", path + ".lock", File.Exists(path + ".lock"));
     }
 
+    /// <summary>
+    /// Probe: through the Core builder, can an LSM database exist with no write-ahead log - and if so,
+    /// does anything then stop a second engine opening it?
+    /// </summary>
+    /// <remarks>
+    /// § 3a established that LSM exclusivity comes from <c>wal.log</c> alone. Through the ADO.NET
+    /// provider a <c>wal.log</c> appears in all four <c>EnableWal</c>/<c>Transactions</c> combinations,
+    /// so the provider cannot produce a log-less database. <see cref="WitDatabaseBuilder"/> is public
+    /// API too, and <c>LsmOptions.EnableWal</c> is a settable property - so the question has to be
+    /// asked here as well, because the answer decides whether fixing the log's share mode is a
+    /// sufficient fix or only the common case.
+    /// </remarks>
+    [Test]
+    [TestCase(true)]
+    [TestCase(false, Ignore = "CONFIRMED 2026-07-30 on Windows, and it is platform-independent: with "
+        + "EnableWal=false the LSM directory holds only sst_000000.sst - no wal.log - and a second "
+        + "WitDatabase over the same directory OPENED. LSM exclusivity comes from the write-ahead log "
+        + "alone (see Docs/PHASE5-CONCURRENCY-PLAN.md section 3a), so a database with no log has no "
+        + "exclusivity at all, on any platform. Unlike section 3a this is NOT a Unix-only defect. "
+        + "Closing it needs exclusivity enforced explicitly rather than as a side effect of which "
+        + "files happen to exist - the FileLock sidecar is that mechanism and is currently "
+        + "unreachable. core-concurrency, Core/Stores/StoreLsm.cs:70")]
+    public void ProbeLsmWithoutWalIsStillExclusiveTest(bool enableWal)
+    {
+        var dir = Path.Combine(m_testDir, $"lsm_core_{enableWal}");
+
+        using var first = new WitDatabaseBuilder()
+            .WithLsmTree(dir, o => o.EnableWal = enableWal)
+            .WithoutTransactions()
+            .Build();
+
+        first.Put("a", Bytes("1"));
+        first.Flush();
+
+        var files = Directory.Exists(dir)
+            ? string.Join(", ", Directory.GetFiles(dir).Select(Path.GetFileName))
+            : "<none>";
+        Report($"files for an LSM store with EnableWal={enableWal}", "directory", files);
+
+        Exception? refused = null;
+        WitDatabase? second = null;
+
+        try
+        {
+            second = new WitDatabaseBuilder()
+                .WithLsmTree(dir, o => o.EnableWal = enableWal)
+                .WithoutTransactions()
+                .Build();
+        }
+        catch (Exception e)
+        {
+            refused = e;
+        }
+        finally
+        {
+            second?.Dispose();
+        }
+
+        Report($"second LSM engine with EnableWal={enableWal}", "outcome",
+            refused is null ? "OPENED" : $"refused with {refused.GetType().Name}");
+
+        // ASSERTS CORRECT BEHAVIOUR. A single-process design must refuse the second engine whatever
+        // files the database happens to contain.
+        Assert.That(refused, Is.Not.Null,
+            $"a second LSM engine opened the same directory with EnableWal={enableWal}, so "
+            + "exclusivity depends on which files exist rather than on the model");
+    }
+
     #endregion
 
     #region Q1 - what FileLocking=false actually turns off
