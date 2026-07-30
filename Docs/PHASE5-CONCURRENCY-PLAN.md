@@ -1052,6 +1052,37 @@ disposal still happens outside the lock.
 not produce it in 15 runs; the runner produced it on the first. A local green is not evidence about this
 one in either direction.
 
+### 8b.9 The last unexamined marker — a suspicion with no verdict behind it
+
+`LockManagerTests.MixedOperationsCompleteTest` carried *"Flaky due to file lock timing issues"*. Not a
+measurement, not a finding: a note, carried unexamined, of the same kind as the parallel-mode one the
+first half found to be blaming the wrong thing entirely.
+
+**Re-run: 15 consecutive whole-fixture runs and two runs under the full project's load, all green.**
+Un-ignored.
+
+**And the reason string had it backwards, which is the part worth keeping.** The *file-lock* half of
+`LockManager` is **not reachable from the product**: `WitDatabaseBuilder` only ever calls
+`new LockManager(Options.LockTimeout)` — the overload that sets `m_fileLock = null`. The path-taking
+constructor this fixture uses is entered by tests alone. So a failure here would be a statement about
+`LockManager`'s own file-lock path, not about the engine.
+
+That is the **third** piece of unreachable machinery in this area — after `PageLatchManager` (deleted) and
+the `ConnectionPool` permit leak — and it is the same point the first half made about `LockManager`'s
+class comment: *accurate about the class, false about the system.* Recorded rather than acted on: unlike
+`PageLatchManager`, this constructor is a reasonable public API for a caller driving `LockManager`
+directly, so there is nothing here to delete.
+
+**Ledger: 54 `[Ignore(…)]` + 14 = 68.** The concurrency area is down to **3 markers** plus the one
+`TestCase` property, and **every one of the three is now either unreachable or waiting on a deterministic
+instrument** — there is no marker left in this area that could simply be run and fixed:
+
+| Marker | Why it is still there |
+|---|---|
+| `LsmParallelWriter.FlushAllAsync` | timing-dependent; needs a deterministic instrument |
+| `HighConcurrencyStressTest` | § 8b.8 — real defect, load-dependent; needs a deterministic instrument |
+| `ConnectionPoolFindingTests` | unreachable, confirmed twice |
+
 ---
 
 ## 8b.5 The page-cache corruption window — PR 4
