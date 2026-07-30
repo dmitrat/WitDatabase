@@ -1,20 +1,13 @@
 # Phase 5 — Concurrency and concurrent access
 
-> **Status: the audit is done for questions 1 and 3; the fixes have started.** PR 1 (this document plus
-> instrument A) established the concurrency model by execution and changed **no** production line,
-> deliberately: the plan's shape is *audit the area, then work it*, and phase 4 showed what happens when
-> a phase fixes a list instead of a subject — six of its thirteen defects were in no audit. PR 2 is the
-> first fix, § 5a.
+> **Status: the FIRST HALF IS CLOSED, released as 5.0.0 on 2026-07-30.** All four questions the audit had
+> to answer are answered; five defects are fixed, four of which were in no audit. **The remaining
+> concurrency markers are the second half** — see § 8a for the PR record, what the phase changed about the
+> method, and what is left.
 >
-> | PR | Subject | Outcome |
-> |---|---|---|
-> | #52 | The plan, and instrument A — the concurrency-model probe | The model established; three defects in no audit; one marker refuted; CI found a fourth defect the dev machine could not |
-> | #53 | `KEY` usable as an identifier, and the keyword corpus | Marker closed (66 → 65). The corpus then measured the class at **118** keywords and handed it to phase 7 |
-> | #54 | One engine per database, enforced | § 3a and the `EnableWal` hole closed by an explicit guard; `FileLocking=false` no longer removes write serialisation. **Breaking — ships as 5.0.0** |
-> | #55 | Instrument B | Refuted the obvious shared-engine design; found the schema catalog is session-scoped state that must be database-scoped |
-> | #56 | **Many connections, one engine** | The phase's headline: the ASP.NET Core shape works. Closes § 6 as a side effect |
-> | #57 | Read-only honoured | § 4 closed, enforced per session so a reader can sit alongside writers. Found `Mode=ReadWrite` dropped the same way |
-> | #58 | The lock, across a process boundary | Question 4 answered: the guard refuses a second process, and the OS releases it when that process dies — both claims were prose until now |
+> The shape held: PR 1 established the model by execution and changed **no** production line, deliberately.
+> Phase 4 had shown what happens when a phase fixes a list instead of a subject — six of its thirteen
+> defects were in no audit — and here four of five were.
 >
 > **The target model, decided 2026-07-30 (§ 8): one process, one engine per database, many
 > connections, one writer at a time.** Cross-process access is out of scope by design; concurrent
@@ -734,6 +727,68 @@ was found here.
 
 ---
 
+## 8a. The first half, closed — released as 5.0.0, 2026-07-30
+
+| PR | Subject | Outcome |
+|---|---|---|
+| #52 | The plan, and instrument A — the concurrency-model probe | The model established by execution. Three defects in no audit; one marker refuted; **CI then found a fourth the dev machine could not** |
+| #53 | `KEY` usable as an identifier, and the keyword corpus | Marker closed. The corpus measured the class at **118** keywords and handed it to phase 7 |
+| #54 | One engine per database, enforced | § 3a and the `EnableWal` hole closed by an explicit guard; `FileLocking=false` no longer removes write serialisation |
+| #55 | Instrument B | **Refuted the obvious shared-engine design** and found the blocker: the schema catalog was session-scoped state that had to be database-scoped |
+| #56 | Many connections, one engine | The headline — the ASP.NET Core shape works. Closed § 6 as a side effect, with no change to `ConnectionPool` |
+| #57 | Read-only honoured | § 4 closed, per session so a reader sits alongside writers. Found `Mode=ReadWrite` dropped the same way |
+| #58 | The lock across a process boundary | Question 4 answered. Two claims that were prose in `WitSQL.md` and in an exception message are now executed |
+| #59 | Marker reachability | Question 2 answered. `PageLatchManager` is **dead code**; the corruption window is reachable **only via `Dispose`** |
+| #60 | Release 5.0.0 | Seven packages, verified from the **downloaded** nuspecs — version and every internal dependency |
+
+**All four audit questions are answered.** § 3 the model, § "Question 2" reachability, § 5 parallel mode,
+§ "Question 4" the process boundary.
+
+**Five defects fixed, four of which were in no audit** — and every one of those four was found by an
+instrument rather than by reading: LSM had no exclusivity on Linux; an LSM database with no write-ahead log
+had none anywhere; `FileLocking=false` removed the only write serialisation there was; and a per-session
+schema catalog made two connections disagree about both tables and row counts.
+
+### What this phase changed about the method
+
+- **CI is the arbiter of *platform*, not only of timing.** The heaviest finding — § 3a — was invisible on
+  Windows, because .NET maps `FileShare.Read` to a *shared* `flock` on Unix. A probe that generalised a
+  Windows measurement went red on the runner, which is the good direction: the instrument over-claimed,
+  and the red exposed a data-integrity defect no local control could have caught. **Third time a second
+  machine has settled something here, and the first time the two disagreed about by-design behaviour
+  rather than about a race.**
+- **The revert test audits the *suite*, not just the fix.** Eleven tests covered the shared engine and all
+  passed; reverting the shared catalog turned **one** red, because the other ten created their table
+  before the second connection opened and none checked a `COUNT(*)` taken afterwards. Adding that case
+  took the revert to **three** red. *Count how many tests the revert turns red; if it is fewer than you
+  expected, the suite is testing its own setup.*
+- **Pin observations as assertions, labelled as observations.** Every probe asserted the measured value with
+  a comment saying `PINS A DEFECT, NOT CORRECT BEHAVIOUR` and what the fix should invert it to. Pins
+  flipped in four PRs, and each flip *was* the proof the fix landed. One probe has now recorded three
+  different models and says so in place.
+- **Reclassifying is not fixing.** Two instrument-B markers came off the ledger as *re-decided* — a
+  documented sharp edge of a constructor rather than an open defect — and both stayed as active tests
+  pinning the divergence. The distinction is in the tests deliberately, so a later reader cannot mistake
+  one for the other.
+- **A count nobody has cross-checked against a second method is a guess.** The ledger was miscounted three
+  times in one phase, the last time because a marker sat on a continuation line. § 1 has the robust form.
+- **The instrument was wrong before its subject, for the sixth time in this project** — and my own fix
+  nearly refused the *first* engine, because `AcquireExclusiveLock(TimeSpan.Zero)` reports a timeout
+  without ever trying.
+
+### What remains in the area
+
+**15 `[Ignore(…)]` markers plus one `TestCase` property**, and reachability (§ "Question 2") is the order
+to work them in. The severity ranking has changed: the marker the plan called "corrupts data outright" is
+reachable only through `Dispose`, which makes it durability-adjacent, while the row-lock and MVCC
+deadlock-detector markers sit on the provider's default path.
+
+**Still open, and named so it is not quietly dropped:** two engines interleaving flushes and a compaction
+over overlapping key ranges — the contended experiment § 3a said would settle whether divergence becomes
+loss. It belongs with whatever mechanism closes the remaining LSM work, not with the audit.
+
+---
+
 ## 9. The four standing rules, applied to this phase
 
 1. **The oracle settles attribution, never desirability.** SQLite is single-file and serialises
@@ -773,15 +828,18 @@ was found here.
 
 ## 10. Acceptance for the phase
 
-Unchanged from `Docs/NEXT-SESSION-PLAN.md` § "Phase 5", with one item now answerable:
+From `Docs/NEXT-SESSION-PLAN.md` § "Phase 5", with the state of each after the first half:
 
-- Every marker fixed with a deterministic test, or reclassified as unreachable or by-design **with
-  the model written down**. § 3 is the model as it stands and § 8 is the model as intended; **both**
-  belong in `WitSQL.md`, stated as what a consumer may rely on rather than as an implementation note.
-- Parallel mode either supported and covered, or removed — **decided: supported** (§ 5).
-- **New, from § 8:** two connections in one process see each other's committed writes, with a
-  deterministic test; and a second *process* is refused with a typed exception rather than a raw
-  `IOException` carrying a Windows sharing message.
+- ⏳ **Every marker fixed with a deterministic test, or reclassified with the model written down.**
+  *Partly.* The model **is** written down — `WitSQL.md` § 15.0 and § 15.0.1, stated as what a consumer may
+  rely on rather than as an implementation note. **15 markers plus one `TestCase` property remain**, and
+  they are the second half.
+- ✅ **Parallel mode either supported and covered, or removed** — decided: **supported** (§ 5), and its
+  marker was closed rather than reworded.
+- ✅ **Two connections in one process see each other's committed writes**, deterministically (§ 7b) — and a
+  second *process* is refused with a **typed** exception, proved across a real process boundary (§ Q4).
+- ✅ **CI green on both frameworks, with no timing-dependent gate introduced.** This needed a correction
+  *during* the PR rather than after it — see below.
 - CI green on both frameworks, with no timing-dependent gate introduced. This needed a correction
   during the PR rather than after it: the parked-collaborator probe first gave the second writer a
   2-second budget to enter the store, which on a loaded runner would have reported an **unserialised**

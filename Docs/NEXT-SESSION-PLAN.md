@@ -29,20 +29,28 @@ rework early, and that would be a mistake.
 The `[Ignore]` marker count in the `AuditVerification/` folders is the ledger: each marker is a
 confirmed defect with a test already written that turns green when it is fixed.
 
-> **State at 2026-07-29. Phases 0–4 are done.** 2.1.0–2.4.0 published,
-> seven packages each. Phase 3 is PRs #28–#35, released as **3.0.0** and then **3.0.1** — major,
-> because it changes answers the previous releases gave. **Use 3.0.1**: 3.0.0 published only five of
-> the seven packages, and `AdoNet 3.0.0` went out depending on `OutWit.Database 2.4.0`. Phase 4 —
-> durability and crash recovery — is **closed**, released as **4.0.0**: thirteen defects, six of them
-> in no audit. **The remaining work was re-planned the same day** into five audit-then-fix phases with
-> performance moved to the end — see "Phases 5–10" below. Resume at **phase 5 — concurrency**.
+> **State at 2026-07-30. Phases 0–4 are done, and the FIRST HALF OF PHASE 5 is done and released as
+> 5.0.0.** Head `4d3c15a`, tag `v5.0.0`, all seven packages published and verified from the downloaded
+> nuspecs. Phase 3 was released as 3.0.0 then **3.0.1** — use 3.0.1: 3.0.0 published only five of the
+> seven packages and `AdoNet 3.0.0` went out depending on `OutWit.Database 2.4.0`. That bad package is
+> now **unlisted**. Phase 4 — durability — closed as **4.0.0**: thirteen defects, six in no audit.
 >
-> **66 `[Ignore(…)]` attributes plus 13 `[TestCase(… Ignore =)]` — 79 suppressed entries**, and **2**
-> `[Explicit]`, after phase 4 closed eight and opened none that survived it. **Recounted 2026-07-30 at
-> the start of phase 5, correcting 81 to 79 and 3 to 2** — the previous figure filtered `\[Ignore` for
-> non-comment lines, which still admits two prose mentions of `[Ignore]` sitting inside test reason
-> *strings*, and the third `[Explicit]` is prose inside the second one's reason. The counting *method*
-> was the thing that was wrong, so it is written out in full in
+> **Resume at the SECOND HALF OF PHASE 5** — the remaining concurrency markers. All four questions the
+> phase-5 audit had to answer are answered, and **reachability is already established**, so the markers
+> have a work order: see `Docs/PHASE5-CONCURRENCY-PLAN.md` § 8a for what is left and § "Question 2" for
+> the order. `PageLatchManager` is **dead code** and should be deleted rather than fixed; the marker the
+> plan called "corrupts data outright" is reachable **only through `Dispose`**, which makes it
+> durability-adjacent rather than write-path.
+>
+> **66 `[Ignore(…)]` attributes plus 14 `[TestCase(… Ignore =)]` — 80 suppressed entries**, and **2**
+> `[Explicit]`, counted at the close of phase 5's first half. **The counting method was wrong three times
+> in one phase** — 81+3 was recorded, then 79 after removing prose mentions, then 78, and finally 80 once
+> a marker on a *continuation line* turned out to be invisible to the `TestCase` filter. Use these two,
+> which need no assumption about line breaks:
+> `grep -rho "\[Ignore(" --include=*.cs Sources/ | wc -l` and
+> `grep -rn "Ignore *=" --include=*.cs Sources/ | grep -vc "const string"`. A count nobody has
+> cross-checked against a second method is a guess, and this one is quoted in every release note. Full
+> account in
 > `Docs/PHASE5-CONCURRENCY-PLAN.md` § 1. Historical note, kept because the shape recurs: the count went
 > *up* across phase 3 and that is honest: it closed six and opened five, every one of the five a defect
 > that was already there and is now on the books with a failing test waiting. Count before trusting it:
@@ -311,12 +319,20 @@ number taken now describes something that is about to change twice more.
 defects nobody had recorded, and the ratio has not fallen: 6 of 13 in phase 4. Each audit below should
 expect to *add* findings, and the phase is not going badly when it does.
 
-### Phase 5 — Concurrency and concurrent access — **IN PROGRESS**
+### Phase 5 — Concurrency and concurrent access — **FIRST HALF DONE (5.0.0), second half open**
 
-> **Working record: [PHASE5-CONCURRENCY-PLAN.md](PHASE5-CONCURRENCY-PLAN.md).** The audit is under way;
-> questions 1 and 3 below are answered there by execution, and § 8 of that document hands one design
-> decision back — *is WitDatabase single-process by design, or is concurrent access a capability to
-> build* — because three of the findings have no correct fix until it is taken.
+> **Working record: [PHASE5-CONCURRENCY-PLAN.md](PHASE5-CONCURRENCY-PLAN.md), and § 8a is the closing
+> summary.** All four questions below are answered. Five defects fixed, four of them in no audit. The
+> design decision § 8 handed back was taken: **one process, one engine per database, many connections,
+> one writer at a time** — single-process by design, because it is a file database, but the target is
+> drop-in for ASP.NET Core where the host is one process and the `DbContext`s are many. Written up for
+> consumers in `WitSQL.md` § 15.0.
+>
+> **What is left: 15 markers plus one `TestCase` property**, with reachability already established as
+> their work order. The scoping below is the original and is kept for the record — note that two of its
+> claims have since been corrected by measurement: the pool's defect closed as a *side effect* of engine
+> sharing with no change to the pool, and the data-corruption marker turned out to be reachable only
+> through `Dispose`.
 
 The only remaining area of the same severity as what phases 1 and 4 closed: it contains a defect that
 **corrupts data**, and it is the area an application meets first in one of the three deployment shapes
@@ -387,6 +403,14 @@ concurrency model stated in `WitSQL.md`, where a consumer will read it.
 Where "the application must not notice" fails first — not in the engine, but in the surface the
 application actually holds.
 
+> **Handed over by phase 5:** `Mode=ReadWrite` means "open an existing database, fail if it is not there"
+> and **silently creates one instead**, leaving the file behind. All three non-`Memory` values of `Mode`
+> are dropped by `WitDbConnection.ConfigureStorage`, which only asks whether the mode is `Memory` —
+> `Read Only` was the same family and was fixed in 5.0.0. This one is a *database-level* change
+> (`FileMode.Open` against `OpenOrCreate`) that alters behaviour for anyone currently relying on a
+> database being created for them, so it was recorded with a failing test rather than fixed in passing.
+> SQLite refuses the shape.
+
 **Already measured.**
 
 - **An abandoned `TransactionScope` leaves the write committed.** `EnlistTransaction` throws
@@ -421,6 +445,18 @@ being told.
 ### Phase 7 — Schema and DDL fidelity
 
 The database's description of itself, and whether it matches what was declared.
+
+> **Handed over by phase 5, with the instrument already built: 118 keywords cannot be used as bare column
+> names where SQLite accepts them.** Measured against the oracle across the whole lexer vocabulary — 172
+> refused, of which SQLite also refuses 54 (correct: so do PostgreSQL and SQL Server) and **accepts 118**
+> (the real gap). Mostly *type* names — `Text`, `Int`, `Decimal`, `Double`, `Char`, `Money`, `Json`,
+> `Guid` — plus `Row`, `Start`, `End`, `Column`, `View`, `Timestamp`, `Interval`, `Sequence`.
+>
+> `KeywordAsIdentifierCorpusTests` pins all 172 **by name** in
+> `Grammar/keywords-unusable-as-column-name.txt`, split into those two sections, and fails in **both**
+> directions — a keyword that stops working and a keyword that starts working are both reported, verified
+> rather than assumed. The ambiguity risk is real and concentrated: `CREATE TABLE T (Text TEXT)` asks the
+> parser to take a type keyword as a column name immediately before a type keyword.
 
 **Already measured.**
 
