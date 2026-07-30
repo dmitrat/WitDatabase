@@ -27,4 +27,16 @@
     <Using Include="NUnit.Framework" />
   </ItemGroup>
 
+  <ItemGroup>
+    <!--
+      The pinned keyword list read by KeywordAsIdentifierCorpusTests. It is data rather than logic, so
+      it lives in a file: a diff to it reads as "these keywords changed status" instead of as a code
+      change, and the fixture fails in BOTH directions - a keyword that stops working and a keyword
+      that starts working are both reported.
+    -->
+    <None Include="Grammar\keywords-unusable-as-column-name.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+  </ItemGroup>
+
 </Project>

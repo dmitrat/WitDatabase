@@ -1,10 +1,15 @@
 # Phase 5 — Concurrency and concurrent access
 
-> **Status: the audit is under way.** PR 1 (this document plus instrument A) establishes the
-> concurrency model by execution and settles two of the four questions the phase-5 plan set. No
-> production line has been changed yet, deliberately: the plan's shape is *audit the area, then work
-> it*, and phase 4 showed what happens when a phase fixes a list instead of a subject — six of its
-> thirteen defects were in no audit.
+> **Status: the audit is done for questions 1 and 3; the fixes have started.** PR 1 (this document plus
+> instrument A) established the concurrency model by execution and changed **no** production line,
+> deliberately: the plan's shape is *audit the area, then work it*, and phase 4 showed what happens when
+> a phase fixes a list instead of a subject — six of its thirteen defects were in no audit. PR 2 is the
+> first fix, § 5a.
+>
+> | PR | Subject | Outcome |
+> |---|---|---|
+> | #52 | The plan, and instrument A — the concurrency-model probe | The model established; three defects in no audit; one marker refuted; CI found a fourth defect the dev machine could not |
+> | #53 | `KEY` usable as an identifier, and the keyword corpus | Marker closed (66 → 65). The corpus then measured the class at **118** keywords and handed it to phase 7 |
 >
 > **The target model, decided 2026-07-30 (§ 8): one process, one engine per database, many
 > connections, one writer at a time.** Cross-process access is out of scope by design; concurrent
@@ -39,6 +44,7 @@ The phase-5 plan and the project memory both carried **68 + 13 = 81** suppressed
 | …of which `private const string …Ignore =` | | −7 |
 | **`[TestCase(… Ignore = …)]` entries** | | **13** |
 | **Suppressed entries** | | **79** |
+| *After PR 2 closed the parallel-mode marker* | | **65 + 13 = 78** |
 | `[Explicit]` attributes | | **2** (not 3 — one hit is prose inside the other's reason) |
 
 The recorded count of 68 came from filtering `\[Ignore` for non-comment lines, which still admits the
@@ -59,11 +65,11 @@ was wrong, and the same filter will be wrong again next phase.
 ## 2. Instrument A — the concurrency-model probe
 
 Nothing in the repository states what the concurrency model is, so the first instrument does not look
-for defects at all: it **measures the model**. Two fixtures, 26 tests, all green, each pinning an
+for defects at all: it **measures the model**. Two fixtures, 27 tests, all green, each pinning an
 observation rather than a wish.
 
 - `Sources/Providers/OutWit.Database.AdoNet.Tests/AuditVerification/ConcurrencyModelProbeTests.cs`
-  — 18 tests, asking every question through the ADO.NET surface, which is also what answers
+  — 19 tests, asking every question through the ADO.NET surface, which is also what answers
   "reachable from the provider".
 - `Sources/Core/OutWit.Database.Core.Tests/AuditVerification/ConcurrencyModelWiringProbeTests.cs`
   — 8 tests, asking what the builder actually wires.
@@ -264,12 +270,58 @@ the same way; renaming the column off `Key` makes the same shape pass. So this i
 reserved words unusable as identifiers — that spent months labelled as a concurrency one.
 
 Note this is *not* the existing `parser` marker, which is about `WitSqlExpressionSerializer` emitting
-unquoted reserved identifiers on a round trip. This is a statement a **user** writes by hand, and
-`Key` is an ordinary column name in every dialect the project targets. It belongs to phase 7.
+unquoted reserved identifiers on a round trip. This is a statement a **user** writes by hand.
 
-**Verdict: parallel mode is a supported configuration.** The marker's reason string has been rewritten
-to name the real cause; the test stays ignored because the statement still does not parse, so the
-ledger is unchanged at 66 and now accurate.
+**Verdict: parallel mode is a supported configuration**, and the marker is **closed, not reworded** —
+PR 2 fixed the grammar. Ledger 66 → 65.
+
+### 5a. Fixed, and then measured properly — 118 keywords, not one
+
+The fix is one line: `KEY` added to `nonReservedKeyword`. It is unambiguous because `KEY` appears in
+this grammar only after `PRIMARY` or `FOREIGN`, both reserved; the build produces no new ANTLR
+ambiguity, `PRIMARY KEY`/`FOREIGN KEY` still parse, and so does the hard case —
+`CREATE TABLE T (Key TEXT, Value TEXT, PRIMARY KEY (Key))`, where the identifier and the keyword sit
+two tokens apart.
+
+**But this class had escaped a 104-finding audit, so fixing the one name it tripped over is not
+enough.** `KeywordAsIdentifierCorpusTests` now asks the question of the **whole lexer vocabulary**,
+taken from the generated lexer's own `ruleNames` so a keyword added tomorrow is covered without anyone
+remembering. **172 keywords cannot be used as a bare column name.** Then the oracle was asked the same
+172, and it split them:
+
+| | Count | Meaning |
+|---|---|---|
+| SQLite **accepts**, WitSQL refuses | **118** | a real drop-in gap |
+| SQLite **also refuses** | **54** | correct — PostgreSQL and SQL Server refuse them too |
+
+So the finding is **118**, and the correction runs against my own earlier wording: refusing a bare
+reserved word is standard, not a defect, and the sentence "`Key` is an ordinary column name in every
+dialect the project targets" was too strong — `KEY` is non-reserved in PostgreSQL and the SQL standard
+but **is** reserved in SQL Server. The oracle is what kept the claim honest, which is the rule working
+as intended: it settles attribution, not desirability.
+
+The 118 include names an ordinary entity would use: `Text`, `Int`, `Decimal`, `Double`, `Char`, `Money`,
+`Json`, `Guid`, `Row`, `Start`, `End`, `Current`, `Timestamp`, `View`, `Column`, `Interval`,
+`Sequence`. Most are **type** names, so `CREATE TABLE T (Text TEXT)` asks the parser to take a type
+keyword as a column name immediately before a type keyword — real ambiguity risk, and its own piece of
+work.
+
+**Recorded, not fixed here.** Phase 5's remit is concurrency; `KEY` was fixed because the phase tripped
+over it and the owner asked for it. The 118 are pinned by name in
+`Grammar/keywords-unusable-as-column-name.txt`, split into the two sections above, and handed to
+phase 7 where the DDL round-trip corpus lives.
+
+**Two things the corpus does that a count would not.** It pins names rather than a number, so a
+grammar change that fixes one keyword and breaks another cannot go green — the trap
+`GrammarRoundTripTests` was rebuilt to avoid. And it fails in **both** directions: verified by removing
+`TEXT` from the pinned list (red: "stopped working") and by adding `KEY` to it (red: "now work"). A
+pinned list nobody has proved can fail is just a comment.
+
+**A dead grammar alternative found on the way.** `VALUE` was listed in `nonReservedKeyword` but is not
+a lexer token at all, so ANTLR defined it implicitly and the alternative could never match — it emitted
+`warning(125): implicit definition of token VALUE` on every build. Removed; `Value` as a column name
+works and always did, by matching `IDENTIFIER`. Checked the other 134 entries the same way: `VALUE` was
+the only one.
 
 ---
 

@@ -75,18 +75,19 @@ public class WitDbConnectionParallelAccessTests : IDisposable
         }
     }
 
+    /// <summary>
+    /// Formerly ignored as "Parallel Mode=Buffered causes SQL parsing issues - requires
+    /// investigation", carried for months.
+    /// </summary>
+    /// <remarks>
+    /// Parallel mode was never the cause. This fixture's own <c>CREATE TABLE</c> names a column
+    /// <c>Key</c>, and <c>KEY</c> was a lexer token with no way in as an identifier, so the statement
+    /// failed to parse with no parallel mode set at all - which
+    /// <c>ConcurrencyModelProbeTests.ControlTheMarkersCreateTableWithoutParallelModeTest</c> proved by
+    /// running it without one. Fixed 2026-07-30 by adding <c>KEY</c> to <c>nonReservedKeyword</c>, and
+    /// the marker is closed rather than reworded. See <c>Docs/PHASE5-CONCURRENCY-PLAN.md</c> § 5.
+    /// </remarks>
     [Test]
-    [Ignore("MISATTRIBUTED, corrected 2026-07-30. The old reason read \"Parallel Mode=Buffered causes "
-            + "SQL parsing issues - requires investigation\". Parallel mode is not the cause: this "
-            + "fixture's own CREATE TABLE names a column Key, and KEY is a lexer token "
-            + "(Grammars/WitSqlLexer.g4:52), so the statement fails to parse with no parallel mode "
-            + "set at all - proved by ConcurrencyModelProbeTests"
-            + ".ControlTheMarkersCreateTableWithoutParallelModeTest. Observed: WitSqlParsingException, "
-            + "'Line 1:19 - mismatched input 'Key''. Renaming the column off Key makes the same shape "
-            + "pass, and all four parallel modes round-trip ten rows. So this belongs to the grammar "
-            + "area (reserved words as identifiers), not to concurrency, and the phase-5 audit takes "
-            + "parallel mode as a supported configuration. Kept ignored because the statement still "
-            + "does not parse. See Docs/PHASE5-CONCURRENCY-PLAN.md section 3.")]
     public void ConnectionStringWithMaxWritersTest()
     {
         var dbPath = Path.Combine(m_testDir, "max_writers.witdb");

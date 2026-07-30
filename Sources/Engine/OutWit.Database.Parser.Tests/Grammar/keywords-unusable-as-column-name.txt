@@ -1,0 +1,205 @@
+# Keywords that cannot be used as a bare column name in WitSQL.
+#
+# Read by KeywordAsIdentifierCorpusTests. A RECORD OF THE CURRENT STATE, NOT A TARGET: the fixture
+# fails in both directions, so a keyword that stops working and a keyword that starts working are
+# both reported. When a keyword is made usable, delete its line.
+#
+# Measured 2026-07-30, after KEY was added to nonReservedKeyword (phase 5, PR 2). Regenerate with
+# KeywordAsIdentifierCorpusTests.ReportEveryKeywordAsAColumnNameTest.
+#
+# ---------------------------------------------------------------------------------------------------
+# THE ORACLE VERDICT, and it splits this file in two.
+#
+# The same 172 names were put to SQLite as `CREATE TABLE t (<Name> TEXT)`:
+#
+#   * 118 of them SQLite ACCEPTS. Those are a real drop-in gap - see section A below - and they
+#     include utterly ordinary column names: Text, Int, Decimal, Double, Char, Money, Json, Guid,
+#     Row, Start, End, Current, Timestamp, View, Column, Interval, Partition, Sequence.
+#   * 54 of them SQLite REJECTS too. Those are the genuinely reserved words, and WitSQL refusing them
+#     is CORRECT - PostgreSQL and SQL Server refuse them as well. See section B.
+#
+# So the finding is "118 keywords", not "172". Recorded rather than fixed: phase 5's remit is
+# concurrency, KEY was fixed because it was the one the phase tripped over, and a 118-keyword grammar
+# change is its own piece of work with real ambiguity risk - most of section A is TYPE names, so
+# `CREATE TABLE T (Text TEXT)` asks the parser to take a type keyword as a column name immediately
+# before a type keyword. Handed to phase 7 (schema and DDL fidelity), where the DDL round-trip corpus
+# lives.
+# ---------------------------------------------------------------------------------------------------
+
+# --- Section A: SQLite accepts these; WitSQL does not. 118 names, the actual gap. -------------------
+
+AFTER
+ANALYZE
+ANY
+ASC
+BEFORE
+BEGIN
+BIGINT
+BINARY
+BLOB
+BOOL
+BOOLEAN
+BY
+CASCADE
+CAST
+CHAR
+COLUMN
+COMMITTED
+CROSS
+CURRENT
+CURRENT_DATE
+CURRENT_TIME
+CURRENT_TIMESTAMP
+DATEONLY
+DATETIMEOFFSET
+DECIMAL
+DESC
+DOUBLE
+EACH
+END
+EXCLUDED
+EXPLAIN
+FALSE
+FLOAT
+FOLLOWING
+FOR
+FULL
+GLOB
+GUID
+HALF
+IF
+IGNORE
+IIF
+INCLUDE
+INNER
+INSTEAD
+INT
+INTEGER
+INTERVAL
+JSON
+JSONB
+LEFT
+LIKE
+LOCKED
+LONG
+MATCHED
+MERGE
+MESSAGE_TEXT
+MONEY
+NCHAR
+NO
+NOCASE
+NOWAIT
+NTEXT
+NULLS
+NUMERIC
+NVARCHAR
+OF
+OFFSET
+OUTER
+OVER
+PARTITION
+PRECEDING
+RANGE
+READ
+REAL
+RECURSIVE
+RELEASE
+RENAME
+REPEATABLE
+RESTART
+RESTRICT
+RIGHT
+ROLLBACK
+ROW
+ROWS
+ROWVERSION
+SAVEPOINT
+SEQUENCE
+SERIALIZABLE
+SIGNAL
+SMALLINT
+SOME
+SQLSTATE
+START
+STORED
+TEXT
+TIMEONLY
+TIMESPAN
+TIMESTAMP
+TINYINT
+TRIGGER
+TRUE
+TRUNCATE
+UBIGINT
+UINT
+ULONG
+UNBOUNDED
+UNCOMMITTED
+UNICODE_CI
+UNIQUEIDENTIFIER
+USMALLINT
+UTINYINT
+UUID
+VARBINARY
+VARCHAR
+VIEW
+VIRTUAL
+WITH
+
+# --- Section B: SQLite rejects these too. 54 names, and refusing them is correct. -------------------
+
+ADD
+ALL
+ALTER
+AND
+AS
+AUTOINCREMENT
+BETWEEN
+CASE
+CHECK
+COLLATE
+COMMIT
+CONSTRAINT
+CREATE
+DEFAULT
+DELETE
+DISTINCT
+DROP
+ELSE
+ESCAPE
+EXCEPT
+EXISTS
+FOREIGN
+FROM
+GROUP
+HAVING
+IN
+INDEX
+INSERT
+INTERSECT
+INTO
+IS
+JOIN
+LIMIT
+NOT
+NULL
+ON
+OR
+ORDER
+PRIMARY
+REFERENCES
+RETURNING
+SELECT
+SET
+TABLE
+THEN
+TO
+TRANSACTION
+UNION
+UNIQUE
+UPDATE
+USING
+VALUES
+WHEN
+WHERE
