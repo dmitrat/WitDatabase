@@ -789,6 +789,53 @@ loss. It belongs with whatever mechanism closes the remaining LSM work, not with
 
 ---
 
+## 8b.4 The page-latch subsystem, deleted rather than repaired — PR 3
+
+The marker was real and worse than filed: `Cleanup` decided a latch was idle using
+`ReaderWriterLockSlim.IsWriteLockHeld`, which is **thread-affine**, so a second exclusive acquire *was*
+granted while another thread held the page, and the holder's release then threw
+`SynchronizationLockException` on a background thread — terminating the test host until the test wrapped
+its own `Dispose`.
+
+**It was closed by deletion, because nothing could enter it.** Re-verified before removing anything, since
+a reachability record is a claim like any other — and the re-check made the finding *wider* than § "Question
+2" had it:
+
+- § "Question 2" said `PageLatchManager` was dead code. True, and **`PageLatch` is dead too** — the whole
+  subsystem, 551 lines of production code, is entered by nothing. The manager is the only thing that
+  constructs a `PageLatch`, and nothing constructs the manager.
+- Swept `Sources/`, `Tools/`, `Samples/` and `Benchmarks/`: every reference to either type was its own
+  declaration or its own test.
+- **The compiler then confirmed it, which is stronger than the grep.** Deleting both classes left the whole
+  solution building with **0 errors**. A reachability claim that survives `git rm` plus a full Release build
+  is not an argument from reading.
+
+**Why the mechanism was never needed.** `BTreeConcurrentStore` serialises with a single store-wide
+`ReaderWriterLockSlim` — its own class comment calls it "a simple but effective ReaderWriterLock strategy".
+Per-page latching is the finer-grained alternative, and under the model this phase decided — *one writer at
+a time* — there is nothing for it to buy. It was built, tested, and never wired in.
+
+**Deleted:** `Tree/PageLatch.cs` (175), `Tree/PageLatchManager.cs` (376), and their two fixtures (560
+lines, 31 passing tests). **The marker's region is kept as a comment** in
+`CoreConcurrencyFindingsTests.cs`, so that "the count went down" cannot be read as "the defect was
+repaired" — the same distinction PR 4 of the first half had to make for two other markers.
+
+**This is a breaking change**: two public types leave the surface. It is the reason the next release cannot
+be a minor.
+
+> **Carried to the release PR, so it is not shipped wrong:** § 15.0.2 of `WitSQL.md`, added by PR 2, says
+> *"Before 5.1.0"* for the deadlock change. With public types removed the next release is a major, so that
+> reference has to be corrected when the version is actually chosen.
+
+**Ledger.** This PR removes one marker on its own: measured on its branch, **62 `[Ignore(…)]` + 14 = 76**,
+because it branched from `main` before PR 2 landed. Once both are on `main` the figure is
+**61 + 14 = 75**, and the concurrency area holds **10 markers** plus the one `TestCase` property — 4 in
+`CoreConcurrencyFindingsTests`, 4 in `WitDbConnectionParallelAccessTests`, 1 in `LockManagerTests`, 1 in
+`ConnectionPoolFindingTests`. Recount on `main` rather than trusting this arithmetic; that is the rule this
+phase learned three times.
+
+---
+
 ## 8b. The second half — the remaining concurrency markers
 
 Work order taken from § "Question 2" rather than chosen again: the row-lock and MVCC deadlock-detector
