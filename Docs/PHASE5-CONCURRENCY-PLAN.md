@@ -1011,6 +1011,47 @@ not go down here, and it should not have.
 `FlushAllAsync` (timing-dependent), `HighConcurrencyStressTest` (above), `LockManagerTests`, and the
 unreachable `ConnectionPoolFindingTests` pool leak.
 
+### 8b.8a Closing a database races opening it — **found by CI, in the mechanism 5.0.0 exists for**
+
+Un-ignoring those three markers was green here **15 consecutive times** and went **red on the first CI
+run**, on both frameworks. Fourth time in this project that a second machine has overturned a local
+verdict, and the first where the local run was the over-optimistic one.
+
+The failure was not the index corruption of § 8b.8. It was:
+
+```
+DatabaseAlreadyOpenException: The database '…/concurrent_rw.witdb' is already open.
+  at WitDatabaseBuilder.AcquireExclusiveLock
+  at SharedDatabase.Acquire
+  at WitDbConnection.Open
+```
+
+**A connection was refused because the process was still closing the same database.** `SharedDatabase`
+is the ref-counted registry PR #56 added to make many connections work, so this is a defect in the
+mechanism the release exists for — and `Acquire` was *not* where it lived. `Acquire` already builds
+inside the registry lock, with a comment explaining exactly this hazard.
+
+`Release` was the gap. It removed the entry **inside** the lock and disposed **outside** it:
+
+```csharp
+lock (s_lock) { …; s_entries.Remove(key); database = entry.Database; }
+database?.Dispose();          // ← this is what releases the exclusive file lock
+```
+
+Disposal is outside the lock deliberately — it flushes and may compact, and should not hold up opening an
+unrelated database. But between the `Remove` and the `Dispose`, a concurrent `Acquire` for the same key
+sees **no entry**, builds a second engine, and that engine's `AcquireExclusiveLock` hits the file lock the
+first one has not let go of yet.
+
+**The fix keeps both properties.** The entry is now *marked* `Closing` rather than removed, and is taken
+out of the registry only after the database is really shut; an `Acquire` that finds a closing entry waits
+on it **outside** the registry lock and then looks again. Unrelated databases still never wait, and
+disposal still happens outside the lock.
+
+**The proof is CI, and that is the honest statement.** The window is small enough that this machine could
+not produce it in 15 runs; the runner produced it on the first. A local green is not evidence about this
+one in either direction.
+
 ---
 
 ## 8b.5 The page-cache corruption window — PR 4

@@ -56,38 +56,58 @@ internal static class SharedDatabase
     /// <param name="factory">Builds the database when no engine exists for the key yet.</param>
     public static SharedDatabaseLease Acquire(string key, string signature, Func<WitDatabase> factory)
     {
-        lock (s_lock)
+        while (true)
         {
-            if (s_entries.TryGetValue(key, out var existing))
-            {
-                if (!string.Equals(existing.Signature, signature, StringComparison.Ordinal))
-                    throw new InvalidOperationException(BuildSignatureMismatchMessage(key, existing.Signature, signature));
+            ManualResetEventSlim closing;
 
-                existing.Leases++;
-                return new SharedDatabaseLease(key, existing.Database, existing.Schema);
+            lock (s_lock)
+            {
+                if (s_entries.TryGetValue(key, out var existing))
+                {
+                    if (!existing.Closing)
+                    {
+                        if (!string.Equals(existing.Signature, signature, StringComparison.Ordinal))
+                            throw new InvalidOperationException(
+                                BuildSignatureMismatchMessage(key, existing.Signature, signature));
+
+                        existing.Leases++;
+                        return new SharedDatabaseLease(key, existing.Database, existing.Schema);
+                    }
+
+                    // The last lease has gone and this database is being closed. Its exclusive file
+                    // lock is not released until that finishes, so building now would fail with
+                    // "already open" about a database this process is in the middle of closing. Wait
+                    // for it outside the registry lock, then look again.
+                    closing = existing.Closed;
+                }
+                else
+                {
+                    // Built inside the lock so two connections racing to open the same database cannot
+                    // both construct one - the loser would then fail on the exclusive database lock,
+                    // reporting "already open" about a database nobody had finished opening.
+                    var database = factory();
+
+                    SchemaCatalog schema;
+
+                    try
+                    {
+                        schema = new SchemaCatalog(database.Store);
+                    }
+                    catch
+                    {
+                        // Otherwise the database - and its exclusive lock - would be orphaned with no
+                        // lease to release them, leaving the file unopenable for the rest of the
+                        // process's life.
+                        database.Dispose();
+                        throw;
+                    }
+
+                    s_entries[key] = new Entry(database, schema, signature);
+                    return new SharedDatabaseLease(key, database, schema);
+                }
             }
 
-            // Built inside the lock so two connections racing to open the same database cannot both
-            // construct one - the loser would then fail on the exclusive database lock, reporting
-            // "already open" about a database nobody had finished opening.
-            var database = factory();
-
-            SchemaCatalog schema;
-
-            try
-            {
-                schema = new SchemaCatalog(database.Store);
-            }
-            catch
-            {
-                // Otherwise the database - and its exclusive lock - would be orphaned with no lease to
-                // release them, leaving the file unopenable for the rest of the process's life.
-                database.Dispose();
-                throw;
-            }
-
-            s_entries[key] = new Entry(database, schema, signature);
-            return new SharedDatabaseLease(key, database, schema);
+            closing.Wait();
         }
     }
 
@@ -103,6 +123,8 @@ internal static class SharedDatabase
         WitDatabase? database = null;
         SchemaCatalog? schema = null;
 
+        Entry? closing = null;
+
         lock (s_lock)
         {
             if (!s_entries.TryGetValue(key, out var entry))
@@ -110,18 +132,32 @@ internal static class SharedDatabase
 
             entry.Leases--;
 
-            if (entry.Leases > 0)
+            if (entry.Leases > 0 || entry.Closing)
                 return;
 
-            s_entries.Remove(key);
+            // Marked, NOT removed. The entry has to stay visible until the database is really shut,
+            // because disposing is what releases its exclusive file lock - see Entry.Closing.
+            entry.Closing = true;
+            closing = entry;
             database = entry.Database;
             schema = entry.Schema;
         }
 
-        // Outside the lock: disposing flushes, may compact, and releases the exclusive database lock,
-        // none of which should hold up a connection opening an unrelated database.
-        schema?.Dispose();
-        database?.Dispose();
+        try
+        {
+            // Outside the lock: disposing flushes, may compact, and releases the exclusive database
+            // lock, none of which should hold up a connection opening an unrelated database.
+            schema?.Dispose();
+            database?.Dispose();
+        }
+        finally
+        {
+            lock (s_lock)
+                s_entries.Remove(key);
+
+            // Only now may a waiting Acquire build a replacement.
+            closing.Closed.Set();
+        }
     }
 
     #endregion
@@ -175,6 +211,23 @@ internal static class SharedDatabase
         public string Signature { get; } = signature;
 
         public int Leases { get; set; } = 1;
+
+        /// <summary>
+        /// Set once the last lease has gone and this entry's database is being closed.
+        /// </summary>
+        /// <remarks>
+        /// The entry stays in the registry until the close has finished, because disposing is what
+        /// releases the database's exclusive file lock. Removing it any earlier lets a concurrent
+        /// <see cref="Acquire"/> see no entry, build a second engine, and fail on that lock with
+        /// <c>DatabaseAlreadyOpenException</c> - about a database this process was in the middle of
+        /// closing. Found by CI, on the ASP.NET Core shape this class exists for.
+        /// </remarks>
+        public bool Closing { get; set; }
+
+        /// <summary>
+        /// Signalled when <see cref="Closing"/> has finished and the entry has left the registry.
+        /// </summary>
+        public ManualResetEventSlim Closed { get; } = new(false);
     }
 
     #endregion
