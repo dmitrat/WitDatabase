@@ -559,13 +559,30 @@ public class ConcurrencyModelProbeTests
 
         var scanned = Observe(() => CountRows(conn, "SELECT Key FROM Data"));
         Report("Q3 marker replica, rows a scan actually returns", scanned);
+
+        // The marker's whole shape, end to end, after the PR 2 grammar fix. Both numbers, because on
+        // this engine COUNT(*) is a cached counter and a scan is the rows - phase 4 learned that the
+        // hard way, and here they agree.
+        Assert.Multiple(() =>
+        {
+            Assert.That(create.Threw, Is.False, "the marker's CREATE TABLE must parse");
+            Assert.That(scanned.Value, Is.EqualTo("Int32:10"), "ten rows were inserted");
+            Assert.That(counted.Value, Is.EqualTo("Int64:10"), "and the cached count must agree");
+        });
     }
 
     /// <summary>
     /// Attribution control for the marker replica above: the same <c>CREATE TABLE</c> with no
-    /// parallel mode at all. If it fails here too, the marker's cause is not parallel mode, and
-    /// naming parallel mode in it was a misattribution.
+    /// parallel mode at all.
     /// </summary>
+    /// <remarks>
+    /// <b>This control is what settled the misattribution, and it has now flipped.</b> When first
+    /// written it asserted <c>create.Threw</c> and passed: the statement failed with no parallel mode
+    /// set, which is what proved the marker's reason string wrong. The grammar fix in PR 2 - <c>KEY</c>
+    /// added to <c>nonReservedKeyword</c> - turned it red, and that red was the confirmation that the
+    /// control depended on the defect rather than on something else. It now asserts the fixed
+    /// behaviour, and the historical verdict stays here in prose so the record is not lost.
+    /// </remarks>
     [Test]
     public void ControlTheMarkersCreateTableWithoutParallelModeTest()
     {
@@ -582,10 +599,10 @@ public class ConcurrencyModelProbeTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(create.Threw, Is.True,
-                "the marker blamed parallel mode, but this statement fails without it");
+            Assert.That(create.Threw, Is.False,
+                "a column named Key must parse - it was the marker's actual cause, fixed in PR 2");
             Assert.That(renamed.Threw, Is.False,
-                "only the column named 'Key' is refused, so the cause is the identifier");
+                "the same shape with an ordinary column name must keep working");
         });
     }
 

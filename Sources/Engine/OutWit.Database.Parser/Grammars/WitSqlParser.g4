@@ -752,8 +752,16 @@ nonReservedKeyword
     // Other common identifiers
     | ACTION | TYPE | ISOLATION | LEVEL | SNAPSHOT
     | CONFLICT | DO | NOTHING | WRITE | SHARE
-    | FIRST | LAST | VALUE
+    | FIRST | LAST
     | PLAN | QUERY
+    // KEY is an ordinary column name in PostgreSQL, SQL Server and SQLite, and it only ever appears
+    // after PRIMARY or FOREIGN in this grammar, so it is unambiguous here. Until 2026-07-30
+    // `CREATE TABLE T (Key TEXT)` did not parse, and the failure had been recorded against
+    // Parallel Mode=Buffered instead. See Docs/PHASE5-CONCURRENCY-PLAN.md section 5.
+    | KEY
+    // VALUE was listed here but is not a lexer token at all, so ANTLR defined it implicitly and the
+    // alternative could never match - it emitted `warning(125): implicit definition of token VALUE`
+    // on every build. `Value` as a column name works, and always did, by matching IDENTIFIER.
     ;
 
 signalStatement
