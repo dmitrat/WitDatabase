@@ -46,6 +46,27 @@ The phase-5 plan and the project memory both carried **68 + 13 = 81** suppressed
 | **`[TestCase(… Ignore = …)]` entries** | | **13** |
 | **Suppressed entries** | | **79** |
 | *After PR 2 closed the parallel-mode marker* | | **65 + 13 = 78** |
+| *After PR 4 added three (instrument B, § 7a)* | | **67 + 14 = 81** |
+
+**The `TestCase` filter is wrong too — third correction to this count, 2026-07-30.** PR 4's marker went
+on a **continuation line**:
+
+```csharp
+[TestCase(false, TestName = "…",
+    Ignore = "CONFIRMED …")]
+```
+
+so `grep "Ignore *=" | grep -c "TestCase"` does not see it, and reported 13 where the truth was 14. **Use
+this instead**, which needs no assumption about line breaks:
+
+```
+grep -rho "\[Ignore(" --include=*.cs Sources/ | wc -l                    # attributes
+grep -rn  "Ignore *=" --include=*.cs Sources/ | grep -vc "const string"  # TestCase properties
+```
+
+Three wrong answers in one phase, all from pattern-matching a C# attribute with a line-oriented tool.
+The lesson is not the number; it is that **a count nobody has cross-checked against a second method is
+a guess**, and this ledger is quoted in every release note.
 | `[Explicit]` attributes | | **2** (not 3 — one hit is prose inside the other's reason) |
 
 The recorded count of 68 came from filtering `\[Ignore` for non-comment lines, which still admits the
@@ -454,8 +475,59 @@ Two consequences for the work, both measured rather than assumed:
   which is where phase 4's recovery work meets this phase's access model. `Tools/OutWit.Database.CrashRunner`
   already kills a process mid-write; the missing half is the reopen.
 - **The shared-engine mechanism itself**, which § 8 turns from an open question into the phase's main
-  subject. Not yet designed; it wants its own PR and its own instrument, because "two connections see
-  each other's committed writes" is the property to test and nothing in the suite tests it today.
+  subject. **Instrument B is now built and it has changed the shape of the job — see § 7a.**
+
+### 7a. Instrument B — what two engines over one database see, and why the obvious design fails
+
+`Sources/Engine/OutWit.Database.Tests/Concurrency/SharedDatabaseTwoEnginesProbeTests.cs`, six tests,
+two controls. The obvious way to make many connections work is *share the `WitDatabase`, give each
+connection its own `WitSqlEngine`* — the engine holds `m_currentTransaction`, so it is a session rather
+than a database object. This instrument asked whether that split is actually correct. It is not, yet.
+
+| Probe | Observed |
+|---|---|
+| Control: one engine sees its own work | ✔ |
+| Control: second engine sees a table that **predates** it | ✔ — `SchemaCatalog` loads in its constructor |
+| Second engine sees a table created **after** it | ✘ `InvalidOperationException: Table 'Later' not found` |
+| Second engine scans rows the first inserted | ✔ returns **1** |
+| …and `COUNT(*)` for the same rows | ✘ returns **0** |
+| Two sessions begin transactions, **MVCC off** | ✘ `LockRecursionException` |
+| Two sessions begin transactions, **MVCC on** | ✔ |
+
+**The blocker is the schema catalog, not the store.** `SchemaCatalog` loads the schema **once, in its
+constructor**, into plain dictionaries of tables, indexes, views, triggers, sequences, row ids and row
+counts — and `WitSqlEngine` constructs its own. So two sessions over one database each hold a private,
+immediately stale idea of the schema. `ReloadMetadataFromStore` exists but refreshes only the counters.
+**The catalog is database-level state that is currently session-level**, and that is the thing to move.
+
+**The insidious half is the count.** A scan through the second engine returns the row; `COUNT(*)`
+through the *same* engine returns zero, because the count comes from that engine's own catalog counter
+while the rows come off the shared store. A query and its own count disagree **across sessions**, with
+no crash involved — the same split phase 4 met after a process kill. It was caught only because the
+probe measured both: a `COUNT(*)`-only test would have reported no rows, and a rows-only test would
+have reported success. That is the fourth time this project's own `COUNT(*)` has nearly told a lie.
+
+**MVCC is what makes the shape possible at all.** With MVCC off, a transaction holds the database-wide
+write lock for its whole duration, so a second session's `BEGIN` throws `LockRecursionException` on the
+same thread — one transaction per database, and a poor diagnosis of it. One writer at a time *is* the
+documented model for `MVCC=false`, so the defect there is the error message rather than the exclusion.
+**MVCC is the provider default** (`WitDbConnectionStringBuilder.Mvcc` → `true`), and its case passes, so
+this does not block the work — but it does mean the supported shape is MVCC-only, which needs saying in
+`WitSQL.md` once it lands.
+
+**Where the shared catalog has to live.** Not on `WitDatabase`: that lives in Core, `SchemaCatalog` lives
+in the engine assembly, and Core must not reference upward. So the registry in the ADO.NET layer holds
+the pair — it already references both — and `WitSqlEngine` needs a constructor that accepts a catalog
+instead of always building one.
+
+**Ledger: 65 → 67, plus one `TestCase` marker (13 → 14), so 81 suppressed entries.** Three new markers,
+all defects that were in no audit, and the phase predicted the ledger would rise before it falls. The
+third of them also exposed the counting error in § 1.
+
+**Why this PR stops at the measurement.** The fix is a real architecture change — moving the schema
+catalog from session scope to database scope and adding a `WitSqlEngine` constructor that accepts one —
+and the shape of it was only knowable *after* these results. Landing the instrument first is the same
+order phase 4 used, where the instrument PR preceded every fix and each fix then had a verdict to aim at.
 
 ---
 
