@@ -243,14 +243,13 @@ namespace OutWit.Database.Core.Transactions
                 var lockManager = m_store.RowLockManager;
                 var deadlockDetector = m_store.DeadlockDetector;
 
-                // Check which transactions currently hold locks on this key
-                if (waitMode == RowLockWaitMode.Wait && lockManager.IsLocked(key))
-                {
-                    // Find holders and check for potential deadlock
-                    // This is a simplified check - full implementation would track all holders
-                }
-
                 var request = new RowLockRequest(keyArray, TransactionId, lockMode, waitMode, timeout);
+
+                // Only a waiting request can take part in a deadlock: NoWait and SkipLocked give up
+                // rather than join the wait-for graph.
+                var registeredHolders = waitMode == RowLockWaitMode.Wait
+                    ? RegisterWaitEdges(deadlockDetector, lockManager, keyArray)
+                    : null;
 
                 try
                 {
@@ -267,6 +266,10 @@ namespace OutWit.Database.Core.Transactions
                 {
                     // NOWAIT - lock could not be acquired
                     throw;
+                }
+                finally
+                {
+                    UnregisterWaitEdges(deadlockDetector, registeredHolders);
                 }
             }
 
@@ -288,8 +291,15 @@ namespace OutWit.Database.Core.Transactions
             if (!m_lockedKeys.Contains(key))
             {
                 var lockManager = m_store.RowLockManager;
+                var deadlockDetector = m_store.DeadlockDetector;
 
                 var request = new RowLockRequest(key, TransactionId, lockMode, waitMode, timeout);
+
+                // Same wait-for bookkeeping as the synchronous path. This path did not even fetch the
+                // detector before, so a deadlock between two async waiters was equally invisible.
+                var registeredHolders = waitMode == RowLockWaitMode.Wait
+                    ? RegisterWaitEdges(deadlockDetector, lockManager, key)
+                    : null;
 
                 try
                 {
@@ -309,10 +319,79 @@ namespace OutWit.Database.Core.Transactions
                     // NOWAIT - lock could not be acquired
                     throw;
                 }
+                finally
+                {
+                    UnregisterWaitEdges(deadlockDetector, registeredHolders);
+                }
             }
 
             // Now read the value
             return Get(key);
+        }
+
+        /// <summary>
+        /// Records in the wait-for graph that this transaction is about to wait behind every current
+        /// holder of <paramref name="key"/>, and reports a cycle as a deadlock rather than letting both
+        /// sides wait out their timeout.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This is what the comment "full implementation would track all holders" asked for. The holder
+        /// set is read in one pass under the manager's lock, so a shared lock's several holders are all
+        /// accounted for and there is no window between "is it locked" and "who holds it".
+        /// </para>
+        /// <para>
+        /// <b>The transaction that closes the cycle is the victim</b>, whatever
+        /// <see cref="DeadlockVictimStrategy"/> the detector was built with. That is a deliberate
+        /// limitation rather than an oversight: the other participants are blocked inside
+        /// <c>AcquireLock</c>, and there is no mechanism to abort a transaction from another thread, so
+        /// the strategy cannot be honoured here. The deadlock still resolves - this transaction fails,
+        /// its caller rolls back, and the locks it held are released. The strategy remains meaningful for
+        /// the detector's on-demand and background APIs, where nobody is blocked.
+        /// </para>
+        /// </remarks>
+        /// <returns>The holders an edge was added for, to be undone by <see cref="UnregisterWaitEdges"/>.</returns>
+        private List<long>? RegisterWaitEdges(
+            DeadlockDetector detector,
+            IRowLockManager lockManager,
+            byte[] key)
+        {
+            var holders = lockManager.GetHoldingTransactions(key);
+            if (holders.Count == 0)
+                return null;
+
+            List<long>? registered = null;
+
+            foreach (var holder in holders)
+            {
+                if (holder == TransactionId)
+                    continue;
+
+                try
+                {
+                    detector.RegisterWait(TransactionId, holder);
+                }
+                catch (DeadlockException ex)
+                {
+                    // Undo the edges added for the earlier holders before giving up on this wait.
+                    UnregisterWaitEdges(detector, registered);
+
+                    throw new DeadlockException(TransactionId, ex.CycleParticipants ?? [TransactionId, holder]);
+                }
+
+                (registered ??= []).Add(holder);
+            }
+
+            return registered;
+        }
+
+        private void UnregisterWaitEdges(DeadlockDetector detector, List<long>? holders)
+        {
+            if (holders == null)
+                return;
+
+            foreach (var holder in holders)
+                detector.UnregisterWait(TransactionId, holder);
         }
 
         #endregion

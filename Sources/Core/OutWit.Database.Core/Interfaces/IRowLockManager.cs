@@ -67,6 +67,18 @@ namespace OutWit.Database.Core.Concurrency
         IReadOnlyCollection<byte[]> GetLockedKeys(long transactionId);
 
         /// <summary>
+        /// Gets every transaction currently holding a lock on a key.
+        /// </summary>
+        /// <remarks>
+        /// This is the inverse of <see cref="GetLockedKeys"/>, and it is what deadlock detection needs:
+        /// a waiter has to know all of the holders it is waiting behind, not just whether the key is
+        /// locked. A shared lock can have several holders, so <see cref="IsLocked"/> is not enough.
+        /// </remarks>
+        /// <param name="key">The key to inspect.</param>
+        /// <returns>The holding transaction IDs, empty if the key is not locked.</returns>
+        IReadOnlyCollection<long> GetHoldingTransactions(ReadOnlySpan<byte> key);
+
+        /// <summary>
         /// Gets the total number of active locks.
         /// </summary>
         int LockCount { get; }
