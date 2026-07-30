@@ -393,69 +393,23 @@ public class CoreConcurrencyFindingsTests
 
     #endregion
 
-    #region PageLatchManager.Cleanup can drop a latch that is still held
+    #region PageLatchManager.Cleanup could drop a latch that was still held - REMOVED WITH THE SUBSYSTEM
 
-    [Test]
-    [Ignore("CONFIRMED 2026-07-27, in a worse form than stated. Both halves reproduce: the second "
-            + "exclusive acquire IS granted while another thread holds the page, and the holder's "
-            + "release then throws SynchronizationLockException \"The write lock is being released "
-            + "without being held\" - it lands on the replacement latch, not the one it took. That "
-            + "exception is raised on a background thread, so left unhandled it terminates the "
-            + "process: this test crashed the test host before its Dispose was wrapped. "
-            + "core-concurrency, Tree/PageLatchManager.cs:228")]
-    public void CleanupDoesNotReleaseALatchHeldByAnotherThreadTest()
-    {
-        // Finding: PageLatchManager.cs:228 - Cleanup decides a latch is idle using
-        // ReaderWriterLockSlim.IsWriteLockHeld, which is *thread-affine*: it reports whether the
-        // calling thread holds the lock, not whether anyone does. Seen from the cleanup thread a
-        // latch held exclusively by a different thread looks completely idle, so it is removed and
-        // disposed underneath its owner.
-        //
-        // The thread hand-off below is what makes this deterministic - holding the latch on the
-        // test's own thread would make IsWriteLockHeld true and hide the defect entirely.
-        var manager = new PageLatchManager();
-        var acquired = new ManualResetEventSlim(false);
-        var release = new ManualResetEventSlim(false);
-        Exception? holderFailure = null;
-
-        // The holder's Dispose is wrapped: without the catch, the exception it throws is unhandled
-        // on a background thread and terminates the whole test host (observed 2026-07-27).
-        var holder = new Thread(() =>
-        {
-            var handle = manager.AcquireExclusive(1);
-            acquired.Set();
-            release.Wait(TimeSpan.FromSeconds(10));
-            try { handle.Dispose(); }
-            catch (Exception e) { holderFailure = e; }
-        });
-        holder.Start();
-        acquired.Wait(TimeSpan.FromSeconds(10));
-
-        bool granted;
-        try
-        {
-            manager.Cleanup();
-
-            granted = manager.TryAcquireExclusive(1, out var second);
-            if (granted)
-                second.Dispose();
-        }
-        finally
-        {
-            release.Set();
-            holder.Join(TimeSpan.FromSeconds(10));
-            try { manager.Dispose(); } catch (SynchronizationLockException) { /* part of the defect */ }
-        }
-
-        Assert.Multiple(() =>
-        {
-            Assert.That(granted, Is.False,
-                "page 1 is exclusively latched by another thread, so a second exclusive acquire " +
-                "must not be granted");
-            Assert.That(holderFailure, Is.Null,
-                "the holder must be able to release the latch it acquired");
-        });
-    }
+    // The marker that lived here is gone because its subject is gone. `PageLatch` and
+    // `PageLatchManager` were deleted 2026-07-30; the defect was real and confirmed - Cleanup decided a
+    // latch was idle using the thread-affine ReaderWriterLockSlim.IsWriteLockHeld, so a second exclusive
+    // acquire WAS granted while another thread held the page, and the holder's release then threw
+    // SynchronizationLockException on a background thread, terminating the test host.
+    //
+    // It was fixed by deletion rather than by repair, because NOTHING could enter it. Re-verified
+    // exhaustively before removal: across Sources/, Tools/, Samples/ and Benchmarks/ the only
+    // references to either type were their own declarations and their own tests. `BTreeConcurrentStore`
+    // serialises with one store-wide ReaderWriterLockSlim, not per-page latches, which is consistent
+    // with the decided model - one writer at a time - and leaves finer-grained page latching as an
+    // optimisation nothing had wired in.
+    //
+    // Kept as a comment rather than dropped silently so that "the count went down" is not mistaken for
+    // "the defect was repaired". See Docs/PHASE5-CONCURRENCY-PLAN.md 8b.4.
 
     #endregion
 
