@@ -19,6 +19,14 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
     private readonly IIndexManager? m_indexManager;
     private readonly IndexMetadataStore? m_indexMetadataStore;
     private readonly bool m_disposeStore;
+
+    /// <summary>
+    /// The exclusive database lock that enforces one engine per database, or null for an in-memory
+    /// database and for a caller-supplied store whose path the builder does not know. Released last,
+    /// <b>after</b> the store closes its files, so a process that takes the lock next never finds
+    /// handles from the previous owner still open.
+    /// </summary>
+    private readonly IDisposable? m_databaseLock;
     private bool m_indexesRestored;
     private bool m_disposed;
 
@@ -30,8 +38,9 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
     /// Creates a new WitDatabase wrapping a key-value store.
     /// For async initialization, use <see cref="CreateAsync"/> instead.
     /// </summary>
-    internal WitDatabase(IKeyValueStore store, IIndexManager? indexManager = null, bool disposeStore = true)
-        : this(store, indexManager, disposeStore, restoreIndexes: true)
+    internal WitDatabase(IKeyValueStore store, IIndexManager? indexManager = null, bool disposeStore = true,
+        IDisposable? databaseLock = null)
+        : this(store, indexManager, disposeStore, restoreIndexes: true, databaseLock)
     {
     }
 
@@ -39,8 +48,9 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
     /// Creates a new WitDatabase wrapping a transactional store.
     /// For async initialization, use <see cref="CreateAsync"/> instead.
     /// </summary>
-    internal WitDatabase(ITransactionalStore store, IIndexManager? indexManager = null, bool disposeStore = true)
-        : this((IKeyValueStore)store, indexManager, disposeStore, restoreIndexes: true)
+    internal WitDatabase(ITransactionalStore store, IIndexManager? indexManager = null, bool disposeStore = true,
+        IDisposable? databaseLock = null)
+        : this((IKeyValueStore)store, indexManager, disposeStore, restoreIndexes: true, databaseLock)
     {
         m_transactionalStore = store;
     }
@@ -48,12 +58,14 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
     /// <summary>
     /// Private constructor with option to skip index restoration (for async path).
     /// </summary>
-    private WitDatabase(IKeyValueStore store, IIndexManager? indexManager, bool disposeStore, bool restoreIndexes)
+    private WitDatabase(IKeyValueStore store, IIndexManager? indexManager, bool disposeStore, bool restoreIndexes,
+        IDisposable? databaseLock = null)
     {
         m_store = store ?? throw new ArgumentNullException(nameof(store));
         m_transactionalStore = store as ITransactionalStore;
         m_indexManager = indexManager;
         m_disposeStore = disposeStore;
+        m_databaseLock = databaseLock;
         
         // Create metadata store using the underlying store
         var underlyingStore = GetUnderlyingStore(store);
@@ -79,9 +91,10 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
         IKeyValueStore store, 
         IIndexManager? indexManager = null, 
         bool disposeStore = true,
+        IDisposable? databaseLock = null,
         CancellationToken cancellationToken = default)
     {
-        var db = new WitDatabase(store, indexManager, disposeStore, restoreIndexes: false);
+        var db = new WitDatabase(store, indexManager, disposeStore, restoreIndexes: false, databaseLock);
         await db.RestoreIndexesFromMetadataAsync(cancellationToken).ConfigureAwait(false);
         db.m_indexesRestored = true;
         return db;
@@ -94,9 +107,11 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
         ITransactionalStore store,
         IIndexManager? indexManager = null,
         bool disposeStore = true,
+        IDisposable? databaseLock = null,
         CancellationToken cancellationToken = default)
     {
-        var db = new WitDatabase((IKeyValueStore)store, indexManager, disposeStore, restoreIndexes: false);
+        var db = new WitDatabase((IKeyValueStore)store, indexManager, disposeStore, restoreIndexes: false,
+            databaseLock);
         await db.RestoreIndexesFromMetadataAsync(cancellationToken).ConfigureAwait(false);
         db.m_indexesRestored = true;
         return db;
@@ -747,6 +762,10 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
         {
             m_store.Dispose();
         }
+
+        // Last, and after the store: releasing the lock first would let another engine in while this
+        // one still had files open.
+        m_databaseLock?.Dispose();
     }
 
     #endregion
@@ -780,6 +799,9 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
                 m_store.Dispose();
             }
         }
+
+        // Last, and after the store - see Dispose.
+        m_databaseLock?.Dispose();
     }
 
     #endregion

@@ -1,5 +1,6 @@
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Concurrency;
+using OutWit.Database.Core.Exceptions;
 using OutWit.Database.Core.Interfaces;
 
 namespace OutWit.Database.Core.Tests.AuditVerification;
@@ -130,14 +131,13 @@ public class ConcurrencyModelWiringProbeTests
         var siblings = Directory.GetFiles(m_testDir).Select(Path.GetFileName).ToArray();
         TestContext.Out.WriteLine($"PROBE  files left in the database directory  ->  {string.Join(", ", siblings)}");
 
-        // PINS AN OBSERVATION, NOT CORRECT BEHAVIOUR. Measured 2026-07-30: no sidecar. The builder
-        // calls new LockManager(TimeSpan?) - the constructor whose own summary reads "for in-memory
-        // databases (no file locking)" - so LockManager.UseFileLocking is false for a file-backed
-        // database and FileLock is never constructed. If cross-process locking is ever wired up,
-        // this assertion inverts; that is the point of asserting it.
-        Assert.That(File.Exists(sidecar), Is.False,
-            "a sidecar appeared, so FileLock is now reachable - invert this assertion and "
-            + "update Docs/PHASE5-CONCURRENCY-PLAN.md");
+        // INVERTED BY THE 5.0.0 FIX, and the inversion is the proof it landed. This assertion used to
+        // read Is.False and pass: FileLock was unreachable from every configuration, because the
+        // builder called the LockManager constructor whose own summary reads "for in-memory databases
+        // (no file locking)". The exclusivity guard now takes the sidecar before any database file is
+        // opened, so it exists for the lifetime of the engine.
+        Assert.That(File.Exists(sidecar), Is.True,
+            "the exclusivity guard did not take its lock - a second engine could open this database");
     }
 
     /// <summary>
@@ -168,6 +168,13 @@ public class ConcurrencyModelWiringProbeTests
         }
 
         Report($"the sidecar for <{label}>", path + ".lock", File.Exists(path + ".lock"));
+
+        // The guard is on for every configuration except the one that explicitly turns it off, which
+        // is now the ONLY job EnableFileLocking has. Note the sidecar outlives the engine - the lock is
+        // released on Dispose, the file is left behind, and its presence says nothing about whether
+        // anyone holds it.
+        Assert.That(File.Exists(path + ".lock"), Is.EqualTo(!withoutFileLocking),
+            $"unexpected sidecar state for <{label}>");
     }
 
     /// <summary>
@@ -182,16 +189,14 @@ public class ConcurrencyModelWiringProbeTests
     /// asked here as well, because the answer decides whether fixing the log's share mode is a
     /// sufficient fix or only the common case.
     /// </remarks>
+    /// <remarks>
+    /// The <c>EnableWal=false</c> case was <c>[Ignore]</c>d as a confirmed defect and is now closed by
+    /// the 5.0.0 exclusivity guard. Before the fix that directory held only <c>sst_000000.sst</c> and a
+    /// second engine opened it - on Windows, so unlike § 3a it was never a Unix-only problem.
+    /// </remarks>
     [Test]
     [TestCase(true)]
-    [TestCase(false, Ignore = "CONFIRMED 2026-07-30 on Windows, and it is platform-independent: with "
-        + "EnableWal=false the LSM directory holds only sst_000000.sst - no wal.log - and a second "
-        + "WitDatabase over the same directory OPENED. LSM exclusivity comes from the write-ahead log "
-        + "alone (see Docs/PHASE5-CONCURRENCY-PLAN.md section 3a), so a database with no log has no "
-        + "exclusivity at all, on any platform. Unlike section 3a this is NOT a Unix-only defect. "
-        + "Closing it needs exclusivity enforced explicitly rather than as a side effect of which "
-        + "files happen to exist - the FileLock sidecar is that mechanism and is currently "
-        + "unreachable. core-concurrency, Core/Stores/StoreLsm.cs:70")]
+    [TestCase(false)]
     public void ProbeLsmWithoutWalIsStillExclusiveTest(bool enableWal)
     {
         var dir = Path.Combine(m_testDir, $"lsm_core_{enableWal}");
@@ -232,10 +237,16 @@ public class ConcurrencyModelWiringProbeTests
             refused is null ? "OPENED" : $"refused with {refused.GetType().Name}");
 
         // ASSERTS CORRECT BEHAVIOUR. A single-process design must refuse the second engine whatever
-        // files the database happens to contain.
-        Assert.That(refused, Is.Not.Null,
-            $"a second LSM engine opened the same directory with EnableWal={enableWal}, so "
-            + "exclusivity depends on which files exist rather than on the model");
+        // files the database happens to contain - which is precisely why the guard cannot be a share
+        // mode on one of those files.
+        Assert.Multiple(() =>
+        {
+            Assert.That(refused, Is.Not.Null,
+                $"a second LSM engine opened the same directory with EnableWal={enableWal}, so "
+                + "exclusivity depends on which files exist rather than on the model");
+            Assert.That(refused, Is.TypeOf<DatabaseAlreadyOpenException>(),
+                "the refusal must name the engine's own limit, not surface an OS sharing violation");
+        });
     }
 
     #endregion
@@ -266,14 +277,15 @@ public class ConcurrencyModelWiringProbeTests
         var entered = ProbeConcurrentWriters(withoutFileLocking: true);
         Report("writers inside the store at once, FileLocking=false", "count", entered);
 
-        // PINS A DEFECT, NOT CORRECT BEHAVIOUR. Measured 2026-07-30: two writers were inside the
-        // store at once, on two distinct threads. The flag reads as "do not coordinate across
-        // processes", but there is no cross-process locking to turn off (see the sidecar probe
-        // above) and what it removes is the only write serialisation there is. The fix inverts this
-        // assertion to Is.EqualTo(1).
-        Assert.That(entered, Is.EqualTo(2),
-            "FileLocking=false no longer admits two concurrent writers - if that is the fix, "
-            + "invert this assertion and close the marker");
+        // INVERTED BY THE 5.0.0 FIX. This used to read Is.EqualTo(2) and pass: the flag decided
+        // whether a LockManager existed at all, and both transactional stores treat null as "no
+        // locking", so a setting that reads "do not coordinate across processes" removed the mutual
+        // exclusion between two threads writing the same store. The two jobs are now separate - a
+        // lock manager is built unconditionally, and EnableFileLocking controls only the exclusive
+        // database lock.
+        Assert.That(entered, Is.EqualTo(1),
+            "FileLocking=false admits two concurrent writers again - the flag has gone back to "
+            + "deciding whether a LockManager exists");
     }
 
     /// <summary>

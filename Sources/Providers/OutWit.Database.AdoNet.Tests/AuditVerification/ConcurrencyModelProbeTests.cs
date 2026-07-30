@@ -2,6 +2,7 @@ using System.Data;
 using System.Data.Common;
 using System.Text;
 using OutWit.Database.AdoNet.Pool;
+using OutWit.Database.Core.Exceptions;
 
 namespace OutWit.Database.AdoNet.Tests.AuditVerification;
 
@@ -169,31 +170,18 @@ public class ConcurrencyModelProbeTests
             Report($"Q1 lsm, the second connection reads a row the first wrote [{Platform}]", read);
         }
 
-        if (OperatingSystem.IsWindows())
+        // CLOSED BY THE 5.0.0 EXCLUSIVITY GUARD, and the platform branch this test used to carry is
+        // gone with it - which is the point. Before the fix the answer differed by platform: Windows
+        // refused with an IOException naming <dir>/wal.log, and Linux let the second connection in and
+        // let it read the first's row, because .NET maps FileShare.Read to a shared advisory lock on
+        // Unix. The guard is a .lock sidecar opened FileShare.None, so it behaves identically on both.
+        Assert.Multiple(() =>
         {
-            // PINS AN OBSERVATION. Measured 2026-07-30 on Windows: IOException on <dir>/wal.log, not
-            // on the store. The LSM store's own files are shareable - SSTableReader opens
-            // FileShare.Read - so exclusivity comes from the write-ahead log, which matters because
-            // the failure lands part-way through opening the engine.
-            Assert.Multiple(() =>
-            {
-                Assert.That(outcome.Threw, Is.True,
-                    "a second LSM connection now opens on Windows too - update the plan doc");
-                Assert.That(outcome.Message, Does.Contain("wal.log"),
-                    "LSM exclusivity no longer comes from the WAL; re-establish where it does");
-            });
-
-            return;
-        }
-
-        // PINS A DEFECT, and a data-corruption one. Measured 2026-07-30 on the Linux CI runner: the
-        // second connection OPENED and read the first connection's row. Two independent engines are
-        // then live over one LSM directory, each with its own memtable and its own handle on the same
-        // write-ahead log, and nothing coordinates them - see
-        // ProbeTwoLsmConnectionsBothWriteTest for what that costs. The fix inverts this assertion.
-        Assert.That(outcome.Threw, Is.False,
-            "a second LSM connection is now refused on Unix - if that is the fix, invert this "
-            + "assertion and close the marker");
+            Assert.That(outcome.Threw, Is.True,
+                $"a second LSM connection opened on {Platform} - see plan doc section 3a");
+            Assert.That(outcome.ExceptionType, Is.EqualTo(nameof(DatabaseAlreadyOpenException)),
+                "the refusal must name the engine's own limit, not an OS sharing violation");
+        });
     }
 
     /// <summary>
@@ -225,8 +213,12 @@ public class ConcurrencyModelProbeTests
 
             if (opened.Threw)
             {
-                Assert.That(OperatingSystem.IsWindows(), Is.True,
-                    "the second connection was refused on a platform where it had opened before");
+                // The expected path since the 5.0.0 guard, on every platform. Kept as a live probe
+                // rather than deleted because it is the regression test for the divergence it used to
+                // measure: before the fix, on Linux, the second engine opened and the two engines then
+                // saw 1 row and 2 rows of the same table.
+                Assert.That(opened.ExceptionType, Is.EqualTo(nameof(DatabaseAlreadyOpenException)),
+                    "a second engine was refused, but not by the exclusivity guard");
                 return;
             }
 
@@ -426,27 +418,19 @@ public class ConcurrencyModelProbeTests
                 Observe(() => new Outcome(false, null, null, $"Int32:{CountRows(second, "SELECT Id FROM T")}").Value!));
         }
 
-        // Through the provider a wal.log appears in ALL FOUR combinations - measured 2026-07-30,
-        // including with EnableWal=false and Transactions=false - so the provider cannot produce a
-        // log-less LSM database and the share mode of the log governs every case. Which platform is
-        // being measured therefore decides the expectation, exactly as in
-        // ProbeSecondConnectionToSameLsmDirectoryTest.
-        Assert.That(files, Does.Contain("wal.log"),
-            $"no wal.log for {label}: the provider can now produce a log-less LSM database, which "
-            + "has no exclusivity on any platform - see ProbeLsmWithoutWalIsStillExclusiveTest");
-
-        if (OperatingSystem.IsWindows())
+        // The whole point of the 5.0.0 guard is that this expectation no longer depends on the
+        // configuration or the platform. Before it, the answer varied on both axes: the log's share
+        // mode was the only thing refusing anyone, so an LSM database was exclusive on Windows and not
+        // on Linux, and a database with no log was exclusive nowhere. All four combinations are
+        // asserted the same way now, and the files on disk are still reported because a change to
+        // which files exist used to change the answer.
+        Assert.Multiple(() =>
         {
             Assert.That(outcome.Threw, Is.True,
-                $"a second engine opened an LSM database with {label} on Windows");
-            return;
-        }
-
-        // PINS THE SECTION 3a DEFECT across all four configurations: on Unix FileShare.Read is a
-        // shared advisory lock, so the log refuses nobody. The fix inverts this.
-        Assert.That(outcome.Threw, Is.False,
-            $"a second engine is now refused with {label} on Unix - if that is the fix, invert this "
-            + "assertion and close the marker");
+                $"a second engine opened an LSM database with {label} on {Platform}");
+            Assert.That(outcome.ExceptionType, Is.EqualTo(nameof(DatabaseAlreadyOpenException)),
+                $"refused for the wrong reason with {label}");
+        });
     }
 
     #endregion
@@ -473,7 +457,7 @@ public class ConcurrencyModelProbeTests
         {
             Assert.That(outcome.Threw, Is.True,
                 "the pool now pre-creates two file connections - invert this and close the marker");
-            Assert.That(outcome.ExceptionType, Is.EqualTo(nameof(IOException)),
+            Assert.That(outcome.ExceptionType, Is.EqualTo(nameof(DatabaseAlreadyOpenException)),
                 "the failure changed shape; re-read what it is now before trusting this test");
         });
     }

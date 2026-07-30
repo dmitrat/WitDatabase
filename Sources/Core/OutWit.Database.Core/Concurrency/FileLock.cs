@@ -1,3 +1,5 @@
+using OutWit.Database.Core.Utils;
+
 namespace OutWit.Database.Core.Concurrency;
 
 /// <summary>
@@ -36,7 +38,10 @@ public sealed class FileLock : IDisposable
     /// <param name="timeout">Lock acquisition timeout.</param>
     public FileLock(string databasePath, TimeSpan? timeout = null)
     {
-        m_lockFilePath = databasePath + ".lock";
+        // Through DatabaseFiles rather than by string concatenation, so that whoever deletes a
+        // database and whoever locks it cannot drift apart - which is the whole reason that class
+        // exists, and the sidecar drifted from it on the day it was introduced.
+        m_lockFilePath = DatabaseFiles.GetLockPath(databasePath)!;
         m_timeout = timeout ?? DatabaseLock.DEFAULT_TIMEOUT;
     }
 
@@ -70,6 +75,54 @@ public sealed class FileLock : IDisposable
     #region ExclusiveLock
 
     /// <summary>
+    /// Tries once to acquire the exclusive lock, without waiting or retrying.
+    /// </summary>
+    /// <returns>True if the lock was taken; false if someone else holds it.</returns>
+    /// <remarks>
+    /// Added in 5.0.0 for the database-exclusivity guard, which wants "is this database already open"
+    /// answered now rather than after a wait: the other holder is a whole engine, so waiting would
+    /// turn a design limit into a stall.
+    ///
+    /// <b>Not expressible as <c>AcquireExclusiveLock(TimeSpan.Zero)</c>.</b> That overload computes
+    /// <c>deadline = UtcNow + timeout</c> and loops <c>while (UtcNow &lt; deadline)</c>, so a zero
+    /// timeout skips the body entirely and reports a timeout without ever having tried - it would
+    /// refuse the first caller as readily as the second.
+    /// </remarks>
+    public bool TryAcquireExclusiveLock()
+    {
+        ThrowIfDisposed();
+
+        if (m_hasLock)
+            return true;
+
+        EnsureDirectoryExists();
+
+        try
+        {
+            m_lockFile = new FileStream(
+                m_lockFilePath,
+                FileMode.OpenOrCreate,
+                FileAccess.ReadWrite,
+                FileShare.None,
+                1,
+                FileOptions.None);
+
+            m_hasLock = true;
+            return true;
+        }
+        catch (IOException)
+        {
+            return false;
+        }
+        catch (UnauthorizedAccessException)
+        {
+            // Unix reports a denied advisory lock this way in some configurations, and a read-only
+            // directory reports it on both platforms. Either way the lock was not taken.
+            return false;
+        }
+    }
+
+    /// <summary>
     /// Acquires an exclusive (write) lock on the database file.
     /// No other processes can access while this lock is held.
     /// Uses exponential backoff for retries.
@@ -87,12 +140,7 @@ public sealed class FileLock : IDisposable
         var deadline = DateTime.UtcNow + effectiveTimeout;
         var delay = INITIAL_RETRY_DELAY_MS;
 
-        // Ensure directory exists
-        var dir = Path.GetDirectoryName(m_lockFilePath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
+        EnsureDirectoryExists();
 
         while (DateTime.UtcNow < deadline)
         {
@@ -134,12 +182,7 @@ public sealed class FileLock : IDisposable
         using var cts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         cts.CancelAfter(effectiveTimeout);
         
-        // Ensure directory exists
-        var dir = Path.GetDirectoryName(m_lockFilePath);
-        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
-        {
-            Directory.CreateDirectory(dir);
-        }
+        EnsureDirectoryExists();
         
         var delay = INITIAL_RETRY_DELAY_MS;
 
@@ -201,6 +244,16 @@ public sealed class FileLock : IDisposable
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(m_disposed, this);
+    }
+
+    private void EnsureDirectoryExists()
+    {
+        var dir = Path.GetDirectoryName(m_lockFilePath);
+
+        if (!string.IsNullOrEmpty(dir) && !Directory.Exists(dir))
+        {
+            Directory.CreateDirectory(dir);
+        }
     }
 
     #endregion

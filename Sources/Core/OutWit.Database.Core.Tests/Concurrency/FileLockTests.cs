@@ -80,6 +80,95 @@ public class FileLockTests : IDisposable
 
     #endregion
 
+    #region TryAcquireExclusiveLock
+
+    [Test]
+    public void TryAcquireExclusiveLockTakesAnUnheldLockTest()
+    {
+        var lockPath = Path.Combine(m_testDir, "try_free.db");
+        using var fileLock = new FileLock(lockPath);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(fileLock.TryAcquireExclusiveLock(), Is.True);
+            Assert.That(fileLock.HasExclusiveLock, Is.True);
+            Assert.That(File.Exists(lockPath + ".lock"), Is.True);
+        });
+    }
+
+    [Test]
+    public void TryAcquireExclusiveLockRefusesAHeldLockTest()
+    {
+        var lockPath = Path.Combine(m_testDir, "try_held.db");
+
+        using var holder = new FileLock(lockPath);
+        holder.AcquireExclusiveLock();
+
+        using var contender = new FileLock(lockPath);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(contender.TryAcquireExclusiveLock(), Is.False, "the lock was already held");
+            Assert.That(contender.HasExclusiveLock, Is.False);
+        });
+    }
+
+    [Test]
+    public void TryAcquireExclusiveLockSucceedsOnceTheHolderReleasesTest()
+    {
+        var lockPath = Path.Combine(m_testDir, "try_released.db");
+
+        using (var holder = new FileLock(lockPath))
+        {
+            holder.AcquireExclusiveLock();
+        }
+
+        using var next = new FileLock(lockPath);
+
+        Assert.That(next.TryAcquireExclusiveLock(), Is.True,
+            "the previous holder released the lock, so this one must be able to take it");
+    }
+
+    [Test]
+    public void TryAcquireExclusiveLockIsIdempotentTest()
+    {
+        var lockPath = Path.Combine(m_testDir, "try_twice.db");
+        using var fileLock = new FileLock(lockPath);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(fileLock.TryAcquireExclusiveLock(), Is.True);
+            Assert.That(fileLock.TryAcquireExclusiveLock(), Is.True, "already holding it is success");
+        });
+    }
+
+    /// <summary>
+    /// The reason <c>TryAcquireExclusiveLock</c> exists at all: the waiting overload cannot express
+    /// "try once".
+    /// </summary>
+    /// <remarks>
+    /// <c>AcquireExclusiveLock</c> computes <c>deadline = UtcNow + timeout</c> and loops
+    /// <c>while (UtcNow &lt; deadline)</c>, so a zero timeout skips the body and reports a timeout
+    /// without having tried. The exclusivity guard used it that way for about ten minutes during
+    /// development and would have refused the *first* engine to open any database.
+    /// </remarks>
+    [Test]
+    public void AcquireExclusiveLockWithZeroTimeoutNeverTriesTest()
+    {
+        var lockPath = Path.Combine(m_testDir, "zero_timeout.db");
+        using var fileLock = new FileLock(lockPath);
+
+        Assert.Multiple(() =>
+        {
+            Assert.Throws<TimeoutException>(() => fileLock.AcquireExclusiveLock(TimeSpan.Zero),
+                "nobody holds this lock, and it still reports a timeout - hence TryAcquireExclusiveLock");
+            Assert.That(File.Exists(lockPath + ".lock"), Is.False,
+                "it did not even create the file, which is what 'never tried' means");
+        });
+    }
+
+    #endregion
+
     #region Exclusive Lock Blocking Tests
 
     [Test]
