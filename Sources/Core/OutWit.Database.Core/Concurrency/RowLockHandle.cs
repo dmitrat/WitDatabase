@@ -42,9 +42,15 @@ namespace OutWit.Database.Core.Concurrency
             if (m_disposed) return;
             m_disposed = true;
 
-            // Release this specific lock
-            // Note: We use ReleaseAllLocks in transaction cleanup
-            // Individual lock release is handled by the manager internally
+            try
+            {
+                m_manager.ReleaseLock(m_key, m_transactionId);
+            }
+            catch (ObjectDisposedException)
+            {
+                // The manager went away first - it released everything it held on the way out, so there
+                // is nothing left for this handle to release. Dispose must not throw for that.
+            }
         }
 
         /// <inheritdoc/>

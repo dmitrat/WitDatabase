@@ -107,7 +107,11 @@ namespace OutWit.Database.Core.Concurrency
                         {
                             TransactionId = request.TransactionId,
                             RequestedMode = request.Mode,
-                            Completion = new TaskCompletionSource<bool>()
+                            // RunContinuationsAsynchronously matters here: the waiter is completed from
+                            // inside m_syncLock (GrantToWaiters), so without it the releasing thread runs
+                            // the woken transaction's continuation to completion under this manager's lock.
+                            Completion = new TaskCompletionSource<bool>(
+                                TaskCreationOptions.RunContinuationsAsynchronously)
                         };
                         entry.WaitQueue.Enqueue(waitRequest);
                         break;
@@ -181,7 +185,11 @@ namespace OutWit.Database.Core.Concurrency
                         {
                             TransactionId = request.TransactionId,
                             RequestedMode = request.Mode,
-                            Completion = new TaskCompletionSource<bool>()
+                            // RunContinuationsAsynchronously matters here: the waiter is completed from
+                            // inside m_syncLock (GrantToWaiters), so without it the releasing thread runs
+                            // the woken transaction's continuation to completion under this manager's lock.
+                            Completion = new TaskCompletionSource<bool>(
+                                TaskCreationOptions.RunContinuationsAsynchronously)
                         };
                         entry.WaitQueue.Enqueue(waitRequest);
                         break;
@@ -245,6 +253,28 @@ namespace OutWit.Database.Core.Concurrency
                 }
 
                 m_transactionLocks.Remove(transactionId);
+            }
+        }
+
+        /// <inheritdoc/>
+        public void ReleaseLock(ReadOnlySpan<byte> key, long transactionId)
+        {
+            ThrowIfDisposed();
+
+            var keyObj = new ByteArrayKey(key.ToArray());
+
+            lock (m_syncLock)
+            {
+                ReleaseLockInternal(keyObj, transactionId);
+
+                // Drop the key from this transaction's set, so a later ReleaseAllLocks does not try to
+                // release it twice - and forget the transaction entirely once it holds nothing.
+                if (m_transactionLocks.TryGetValue(transactionId, out var keys))
+                {
+                    keys.Remove(keyObj);
+                    if (keys.Count == 0)
+                        m_transactionLocks.Remove(transactionId);
+                }
             }
         }
 
