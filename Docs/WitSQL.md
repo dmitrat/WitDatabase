@@ -1162,7 +1162,7 @@ locking, as in PostgreSQL and SQL Server. There is no statement that releases on
 
 **A deadlock is reported, not waited out.** When two transactions each wait for a row the other holds, the
 one whose wait *closes the cycle* is refused immediately with `DeadlockException`, which names the other
-participants. Before 5.1.0 both sides waited out the full lock timeout and each got a
+participants. Before 6.0.0 both sides waited out the full lock timeout and each got a
 `TimeoutException`, with nothing to say a cycle was the cause.
 
 **The transaction that is told about the deadlock is the one that must roll back.** It is named as the
