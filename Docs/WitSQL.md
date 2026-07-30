@@ -1152,6 +1152,28 @@ predictably where it used to depend on the platform and the store**. Code that r
 database from two processes on Linux will get `DatabaseAlreadyOpenException`; that configuration was
 unsafe — the two engines diverged.
 
+### 15.0.2 Row locks and deadlocks
+
+`SELECT … FOR UPDATE` and `SELECT … FOR SHARE` take row locks inside an MVCC transaction. Three things a
+consumer may rely on:
+
+**A row lock is held to the end of the transaction**, and released on `COMMIT` or `ROLLBACK` — two-phase
+locking, as in PostgreSQL and SQL Server. There is no statement that releases one lock early.
+
+**A deadlock is reported, not waited out.** When two transactions each wait for a row the other holds, the
+one whose wait *closes the cycle* is refused immediately with `DeadlockException`, which names the other
+participants. Before 5.1.0 both sides waited out the full lock timeout and each got a
+`TimeoutException`, with nothing to say a cycle was the cause.
+
+**The transaction that is told about the deadlock is the one that must roll back.** It is named as the
+victim, and rolling it back releases its locks and lets the others proceed. `DeadlockVictimStrategy` on
+the detector does *not* choose the victim here: the other participants are blocked waiting for a lock, and
+there is no way to abort a transaction from another thread. The strategy still applies to the detector's
+on-demand and background APIs, where nobody is blocked.
+
+`NOWAIT` and `SKIP LOCKED` cannot deadlock — they give up rather than wait — and so are never reported as
+one: `NOWAIT` raises `RowLockException`, `SKIP LOCKED` skips the row.
+
 ### 15.1 Row Version Type
 
 ```sql

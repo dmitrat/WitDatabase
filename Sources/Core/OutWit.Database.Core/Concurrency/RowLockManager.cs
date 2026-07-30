@@ -387,6 +387,21 @@ namespace OutWit.Database.Core.Concurrency
             }
         }
 
+        /// <inheritdoc/>
+        public IReadOnlyCollection<long> GetHoldingTransactions(ReadOnlySpan<byte> key)
+        {
+            ThrowIfDisposed();
+
+            var keyObj = new ByteArrayKey(key.ToArray());
+            lock (m_syncLock)
+            {
+                if (!m_locks.TryGetValue(keyObj, out var entry) || entry.HoldingTransactions.Count == 0)
+                    return Array.Empty<long>();
+
+                return entry.HoldingTransactions.ToList().AsReadOnly();
+            }
+        }
+
         #endregion
 
         #region Internal Methods

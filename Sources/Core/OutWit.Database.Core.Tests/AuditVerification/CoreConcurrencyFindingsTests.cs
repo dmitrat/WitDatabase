@@ -36,11 +36,6 @@ public class CoreConcurrencyFindingsTests
     #region DeadlockDetector is never fed a wait edge
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: both transactions failed with TimeoutException after the full 2 s lock "
-            + "timeout and neither raised DeadlockException. The detector is fetched into a local "
-            + "that is never read, and the deadlock check is an empty `if` body carrying the comment "
-            + "\"full implementation would track all holders\". "
-            + "core-concurrency, Transactions/MvccTransaction.cs:228")]
     public void RowLockDeadlockIsDetectedRatherThanTimedOutTest()
     {
         // Finding: MvccTransaction.cs:228 - the detector is fetched into a local and never used;
@@ -82,6 +77,87 @@ public class CoreConcurrencyFindingsTests
 
         Assert.That(new[] { first, second }, Has.Some.InstanceOf<DeadlockException>(),
             "a cycle in the wait-for graph must be reported as a deadlock, not as a lock timeout");
+
+        // The victim is whichever transaction closed the cycle - see RegisterWaitEdges for why the
+        // detector's victim strategy cannot be honoured on a path where the others are blocked.
+        var deadlock = (DeadlockException)new[] { first, second }.First(e => e is DeadlockException);
+        Assert.That(deadlock.VictimTransactionId, Is.EqualTo(deadlock == first ? tx1.TransactionId : tx2.TransactionId),
+            "the transaction that is told about the deadlock must be the one named as victim");
+    }
+
+    [Test]
+    public void ADeadlockIsReportedBeforeTheTimeoutRatherThanAfterItTest()
+    {
+        // A control on the fix, not on the finding. The assertion above would also pass if the report
+        // arrived after the full wait, which would leave the user-visible cost unchanged. Give the wait
+        // a 30 s timeout and require the deadlock to come back in a small fraction of it: a detector
+        // fed at the right moment answers immediately, and no interleaving has to be caught.
+        using var store = CreateStore();
+        store.Put(Key("a"), Value("1"));
+        store.Put(Key("b"), Value("2"));
+
+        using var tx1 = (MvccTransaction)store.BeginTransaction();
+        using var tx2 = (MvccTransaction)store.BeginTransaction();
+
+        tx1.GetForUpdate(Key("a"));
+        tx2.GetForUpdate(Key("b"));
+
+        var generous = TimeSpan.FromSeconds(30);
+
+        // tx1 waits behind tx2 first, and is genuinely parked - it stays blocked for the whole test.
+        var parked = new ManualResetEventSlim(false);
+        var waiter = Task.Run(() =>
+        {
+            parked.Set();
+            try { tx1.GetForUpdate(Key("b"), RowLockWaitMode.Wait, generous); } catch { /* left waiting */ }
+        });
+
+        parked.Wait();
+        Thread.Sleep(300); // let tx1 register its edge and enter the wait
+
+        var sw = Stopwatch.StartNew();
+        var thrown = Assert.Throws<DeadlockException>(
+            () => tx2.GetForUpdate(Key("a"), RowLockWaitMode.Wait, generous),
+            "tx2 closes the cycle, so tx2 is refused");
+        sw.Stop();
+
+        TestContext.Out.WriteLine($"deadlock reported after {sw.ElapsedMilliseconds} ms of a 30000 ms timeout");
+
+        Assert.That(sw.ElapsedMilliseconds, Is.LessThan(1000),
+            "the cycle is known when the wait is registered, so it must not cost the timeout");
+        Assert.That(thrown!.CycleParticipants, Is.Not.Null.And.Contains(tx1.TransactionId),
+            "the report must name the other participant, which is what makes it actionable");
+
+        // Release tx1 so the parked task does not outlive the test.
+        tx2.Rollback();
+        waiter.Wait(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
+    public void AnOrdinaryLockWaitIsNotReportedAsADeadlockTest()
+    {
+        // The attribution control: a wait-for edge is added on every waiting acquire now, so the cheap
+        // way to pass the two tests above would be to report a deadlock whenever anyone waits. This
+        // fails if the fix over-claims.
+        using var store = CreateStore();
+        store.Put(Key("a"), Value("1"));
+
+        using var tx1 = (MvccTransaction)store.BeginTransaction();
+        using var tx2 = (MvccTransaction)store.BeginTransaction();
+
+        tx1.GetForUpdate(Key("a"));
+
+        // tx2 waits behind tx1, and tx1 waits for nothing - there is no cycle.
+        var waiter = Task.Run(() =>
+        {
+            Thread.Sleep(300);
+            tx1.Rollback(); // releases 'a'
+        });
+
+        Assert.That(() => tx2.GetForUpdate(Key("a"), RowLockWaitMode.Wait, TimeSpan.FromSeconds(10)),
+            Throws.Nothing, "a wait that is not part of a cycle must simply be satisfied");
+
+        waiter.Wait(TimeSpan.FromSeconds(10));
     }
 
     #endregion

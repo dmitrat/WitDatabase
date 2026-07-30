@@ -868,6 +868,50 @@ would have painted **2**; three cases added with the fix took it to 5. They are 
 which is in `Concurrency/SharedDatabaseTwoEnginesProbeTests.cs:189`, the `MVCC=false` divergence, and is
 the marker that sat on a continuation line and broke the count three times.
 
+### 8b.3 The MVCC deadlock detector, fed — PR 2
+
+The last marker on the provider's default path. `DeadlockDetector` was **already complete** — wait-for
+graph, cycle finding, four victim strategies — and already constructed unconditionally by
+`MvccTransactionalStore`, which is what made this a one-sided defect: `TransactionCompleted` was called on
+commit and rollback, but **no edge was ever added**. The check was an empty `if` body carrying the comment
+*"This is a simplified check - full implementation would track all holders"*.
+
+**Reproduced first.** The AB/BA case: both transactions got `TimeoutException` after the full 2 s and
+neither got a `DeadlockException`, exactly as the ledger recorded.
+
+**What the fix is.** `IRowLockManager` gained `GetHoldingTransactions(key)` — the inverse of the existing
+`GetLockedKeys(transactionId)`, and literally the "track all holders" the comment asked for. A waiting
+acquire now registers an edge per holder before it waits and removes them in a `finally`, so a wait that
+times out does not leak its edges. **The async path had not even fetched the detector**, so a deadlock
+between two `await`ing waiters was equally invisible; it gets the same treatment.
+
+**The victim decision, made explicitly rather than inherited.** `RegisterWait` throws on whichever
+transaction closes the cycle, and the detector's chosen victim may be a *different* transaction — its own
+tests pin that (`Oldest` strategy: tx3 registers, victim is tx1). That cannot be honoured here: the other
+participants are blocked inside `AcquireLock` and there is no mechanism to abort a transaction from another
+thread. So **the transaction that closes the cycle is the victim**, and the exception is re-thrown with its
+own id in `VictimTransactionId` so the report matches who actually aborts. The deadlock genuinely resolves
+— that transaction fails, its caller rolls back, its locks go. The strategy stays meaningful for the
+detector's on-demand and background APIs, where nobody is blocked. Written up for consumers in
+`WitSQL.md` § 15.0.2.
+
+**Revert count: 2**, and the third test is deliberately *not* one of them:
+
+| Test | On revert |
+|---|---|
+| the AB/BA marker | red |
+| a deadlock is reported *before* the timeout, not after | red |
+| an ordinary lock wait is **not** reported as a deadlock | **green — it is the attribution control** |
+
+The timing test is the one that earns its place. The marker's own assertion would also pass if the report
+arrived *after* the full wait, leaving the user-visible cost unchanged; it gives the wait a 30 s timeout and
+requires the answer in under 1 s. The revert makes that visible another way: the fixture's runtime went
+from **6 s to 35 s**, because the reverted code waits the timeout out. And the third test exists because a
+wait-for edge is now added on *every* waiting acquire, so the cheap way to pass the first two would be to
+cry deadlock whenever anyone waits.
+
+**Ledger: 62 `[Ignore(…)]` + 14 = 76.** Concurrency area **11 markers** plus the one `TestCase` property.
+
 ---
 
 ## 9. The four standing rules, applied to this phase
