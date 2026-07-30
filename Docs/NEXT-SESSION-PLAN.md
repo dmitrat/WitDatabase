@@ -42,10 +42,10 @@ confirmed defect with a test already written that turns green when it is fixed.
 > plan called "corrupts data outright" is reachable **only through `Dispose`**, which makes it
 > durability-adjacent rather than write-path.
 >
-> **62 `[Ignore(…)]` attributes plus 14 `[TestCase(… Ignore =)]` — 76 suppressed entries**, and **2**
-> `[Explicit]`, counted 2026-07-30 after the second half's first two PRs closed three row-lock markers and
-> the MVCC deadlock detector (it was 66 + 14 = 80 at the close of the first half). **The counting method
-> was wrong three times
+> **60 `[Ignore(…)]` attributes plus 14 `[TestCase(… Ignore =)]` — 74 suppressed entries**, and **2**
+> `[Explicit]`, counted 2026-07-30 after the second half's first four PRs (three row-lock markers, the MVCC
+> deadlock detector, the deleted page-latch subsystem, and the page-cache corruption window; it was
+> 66 + 14 = 80 at the close of the first half). **The counting method was wrong three times
 > in one phase** — 81+3 was recorded, then 79 after removing prose mentions, then 78, and finally 80 once
 > a marker on a *continuation line* turned out to be invisible to the `TestCase` filter. Use these two,
 > which need no assumption about line breaks:

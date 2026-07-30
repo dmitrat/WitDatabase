@@ -789,6 +789,67 @@ loss. It belongs with whatever mechanism closes the remaining LSM work, not with
 
 ---
 
+## 8b.5 The page-cache corruption window — PR 4
+
+The marker the original plan called *"corrupts data outright"*. Question 2 had already narrowed it: **no
+production code calls `IPageCache.Clear()` from outside the cache — the only caller is `Dispose`** — which
+makes it a durability-adjacent defect rather than a write-path one, and which decides what the fix has to
+guarantee.
+
+**Reproduced first**, all three tests red on unfixed code.
+
+### What was actually wrong, and it is not what the marker's wording suggests
+
+`FlushAllAsync` **already pins** every dirty page before handing its buffer to the storage, and unpins in a
+`finally`. `Evict` honours that pin — *"Cannot evict pinned page"*. `Clear` ignored it and disposed every
+`CachedPage`, which returns the rented array to `ArrayPool<byte>.Shared` **while the storage is still
+reading from it**. The next borrower's fill is then what reaches disk: `0xFF` instead of the `0xAB` the
+caller wrote.
+
+So the mechanism was never a missing pin — it was **one path not honouring a pin that already existed**.
+
+### The two guarantees, and why they cannot be the same guarantee
+
+- **`Clear` refuses a pinned page, on exactly `Evict`'s condition** — and refuses **before** flushing or
+  disposing anything, so a rejected `Clear` leaves the cache untouched instead of half emptied. There is a
+  test for that specifically; a pin check written *inside* the disposal loop would pass the marker's own
+  test and still have recycled every page ahead of the pinned one.
+- **`Dispose` waits instead of refusing.** It cannot inherit `Clear`'s refusal, because shutting down has
+  to succeed. It also cannot wait for the reference count to reach zero: **`CreatePage` and `GetPage` pin
+  the page they hand out**, so "pinned" routinely means "checked out by a caller" and that wait would never
+  finish. A separate `m_writesInFlight` counter answers the narrower question — *is the storage still
+  reading a pooled buffer* — and `Dispose` drains that, bounded at 30 s.
+- **If the drain times out, a pinned page's buffer is dropped rather than returned to the pool.** Leaking a
+  rented array costs a reuse; returning one a write is still reading from is the defect. That direction is
+  deliberate.
+
+### The same defect in the other cache — **in no audit**
+
+*Fix every path with the shape, not the one the finding names.* The finding names
+`PageCacheShardedClock.cs:160`. `PageCacheLru` has the **identical** structure — `Evict` refuses a pinned
+page, `FlushAllAsync` pins for the duration of the write, `Clear` disposed unconditionally.
+
+**And it corrupts identically, measured rather than assumed.** Proving "Clear does not refuse" would have
+been the easy half; running it with the assertion relaxed showed **255 across the whole page** where `0xAB`
+was written — the same `0xFF` mechanism, on the second implementation.
+
+**It is reachable.** `PageCacheLru` is registered as a provider (`ProviderRegistration.cs:226`), so
+`WithCacheKey("lru")` selects it — a supported configuration, not dead code like the latch subsystem. That
+is the second time in this phase that checking the *other* implementation of an interface found the same
+defect again.
+
+### The revert counts
+
+| Fix reverted | Tests red |
+|---|---|
+| `Clear` pin check (clock) | 2 |
+| `Dispose` drain | 1 |
+| `Clear` pin check (LRU) | 1 |
+
+**Ledger: 60 `[Ignore(…)]` + 14 = 74.** Concurrency area **9 markers** plus the one `TestCase` property.
+
+---
+
 ## 8b.4 The page-latch subsystem, deleted rather than repaired — PR 3
 
 The marker was real and worse than filed: `Cleanup` decided a latch was idle using

@@ -519,11 +519,6 @@ public class CoreConcurrencyFindingsTests
     #region Page cache returns a pooled buffer while a write of it is in flight
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and this one corrupts data outright: the page that reached storage was "
-            + "filled with 0xFF - the content of the next borrower of the recycled pooled array - "
-            + "instead of the 0xAB the caller wrote. Note the path matters: Evict() correctly refuses "
-            + "with \"Cannot evict pinned page\"; Clear() disposes every CachedPage unconditionally. "
-            + "core-concurrency, Cache/PageCacheShardedClock.cs:160")]
     public void ClearDoesNotRecycleABufferWhileItsWriteIsInFlightTest()
     {
         // Finding: PageCacheShardedClock.cs:160 - the cache disposes CachedPage, returning its
@@ -531,7 +526,7 @@ public class CoreConcurrencyFindingsTests
         // storage then writes whatever the next borrower put in the buffer.
         //
         // Fully deterministic: the storage double parks inside WritePageAsync until released, so
-        // the eviction below is guaranteed to happen *during* the write rather than racing with it.
+        // the Clear below is guaranteed to happen *during* the write rather than racing with it.
         using var storage = new BlockingStorage(pageSize: 256, pageCount: 8);
         using var cache = new PageCacheShardedClock(storage, maxPages: 4, shardCount: 1);
 
@@ -543,12 +538,15 @@ public class CoreConcurrencyFindingsTests
         Assert.That(storage.WriteEntered.Wait(TimeSpan.FromSeconds(5)), Is.True,
             "the storage double should have been handed the page buffer");
 
-        // The write is parked, holding the buffer. Clear() is the unguarded path: unlike Evict,
-        // which refuses a pinned page with "Cannot evict pinned page", Clear disposes every
-        // CachedPage unconditionally and hands its pooled array back.
-        cache.Clear();
+        // The write is parked, holding the buffer, and FlushAllAsync pinned the page before starting
+        // it. Clear was the unguarded path: Evict refuses a pinned page with "Cannot evict pinned
+        // page", while Clear disposed every CachedPage unconditionally and handed its pooled array
+        // back. It must now refuse on the same condition.
+        Assert.That(() => cache.Clear(), Throws.InstanceOf<InvalidOperationException>(),
+            "Clear must refuse a pinned page exactly as Evict does");
 
-        // Simulate the next borrower of that pooled array scribbling over it.
+        // Simulate the next borrower of that pooled array scribbling over it. If Clear had returned
+        // the buffer to the pool, this is the content that would reach storage.
         var stolen = System.Buffers.ArrayPool<byte>.Shared.Rent(256);
         stolen.AsSpan(0, 256).Fill(0xFF);
         System.Buffers.ArrayPool<byte>.Shared.Return(stolen);
@@ -558,6 +556,119 @@ public class CoreConcurrencyFindingsTests
 
         Assert.That(storage.GetPage(1), Is.All.EqualTo((byte)0xAB),
             "the page written to storage must be the one the caller dirtied");
+    }
+
+    [Test]
+    public void ClearIsAllOrNothingRatherThanPartlyDestructiveTest()
+    {
+        // A control on the fix: refusing is only useful if nothing was thrown away before the refusal.
+        // A pin check written inside the disposal loop would pass the test above and still have
+        // recycled every page that came before the pinned one.
+        using var storage = new BlockingStorage(pageSize: 256, pageCount: 8);
+        using var cache = new PageCacheShardedClock(storage, maxPages: 4, shardCount: 1);
+
+        // Two pages released back to the cache, so the parked write below is the ONLY pin. Without the
+        // releases every page would be pinned by CreatePage and the refusal would prove nothing about
+        // which page caused it.
+        cache.CreatePage(1).Data.Fill(0x11);
+        cache.ReleasePage(1);
+        cache.CreatePage(2).Data.Fill(0x22);
+        cache.ReleasePage(2);
+
+        var pinned = cache.CreatePage(3);
+        pinned.Data.Fill(0xAB);
+        cache.MarkDirty(3);
+
+        var flush = cache.FlushAllAsync().AsTask();
+        Assert.That(storage.WriteEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        var countBefore = cache.Count;
+        Assert.That(() => cache.Clear(), Throws.InstanceOf<InvalidOperationException>());
+
+        Assert.That(cache.Count, Is.EqualTo(countBefore),
+            "a refused Clear must leave the cache exactly as it was, not half emptied");
+
+        storage.ReleaseWrite.Set();
+        flush.Wait(TimeSpan.FromSeconds(10));
+    }
+
+    [Test]
+    public void LruCacheClearDoesNotRecycleABufferWhileItsWriteIsInFlightTest()
+    {
+        // NOT AN AUDIT FINDING. The finding names PageCacheShardedClock.cs:160 only, but PageCacheLru
+        // has the identical structure: Evict refuses a pinned page, FlushAllAsync pins each page for the
+        // duration of its write, and Clear disposed every page unconditionally. Found by checking the
+        // other IPageCache implementation rather than the site the finding names.
+        //
+        // Reachable: PageCacheLru is registered as a provider (ProviderRegistration.cs), so
+        // `WithCacheKey("lru")` selects it - a supported configuration, not dead code.
+        using var storage = new BlockingStorage(pageSize: 256, pageCount: 8);
+        using var cache = new PageCacheLru(storage, maxPages: 4);
+
+        var page = cache.CreatePage(1);
+        page.Data.Fill(0xAB);
+        cache.MarkDirty(1);
+
+        var flush = cache.FlushAllAsync().AsTask();
+        Assert.That(storage.WriteEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        Assert.That(() => cache.Clear(), Throws.InstanceOf<InvalidOperationException>(),
+            "Clear must refuse a pinned page exactly as Evict does");
+
+        var stolen = System.Buffers.ArrayPool<byte>.Shared.Rent(256);
+        stolen.AsSpan(0, 256).Fill(0xFF);
+        System.Buffers.ArrayPool<byte>.Shared.Return(stolen);
+
+        storage.ReleaseWrite.Set();
+        flush.Wait(TimeSpan.FromSeconds(10));
+
+        Assert.That(storage.GetPage(1), Is.All.EqualTo((byte)0xAB),
+            "the page written to storage must be the one the caller dirtied");
+    }
+
+    [Test]
+    public void DisposingTheCacheDoesNotThrowAwayAnUnfinishedWriteTest()
+    {
+        // Dispose is the ONLY production caller of Clear - established by the reachability pass, which
+        // is what makes this marker durability-adjacent rather than write-path. So Dispose cannot
+        // simply inherit Clear's refusal: it has to let the write finish, then clear.
+        using var storage = new BlockingStorage(pageSize: 256, pageCount: 8);
+        var cache = new PageCacheShardedClock(storage, maxPages: 4, shardCount: 1);
+
+        var page = cache.CreatePage(1);
+        page.Data.Fill(0xAB);
+        cache.MarkDirty(1);
+
+        var flush = cache.FlushAllAsync().AsTask();
+        Assert.That(storage.WriteEntered.Wait(TimeSpan.FromSeconds(5)), Is.True);
+
+        // Dispose on another thread, so the parked write is genuinely in flight while it runs.
+        var disposed = new ManualResetEventSlim(false);
+        Exception? disposeFailure = null;
+        var disposer = Task.Run(() =>
+        {
+            try { cache.Dispose(); }
+            catch (Exception e) { disposeFailure = e; }
+            finally { disposed.Set(); }
+        });
+
+        Assert.That(disposed.Wait(TimeSpan.FromMilliseconds(500)), Is.False,
+            "Dispose must still be waiting for the in-flight write rather than discarding it");
+
+        var stolen = System.Buffers.ArrayPool<byte>.Shared.Rent(256);
+        stolen.AsSpan(0, 256).Fill(0xFF);
+        System.Buffers.ArrayPool<byte>.Shared.Return(stolen);
+
+        storage.ReleaseWrite.Set();
+        flush.Wait(TimeSpan.FromSeconds(10));
+        Assert.That(disposer.Wait(TimeSpan.FromSeconds(10)), Is.True, "Dispose must complete once the write has");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(disposeFailure, Is.Null, "Dispose must not throw because a write was in flight");
+            Assert.That(storage.GetPage(1), Is.All.EqualTo((byte)0xAB),
+                "the write that was in flight when Dispose ran must still have landed intact");
+        });
     }
 
     #endregion
