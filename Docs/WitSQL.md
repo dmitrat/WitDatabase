@@ -1106,12 +1106,32 @@ engine, and it is already shared.
 write-ahead log, with nothing coordinating them. Measured before the limit was enforced: two engines over
 one LSM directory diverged, one seeing a row the other could not.
 
+**Why exclusivity is the goal and not a limitation we tolerate.** A file database that lets two processes
+in has to keep their caches coherent, and this engine's caches — page cache, memtable, write-ahead log —
+are per engine. The alternative was measured rather than imagined: two engines over one LSM directory
+opened, both answered confidently, and **silently disagreed** about which rows existed. Refusing at open
+is the cheaper correct answer, and it is the same choice LiteDB makes by default; SQLite starts from
+multi-process but offers the same exclusivity as `PRAGMA locking_mode=EXCLUSIVE`, and stops guaranteeing
+anything on network filesystems, where locking primitives are unreliable.
+
+**If several places need the same database, put a service in front of it.** That is the supported answer
+rather than a workaround: one process owns the file, and callers reach it through an API. The engine
+already does the hard half — many connections and many sessions inside one process, each with its own
+transaction, sharing one engine — so a wrapper is a transport, not a concurrency design.
+
 **How it is enforced.** An exclusive lock is taken on a `<database>.lock` sidecar for as long as the
 engine is open, and a second engine is refused with `DatabaseAlreadyOpenException`. The operating system
 releases the lock when the owning process exits, so a process that dies without shutting down cleanly
 does **not** leave the database permanently locked. The sidecar file itself remains on disk after a
 clean shutdown; its presence does not mean anyone holds it, and `EnsureDeleted` removes it along with the
 rest of the database.
+
+**Opening waits briefly rather than refusing at once.** A host restart overlaps the outgoing process with
+the incoming one, and a guard that refuses on the first attempt turns that window into a startup failure.
+So `Build` retries with backoff for **five seconds** by default before raising
+`DatabaseAlreadyOpenException` — long enough for an ordinary shutdown to finish flushing, short enough
+that a database somebody really is using is reported quickly. `WithOpenTimeout(TimeSpan.Zero)` restores
+the single attempt. SQLite covers the same window with `busy_timeout`.
 
 `FileLocking=false` in a connection string disables the guard. It exists for filesystems where advisory
 locking is unreliable — network shares in particular — and it does **not** disable the in-process

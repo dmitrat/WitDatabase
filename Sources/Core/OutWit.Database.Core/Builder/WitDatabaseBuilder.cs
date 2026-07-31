@@ -146,10 +146,12 @@ public sealed class WitDatabaseBuilder
 
         var fileLock = new FileLock(databasePath);
 
-        // One attempt, no waiting: the other holder is a whole engine, so waiting would turn a design
-        // limit into a stall. TryAcquireExclusiveLock exists because AcquireExclusiveLock(TimeSpan.Zero)
-        // reports a timeout without ever trying - see its remarks.
-        if (fileLock.TryAcquireExclusiveLock())
+        // A bounded wait, not a stall and not a single attempt. One engine per database is a design
+        // limit, so an engine that is really open is refused - but a HOST RESTART overlaps the outgoing
+        // process with the incoming one, and refusing on the first attempt turned that window into a
+        // startup crash. SQLite covers the same window with busy_timeout. Options.OpenTimeout is five
+        // seconds by default and zero means one attempt, which is what this used to do.
+        if (fileLock.TryAcquireExclusiveLock(Options.OpenTimeout))
             return fileLock;
 
         fileLock.Dispose();

@@ -251,6 +251,124 @@ public class ConcurrencyModelWiringProbeTests
 
     #endregion
 
+    #region The exclusivity guard waits for a closing engine
+
+    /// <summary>
+    /// Probe: a second engine must WAIT briefly for the database to be released rather than being
+    /// refused the instant it asks. This is the restart window, and it is the one operational cost of
+    /// making exclusivity the model.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The deployment target is ASP.NET Core, where an overlapped recycle or a rolling restart runs the
+    /// outgoing process and the incoming one at the same time for a moment. The guard used to make
+    /// exactly one attempt, so the incoming process died at startup with
+    /// <see cref="DatabaseAlreadyOpenException"/> while the outgoing one was still flushing. SQLite
+    /// survives the same window through <c>busy_timeout</c>; LiteDB's Direct mode does not.
+    /// </para>
+    /// <para>
+    /// Deterministic, and in the direction that matters: the first engine is released on a background
+    /// thread after a delay far shorter than the wait, so a passing run means the second engine really
+    /// waited rather than got lucky.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void ProbeASecondEngineWaitsForAClosingOneTest()
+    {
+        var path = Path.Combine(m_testDir, "restart_window.witdb");
+
+        var first = new WitDatabaseBuilder().WithFilePath(path).WithBTree().WithTransactions().Build();
+        first.Put("a", Bytes("1"));
+        first.Flush();
+
+        // The outgoing process, still shutting down when the incoming one starts.
+        var closing = RunOnBackgroundThread(() =>
+        {
+            Thread.Sleep(250);
+            first.Dispose();
+        });
+
+        Assert.That(closing.Started.Wait(TimeSpan.FromSeconds(30)), Is.True, "the closing thread never ran");
+
+        using var second = new WitDatabaseBuilder()
+            .WithFilePath(path)
+            .WithBTree()
+            .WithTransactions()
+            .WithOpenTimeout(TimeSpan.FromSeconds(10))
+            .Build();
+
+        Report("a second engine opening while the first is closing", "outcome", "OPENED");
+
+        Assert.That(second.Get("a"), Is.Not.Null, "the second engine opened but cannot read what the first wrote");
+    }
+
+    /// <summary>
+    /// Control: waiting must not turn the design limit into a stall that never ends. A database that
+    /// stays open is still refused, by name, once the wait is over.
+    /// </summary>
+    [Test]
+    public void ControlADatabaseThatStaysOpenIsStillRefusedTest()
+    {
+        var path = Path.Combine(m_testDir, "stays_open.witdb");
+
+        using var first = new WitDatabaseBuilder().WithFilePath(path).WithBTree().WithTransactions().Build();
+        first.Put("a", Bytes("1"));
+
+        var start = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        var refused = Assert.Throws<DatabaseAlreadyOpenException>(() =>
+            new WitDatabaseBuilder()
+                .WithFilePath(path)
+                .WithBTree()
+                .WithTransactions()
+                .WithOpenTimeout(TimeSpan.FromSeconds(1))
+                .Build());
+
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(start);
+
+        Report("a second engine against a database that stays open", "refused after", $"{elapsed.TotalMilliseconds:F0} ms");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(refused, Is.Not.Null);
+
+            // A lower bound only: a loaded machine can take longer, never less. It proves the wait
+            // happened, which is what distinguishes this from the single attempt it replaced.
+            Assert.That(elapsed, Is.GreaterThan(TimeSpan.FromMilliseconds(500)),
+                "the guard refused without waiting - the restart window is not covered");
+        });
+    }
+
+    /// <summary>
+    /// Control: a zero timeout keeps the old behaviour for anyone who wants an immediate answer.
+    /// </summary>
+    [Test]
+    public void ControlAZeroOpenTimeoutRefusesImmediatelyTest()
+    {
+        var path = Path.Combine(m_testDir, "no_wait.witdb");
+
+        using var first = new WitDatabaseBuilder().WithFilePath(path).WithBTree().WithTransactions().Build();
+
+        var start = System.Diagnostics.Stopwatch.GetTimestamp();
+
+        Assert.Throws<DatabaseAlreadyOpenException>(() =>
+            new WitDatabaseBuilder()
+                .WithFilePath(path)
+                .WithBTree()
+                .WithTransactions()
+                .WithOpenTimeout(TimeSpan.Zero)
+                .Build());
+
+        var elapsed = System.Diagnostics.Stopwatch.GetElapsedTime(start);
+
+        Report("a second engine with Open Timeout = 0", "refused after", $"{elapsed.TotalMilliseconds:F0} ms");
+
+        Assert.That(elapsed, Is.LessThan(TimeSpan.FromMilliseconds(500)),
+            "a zero timeout waited anyway");
+    }
+
+    #endregion
+
     #region Q1 - what FileLocking=false actually turns off
 
     /// <summary>

@@ -107,10 +107,65 @@ to be wrong here and each has a marker waiting:
 Plus `Mode=ReadWrite` silently creating a database it was told to open, handed over by phase 5, and the
 two `DbException` `TestCase` markers.
 
+**And one more of the same family, found while looking for a timeout knob:** the connection string
+declares `Default Timeout` and **nothing reads it** — `WitDbConnectionStringBuilder.DefaultTimeout` has no
+consumer anywhere in the provider. That is the shape phase 5 fixed twice already (`Read Only`, then
+`Mode`): a keyword parsed and dropped. `DbConnection.ConnectionTimeout` is inherited too, so it reports
+the base class's 15 seconds, which is not a number this provider means.
+
 **Acceptance for the phase, unchanged:** no member reachable through a base type behaves differently from
 the concrete one — `ProbeNoContractMemberIsShadowedTest` is that criterion as a single assertion, and it
 is green as of § 3 — and `TransactionScope` either works or refuses at enlist time, never committing
 silently outside the scope.
+
+---
+
+## 4a. Exclusivity, decided rather than inherited — and the restart window closed
+
+Handed over from phase 5 § 3a-bis, and **decided by Dmitry 2026-07-31**: exclusivity is the *goal*, not a
+limitation being tolerated. *"Это файловая база… если нужно будет обращение из разных мест, можно будет
+сделать сервис-обёртку, к которому можно обращаться через API — с разными сессиями мы работать умеем."*
+
+That is the right shape and worth recording as an architectural answer rather than a preference:
+**multi-process access is a service boundary, not a storage feature.** The engine already does the hard
+half — many connections and many sessions in one process, each with its own transaction, over one shared
+engine — so a wrapper in front of it is a transport concern.
+
+The comparison supports it. **LiteDB's default is the same model**: `Connection=Direct` opens the datafile
+exclusively and no second process can open it; its `Shared` alternative closes the file between
+operations and is the part with a long tail of locking bug reports. **SQLite** starts from the opposite
+end — multi-process is the design centre — but offers exactly this as `PRAGMA locking_mode=EXCLUSIVE`
+(which in WAL mode is also the only way to run without shared memory), and stops guaranteeing anything on
+network filesystems, where locking primitives are unreliable enough to corrupt a database.
+
+### The one operational cost, and it is fixed here
+
+**The restart window.** A host restart overlaps the outgoing process with the incoming one. The guard made
+exactly one attempt, so the incoming process died at startup with `DatabaseAlreadyOpenException` while the
+outgoing one was still flushing. SQLite survives this through `busy_timeout`; LiteDB Direct does not.
+
+`Build` now retries with backoff for **five seconds** by default (`WithOpenTimeout`, zero restores the
+single attempt). Three tests, each measuring a different half:
+
+| Test | Measured |
+|---|---|
+| A second engine opening while the first closes | **opens**, and reads what the first wrote |
+| A database that stays open | refused after 1203 ms — the wait happened, and the limit still holds |
+| `OpenTimeout = 0` | refused after 0 ms |
+
+Reverting the wait turns **2** red.
+
+**Found while wiring it, and fixed:** the waiting acquire path caught only `IOException`, while the
+single-attempt path has always also caught `UnauthorizedAccessException` — which is how Unix reports a
+denied advisory lock in some configurations. So on those configurations the retry loop would have escaped
+instead of waiting. Same defect class as the rest of § 3a: the two platforms report the same refusal
+differently.
+
+### Still open, named rather than done
+
+`FileLocking=false` still admits two engines on Linux (phase 5 § 3a-bis). Now that exclusivity is the
+stated intent, that is a hole in the intent rather than a documented trade-off — keep it and warn, refuse
+it for stores whose own files do not enforce exclusivity, or remove it. Not decided.
 
 ---
 

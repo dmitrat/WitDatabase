@@ -96,6 +96,48 @@ public sealed class FileLock : IDisposable
             return true;
 
         EnsureDirectoryExists();
+        return TryTakeOnce();
+    }
+
+    /// <summary>
+    /// Tries to acquire the exclusive lock, retrying with backoff until the timeout expires.
+    /// </summary>
+    /// <returns>True if the lock was taken; false if someone else held it for the whole wait.</returns>
+    /// <remarks>
+    /// The waiting counterpart of <see cref="TryAcquireExclusiveLock()"/>, and it reports rather than
+    /// throws for the same reason: the caller wants to turn "someone else has it" into its own
+    /// exception, naming the database and the limit, not a <see cref="TimeoutException"/> about a file.
+    ///
+    /// A zero timeout is one attempt, deliberately - it must not mean "give up without trying", which
+    /// is the trap <see cref="AcquireExclusiveLock"/>'s deadline loop falls into.
+    /// </remarks>
+    public bool TryAcquireExclusiveLock(TimeSpan timeout)
+    {
+        ThrowIfDisposed();
+
+        if (m_hasLock)
+            return true;
+
+        EnsureDirectoryExists();
+
+        var deadline = DateTime.UtcNow + timeout;
+        var delay = INITIAL_RETRY_DELAY_MS;
+
+        while (true)
+        {
+            if (TryTakeOnce())
+                return true;
+
+            if (DateTime.UtcNow >= deadline)
+                return false;
+
+            Thread.Sleep(delay);
+            delay = Math.Min(delay * 2, MAX_RETRY_DELAY_MS);
+        }
+    }
+
+    private bool TryTakeOnce()
+    {
 
         try
         {
@@ -158,8 +200,12 @@ public sealed class FileLock : IDisposable
                 m_hasLock = true;
                 return;
             }
-            catch (IOException)
+            catch (Exception e) when (e is IOException or UnauthorizedAccessException)
             {
+                // UnauthorizedAccessException as well as IOException: Unix reports a denied advisory
+                // lock that way in some configurations, and the single-attempt path has always caught
+                // both. This loop caught only IOException, so on those configurations it escaped the
+                // retry instead of waiting - found while wiring the open guard to it.
                 Thread.Sleep(delay);
                 delay = Math.Min(delay * 2, MAX_RETRY_DELAY_MS);
             }
