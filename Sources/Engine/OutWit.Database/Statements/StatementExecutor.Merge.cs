@@ -297,6 +297,7 @@ public sealed partial class StatementExecutor
 
         // Validate constraints
         ValidateNotNullConstraints(targetTable, updatedRow);
+        updatedRow = CoerceDeclaredScale(targetTable, updatedRow);
         ValidateConstraints(targetTable, updatedRow, targetTable.Name, rowId);
 
         // Perform update
@@ -393,6 +394,7 @@ public sealed partial class StatementExecutor
             }
         }
 
+        row = CoerceDeclaredScale(targetTable, row);
         ValidateConstraints(targetTable, row, targetTable.Name);
         m_context.Database.InsertRow(targetTable.Name, row);
     }

@@ -214,6 +214,7 @@ public sealed partial class StatementExecutor
         // Optimized constraint validation for fast path:
         // - Skip UNIQUE check on PK (it's not being modified and we're updating the same row)
         // - Only validate constraints on modified columns
+        newRow = CoerceDeclaredScale(table, newRow);
         ValidateConstraintsFastPath(table, newRow, update.TableName, rowId, modifiedColumns);
 
         // Perform the update
@@ -399,6 +400,7 @@ public sealed partial class StatementExecutor
             ValidateNotNullConstraints(table, newRow);
 
             // Optimized constraint validation - only for modified columns
+            newRow = CoerceDeclaredScale(table, newRow);
             ValidateConstraintsFastPath(table, newRow, update.TableName, rowId, modifiedColumns);
 
             // Perform the update
@@ -626,8 +628,12 @@ public sealed partial class StatementExecutor
 
             var newRow = new WitSqlRow(newValues, dataColumnNames);
 
+            newRow = CoerceDeclaredScale(table, newRow);
+
             // Validate NOT NULL constraints
             ValidateNotNullConstraints(table, newRow);
+
+            ValidateDeclaredSizes(table, newRow, update.TableName);
 
             // Validate CHECK and FK constraints only (no UNIQUE since we checked earlier)
             ValidateCheckConstraintsFastPath(table, newRow, update.TableName, modifiedColumns);
@@ -667,6 +673,12 @@ public sealed partial class StatementExecutor
         // If no columns modified, no validation needed
         if (modifiedColumns.Count == 0)
             return;
+
+        // The declared sizes, which this path did not check at all. It is a THIRD validation entry point
+        // beside ValidateConstraints and ValidateConstraintsWithAutoGen, so the enforcement added for
+        // INSERT reached UPDATE nowhere - a hundred characters went into a VARCHAR(5) without complaint.
+        // Found by a test written for the scale, not for this.
+        ValidateDeclaredSizes(table, row, tableName);
 
         // Validate CHECK constraints only for modified columns
         ValidateCheckConstraintsFastPath(table, row, tableName, modifiedColumns);
@@ -1098,6 +1110,7 @@ public sealed partial class StatementExecutor
             // Validate NOT NULL constraints
             ValidateNotNullConstraints(table, newRow);
 
+            newRow = CoerceDeclaredScale(table, newRow);
             ValidateConstraints(table, newRow, update.TableName, rowId);
             HandleReferentialUpdate(update.TableName, oldRow, newRow);
             m_context.Database.UpdateRow(update.TableName, rowId, newRow);

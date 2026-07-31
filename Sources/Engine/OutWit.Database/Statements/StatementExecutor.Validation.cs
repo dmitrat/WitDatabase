@@ -850,6 +850,52 @@ public sealed partial class StatementExecutor
     #region CHECK Constraints
 
     /// <summary>
+    /// Rounds every value to the scale its column declared, returning the row to be written.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>DECIMAL(5,2)</c> means two decimal places, and PostgreSQL stores 123.46 when given 123.456 -
+    /// it coerces rather than refusing, and the value in the database afterwards is the rounded one.
+    /// Checking the range and then storing the original would leave the declared scale as a thing the
+    /// catalog says and the data ignores, which is the shape this phase exists to remove.
+    /// </para>
+    /// <para>
+    /// The row is only rebuilt when something actually changes, so the ordinary write - every column
+    /// without a declared scale, and every value already at it - allocates nothing.
+    /// </para>
+    /// </remarks>
+    private static WitSqlRow CoerceDeclaredScale(DefinitionTable table, WitSqlRow row)
+    {
+        WitSqlValue[]? coerced = null;
+
+        for (var i = 0; i < row.ColumnCount; i++)
+        {
+            var name = row.GetColumnName(i);
+
+            var column = table.Columns.FirstOrDefault(
+                c => string.Equals(c.Name, name, StringComparison.OrdinalIgnoreCase));
+
+            if (column?.Scale is not { } scale || scale < 0)
+                continue;
+
+            var value = row[i];
+            if (value.IsNull || !IsNumeric(value))
+                continue;
+
+            var original = value.AsDecimal();
+            var rounded = Math.Round(original, scale, MidpointRounding.AwayFromZero);
+
+            if (rounded == original)
+                continue;
+
+            coerced ??= row.Values.ToArray();
+            coerced[i] = WitSqlValue.FromDecimal(rounded);
+        }
+
+        return coerced == null ? row : new WitSqlRow(coerced, row.ColumnNames.ToArray());
+    }
+
+    /// <summary>
     /// Enforces the sizes a column was declared with - <c>VARCHAR(n)</c>, <c>CHAR(n)</c> and the
     /// precision and scale of <c>DECIMAL(p,s)</c>.
     /// </summary>

@@ -360,17 +360,73 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
 
         TestContext.Out.WriteLine($"PROBE  123.456 into DECIMAL(5,2) is stored as  ->  {stored.CurrentRow[0].ToObject()}");
 
-        // PINS A GAP, NOT CORRECT BEHAVIOUR, and it is a gap in this phase's own fix. The declared
-        // PRECISION is enforced - an integer part that does not fit is refused - but the declared SCALE
-        // is not applied to the value: PostgreSQL stores 123.46, this stores 123.456. Applying it means
-        // COERCING the row before it is written, in the insert and update paths, which is a change to
-        // the write path rather than another check, and it is not made here. Invert to 123.46 when it
-        // is.
-        //
-        // Recorded this way round on purpose: saying "scale enforced" while storing an unrounded value
-        // would be the same defect this phase exists to close, one level in.
-        Assert.That(stored.CurrentRow[0].AsDecimal(), Is.EqualTo(123.456m),
-            "the scale is not applied to the stored value yet - if it now is, invert this pin");
+        // INVERTED BY THE FIX, and the inversion is the proof it landed. This used to read 123.456 and
+        // pass: precision was checked against a rounded value while the original was stored, so the
+        // declared scale was a thing the catalog said and the data ignored.
+        Assert.That(stored.CurrentRow[0].AsDecimal(), Is.EqualTo(123.46m),
+            "the value must be stored at the scale its column declared");
+    }
+
+    /// <summary>
+    /// The scale is applied on every path that writes a row, not only on the one that was tested first.
+    /// </summary>
+    /// <remarks>
+    /// Six call sites reach the write path - two inserts, an upsert, two merge branches and an update -
+    /// and a missed one would store an unrounded value in silence. One test per path is the only way to
+    /// know they were all found; the alternative is trusting a grep.
+    /// </remarks>
+    [Test]
+    public void ProbeTheScaleIsAppliedOnEveryWritePathTest()
+    {
+        Execute("DROP TABLE IF EXISTS T");
+        Execute("CREATE TABLE T (Id INTEGER PRIMARY KEY, V DECIMAL(6,2))");
+
+        Execute("INSERT INTO T (Id, V) VALUES (1, 1.111)");
+        Execute("UPDATE T SET V = 2.222 WHERE Id = 1");
+
+        Execute("INSERT INTO T (Id, V) VALUES (2, 3.333)");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Scalar("SELECT V FROM T WHERE Id = 1"), Is.EqualTo(2.22m), "after UPDATE");
+            Assert.That(Scalar("SELECT V FROM T WHERE Id = 2"), Is.EqualTo(3.33m), "after INSERT");
+        });
+    }
+
+    /// <summary>
+    /// The declared size is enforced on UPDATE as well as on INSERT.
+    /// </summary>
+    /// <remarks>
+    /// It was not, and nothing said so. UPDATE has a fast path with its own validation entry point -
+    /// a third one beside the two the insert paths use - and the size check added with the rest of this
+    /// phase reached it nowhere, so a hundred characters could be written into a VARCHAR(5) by updating
+    /// a row that already existed. Found by the scale test above rather than by looking, which is the
+    /// argument for one test per write path instead of one per feature.
+    /// </remarks>
+    [Test]
+    public void ProbeTheDeclaredLengthIsEnforcedOnUpdateTest()
+    {
+        Execute("DROP TABLE IF EXISTS T");
+        Execute("CREATE TABLE T (Id INTEGER PRIMARY KEY, S VARCHAR(5))");
+        Execute("INSERT INTO T (Id, S) VALUES (1, 'ok')");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => Execute("UPDATE T SET S = '12345' WHERE Id = 1"), Throws.Nothing,
+                "a value of exactly the declared length must still be accepted");
+
+            Assert.That(() => Execute("UPDATE T SET S = '123456' WHERE Id = 1"),
+                Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("too long"),
+                "an over-long value must be refused on UPDATE, not only on INSERT");
+        });
+    }
+
+    private decimal Scalar(string sql)
+    {
+        var result = m_engine.Execute(sql);
+        result.Read();
+
+        return result.CurrentRow[0].AsDecimal();
     }
 
     #endregion
