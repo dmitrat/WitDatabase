@@ -171,6 +171,67 @@ public class DropInGapsAdoNetTests
         second.Dispose();
     }
 
+    /// <summary>
+    /// Probe: the requested isolation level has to be APPLIED, not merely reported. The recorded finding
+    /// says the level never reaches the transaction; the test that covers it only asks what
+    /// <c>DbTransaction.IsolationLevel</c> answers, which a field would satisfy.
+    /// </summary>
+    /// <remarks>
+    /// The discriminating question is a repeated read. Under <c>Serializable</c> or
+    /// <c>RepeatableRead</c>, a read taken twice inside one transaction must return the same rows even
+    /// though another connection committed in between; under <c>ReadCommitted</c> it may see the new
+    /// row. So the two levels have to DIFFER, and the strict one has to be the stable one - either
+    /// outcome on its own could be an accident of the storage engine.
+    /// </remarks>
+    private const string IsolationIgnore =
+        "CONFIRMED 2026-07-31 by execution, and it is an ENGINE defect rather than a contract one, which "
+        + "is why it is recorded here rather than fixed with the rest of phase 6. All three levels "
+        + "behave identically: a transaction opened at Serializable or RepeatableRead sees a row that "
+        + "another connection committed AFTER it began - before=1, after=2, counted by READING the rows "
+        + "rather than through COUNT(*), which this engine answers from a cached counter. So the level "
+        + "is reported by DbTransaction.IsolationLevel and applied by nothing; the provider does send "
+        + "SET TRANSACTION ISOLATION LEVEL, so the gap is below it. Fixing it means giving MVCC a read "
+        + "snapshot pinned at transaction start, which is the commit protocol this project has already "
+        + "found fragile once (PHASE5 8b.7) and is not a change to make in passing. ReadCommitted stays "
+        + "active as the control: it is allowed to see the row, and does.";
+
+    [Test]
+    [TestCase(IsolationLevel.ReadCommitted)]
+    [TestCase(IsolationLevel.RepeatableRead, Ignore = IsolationIgnore)]
+    [TestCase(IsolationLevel.Serializable, Ignore = IsolationIgnore)]
+    public void RequestedIsolationLevelIsAppliedNotJustReportedTest(IsolationLevel level)
+    {
+        using var setup = OpenSharedConnection();
+        Execute(setup, "CREATE TABLE T (Id INT PRIMARY KEY)");
+        Execute(setup, "INSERT INTO T (Id) VALUES (1)");
+
+        using var reader = OpenSharedConnection();
+        using DbTransaction transaction = ((DbConnection)reader).BeginTransaction(level);
+
+        // Counted by READING the rows: this engine answers COUNT(*) from a cached per-table counter,
+        // and phase 4 published a false catastrophe by trusting it.
+        var before = CountByReading(reader, "T");
+
+        // A different connection commits while the transaction above is open.
+        using (var writer = OpenSharedConnection())
+            Execute(writer, "INSERT INTO T (Id) VALUES (2)");
+
+        var after = CountByReading(reader, "T");
+
+        transaction.Rollback();
+
+        TestContext.Out.WriteLine(
+            $"PROBE  {level}: rows seen inside the transaction  ->  before={before}, after={after}");
+
+        Assert.That(before, Is.EqualTo(1), "the transaction did not see the row that was there when it began");
+
+        if (level == IsolationLevel.ReadCommitted)
+            return;
+
+        Assert.That(after, Is.EqualTo(before),
+            $"{level} must not see a row another connection committed after this transaction began");
+    }
+
     #endregion
 
     #region Setup/TearDown
@@ -228,6 +289,24 @@ public class DropInGapsAdoNetTests
         if (transaction != null)
             command.Transaction = (WitDbTransaction)transaction;
         command.ExecuteNonQuery();
+    }
+
+    /// <summary>
+    /// Counts rows by pulling them, never through <c>COUNT(*)</c>, which this engine answers from a
+    /// cached counter.
+    /// </summary>
+    private static int CountByReading(DbConnection connection, string table)
+    {
+        using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT Id FROM {table}";
+
+        using var reader = command.ExecuteReader();
+
+        var rows = 0;
+        while (reader.Read())
+            rows++;
+
+        return rows;
     }
 
     private static int Count(WitDbConnection connection, string table)

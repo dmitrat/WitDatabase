@@ -241,6 +241,39 @@ Three of these change behaviour a consumer can be relying on:
 
 ---
 
+## 4c. The isolation level is reported and applied by nothing — **proved, not fixed**
+
+The last item the phase named, and the one it hands on rather than closing.
+
+The existing test asked what `DbTransaction.IsolationLevel` **answers**, which a field would satisfy. The
+question that matters is whether the level is **applied**, and the discriminating experiment is a
+repeated read: under `Serializable` or `RepeatableRead` a read taken twice inside one transaction must
+return the same rows even though another connection committed in between.
+
+| Level | Rows seen inside the transaction |
+|---|---|
+| `ReadCommitted` | before = 1, after = **2** — allowed |
+| `RepeatableRead` | before = 1, after = **2** — must not |
+| `Serializable` | before = 1, after = **2** — must not |
+
+**All three behave identically.** The provider does send `SET TRANSACTION ISOLATION LEVEL`, so the gap is
+below it.
+
+**The COUNT(\*) control was applied and did not change the verdict**, which is worth saying because it
+nearly went unapplied: this engine answers `COUNT(*)` from a cached per-table counter and phase 4
+published a false catastrophe by trusting it. The numbers above are rows **read**, not counted.
+
+**Not fixed here, deliberately.** This is an engine defect, not a contract one: honouring the level means
+giving MVCC a read snapshot pinned at transaction start, inside the commit protocol this project found
+fragile two days ago (`PHASE5` § 8b.7, the data loss). That is an investigation, not a rider on a marker
+sweep — the same judgement the secondary-index race got, and for the same reason.
+
+Recorded as a marker with the measurement in it. `ReadCommitted` stays **active as the control**: it is
+allowed to see the row, and does, so the pair says "the levels do not differ" rather than "reads are
+odd".
+
+---
+
 ## 4a. Exclusivity, decided rather than inherited — and the restart window closed
 
 Handed over from phase 5 § 3a-bis, and **decided by Dmitry 2026-07-31**: exclusivity is the *goal*, not a
