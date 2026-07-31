@@ -37,6 +37,16 @@ confirmed defect with a test already written that turns green when it is fixed.
 > `AdoNet 3.0.0` went out depending on `OutWit.Database 2.4.0`. That bad package is now **unlisted**.
 > Phase 4 — durability — closed as **4.0.0**: thirteen defects, six in no audit.
 >
+> **PHASE 6 IS DONE, 2026-07-31, PRs #73–#77** — the ADO.NET and EF Core contract. Full record in
+> `Docs/PHASE6-CONTRACT-PLAN.md`, closing summary in its § 4z. Its instrument was a **reflection census**
+> of the contract surface, and three of the defects it produced were in no audit. Two things are handed
+> on: the isolation level is reported and applied by nothing (proved, recorded, needs MVCC to pin a read
+> snapshot), and `ToJson()` owned entities are unbuilt capability for phase 9.
+>
+> **The next release must be a MAJOR**: engine failures now raise `DbException` rather than
+> `InvalidOperationException`, `Mode=ReadWrite`/`ReadOnly` refuse a database that is not there, and
+> savepoints and ambient transactions are advertised so EF Core starts using both.
+>
 > **The concurrency area is closed.** `CoreConcurrencyFindingsTests` holds no markers at all; what is
 > left there is the unreachable `ConnectionPool` permit leak and the reclassified `MVCC=false`
 > divergence `TestCase`, neither of which is an open defect. **The one piece of phase 5 still owed is
