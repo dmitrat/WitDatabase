@@ -242,6 +242,19 @@ mechanism closes § 3a.
 > **Windows is not evidence here, in either direction.** It refuses the second engine with the guard off
 > too — but through the write-ahead log's `FileShare.Read`, which is precisely the mechanism § 3a proved
 > does not hold on Unix. A local green says nothing about the platform the deployment target runs on.
+>
+> **Decided 2026-07-31: the experiment is NOT run**, and the item closes here. Dmitry's reasoning is the
+> product's: this is a file database, several processes over one file is not a shape being designed for at
+> this stage, and **exclusivity is what is wanted** — one process opens the file, everyone else is locked
+> out. That is already the enforced default on both platforms, so the remaining question was only about a
+> configuration nobody is asked to use.
+>
+> **Handed forward as a decision, not as an accepted edge.** Given that exclusivity is the *intent* rather
+> than merely the current behaviour, `FileLocking=false` silently permitting two engines on Linux is a hole
+> in the intent, not a documented trade-off. The switch exists for filesystems where advisory locking is
+> unreliable — where the guard genuinely cannot be taken — so the options are to keep it and warn, to make
+> it refuse for a store whose files do not enforce exclusivity themselves, or to remove it. Not urgent, and
+> not decided; measured, pinned and named so the choice is made deliberately.
 
 Both numbers above are pinned in the probe, so a change to what the two engines see fails the build
 rather than passing quietly.
