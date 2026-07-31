@@ -210,6 +210,39 @@ dropped:** two engines interleaving flushes and a compaction over overlapping ke
 counted by reading them. It belongs with the fix, not with the audit, because it is a test of whatever
 mechanism closes § 3a.
 
+> ### 3a-bis. The premise, re-checked 2026-07-31 — and it has changed
+>
+> The experiment above was named as *"a test of whatever mechanism closes § 3a"*, and that mechanism —
+> the exclusive `.lock` sidecar — shipped in 5.0.0. **So the premise was re-checked before the experiment
+> was run**, by execution and on both platforms
+> (`LsmTwoEngineReachabilityProbeTests`). It has changed:
+>
+> | Configuration | Windows | **Linux** |
+> |---|---|---|
+> | **default** | refused, `DatabaseAlreadyOpenException` | **refused, `DatabaseAlreadyOpenException`** |
+> | `FileLocking=false` | refused, `IOException` (the log's share mode) | **BOTH ENGINES OPEN** |
+>
+> **Two engines over one LSM database are no longer reachable in any supported default.** The one route
+> left is `FileLocking=false` on Unix — the switch `WitSQL.md` § 15.0 documents as *disabling the guard*,
+> for filesystems where advisory locking is unreliable.
+>
+> And in that configuration § 3a's symptom reproduces **exactly**, so the CI run that answered the
+> reachability question also took the measurement: *first engine sees the second's row = **False**,
+> second engine sees the first's row = **True***. The asymmetry is the original mechanism — the second
+> engine replays `wal.log` at open, which already holds the first engine's row; the first cannot see the
+> second's row because it lives in a memtable belonging to another engine and nothing invalidates or
+> notifies. It is now **pinned as an assertion**, so the sharp edge is executed rather than prose.
+>
+> **What this does to the promised experiment.** Its subject is no longer a defect in a supported
+> configuration; it is the cost of an escape hatch that documents itself as removing the protection. That
+> is a real question for anyone who sets the switch on a network share, and a much smaller one than the
+> phase recorded. It is also **Unix-only, so every iteration costs a CI cycle** — which is the argument
+> for deciding whether it is worth running rather than assuming it is.
+>
+> **Windows is not evidence here, in either direction.** It refuses the second engine with the guard off
+> too — but through the write-ahead log's `FileShare.Read`, which is precisely the mechanism § 3a proved
+> does not hold on Unix. A local green says nothing about the platform the deployment target runs on.
+
 Both numbers above are pinned in the probe, so a change to what the two engines see fails the build
 rather than passing quietly.
 
