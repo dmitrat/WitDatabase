@@ -120,6 +120,44 @@ silently outside the scope.
 
 ---
 
+## 3.3 The census finished — the whole surface, and the Inherited column read
+
+The first census covered the seven types a consumer usually holds. Extended to the rest of what this
+provider actually exposes — `DbCommandBuilder`, `DbDataAdapter`, `DbConnectionStringBuilder` — and
+**nothing is shadowed anywhere**. Those three override no public virtual member at all, which for them is
+mostly right: they are thin, and the base implementations do the work.
+
+**Mostly.** The census now also lists the inherited members by name, because "inherited" means *the base
+class's implementation stands* and that is only good news when the base implementation is right for this
+provider. Reading the list found one where it is not:
+
+### `DbCommandBuilder.QuoteIdentifier` threw — with the answer in its own hands
+
+`WitDbCommandBuilder`'s constructor has always set `QuotePrefix` and `QuoteSuffix` to `"`. The methods
+that apply them were inherited, and the base implementation of `QuoteIdentifier` **throws
+`NotSupportedException`**. So the builder knew how to quote an identifier and had no way to say it.
+
+**In no audit**, and the second finding to come out of this instrument rather than out of a list.
+Overridden now, doubling an embedded quote rather than letting it close the identifier early, and
+`UnquoteIdentifier` returns an unquoted identifier unchanged — which is what a caller unquoting whatever
+a schema handed them needs.
+
+### The rest of the column, judged rather than assumed
+
+| Inherited | Verdict |
+|---|---|
+| `GetSchemaAsync`, `GetSchemaTableAsync`, `GetColumnSchemaAsync`, `DisposeAsync` | The base implementations call the synchronous ones. Correct here. |
+| `CanCreateBatch`, `CreateBatch`, `CreateBatchCommand` | Batching is genuinely not implemented; the base answers `false` and throws, which is the honest report. A capability gap, not a defect. |
+| `GetProviderSpecificValue`, `GetStream`, `GetTextReader`, `VisibleFieldCount` | Base implementations work off the values this reader already returns. |
+| `CreateDataSourceEnumerator`, `CreateDataSource` | Not applicable to an embedded file database. |
+| `DbDataAdapter.Fill`, `Update`, `FillSchema` | The base adapter's own machinery, which is the point of deriving from it. |
+
+**Scope, stated:** the census walks the **public** surface, which is what a consumer holds. Protected
+members - `ApplyParameterInfo`, `GetParameterName` and the rest of `DbCommandBuilder`'s abstract half -
+are implemented and are outside it.
+
+---
+
 ## 4. Ambient transactions — supported, and the limit refused by name
 
 The silent-data-loss half of the phase, and it was **re-verified before it was fixed**: an abandoned

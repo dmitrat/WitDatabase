@@ -38,6 +38,53 @@ public sealed class WitDbCommandBuilder : DbCommandBuilder
     #region DbCommandBuilder Implementation
 
     /// <inheritdoc/>
+    /// <summary>
+    /// Wraps an identifier in this builder's quote characters, doubling any that appear inside it.
+    /// </summary>
+    /// <remarks>
+    /// Overridden because the base implementation <b>throws</b>, and did so even though this builder's
+    /// constructor has always set <c>QuotePrefix</c> and <c>QuoteSuffix</c> to <c>"</c> - it knew the
+    /// answer and had no way to give it. Found by the phase 6 contract census, in its "inherited"
+    /// column, which exists for exactly this: a base implementation that is wrong for this provider.
+    /// </remarks>
+    public override string QuoteIdentifier(string unquotedIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(unquotedIdentifier);
+
+        if (string.IsNullOrEmpty(QuotePrefix) || string.IsNullOrEmpty(QuoteSuffix))
+            return unquotedIdentifier;
+
+        return QuotePrefix + unquotedIdentifier.Replace(QuoteSuffix, QuoteSuffix + QuoteSuffix) + QuoteSuffix;
+    }
+
+    /// <summary>
+    /// Takes this builder's quote characters back off, undoubling any that were escaped inside.
+    /// </summary>
+    /// <remarks>
+    /// An identifier that is not quoted is returned as it came, which is what a caller unquoting
+    /// whatever a schema handed them needs.
+    /// </remarks>
+    public override string UnquoteIdentifier(string quotedIdentifier)
+    {
+        ArgumentNullException.ThrowIfNull(quotedIdentifier);
+
+        if (string.IsNullOrEmpty(QuotePrefix) || string.IsNullOrEmpty(QuoteSuffix))
+            return quotedIdentifier;
+
+        if (!quotedIdentifier.StartsWith(QuotePrefix, StringComparison.Ordinal) ||
+            !quotedIdentifier.EndsWith(QuoteSuffix, StringComparison.Ordinal) ||
+            quotedIdentifier.Length < QuotePrefix.Length + QuoteSuffix.Length)
+        {
+            return quotedIdentifier;
+        }
+
+        var inner = quotedIdentifier.Substring(
+            QuotePrefix.Length,
+            quotedIdentifier.Length - QuotePrefix.Length - QuoteSuffix.Length);
+
+        return inner.Replace(QuoteSuffix + QuoteSuffix, QuoteSuffix);
+    }
+
     protected override void ApplyParameterInfo(DbParameter parameter, DataRow row, StatementType statementType, bool whereClause)
     {
         var witParam = (WitDbParameter)parameter;
