@@ -92,7 +92,59 @@ not need this one repeating.
 
 ---
 
-## 4. What is next in this phase
+## 4z. Closing summary — the phase, done
+
+**Closed 2026-07-31.** Both acceptance criteria are met and both are executed rather than asserted in
+prose:
+
+- *No member reachable through a base type behaves differently from the concrete one* —
+  `ProbeNoContractMemberIsShadowedTest`, green over the **whole** public provider surface.
+- *`TransactionScope` either works or refuses at enlist time, never committing silently outside the
+  scope* — it works, and the one thing it cannot do is refused by name.
+
+### What the phase changed
+
+| | |
+|---|---|
+| Savepoints | Six shadowed members, where the audit had named three, plus `SupportsSavepoints` answering `false` while all six worked. EF Core asks that property before using a savepoint to retry `SaveChanges`. |
+| `WitDbParameter.Precision`/`Scale` | Set through a `DbParameter`, they reached the provider as 0 and 0. **In no audit.** |
+| Ambient transactions | Enlists as the single resource manager; an abandoned scope now rolls back. Promotion refused by name. |
+| Database failures | Now `DbException`, which is what every generic failure handler keys off. 16 test expectations had encoded the defect. |
+| Readers | No longer outlive the connection that made them. |
+| `Mode` | `ReadWrite` and `ReadOnly` no longer create a database they were told to open. `ReadOnly` was never in the marker. |
+| `Default Timeout`, `ConnectionTimeout` | Both were parsed and dropped; a test pinned the second **as behaviour**, with no marker. |
+| `QuoteIdentifier` | Threw, with the quote characters already in its own hands. **In no audit**, found by the census's inherited column. |
+
+**Three defects were in no audit, and all three came out of the instrument** rather than out of a list —
+which is the same ratio every phase since 4 has produced.
+
+### What the phase hands on
+
+- **The isolation level is reported and applied by nothing** (§ 4c). Proved by execution, recorded with
+  the measurement, deliberately not fixed: it needs MVCC to pin a read snapshot at transaction start,
+  inside the commit protocol phase 5 found fragile.
+- **`ToJson()` owned entities** are refused at model build. That is an unbuilt capability, not a contract
+  defect — it belongs to phase 9, which is the decision pass about what to build.
+- **`FileLocking=false`** still admits two engines on Linux (phase 5 § 3a-bis), now a hole in a stated
+  intent rather than a documented trade-off.
+- **The `CS0114` visitor warnings** in § 5, still uninvestigated.
+
+### Ledger
+
+**43 `[Ignore(…)]` + 14 `[TestCase(… Ignore =)]` = 57**, from 52 + 14 = 66 when the phase opened. Six
+markers closed, two opened — both of them the isolation level, which is one defect wearing two
+`TestCase`s. The AdoNet provider is down to **three** suppressed entries: the unreachable `ConnectionPool`
+permit leak and those two.
+
+### The release must be a MAJOR
+
+Engine failures raise `DbException` where they raised `InvalidOperationException`; `Mode=ReadWrite` and
+`ReadOnly` refuse a database that is not there; savepoints and ambient transactions are advertised, so EF
+Core starts **using** both.
+
+---
+
+## 4. Original scoping — what the phase set out to do
 
 **The `Inherited` column is the rest of the work**, and it is not automatically defective — a provider is
 not required to override everything, and most base implementations are correct. Three are already known
