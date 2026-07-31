@@ -65,7 +65,10 @@ public class ContractCensusProbeTests
         (typeof(DbDataReader), typeof(WitDbDataReader)),
         (typeof(DbParameter), typeof(WitDbParameter)),
         (typeof(DbParameterCollection), typeof(WitDbParameterCollection)),
-        (typeof(DbProviderFactory), typeof(WitDbProviderFactory))
+        (typeof(DbProviderFactory), typeof(WitDbProviderFactory)),
+        (typeof(DbCommandBuilder), typeof(WitDbCommandBuilder)),
+        (typeof(DbDataAdapter), typeof(WitDbDataAdapter)),
+        (typeof(DbConnectionStringBuilder), typeof(WitDbConnectionStringBuilder))
     ];
 
     /// <summary>
@@ -90,6 +93,13 @@ public class ContractCensusProbeTests
         TestContext.Out.WriteLine("");
         foreach (var m in shadowed)
             TestContext.Out.WriteLine($"CENSUS  SHADOWED  {m.Type}.{m.Signature}");
+
+        // Inherited is not a defect by itself - a provider is not required to override everything, and
+        // most base implementations are right. It is listed by name so that the ones that matter can be
+        // judged rather than assumed, which is how EnlistTransaction and ConnectionTimeout were found.
+        TestContext.Out.WriteLine("");
+        foreach (var m in members.Where(m => m.Disposition == Disposition.Inherited))
+            TestContext.Out.WriteLine($"CENSUS  inherited  {m.Type}.{m.Signature}");
 
         Assert.That(members, Is.Not.Empty, "the census found no members at all - reflection is wrong");
     }
@@ -154,6 +164,40 @@ public class ContractCensusProbeTests
                 "Precision set through the base type did not reach the provider");
             Assert.That(concrete.Scale, Is.EqualTo(2),
                 "Scale set through the base type did not reach the provider");
+        });
+    }
+
+    /// <summary>
+    /// Probe: <see cref="DbCommandBuilder.QuoteIdentifier"/> on a builder that already knows its quote
+    /// characters. The census lists it as inherited, and inherited means the base implementation - which
+    /// for this member is "throw".
+    /// </summary>
+    [Test]
+    public void ProbeTheCommandBuilderCanQuoteAnIdentifierTest()
+    {
+        using var builder = new WitDbCommandBuilder();
+
+        TestContext.Out.WriteLine(
+            $"PROBE  the builder's quote characters  ->  prefix={builder.QuotePrefix}, suffix={builder.QuoteSuffix}");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(builder.QuotePrefix, Is.EqualTo("\""), "the builder is configured with them");
+
+            Assert.That(builder.QuoteIdentifier("Order"), Is.EqualTo("\"Order\""),
+                "a builder that knows its quote characters must be able to apply them");
+
+            Assert.That(builder.UnquoteIdentifier("\"Order\""), Is.EqualTo("Order"),
+                "and take them off again");
+
+            Assert.That(builder.QuoteIdentifier("say \"what\""), Is.EqualTo("\"say \"\"what\"\"\""),
+                "a quote character inside the identifier is doubled, not left to close it early");
+
+            Assert.That(builder.UnquoteIdentifier("\"say \"\"what\"\"\""), Is.EqualTo("say \"what\""),
+                "and undoubled on the way back");
+
+            Assert.That(builder.UnquoteIdentifier("Order"), Is.EqualTo("Order"),
+                "an identifier that was not quoted comes back as it went in");
         });
     }
 
