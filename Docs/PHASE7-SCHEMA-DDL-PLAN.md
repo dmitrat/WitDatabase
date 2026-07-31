@@ -84,13 +84,61 @@ Server, which is also what the drop-in target actually is.
 
 ---
 
+## 3a. The corpus widened — three clusters, three signatures
+
+Extended to the forms the markers name. **Asking three questions instead of one pays off here**: the
+three clusters fail in three different ways, and counting them would have hidden that.
+
+```
+named-check                a constraint named ck_v      recorded=no   reported=no   enforced=yes
+named-unique               a constraint named uq_s      recorded=no   reported=no   enforced=yes
+named-foreign-key          a constraint named fk_p      recorded=no   reported=no   enforced=yes
+add-column-unique          IsUnique on the added column recorded=no   reported=n/a  enforced=no
+add-column-check           a CHECK on the added column  recorded=no   reported=n/a  enforced=no
+add-column-references      a foreign key on the added column  recorded=no  reported=n/a  enforced=no
+```
+
+| Cluster | Signature | What it means |
+|---|---|---|
+| Declared sizes | `no / no / no` | Declared, accepted, and gone in every dimension |
+| Named constraints | `no / no / **yes**` | **The constraint works and is anonymous** — so it can never be dropped |
+| `ALTER TABLE ADD COLUMN` | `no / n/a / no` | Everything but the type is discarded |
+
+The named-constraint row is the sharpest of the three: the marker recorded that
+`ALTER TABLE DROP CONSTRAINT` cannot find the name, and the corpus adds that
+`INFORMATION_SCHEMA.TABLE_CONSTRAINTS` cannot see it either, while the constraint itself is being
+enforced the whole time. A constraint that works, cannot be listed, and cannot be removed.
+
+## 3b. And one recorded finding turned out to be stale
+
+The plan's *already measured* list says **`DROP COLUMN` leaves foreign-key and primary-key metadata
+pointing at the dropped column, and the next insert throws `KeyNotFoundException`** — two of four.
+
+Measured 2026-07-31, and it does not reproduce in any shape tried:
+
+| Shape | Result |
+|---|---|
+| Drop columns carrying a foreign key, a `UNIQUE` and an index | no stale metadata of any kind; the next insert is accepted |
+| Drop the column the **primary key** is on | **refused** with `InvalidOperationException` |
+| Drop a column another table's **foreign key points at** | **refused** |
+
+**Phase 1 fixed it in 2.2.0** — its record lists *"`DROP COLUMN` metadata"* among the twelve — and this
+plan carried the pre-fix wording forward. The behaviour that is there now is the correct one, and
+refusing to drop a depended-on column is what PostgreSQL and SQL Server do too, so it is **pinned as a
+guarantee** rather than left as an observation.
+
+Sixth time in this project that a record about the past turned out false when re-run. The rule earns its
+keep: *a record about the past is a claim requiring re-verification.*
+
+---
+
 ## 4. What is next in this phase
 
-- **Widen the corpus** to the forms the markers name: named constraints in `CREATE TABLE`,
-  `ALTER TABLE ADD COLUMN` with `UNIQUE`/`CHECK`/`REFERENCES`, and `DROP COLUMN` leaving key metadata
-  behind. Each is a round trip the corpus can already express.
-- **Then fix**, in the order the corpus makes obvious: a declaration that is recorded but unenforced is a
-  smaller change than one that never reaches the catalog.
+- ~~**Widen the corpus**~~ **Done** — § 3a. `DROP COLUMN` came out of it as stale rather than as work.
+- **Then fix**, in the order the corpus makes obvious. The three signatures suggest their own order:
+  **named constraints** are the smallest change (the constraint already works; only its name is lost),
+  **`ADD COLUMN`** is next (the declaration is parsed and dropped on the floor), and **declared sizes**
+  are the largest, because nothing downstream has anywhere to put them yet.
 - **Watch the risk the plan names:** enforcement that was never applied will start rejecting data that
   used to be accepted. That is a behaviour change consumers will meet, and it belongs in a major.
 

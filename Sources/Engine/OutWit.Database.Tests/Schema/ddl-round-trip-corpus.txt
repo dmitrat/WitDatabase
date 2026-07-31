@@ -1,4 +1,4 @@
-# DDL round-trip corpus - phase 7, generated 2026-07-31
+# DDL round-trip corpus - phase 7, regenerated 2026-07-31 with the marked forms added
 #
 # A RECORD OF THE CURRENT STATE, NOT A TARGET. Each line is one declaration the grammar accepts, and
 # what became of it, asked three separate ways:
@@ -11,14 +11,23 @@
 # one that starts being honoured means this file is stale and should be regenerated, which is a fix
 # landing rather than a failure.
 #
-# The four size declarations are the class that escaped a 104-finding audit: declared, accepted, and
-# then absent in all three dimensions at once.
+# Three clusters, three different signatures - which is the point of asking three questions:
+#
+#   sizes                no  / no  / no    declared, accepted, and then gone in every dimension
+#   named constraints    no  / no  / YES   the constraint works and is anonymous, so it cannot be dropped
+#   ALTER ADD COLUMN     no  / n/a / no    everything but the type is discarded
 
+add-column-check           a CHECK on the added column  recorded=no      reported=n/a     enforced=no
+add-column-references      a foreign key on the added column recorded=no      reported=n/a     enforced=no
+add-column-unique          IsUnique = true on the added column recorded=no      reported=n/a     enforced=no
 char-length                MaxLength = 3                recorded=no      reported=no      enforced=no
 check-column               a column CHECK               recorded=yes     reported=n/a     enforced=yes
 check-table                a table CHECK                recorded=yes     reported=n/a     enforced=yes
 decimal-precision-scale    Precision = 5, Scale = 2     recorded=no      reported=no      enforced=no
 default                    DefaultValue = 'x'           recorded=yes     reported=yes     enforced=n/a
+named-check                a constraint named ck_v      recorded=no      reported=no      enforced=yes
+named-foreign-key          a constraint named fk_p      recorded=no      reported=no      enforced=yes
+named-unique               a constraint named uq_s      recorded=no      reported=no      enforced=yes
 not-null                   IsNullable = false           recorded=yes     reported=yes     enforced=yes
 numeric-precision-scale    Precision = 4, Scale = 1     recorded=no      reported=no      enforced=no
 primary-key                IsPrimaryKey = true          recorded=yes     reported=n/a     enforced=yes

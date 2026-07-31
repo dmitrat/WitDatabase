@@ -41,10 +41,15 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
     /// </summary>
     private sealed record Entry(
         string Name,
-        string Columns,
+        string[] Setup,
         string Property,
         string Violation,
         Func<DdlRoundTripCorpusTests, bool> Recorded);
+
+    /// <summary>One `CREATE TABLE T (...)` - the common shape, kept short at the call site.</summary>
+    private static Entry Table(string name, string columns, string property, string violation,
+        Func<DdlRoundTripCorpusTests, bool> recorded) =>
+        new(name, [$"CREATE TABLE T ({columns})"], property, violation, recorded);
 
     /// <summary>
     /// The corpus. Every entry is a shape the grammar accepts, so "it does not parse" is never the
@@ -52,48 +57,90 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
     /// </summary>
     private static readonly Entry[] CORPUS =
     [
-        new("varchar-length", "S VARCHAR(5)", "MaxLength = 5",
+        Table("varchar-length", "S VARCHAR(5)", "MaxLength = 5",
             "INSERT INTO T (S) VALUES ('123456')",
             t => t.Column("S").MaxLength == 5),
 
-        new("char-length", "S CHAR(3)", "MaxLength = 3",
+        Table("char-length", "S CHAR(3)", "MaxLength = 3",
             "INSERT INTO T (S) VALUES ('1234')",
             t => t.Column("S").MaxLength == 3),
 
-        new("decimal-precision-scale", "V DECIMAL(5,2)", "Precision = 5, Scale = 2",
+        Table("decimal-precision-scale", "V DECIMAL(5,2)", "Precision = 5, Scale = 2",
             "INSERT INTO T (V) VALUES (123456.789)",
             t => t.Column("V").Precision == 5 && t.Column("V").Scale == 2),
 
-        new("numeric-precision-scale", "V NUMERIC(4,1)", "Precision = 4, Scale = 1",
+        Table("numeric-precision-scale", "V NUMERIC(4,1)", "Precision = 4, Scale = 1",
             "INSERT INTO T (V) VALUES (99999.99)",
             t => t.Column("V").Precision == 4 && t.Column("V").Scale == 1),
 
-        new("not-null", "S TEXT NOT NULL", "IsNullable = false",
+        Table("not-null", "S TEXT NOT NULL", "IsNullable = false",
             "INSERT INTO T (S) VALUES (NULL)",
             t => !t.Column("S").Nullable),
 
-        new("default", "S TEXT DEFAULT 'x'", "DefaultValue = 'x'",
+        Table("default", "S TEXT DEFAULT 'x'", "DefaultValue = 'x'",
             "",
             t => !string.IsNullOrEmpty(t.Column("S").DefaultValue)),
 
-        new("primary-key", "Id INTEGER PRIMARY KEY", "IsPrimaryKey = true",
+        Table("primary-key", "Id INTEGER PRIMARY KEY", "IsPrimaryKey = true",
             "INSERT INTO T (Id) VALUES (1)",
             t => t.Column("Id").IsPrimaryKey),
 
-        new("unique", "S TEXT UNIQUE", "IsUnique = true",
+        Table("unique", "S TEXT UNIQUE", "IsUnique = true",
             "INSERT INTO T (S) VALUES ('a')",
             t => t.Column("S").IsUnique),
 
         // A COLUMN-level check lands on the column, a TABLE-level one on the table, so the corpus asks
         // both rather than one - the first version asked only the table and reported a check that is
         // enforced as unrecorded, which would have been the instrument's mistake, not a finding.
-        new("check-column", "V INTEGER CHECK (V > 0)", "a column CHECK",
+        Table("check-column", "V INTEGER CHECK (V > 0)", "a column CHECK",
             "INSERT INTO T (V) VALUES (0)",
             t => !string.IsNullOrEmpty(t.Column("V").CheckExpression)),
 
-        new("check-table", "V INTEGER, CHECK (V > 0)", "a table CHECK",
+        Table("check-table", "V INTEGER, CHECK (V > 0)", "a table CHECK",
             "INSERT INTO T (V) VALUES (0)",
             t => t.HasTableCheck("T")),
+
+        // Named constraints declared inline. The interesting split here is enforced-but-anonymous: the
+        // constraint works and cannot be dropped, because the name never reached the catalog.
+        Table("named-check", "V INTEGER, CONSTRAINT ck_v CHECK (V > 0)", "a constraint named ck_v",
+            "INSERT INTO T (V) VALUES (0)",
+            t => t.HasNamedConstraint("ck_v")),
+
+        Table("named-unique", "S TEXT, CONSTRAINT uq_s UNIQUE (S)", "a constraint named uq_s",
+            "INSERT INTO T (S) VALUES ('a')",
+            t => t.HasNamedConstraint("uq_s")),
+
+        new("named-foreign-key",
+            [
+                "CREATE TABLE P (Id INTEGER PRIMARY KEY)",
+                "CREATE TABLE T (Id INTEGER PRIMARY KEY, Pid INTEGER, CONSTRAINT fk_p FOREIGN KEY (Pid) REFERENCES P (Id))"
+            ],
+            "a constraint named fk_p",
+            "INSERT INTO T (Id, Pid) VALUES (1, 999)",
+            t => t.HasNamedConstraint("fk_p")),
+
+        // ALTER TABLE ADD COLUMN, which the markers say discards everything but the type.
+        new("add-column-unique",
+            ["CREATE TABLE T (Id INTEGER PRIMARY KEY)", "ALTER TABLE T ADD COLUMN S TEXT UNIQUE"],
+            "IsUnique = true on the added column",
+            "INSERT INTO T (Id, S) VALUES (2, 'a')",
+            t => t.Column("S").IsUnique),
+
+        new("add-column-check",
+            ["CREATE TABLE T (Id INTEGER PRIMARY KEY)", "ALTER TABLE T ADD COLUMN V INTEGER CHECK (V > 0)"],
+            "a CHECK on the added column",
+            "INSERT INTO T (Id, V) VALUES (1, 0)",
+            t => !string.IsNullOrEmpty(t.Column("V").CheckExpression)),
+
+        new("add-column-references",
+            [
+                "CREATE TABLE P (Id INTEGER PRIMARY KEY)",
+                "CREATE TABLE T (Id INTEGER PRIMARY KEY)",
+                "ALTER TABLE T ADD COLUMN Pid INTEGER REFERENCES P (Id)"
+            ],
+            "a foreign key on the added column",
+            "INSERT INTO T (Id, Pid) VALUES (1, 999)",
+            t => t.Column("Pid").ForeignKey != null),
     ];
 
     /// <summary>
@@ -104,6 +151,8 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
     {
         ["primary-key"] = "INSERT INTO T (Id) VALUES (1)",
         ["unique"] = "INSERT INTO T (S) VALUES ('a')",
+        ["named-unique"] = "INSERT INTO T (S) VALUES ('a')",
+        ["add-column-unique"] = "INSERT INTO T (Id, S) VALUES (1, 'a')",
     };
 
     #endregion
@@ -153,6 +202,125 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
         });
     }
 
+    /// <summary>
+    /// Probe: what <c>DROP COLUMN</c> leaves behind. Not a corpus entry, because the question is not
+    /// "did a declaration survive" but "did removing one corrupt the metadata of the others".
+    /// </summary>
+    /// <remarks>
+    /// The recorded finding says foreign-key and primary-key metadata keep pointing at the dropped
+    /// column while index and UNIQUE metadata are cleaned up - two of four. Measured here rather than
+    /// taken on trust, because a claim about which half is broken is exactly the kind that drifts.
+    /// </remarks>
+    [Test]
+    public void ProbeWhatDropColumnLeavesBehindTest()
+    {
+        Execute("DROP TABLE IF EXISTS T");
+        Execute("DROP TABLE IF EXISTS P");
+        Execute("CREATE TABLE P (Id INTEGER PRIMARY KEY)");
+        Execute("CREATE TABLE T (Id INTEGER PRIMARY KEY, Pid INTEGER REFERENCES P (Id), S TEXT UNIQUE, N INTEGER)");
+        Execute("CREATE INDEX ix_n ON T (N)");
+
+        Execute("ALTER TABLE T DROP COLUMN Pid");
+        Execute("ALTER TABLE T DROP COLUMN S");
+        Execute("ALTER TABLE T DROP COLUMN N");
+
+        var table = m_engine.Catalog.GetTable("T")!;
+        var columns = table.Columns.Select(c => c.Name).ToArray();
+
+        var foreignKeysLeft = table.ForeignKeys?.Count(fk => !fk.Columns.All(columns.Contains)) ?? 0;
+        var uniqueLeft = table.UniqueConstraints?.Count(u => !u.All(columns.Contains)) ?? 0;
+        var primaryKeyIsSound = table.PrimaryKey?.All(columns.Contains) ?? true;
+
+        string insert;
+        try
+        {
+            Execute("INSERT INTO T (Id) VALUES (1)");
+            insert = "accepted";
+        }
+        catch (Exception e)
+        {
+            insert = $"threw {e.GetType().Name}";
+        }
+
+        TestContext.Out.WriteLine(
+            $"PROBE  after dropping three columns  ->  stale foreign keys={foreignKeysLeft}, "
+            + $"stale unique={uniqueLeft}, primary key sound={primaryKeyIsSound}, next insert {insert}");
+
+        // ASSERTS CORRECT BEHAVIOUR - a failure here confirms the finding. Dropping a column must take
+        // its metadata with it, and the table must still accept rows afterwards.
+        Assert.Multiple(() =>
+        {
+            Assert.That(foreignKeysLeft, Is.Zero, "a foreign key still points at a dropped column");
+            Assert.That(uniqueLeft, Is.Zero, "a unique constraint still points at a dropped column");
+            Assert.That(primaryKeyIsSound, Is.True, "the primary key points at a dropped column");
+            Assert.That(insert, Is.EqualTo("accepted"), "the table stopped accepting rows");
+        });
+    }
+
+    /// <summary>
+    /// The sharper shapes of the same question: dropping the column the PRIMARY KEY is on, and dropping
+    /// a column another table's foreign key points AT.
+    /// </summary>
+    /// <remarks>
+    /// The first probe drops columns that only their own table refers to, and it comes back clean. That
+    /// is not enough to call the recorded finding stale: the two shapes below are where metadata is held
+    /// by something other than the column being dropped, and they are the ones a claim about "leaves
+    /// metadata behind" would have to survive.
+    /// </remarks>
+    [Test]
+    [TestCase("primary-key-column", "CREATE TABLE T (Id INTEGER PRIMARY KEY, S TEXT)", "Id")]
+    [TestCase("column-a-foreign-key-points-at", "CREATE TABLE T (Id INTEGER PRIMARY KEY, S TEXT)", "Id")]
+    public void ProbeDroppingAColumnSomethingElseDependsOnTest(string shape, string create, string column)
+    {
+        Execute("DROP TABLE IF EXISTS C");
+        Execute("DROP TABLE IF EXISTS T");
+        Execute(create);
+
+        if (shape == "column-a-foreign-key-points-at")
+            Execute("CREATE TABLE C (Id INTEGER PRIMARY KEY, Tid INTEGER REFERENCES T (Id))");
+
+        string drop;
+        try
+        {
+            Execute($"ALTER TABLE T DROP COLUMN {column}");
+            drop = "accepted";
+        }
+        catch (Exception e)
+        {
+            drop = $"refused with {e.GetType().Name}";
+        }
+
+        var table = m_engine.Catalog.GetTable("T");
+        var columns = table?.Columns.Select(c => c.Name).ToArray() ?? [];
+        var pkSound = table?.PrimaryKey?.All(columns.Contains) ?? true;
+
+        string insert;
+        try
+        {
+            Execute("INSERT INTO T (S) VALUES ('a')");
+            insert = "accepted";
+        }
+        catch (Exception e)
+        {
+            insert = $"threw {e.GetType().Name}";
+        }
+
+        TestContext.Out.WriteLine(
+            $"PROBE  [{shape}] drop {drop}; primary key sound={pkSound}; next insert {insert}");
+
+        // PINS CORRECT BEHAVIOUR, measured 2026-07-31. Dropping a column something else depends on is
+        // REFUSED rather than accepted-and-corrupting, which is what PostgreSQL and SQL Server do too.
+        // This is the half of the recorded DROP COLUMN finding that turned out to be stale: phase 1
+        // fixed the metadata half in 2.2.0, and the plan carried the pre-fix wording forward.
+        Assert.Multiple(() =>
+        {
+            Assert.That(drop, Does.StartWith("refused"),
+                "dropping a column the primary key or a foreign key depends on must be refused");
+            Assert.That(pkSound, Is.True, "the primary key must not point at a column that is gone");
+            Assert.That(insert, Is.EqualTo("accepted"), "and the table must still accept rows");
+        });
+    }
+
     #endregion
 
     #region Measurement
@@ -163,7 +331,10 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
     private string Measure(Entry entry)
     {
         Execute("DROP TABLE IF EXISTS T");
-        Execute($"CREATE TABLE T ({entry.Columns})");
+        Execute("DROP TABLE IF EXISTS P");
+
+        foreach (var statement in entry.Setup)
+            Execute(statement);
 
         var recorded = Ask(() => entry.Recorded(this));
         var reported = AskInformationSchema(entry);
@@ -187,6 +358,9 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
             _ => null
         };
 
+        if (entry.Name.StartsWith("named-", StringComparison.Ordinal))
+            return AskConstraintIsListed(entry.Property.Split(' ').Last());
+
         if (column == null)
             return "n/a";
 
@@ -207,6 +381,23 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
                 : !value.IsNull;
         });
     }
+
+    /// <summary>
+    /// Whether INFORMATION_SCHEMA.TABLE_CONSTRAINTS lists the constraint under the name it was given.
+    /// </summary>
+    private string AskConstraintIsListed(string name) => Ask(() =>
+    {
+        var result = m_engine.Execute(
+            $"SELECT CONSTRAINT_NAME FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'T'");
+
+        while (result.Read())
+        {
+            if (string.Equals(result.CurrentRow[0].ToObject()?.ToString(), name, StringComparison.OrdinalIgnoreCase))
+                return true;
+        }
+
+        return false;
+    });
 
     /// <summary>
     /// Whether a value that violates the declaration is refused. The seed insert goes first where one
@@ -271,6 +462,9 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
     /// Whether the table carries a CHECK expression at all. Deliberately the weakest possible question:
     /// the corpus is asking whether the declaration survived, not what it survived as.
     /// </summary>
+    private bool HasNamedConstraint(string name) =>
+        m_engine.Catalog.GetTable("T")?.GetConstraint(name) != null;
+
     private bool HasTableCheck(string table) =>
         m_engine.Catalog.GetTable(table)?.CheckExpressions?.Count > 0;
 
