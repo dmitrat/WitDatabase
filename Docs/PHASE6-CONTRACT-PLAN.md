@@ -120,6 +120,67 @@ silently outside the scope.
 
 ---
 
+## 4. Ambient transactions — supported, and the limit refused by name
+
+The silent-data-loss half of the phase, and it was **re-verified before it was fixed**: an abandoned
+`TransactionScope` left the write committed (expected 0 rows, got 1) and `EnlistTransaction` threw the
+base class's `NotSupportedException`. Both recorded claims still held.
+
+**Calibration first.** `Microsoft.Data.Sqlite` does not support ambient transactions either — its
+`EnlistTransaction` throws, and the feature request is open. So this was not a gap against the embedded
+competition. It was a gap against the phase's own acceptance criterion, which is the stricter and the
+right one: *`TransactionScope` either works or refuses at enlist time — never commits silently outside
+the scope.* Decided with Dmitry: support it properly, because the drop-in target is PostgreSQL and SQL
+Server, where it works.
+
+### The design, and why this shape
+
+`Transaction.EnlistPromotableSinglePhase` with `IPromotableSinglePhaseNotification`. This database is one
+resource manager on one machine, so the transaction manager can hand it the whole transaction and skip
+two-phase commit entirely.
+
+**Promotion is refused rather than faked.** The engine has no durable prepare record, so it cannot
+promise "prepared, and still prepared after a crash", which is what a real two-phase participant
+promises. If a second durable resource manager joins the same scope, `Promote()` throws — and the caller
+finds out then, rather than discovering afterwards that atomicity across the two was never real:
+
+```
+This transaction already has another resource manager that owns it, and WitDatabase cannot join as a
+second durable participant - it has no two-phase prepare. Use one database per TransactionScope.
+```
+
+Also handled: enlisting while a local transaction is open is refused, beginning a local transaction while
+enlisted is refused, and **`Close` is deferred while the transaction is still running** — the ordinary
+idiom disposes the connection inside the scope and completes the scope afterwards, so the engine has to
+outlive the connection.
+
+`Enlist` joins the connection string, default true, matching SqlClient.
+
+### The recorded test was wrong, and that is the finding underneath the finding
+
+`AbandonedTransactionScopeRollsBackTheWriteTest` opened the connection **before** the scope and then
+asserted the write must roll back. **No provider behaves that way** — enlistment happens at `Open`, so a
+connection opened before the scope began is not part of it, SqlClient included, and its documentation
+says so. The recorded finding would have failed against SQL Server too.
+
+So the test was corrected to the canonical shape (connection opened inside the scope) before being
+un-ignored, and it needed a **shared, file-backed** database to mean anything at all: the fixture's
+`:memory:` databases are private per connection, so the second connection was looking at an empty
+database and reporting `Table 'T' not found`. Two harness defects between the finding and the truth.
+
+### Verification
+
+| Test | What it holds down |
+|---|---|
+| Abandoned scope rolls back | the defect, in the canonical shape |
+| **Completed scope commits** | that the one above is not passing because nothing was written |
+| `EnlistTransaction` on an open connection | the explicit path, for connections opened first |
+| Two databases in one scope | the limit, refused by name |
+
+Reverting the auto-enlistment turns **2** red.
+
+---
+
 ## 4a. Exclusivity, decided rather than inherited — and the restart window closed
 
 Handed over from phase 5 § 3a-bis, and **decided by Dmitry 2026-07-31**: exclusivity is the *goal*, not a

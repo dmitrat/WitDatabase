@@ -1153,6 +1153,21 @@ So `FileLocking=false` is safe for the case it exists for — **one** engine on 
 cannot be trusted — and is not a way to run two. On Linux it silently permits exactly the configuration
 the guard exists to refuse.
 
+### 15.0.3 Ambient transactions
+
+A connection opened inside a `TransactionScope` **enlists in it**, and the scope decides the outcome: no
+`Complete()` means the work is rolled back. Enlistment happens at `Open` and only there — a connection
+opened before the scope began is not part of it, exactly as in SqlClient, and can be joined by hand with
+`EnlistTransaction`. `Enlist=false` in the connection string turns the automatic half off.
+
+The database enlists as the **single resource manager** of the transaction, which is what lets it skip
+two-phase commit. It has no durable prepare record, so it cannot act as one participant among several:
+**a second database in the same scope is refused** with a message saying so, rather than joining and
+committing on its own. Use one database per scope, or coordinate the two yourself.
+
+A local `BeginTransaction` and an ambient transaction cannot both be in progress on one connection;
+whichever comes second is refused.
+
 ### 15.0.1 Read-only connections
 
 `Read Only=true` — or equivalently `Mode=ReadOnly` — makes a connection refuse anything that could change

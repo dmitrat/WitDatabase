@@ -60,9 +60,9 @@ public class DropInGapsAdoNetTests
 
     #region Ambient transactions / TransactionScope
 
+    // FIXED 2026-07-31 (phase 6). EnlistTransaction is overridden and the connection enlists as the
+    // single resource manager of the ambient transaction.
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: EnlistTransaction throws NotSupportedException - DbConnection's virtual "
-            + "is not overridden. dropin-gaps, AdoNet/WitDbConnection.cs:154")]
     public void ConnectionEnlistsInAnAmbientTransactionTest()
     {
         using var scope = new TransactionScope();
@@ -72,23 +72,35 @@ public class DropInGapsAdoNetTests
             "a drop-in ADO.NET provider must support enlistment in an ambient transaction");
     }
 
+    /// <summary>
+    /// FIXED 2026-07-31 (phase 6), and the test had to be corrected before it could be believed.
+    /// </summary>
+    /// <remarks>
+    /// As recorded, this opened the connection BEFORE the scope and then asserted that the write must
+    /// roll back. **No provider behaves that way**: enlistment happens at <c>Open</c>, so a connection
+    /// opened before the scope began is not part of it - SqlClient included, and its documentation says
+    /// so. The recorded finding therefore over-stated the defect and would have failed against SQL
+    /// Server too. The write not rolling back in that shape is correct.
+    ///
+    /// The real defect is the one underneath: the connection never enlisted at all, in any shape, so an
+    /// abandoned scope committed regardless. This is the canonical shape - the connection is opened
+    /// inside the scope - and it is what a consumer relying on <c>TransactionScope</c> for atomicity
+    /// actually writes.
+    /// </remarks>
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and this is the half that loses data silently: the row survives a "
-            + "TransactionScope that was never completed. Because the connection never enlists, the "
-            + "write commits independently of the ambient transaction, so any code relying on "
-            + "TransactionScope for atomicity across components is silently wrong.")]
     public void AbandonedTransactionScopeRollsBackTheWriteTest()
     {
-        using var connection = OpenConnection();
-        Execute(connection, "CREATE TABLE T (Id INT PRIMARY KEY)");
+        using var setup = OpenSharedConnection();
+        Execute(setup, "CREATE TABLE T (Id INT PRIMARY KEY)");
 
         using (var scope = new TransactionScope())
         {
+            using var connection = OpenSharedConnection();
             Execute(connection, "INSERT INTO T (Id) VALUES (1)");
             // Scope is disposed without Complete(), so the write must not survive.
         }
 
-        Assert.That(Count(connection, "T"), Is.EqualTo(0),
+        Assert.That(Count(setup, "T"), Is.EqualTo(0),
             "an incomplete TransactionScope must roll the enlisted work back");
     }
 
@@ -109,9 +121,98 @@ public class DropInGapsAdoNetTests
         Assert.That(transaction.IsolationLevel, Is.EqualTo(IsolationLevel.Serializable));
     }
 
+    /// <summary>
+    /// Control, and the half that stops the test above passing vacuously: a scope that IS completed
+    /// must commit. A rollback assertion is satisfied just as well by a write that never happened.
+    /// </summary>
+    [Test]
+    public void CompletedTransactionScopeCommitsTheWriteTest()
+    {
+        using var setup = OpenSharedConnection();
+        Execute(setup, "CREATE TABLE T (Id INT PRIMARY KEY)");
+
+        using (var scope = new TransactionScope())
+        {
+            using var connection = OpenSharedConnection();
+            Execute(connection, "INSERT INTO T (Id) VALUES (1)");
+
+            scope.Complete();
+        }
+
+        Assert.That(Count(setup, "T"), Is.EqualTo(1),
+            "a completed TransactionScope must commit the enlisted work");
+    }
+
+    /// <summary>
+    /// The limit, refused by name rather than faked. This engine enlists as the single resource manager
+    /// of a transaction; a second database in the same scope would need it to promote to a distributed
+    /// transaction, and it has no two-phase prepare with which to keep that promise.
+    /// </summary>
+    /// <remarks>
+    /// Refusing here is the point. The alternative - joining anyway and committing independently - is
+    /// the defect this whole section is about, one scope wider.
+    /// </remarks>
+    [Test]
+    public void TwoDatabasesInOneScopeAreRefusedRatherThanFakedTest()
+    {
+        using var scope = new TransactionScope();
+
+        using var first = OpenSharedConnection();
+
+        var second = new WitDbConnection($"Data Source={Path.Combine(m_testDir, "other.witdb")}");
+
+        var refused = Assert.Throws<NotSupportedException>(() => second.Open());
+
+        TestContext.Out.WriteLine($"PROBE  a second database in one scope  ->  {refused!.Message}");
+
+        Assert.That(refused.Message, Does.Contain("one database per TransactionScope"),
+            "the refusal must say what the limit is");
+
+        second.Dispose();
+    }
+
+    #endregion
+
+    #region Setup/TearDown
+
+    private string m_testDir = null!;
+
+    [SetUp]
+    public void SetUp()
+    {
+        m_testDir = Path.Combine(Path.GetTempPath(), $"witdb_dropin_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(m_testDir);
+    }
+
+    [TearDown]
+    public void TearDown()
+    {
+        try
+        {
+            if (Directory.Exists(m_testDir))
+                Directory.Delete(m_testDir, recursive: true);
+        }
+        catch
+        {
+            // Cleanup must not fail the run.
+        }
+    }
+
     #endregion
 
     #region Helpers
+
+    /// <summary>
+    /// A connection to a shared, file-backed database. An in-memory one is private to its connection,
+    /// so two of them cannot see each other's work - which is exactly what an ambient transaction test
+    /// needs them to do.
+    /// </summary>
+    private WitDbConnection OpenSharedConnection()
+    {
+        var connection = new WitDbConnection($"Data Source={Path.Combine(m_testDir, "scope.witdb")}");
+        connection.Open();
+        return connection;
+    }
 
     private static WitDbConnection OpenConnection()
     {

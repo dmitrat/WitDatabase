@@ -1,5 +1,6 @@
 using System.Data;
 using System.Data.Common;
+using Transaction = System.Transactions.Transaction;
 using OutWit.Database.AdoNet.Engines;
 using OutWit.Database.AdoNet.Schema;
 using OutWit.Database.AdoNet.Utils;
@@ -29,6 +30,8 @@ public sealed class WitDbConnection : DbConnection
     private string m_connectionString = string.Empty;
     private ConnectionState m_state = ConnectionState.Closed;
     private WitSqlEngine? m_engine;
+    private WitDbEnlistment? m_enlistment;
+    private bool m_closePending;
     private WitDatabase? m_database;
     private WitDbTransaction? m_currentTransaction;
 
@@ -84,6 +87,8 @@ public sealed class WitDbConnection : DbConnection
         if (string.IsNullOrEmpty(m_connectionString) && m_engine == null)
             throw new InvalidOperationException("Connection string is not set.");
 
+        var enlist = false;
+
         lock (m_lock)
         {
             if (m_state == ConnectionState.Open)
@@ -125,6 +130,7 @@ public sealed class WitDbConnection : DbConnection
                 }
 
                 m_state = ConnectionState.Open;
+                enlist = new WitDbConnectionStringBuilder(m_connectionString).Enlist;
             }
             catch
             {
@@ -141,6 +147,12 @@ public sealed class WitDbConnection : DbConnection
                 throw;
             }
         }
+
+        // Outside the lock, because enlisting runs SQL through the engine this method has just built.
+        // At Open and only here: a connection opened BEFORE the scope began is not part of it - the same
+        // rule SqlClient follows - and has to be enlisted by hand.
+        if (enlist && Transaction.Current != null)
+            EnlistTransaction(Transaction.Current);
     }
 
     /// <inheritdoc/>
@@ -154,6 +166,16 @@ public sealed class WitDbConnection : DbConnection
     {
         if (m_state == ConnectionState.Closed)
             return;
+
+        // The ordinary TransactionScope idiom disposes the connection INSIDE the scope and completes the
+        // scope afterwards, so the engine has to outlive this call: the transaction's outcome is not
+        // known yet and rolling back here would decide it. The real close happens in
+        // OnEnlistmentFinished.
+        if (m_enlistment != null)
+        {
+            m_closePending = true;
+            return;
+        }
 
         lock (m_lock)
         {
@@ -201,9 +223,85 @@ public sealed class WitDbConnection : DbConnection
     #region Transaction
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// Enlisting in an ambient transaction and running a local one at the same time would give the
+    /// connection two owners with different opinions about when to commit, so the second is refused -
+    /// as it is by every provider that supports both.
+    /// </remarks>
+    public override void EnlistTransaction(Transaction? transaction)
+    {
+        if (transaction == null)
+        {
+            if (m_enlistment != null)
+            {
+                throw new InvalidOperationException(
+                    "The connection is enlisted in a transaction that has not finished; it cannot be "
+                    + "un-enlisted until that transaction commits or rolls back.");
+            }
+
+            return;
+        }
+
+        EnsureOpen();
+
+        if (m_enlistment != null)
+        {
+            if (m_enlistment.Transaction.Equals(transaction))
+                return;
+
+            throw new InvalidOperationException(
+                "The connection is already enlisted in a different transaction.");
+        }
+
+        if (m_currentTransaction != null)
+        {
+            throw new InvalidOperationException(
+                "The connection has a local transaction in progress and cannot enlist in an ambient "
+                + "one. Commit or roll the local transaction back first.");
+        }
+
+        var enlistment = new WitDbEnlistment(this, transaction);
+
+        // Single resource manager, single machine: the transaction manager can hand the whole
+        // transaction to this database and skip two-phase commit. False means somebody else already
+        // owns it that way, and this engine has no durable prepare with which to join as a second
+        // participant - so it says so instead of committing outside the caller's transaction.
+        if (!transaction.EnlistPromotableSinglePhase(enlistment))
+        {
+            throw new NotSupportedException(
+                "This transaction already has another resource manager that owns it, and WitDatabase "
+                + "cannot join as a second durable participant - it has no two-phase prepare. Use one "
+                + "database per TransactionScope.");
+        }
+
+        m_enlistment = enlistment;
+    }
+
+    /// <summary>
+    /// Called by the enlistment once the ambient transaction has committed or rolled back.
+    /// </summary>
+    internal void OnEnlistmentFinished()
+    {
+        m_enlistment = null;
+
+        if (!m_closePending)
+            return;
+
+        m_closePending = false;
+        Close();
+    }
+
+    /// <inheritdoc/>
     protected override DbTransaction BeginDbTransaction(IsolationLevel isolationLevel)
     {
         EnsureOpen();
+
+        if (m_enlistment != null)
+        {
+            throw new InvalidOperationException(
+                "The connection is enlisted in an ambient transaction. Complete the TransactionScope "
+                + "instead of beginning a local transaction.");
+        }
 
         if (m_currentTransaction != null)
             throw new InvalidOperationException("A transaction is already in progress.");
