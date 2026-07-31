@@ -38,6 +38,7 @@ public sealed partial class StatementExecutor
         var tableChecks = new List<string>();
         var tableForeignKeys = new List<DefinitionForeignKey>();
         var tableUniqueConstraints = new List<IReadOnlyList<string>>();
+        var namedConstraints = new List<DefinitionNamedConstraint>();
 
         foreach (var colDef in createTable.Columns)
         {
@@ -48,8 +49,8 @@ public sealed partial class StatementExecutor
         // Process table-level constraints
         if (createTable.Constraints != null)
         {
-            ProcessTableConstraints(createTable.Constraints, columns, primaryKeyColumns, 
-                tableChecks, tableForeignKeys, tableUniqueConstraints);
+            ProcessTableConstraints(createTable.Constraints, columns, primaryKeyColumns,
+                tableChecks, tableForeignKeys, tableUniqueConstraints, namedConstraints);
         }
 
         var metadata = new DefinitionTable
@@ -59,7 +60,8 @@ public sealed partial class StatementExecutor
             PrimaryKey = primaryKeyColumns.Count > 0 ? primaryKeyColumns : null,
             UniqueConstraints = tableUniqueConstraints.Count > 0 ? tableUniqueConstraints : null,
             CheckExpressions = tableChecks.Count > 0 ? tableChecks : null,
-            ForeignKeys = tableForeignKeys.Count > 0 ? tableForeignKeys : null
+            ForeignKeys = tableForeignKeys.Count > 0 ? tableForeignKeys : null,
+            NamedConstraints = namedConstraints.Count > 0 ? namedConstraints : null
         };
 
         m_context.Database.CreateTable(metadata);
@@ -131,10 +133,16 @@ public sealed partial class StatementExecutor
         List<string> primaryKeyColumns,
         List<string> tableChecks,
         List<DefinitionForeignKey> tableForeignKeys,
-        List<IReadOnlyList<string>> tableUniqueConstraints)
+        List<IReadOnlyList<string>> tableUniqueConstraints,
+        List<DefinitionNamedConstraint> namedConstraints)
     {
         foreach (var constraint in constraints)
         {
+            // A constraint declared with a name keeps it. Recorded alongside the enforcement structures
+            // rather than instead of them: enforcement already worked, and only the name was lost.
+            if (!string.IsNullOrEmpty(constraint.Name))
+                namedConstraints.Add(BuildNamedConstraint(constraint, constraint.Name));
+
             switch (constraint)
             {
                 case TableConstraintPrimaryKey pkc:
@@ -329,34 +337,34 @@ public sealed partial class StatementExecutor
         }
     }
 
-    private void ExecuteAddConstraint(string tableName, AlterActionAddConstraint addConstraint)
-    {
-        if (addConstraint.Constraint == null)
-        {
-            throw new InvalidOperationException("ADD CONSTRAINT requires a constraint definition");
-        }
-
-        var constraint = addConstraint.Constraint;
-        var constraintName = constraint.Name 
-            ?? throw new InvalidOperationException("ADD CONSTRAINT requires a constraint name");
-
-        DefinitionNamedConstraint namedConstraint = constraint switch
+    /// <summary>
+    /// Builds the catalog's record of a named constraint from the parsed one.
+    /// </summary>
+    /// <remarks>
+    /// Shared by <c>ALTER TABLE ADD CONSTRAINT</c> and by <c>CREATE TABLE</c>. It was only ever reachable
+    /// from the first, which is why a name given inline in <c>CREATE TABLE</c> never reached the catalog:
+    /// the constraint was enforced, and anonymous, so it could be neither listed in
+    /// <c>INFORMATION_SCHEMA.TABLE_CONSTRAINTS</c> nor removed by <c>DROP CONSTRAINT</c>. This records a
+    /// name that was previously discarded; it does not change what is enforced.
+    /// </remarks>
+    private static DefinitionNamedConstraint BuildNamedConstraint(TableConstraint constraint, string name) =>
+        constraint switch
         {
             TableConstraintCheck check => new DefinitionNamedConstraint
             {
-                Name = constraintName,
+                Name = name,
                 Type = ConstraintType.Check,
                 CheckExpression = WitSqlExpressionSerializer.Serialize(check.Condition)
             },
             TableConstraintUnique unique => new DefinitionNamedConstraint
             {
-                Name = constraintName,
+                Name = name,
                 Type = ConstraintType.Unique,
                 Columns = unique.Columns.ToList()
             },
             TableConstraintForeignKey fk => new DefinitionNamedConstraint
             {
-                Name = constraintName,
+                Name = name,
                 Type = ConstraintType.ForeignKey,
                 Columns = fk.Columns.ToList(),
                 ForeignKey = new DefinitionForeignKey
@@ -368,12 +376,33 @@ public sealed partial class StatementExecutor
                     OnUpdate = MapReferenceAction(fk.OnUpdate)
                 }
             },
-            TableConstraintPrimaryKey => throw new NotSupportedException(
-                "Adding PRIMARY KEY constraint to existing table is not supported"),
+            TableConstraintPrimaryKey pk => new DefinitionNamedConstraint
+            {
+                Name = name,
+                Type = ConstraintType.PrimaryKey,
+                Columns = pk.Columns.ToList()
+            },
             _ => throw new NotSupportedException($"Constraint type not supported: {constraint.GetType().Name}")
         };
 
-        m_context.Database.AddConstraint(tableName, namedConstraint);
+    private void ExecuteAddConstraint(string tableName, AlterActionAddConstraint addConstraint)
+    {
+        if (addConstraint.Constraint == null)
+        {
+            throw new InvalidOperationException("ADD CONSTRAINT requires a constraint definition");
+        }
+
+        var constraint = addConstraint.Constraint;
+        var constraintName = constraint.Name 
+            ?? throw new InvalidOperationException("ADD CONSTRAINT requires a constraint name");
+
+        if (constraint is TableConstraintPrimaryKey)
+        {
+            throw new NotSupportedException(
+                "Adding PRIMARY KEY constraint to existing table is not supported");
+        }
+
+        m_context.Database.AddConstraint(tableName, BuildNamedConstraint(constraint, constraintName));
     }
 
     #endregion

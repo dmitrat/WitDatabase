@@ -31,13 +31,14 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     // so the consequence is a blocked migration, not corrupted data.
     // engine-schema-ddl, Statements/StatementExecutor.Ddl.Tables.cs:128
 
-    private const string NamedConstraintIgnore =
+    // FIXED 2026-07-31 (phase 7). CREATE TABLE now records an inline constraint name, so all
+    // three tests below pass; the reason string is kept as the record of what was measured.
+    private const string NamedConstraintIgnoreHistory =
         "CONFIRMED 2026-07-27: ALTER TABLE DROP CONSTRAINT raises \"Constraint '<name>' not found\" " +
         "- an inline CREATE TABLE constraint name never reaches the catalog. " +
         "engine-schema-ddl, Statements/StatementExecutor.Ddl.Tables.cs:128";
 
     [Test]
-    [Ignore(NamedConstraintIgnore)]
     public void NamedCheckConstraintFromCreateTableCanBeDroppedTest()
     {
         m_engine.Execute(@"
@@ -54,7 +55,6 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore(NamedConstraintIgnore)]
     public void NamedForeignKeyFromCreateTableCanBeDroppedTest()
     {
         m_engine.Execute("CREATE TABLE P (Id INT PRIMARY KEY)");
@@ -71,7 +71,6 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore(NamedConstraintIgnore)]
     public void NamedUniqueConstraintFromCreateTableCanBeDroppedTest()
     {
         m_engine.Execute(@"

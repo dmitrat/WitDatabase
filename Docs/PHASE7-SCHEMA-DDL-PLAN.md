@@ -132,6 +132,57 @@ keep: *a record about the past is a claim requiring re-verification.*
 
 ---
 
+## 3c. Cluster 1 fixed — named constraints keep their names, and dropping one takes effect
+
+The smallest of the three, and it turned out to be two changes rather than one.
+
+**The name was never recorded.** `CREATE TABLE` built its `DefinitionTable` with `PrimaryKey`,
+`UniqueConstraints`, `CheckExpressions` and `ForeignKeys` — and never `NamedConstraints`. A converter
+from parsed constraint to catalog record already existed and was reachable only from
+`ALTER TABLE ADD CONSTRAINT`, which is exactly why *that* path worked and the inline one did not. It is
+now shared by both.
+
+**And recording the name was not enough.** With it recorded, `DROP CONSTRAINT` stopped saying *not found*
+and started saying nothing at all: it removed the name and left the enforcement behind, so the constraint
+went on refusing rows under no name. The measurement said so immediately — *"the CHECK was dropped, so a
+value of 99 must now be accepted"* — which is why the tests assert the **consequence** rather than the
+absence of an exception.
+
+Dropping now removes both halves:
+
+| Constraint | What else had to go |
+|---|---|
+| `CHECK` | the matching entry in `CheckExpressions` |
+| `FOREIGN KEY` | the matching entry in `ForeignKeys` |
+| `UNIQUE` | the entry in `UniqueConstraints` **and** the column's own `IsUnique` mark — validation reads that separately, so leaving it kept refusing duplicates |
+
+**Exactly one match is removed.** An identical constraint declared anonymously alongside a named one is a
+different constraint, and dropping the named one must not take it with it.
+
+**Why not simply keep named constraints out of the anonymous structures?** Because those structures are
+what `INFORMATION_SCHEMA`, cascade handling and validation all read — checked before choosing, not
+assumed. Keeping both and teaching `DROP` to remove both is the change that touches only the defect.
+
+### What it cost, stated
+
+A named inline constraint is now validated twice — once from the anonymous structure and once from the
+named one. Same verdict, one extra expression evaluation. Worth knowing for phase 10 and not worth a
+second mechanism today.
+
+### Revert counts
+
+| Fix reverted | Tests red |
+|---|---|
+| Both halves (production only, tests kept) | **4** — the three markers and the corpus |
+
+The first attempt at this measurement reverted the *whole* diff and turned nothing red, because it took
+the tests back with it. A revert count means nothing unless the tests survive the revert.
+
+**Corpus after:** `named-check`, `named-unique`, `named-foreign-key` all `recorded=yes reported=yes
+enforced=yes`. Two clusters left.
+
+---
+
 ## 4. What is next in this phase
 
 - ~~**Widen the corpus**~~ **Done** — § 3a. `DROP COLUMN` came out of it as stale rather than as work.

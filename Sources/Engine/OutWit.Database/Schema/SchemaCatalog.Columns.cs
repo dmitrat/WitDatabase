@@ -269,6 +269,92 @@ public sealed partial class SchemaCatalog
     }
 
     /// <summary>
+    /// Takes the dropped constraint's enforcement out of the table as well as its name.
+    /// </summary>
+    /// <remarks>
+    /// A constraint declared inline in <c>CREATE TABLE</c> is recorded twice: once by name, and once in
+    /// the structure that enforces it - <c>CheckExpressions</c>, <c>UniqueConstraints</c> or
+    /// <c>ForeignKeys</c>. Those structures are what <c>INFORMATION_SCHEMA</c>, cascade handling and
+    /// validation all read, so a named constraint cannot simply be kept out of them. Dropping therefore
+    /// has to remove both halves, or the constraint keeps being enforced under no name at all - which is
+    /// what it did until 2026-07-31: <c>DROP CONSTRAINT</c> was accepted and changed nothing.
+    ///
+    /// <b>Exactly one match is removed.</b> An identical constraint declared anonymously alongside a
+    /// named one is a different constraint, and dropping the named one must not take it with it.
+    /// </remarks>
+    private static DefinitionTable RemoveEnforcementFor(DefinitionNamedConstraint dropped, DefinitionTable table)
+    {
+        switch (dropped.Type)
+        {
+            case ConstraintType.Check when dropped.CheckExpression != null && table.CheckExpressions != null:
+            {
+                var remaining = RemoveFirst(table.CheckExpressions,
+                    e => string.Equals(e, dropped.CheckExpression, StringComparison.Ordinal));
+
+                return table.With(x => x.CheckExpressions, remaining.Count > 0 ? remaining : null);
+            }
+
+            case ConstraintType.Unique when dropped.Columns != null && table.UniqueConstraints != null:
+            {
+                var remaining = RemoveFirst(table.UniqueConstraints, u => SameColumns(u, dropped.Columns));
+
+                var updated = table.With(x => x.UniqueConstraints, remaining.Count > 0 ? remaining : null);
+
+                // A single-column UNIQUE also marks the column itself, and validation reads that mark, so
+                // leaving it behind would keep refusing duplicates after the constraint was dropped.
+                // Cleared only when nothing else still covers the column - another UNIQUE, named or not.
+                if (dropped.Columns.Count == 1)
+                {
+                    var column = dropped.Columns[0];
+
+                    var stillCovered =
+                        remaining.Any(u => u.Count == 1 && SameColumns(u, dropped.Columns))
+                        || (updated.NamedConstraints?.Any(c =>
+                                c.Type == ConstraintType.Unique && SameColumns(c.Columns, dropped.Columns))
+                            ?? false);
+
+                    if (!stillCovered)
+                    {
+                        foreach (var col in updated.Columns.Where(c =>
+                                     c.Name.Equals(column, StringComparison.OrdinalIgnoreCase)))
+                        {
+                            col.IsUnique = false;
+                        }
+                    }
+                }
+
+                return updated;
+            }
+
+            case ConstraintType.ForeignKey when dropped.Columns != null && table.ForeignKeys != null:
+            {
+                var remaining = RemoveFirst(table.ForeignKeys, fk => SameColumns(fk.Columns, dropped.Columns));
+
+                return table.With(x => x.ForeignKeys, remaining.Count > 0 ? remaining : null);
+            }
+
+            default:
+                return table;
+        }
+    }
+
+    private static List<T> RemoveFirst<T>(IReadOnlyList<T> source, Func<T, bool> match)
+    {
+        var remaining = source.ToList();
+        var index = remaining.FindIndex(x => match(x));
+
+        if (index >= 0)
+            remaining.RemoveAt(index);
+
+        return remaining;
+    }
+
+    private static bool SameColumns(IReadOnlyList<string>? left, IReadOnlyList<string>? right) =>
+        left != null && right != null
+        && left.Count == right.Count
+        && left.Zip(right, (a, b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase)).All(x => x);
+
+    /// <summary>
     /// Drops a named constraint from an existing table.
     /// </summary>
     public void DropConstraint(string tableName, string constraintName)
@@ -289,7 +375,12 @@ public sealed partial class SchemaCatalog
             if (constraints.Count == table.NamedConstraints.Count)
                 throw new InvalidOperationException($"Constraint '{constraintName}' not found on table '{tableName}'");
 
-            m_tables[tableName] = table.With(x => x.NamedConstraints, constraints.Count > 0 ? constraints : null);
+            var dropped = table.NamedConstraints
+                .First(c => c.Name.Equals(constraintName, StringComparison.OrdinalIgnoreCase));
+
+            var updated = table.With(x => x.NamedConstraints, constraints.Count > 0 ? constraints : null);
+
+            m_tables[tableName] = RemoveEnforcementFor(dropped, updated);
             SaveSchema();
         }
         finally
