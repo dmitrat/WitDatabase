@@ -1,4 +1,4 @@
-# DDL round-trip corpus - phase 7, regenerated 2026-07-31 after the named-constraint fix
+# DDL round-trip corpus - phase 7, regenerated 2026-07-31 after the ALTER ADD COLUMN fix
 #
 # A RECORD OF THE CURRENT STATE, NOT A TARGET. Each line is one declaration the grammar accepts, and
 # what became of it, asked three separate ways:
@@ -9,16 +9,15 @@
 #
 # The corpus test fails in BOTH directions. A declaration that stops being honoured is a regression;
 # one that starts being honoured means this file is stale and should be regenerated, which is a fix
-# landing rather than a failure - as the named-* rows just did.
+# landing rather than a failure - as the named-* and add-column-* rows both did.
 #
-# Two clusters left, two signatures:
+# ONE CLUSTER LEFT:
 #
-#   sizes              no  / no  / no    declared, accepted, and gone in every dimension
-#   ALTER ADD COLUMN   no  / n/a / no    everything but the type is discarded
+#   sizes   no / no / no   declared, accepted, and gone in every dimension
 
-add-column-check           a CHECK on the added column  recorded=no      reported=n/a     enforced=no
-add-column-references      a foreign key on the added column recorded=no      reported=n/a     enforced=no
-add-column-unique          IsUnique = true on the added column recorded=no      reported=n/a     enforced=no
+add-column-check           a CHECK on the added column  recorded=yes     reported=n/a     enforced=yes
+add-column-references      a foreign key on the added column recorded=yes     reported=n/a     enforced=yes
+add-column-unique          IsUnique = true on the added column recorded=yes     reported=n/a     enforced=yes
 char-length                MaxLength = 3                recorded=no      reported=no      enforced=no
 check-column               a column CHECK               recorded=yes     reported=n/a     enforced=yes
 check-table                a table CHECK                recorded=yes     reported=n/a     enforced=yes

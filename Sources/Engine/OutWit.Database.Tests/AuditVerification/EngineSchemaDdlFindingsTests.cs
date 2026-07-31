@@ -95,13 +95,15 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     // column looks constrained in the DDL the user wrote and is not constrained in the database.
     // engine-schema-ddl, Statements/StatementExecutor.Ddl.Tables.cs:283
 
-    private const string AddColumnIgnore =
+    // FIXED 2026-07-31 (phase 7). ALTER TABLE ADD COLUMN now builds its column with the same code
+    // CREATE TABLE uses, so the constraints reach the catalog and are enforced. The reason string is
+    // kept as the record of what was measured.
+    private const string AddColumnIgnoreHistory =
         "CONFIRMED 2026-07-27: the constraint written on the added column is silently discarded " +
         "and the violating INSERT is accepted. " +
         "engine-schema-ddl, Statements/StatementExecutor.Ddl.Tables.cs:283";
 
     [Test]
-    [Ignore(AddColumnIgnore)]
     public void AddColumnKeepsItsUniqueConstraintTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY)");
@@ -114,7 +116,6 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore(AddColumnIgnore)]
     public void AddColumnKeepsItsCheckConstraintTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY)");
@@ -125,7 +126,6 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore(AddColumnIgnore)]
     public void AddColumnKeepsItsForeignKeyTest()
     {
         m_engine.Execute("CREATE TABLE P (Id INT PRIMARY KEY)");
