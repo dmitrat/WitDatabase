@@ -1,5 +1,89 @@
 # Changelog
 
+## 7.0.0
+
+Closes phase 6, the ADO.NET and EF Core contract. **Major, and the breaking half is the point:** the
+provider now behaves like a provider where it used to behave like itself.
+
+The theme of the whole phase is one shape. Everything worked when you held `WitDbConnection` and did not
+when you held `DbConnection` - which is what EF Core holds, what Dapper holds, and what every framework
+built on the contract holds. The instrument was a **reflection census** of the contract surface: for
+every public virtual member the base types declare, is it overridden, *shadowed*, or inherited?
+**Shadowed is the dangerous middle** - it passes every test written against the concrete type and throws
+for everyone else.
+
+### Breaking
+
+- **Database failures are now `DbException`.** A missing table, a constraint violation and a syntax error
+  used to arrive as `InvalidOperationException` and `WitSqlParsingException`, so every framework that
+  handles database failures generically - EF Core execution strategies, Polly retry policies, ASP.NET
+  diagnostics - saw none of them. Code that catches `InvalidOperationException` around command execution
+  must catch `DbException` instead.
+
+  The provider's own guards for **API misuse** - no connection, no command text, a transaction already in
+  progress - are still `InvalidOperationException`, which is what ADO.NET means by them.
+
+- **`Mode=ReadWrite` and `Mode=ReadOnly` no longer create a database that is not there.** They mean *open
+  an existing one*, and all four values of `Mode` used to behave identically because the only question
+  asked was whether the mode was `Memory` - so a mistyped path produced an empty database instead of an
+  error. Use `Mode=ReadWriteCreate`, the default, to create.
+
+- **Savepoints and ambient transactions are now advertised, so EF Core starts using them.**
+  `DbTransaction.SupportsSavepoints` answers `true` (it answered `false` while all six savepoint members
+  existed and worked), and a connection opened inside a `TransactionScope` enlists in it. Both were
+  no-ops before; both now take part in EF Core's own recovery paths.
+
+- **A reader is closed when its connection closes.** It used to keep returning rows - correctly - out of
+  storage that had been disposed underneath it.
+
+### Added
+
+- **Ambient transaction support.** A connection opened inside a `TransactionScope` enlists as the single
+  resource manager of that transaction; an abandoned scope rolls the work back. Enlistment happens at
+  `Open` and only there, exactly as in SqlClient, and `Enlist=false` turns it off. **A second database in
+  the same scope is refused by name** rather than joining and committing on its own: this engine has no
+  durable two-phase prepare, and says so instead of pretending.
+
+- **`Connection Timeout`**, and `DbConnection.ConnectionTimeout` reporting it. Opening waits briefly for
+  another engine to release the database - five seconds by default - because a host restart overlaps the
+  outgoing process with the incoming one, and refusing on the first attempt turned that window into a
+  startup failure. SQLite covers the same window with `busy_timeout`.
+
+### Fixed
+
+- **Six savepoint members were shadowed rather than overridden**, so they worked on `WitDbTransaction`
+  and threw through `DbTransaction`. The recorded finding had named three of the six; the async trio was
+  shadowed too and nothing had said so.
+
+- **`DbParameter.Precision` and `Scale` were dropped.** Set to 5 and 2 through the base type - which is
+  what `CreateParameter()` returns - the provider saw 0 and 0.
+
+- **`DbCommandBuilder.QuoteIdentifier` threw**, while the builder had been configured with its quote
+  characters since the day it was written. It now applies them, doubling a quote that appears inside the
+  identifier.
+
+- **`Default Timeout` was parsed and read by nothing.** It now sets a new command's `CommandTimeout`,
+  which is what ADO.NET means by the keyword.
+
+### Known and recorded
+
+- **The requested isolation level is reported and applied by nothing.** Measured: a transaction opened at
+  `Serializable` or `RepeatableRead` sees a row another connection committed after it began. The level is
+  sent to the engine; honouring it needs MVCC to pin a read snapshot at transaction start, which is its
+  own piece of work and is not in this release. `ReadCommitted` is unaffected - it is allowed to see the
+  row.
+
+- **`FileLocking=false` admits a second engine on Linux**, where .NET maps the write-ahead log's share
+  mode to a shared advisory lock. The switch documents itself as disabling the exclusivity guard; on that
+  platform it does so silently, and the two engines then diverge. Use it only for the case it exists for:
+  a single engine on a filesystem whose locking cannot be trusted.
+
+### Ledger
+
+**43 `[Ignore(...)]` + 14 `[TestCase(... Ignore =)]` = 57 suppressed entries**, plus 2 `[Explicit]`, down
+from 52 + 14 = 66 at 6.0.0. Six markers closed and two opened - both the isolation level, one defect
+wearing two `TestCase`s.
+
 ## 6.0.0
 
 Closes phase 5, concurrency, apart from one named experiment. **Major, because two public types were
