@@ -20,8 +20,8 @@ public class AdoNetFindingsTests
     #region Nothing tracks an open reader
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: reader.IsClosed is False after connection.Close(). The connection is "
-            + "never told about the reader it handed out. adonet, AdoNet/WitDbCommand.cs:131")]
+    // FIXED 2026-07-31 (phase 6). The connection now remembers the reader it handed out and closes
+    // it before the engine goes.
     public void ClosingTheConnectionClosesItsOpenReaderTest()
     {
         // Finding: WitDbCommand.cs:131 - the reader is handed the connection but the connection is
@@ -43,7 +43,7 @@ public class AdoNetFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the reader kept streaming 4 more rows after Close().")]
+    // FIXED 2026-07-31 (phase 6). See ClosingTheConnectionClosesItsOpenReaderTest.
     public void ReadingAfterTheConnectionClosesFailsCleanlyTest()
     {
         // Whatever the provider decides about tracking, the one outcome that must not happen is
@@ -65,10 +65,8 @@ public class AdoNetFindingsTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27 on real file-backed storage: 4 more rows after Close(). Calibration - the "
-            + "rows that came back were CORRECT, so what was observed is undefined behaviour that "
-            + "happened to work, not data corruption. That is the awkward kind: silent and "
-            + "timing-dependent rather than reliably fatal.")]
+    // FIXED 2026-07-31 (phase 6). The decisive shape - a real FileStream underneath - and the reader
+    // is closed before it is disposed.
     public void ReadingAfterTheConnectionClosesFailsCleanlyOnAFileDatabaseTest()
     {
         // The decisive shape. WitSqlResult wraps an IEnumerable<WitSqlRow> with a cursor-style

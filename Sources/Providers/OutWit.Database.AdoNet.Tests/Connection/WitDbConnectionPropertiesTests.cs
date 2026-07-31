@@ -134,15 +134,39 @@ public class WitDbConnectionPropertiesTests
         Assert.That(connection.ConnectionTimeout, Is.GreaterThanOrEqualTo(0));
     }
 
+    /// <summary>
+    /// INVERTED 2026-07-31 (phase 6). This used to assert 15 - the base class's default - and its own
+    /// comment said why: the property was not overridden, so it reported a number this provider had
+    /// never heard of. It was a test pinning a gap as though it were behaviour, and it carried no
+    /// marker.
+    /// </summary>
     [Test]
-    public void ConnectionTimeoutReturnsBaseClassDefaultTest()
+    public void ConnectionTimeoutReportsTheOpenWaitTest()
     {
-        // Note: WitDbConnection doesn't currently override ConnectionTimeout to read from connection string
-        // It returns the base class default (15 seconds)
-        using var connection = new WitDbConnection("Data Source=:memory:;Default Timeout=60");
+        using var connection = new WitDbConnection("Data Source=:memory:;Connection Timeout=42");
 
-        // Base class DbConnection returns 15 as default
-        Assert.That(connection.ConnectionTimeout, Is.EqualTo(15));
+        Assert.That(connection.ConnectionTimeout, Is.EqualTo(42),
+            "ConnectionTimeout must report the wait this provider actually performs at Open");
+    }
+
+    /// <summary>
+    /// And the sibling keyword, which means the command timeout in ADO.NET and was read by nothing.
+    /// </summary>
+    [Test]
+    public void DefaultTimeoutBecomesTheCommandTimeoutTest()
+    {
+        using var connection = new WitDbConnection("Data Source=:memory:;Default Timeout=60");
+        connection.Open();
+
+        using var command = connection.CreateCommand();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(command.CommandTimeout, Is.EqualTo(60),
+                "Default Timeout is what a new command starts with");
+            Assert.That(connection.ConnectionTimeout, Is.EqualTo(5),
+                "and it must not be confused with the wait at Open, which has its own keyword");
+        });
     }
 
     #endregion

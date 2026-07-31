@@ -21,8 +21,8 @@ public class CrossCuttingAdoNetTests
         "generically - EF Core execution strategies, Polly, ASP.NET diagnostics - keys off " +
         "DbException and will not see these. cross-cutting, AdoNet/WitDbException.cs:119";
 
-    [TestCase("SELECT * FROM NoSuchTable", TestName = "MissingTable", Ignore = DbExceptionIgnore)]
-    [TestCase("THIS IS NOT SQL", TestName = "SyntaxError", Ignore = DbExceptionIgnore)]
+    [TestCase("SELECT * FROM NoSuchTable", TestName = "MissingTable")]
+    [TestCase("THIS IS NOT SQL", TestName = "SyntaxError")]
     public void EngineErrorSurfacesAsADbExceptionTest(string sql)
     {
         // Finding: WitDbException.cs:119 - WitDbException derives from DbException and has a
@@ -38,9 +38,9 @@ public class CrossCuttingAdoNetTests
             "a provider must report database failures as DbException");
     }
 
+    // FIXED 2026-07-31 (phase 6). Every path out of the engine now arrives as a WitDbException, which
+    // IS a DbException; the provider's own guards for API misuse stay InvalidOperationException.
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: raises InvalidOperationException(\"UNIQUE constraint failed: T.Id\"), "
-            + "not a DbException.")]
     public void ConstraintViolationSurfacesAsADbExceptionTest()
     {
         using var connection = OpenConnection();
