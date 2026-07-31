@@ -279,30 +279,22 @@ public sealed partial class StatementExecutor
             return;
         }
 
-        // Regular column
-        var regularCol = new DefinitionColumn
-        {
-            Name = colDef.Name,
-            Type = colDef.DataType != null ? MapDataType(colDef.DataType) : WitDataType.StringVariable,
-            Nullable = true
-        };
+        // Regular column, built by the SAME code CREATE TABLE uses. This used to be a second, partial
+        // implementation that understood NOT NULL and DEFAULT and let UNIQUE, CHECK, REFERENCES and
+        // PRIMARY KEY fall through its switch in silence - so a column added with a constraint arrived
+        // without one, reading as constrained in the DDL the user wrote and unconstrained in the
+        // database. Two column builders is the defect; there is one now.
+        var declaredPrimaryKey = new List<string>();
+        var regularCol = BuildColumnDefinition(colDef, declaredPrimaryKey);
 
-        // Process constraints
-        if (colDef.Constraints != null)
+        if (regularCol.IsPrimaryKey || declaredPrimaryKey.Count > 0)
         {
-            foreach (var constraint in colDef.Constraints)
-            {
-                switch (constraint)
-                {
-                    case ColumnConstraintNotNull notNull:
-                        regularCol.Nullable = !notNull.IsNotNull;
-                        break;
-
-                    case ColumnConstraintDefault def:
-                        regularCol.DefaultValue = WitSqlExpressionSerializer.Serialize(def.Value);
-                        break;
-                }
-            }
+            // Refused rather than half-recorded. A primary key is a property of the TABLE - it needs the
+            // table's key list rewritten and every existing row checked against it - and AddColumn only
+            // appends a column. ALTER TABLE ADD CONSTRAINT refuses this for the same reason.
+            throw new NotSupportedException(
+                $"Column '{colDef.Name}' cannot be added as PRIMARY KEY: adding a primary key to an "
+                + "existing table is not supported. Add the column, then rebuild the table.");
         }
 
         m_context.Database.AddColumn(tableName, regularCol);

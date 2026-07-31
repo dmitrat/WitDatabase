@@ -183,6 +183,41 @@ enforced=yes`. Two clusters left.
 
 ---
 
+## 3d. Cluster 2 fixed — `ALTER TABLE ADD COLUMN` was a second, partial column builder
+
+The defect reads plainly once the two are side by side:
+
+| | Constraints understood |
+|---|---|
+| `CREATE TABLE` → `BuildColumnDefinition` | `NOT NULL`, `PRIMARY KEY`, `UNIQUE`, `DEFAULT`, `CHECK`, `REFERENCES` |
+| `ALTER TABLE ADD COLUMN` | **`NOT NULL` and `DEFAULT`** |
+
+Everything else fell through the second switch **in silence**. A column added with `UNIQUE` arrived
+without it: constrained in the DDL the user wrote, unconstrained in the database, and every violating
+insert accepted.
+
+**Two column builders is the defect; there is one now.** `ADD COLUMN` calls the same
+`BuildColumnDefinition` that `CREATE TABLE` uses — the same shape as cluster 1, where a converter existed
+and one path did not reach it. That is twice in one phase, which is worth noticing as a pattern rather
+than as two coincidences: **when a DDL form misbehaves here, look first for a second implementation of
+the thing it should have called.**
+
+**`PRIMARY KEY` is refused rather than half-recorded.** A primary key is a property of the table — it
+needs the key list rewritten and every existing row checked — and `AddColumn` only appends a column.
+`ALTER TABLE ADD CONSTRAINT` already refuses it for the same reason, so refusing here is consistent
+rather than new.
+
+### Measurements
+
+**Corpus after:** `add-column-unique`, `add-column-check`, `add-column-references` all
+`recorded=yes enforced=yes`. **One cluster left.**
+
+| Fix reverted | Tests red |
+|---|---|
+| The shared column builder (production only, tests kept) | **4** — the three markers and the corpus |
+
+---
+
 ## 4. What is next in this phase
 
 - ~~**Widen the corpus**~~ **Done** — § 3a. `DROP COLUMN` came out of it as stale rather than as work.
