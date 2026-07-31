@@ -312,6 +312,36 @@ here already had one, and **not one of them would have caught this**.
 
 ---
 
+## 3g. Scaffolding asked SQLite's catalog — of a database that is not SQLite
+
+The last two markers in the area, and the interesting part is that **the right answer was not to implement
+what they asked for**.
+
+`WitDatabaseModelFactory` — this provider's own code — issued `SELECT name FROM sqlite_master` and four
+`PRAGMA`s, evidently carried over from the SQLite provider it was started from. The engine has never had
+either, and `PRAGMA` is not even a word in its grammar, so `dotnet ef dbcontext scaffold` failed on its
+first query: database-first was not incomplete, it was **inoperative**.
+
+**Emulating another database's private catalog would have been the wrong answer to a right complaint.**
+The engine implements `INFORMATION_SCHEMA` — the standard catalog, which is what PostgreSQL and SQL
+Server expose and what the drop-in target actually is. The factory reads that now: tables from `TABLES`,
+columns from `COLUMNS`, keys from `KEY_COLUMN_USAGE`, delete rules from `REFERENTIAL_CONSTRAINTS`,
+indexes from `INDEXES`.
+
+**Two defects fell out of the rewrite:**
+
+- The primary key was **inferred from which columns came back auto-generated**, so a table whose key was
+  not auto-generated scaffolded with no key at all. It is read from the catalog now.
+- The store type was to be taken straight from `DATA_TYPE` — and the standard catalog reports the base
+  type in one column and the **size in others**, so a scaffolded model would have lost the declared
+  length again. Composed instead. *That is this phase's own defect, one layer further out, and it was
+  avoided only because the phase had just spent its length chasing it through four others.*
+
+**The two tests are kept, inverted.** They now assert that the engine **refuses** `sqlite_master` and
+`PRAGMA` — because pretending to be SQLite is what got the factory written that way in the first place.
+
+---
+
 ## 4. What is next in this phase
 
 - ~~**Widen the corpus**~~ **Done** — § 3a. `DROP COLUMN` came out of it as stale rather than as work.

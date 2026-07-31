@@ -313,41 +313,71 @@ public sealed class EngineSchemaDdlFindingsTests : WitSqlEngineTestsBase
 
     #endregion
 
-    #region Scaffolding queries SQLite catalogs the engine does not implement
+    #region Scaffolding reads the standard catalog, not SQLite's
 
-    // CONFIRMED 2026-07-27. WitDatabaseModelFactory.GetTables issues, verbatim,
-    //   SELECT name FROM sqlite_master WHERE type = 'table' AND name NOT LIKE 'sqlite_%'
-    // and the engine answers "Table 'sqlite_master' not found". PRAGMA does not even parse - it is
-    // not a keyword in the grammar. So `dotnet ef dbcontext scaffold` fails on its first query;
-    // database-first is not merely incomplete, it is inoperative.
+    // RESOLVED 2026-07-31 (phase 7), and not by implementing sqlite_master or PRAGMA. The queries were
+    // this provider's own: WitDatabaseModelFactory had been written against SQLite's private catalog,
+    // which this engine has never had and whose grammar does not contain the word PRAGMA - so
+    // `dotnet ef dbcontext scaffold` failed on its first query and database-first was inoperative.
     //
-    // This finding is listed identically under cross-cutting and ef-runtime, so verifying it here
-    // clears all three entries.
+    // The engine implements INFORMATION_SCHEMA, which is what PostgreSQL and SQL Server expose and what
+    // the drop-in target actually is. The factory reads that now. Emulating another database's
+    // implementation detail would have been the wrong answer to the right complaint.
+    //
+    // These two tests are kept, inverted: they now assert that the engine REFUSES the SQLite catalogs,
+    // because pretending to be SQLite is what got the factory written this way in the first place.
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: raises \"InvalidOperationException: Table 'sqlite_master' not " +
-            "found\". Scaffolding's first query cannot execute. " +
-            "engine-schema-ddl / cross-cutting / ef-runtime, " +
-            "EntityFramework/Design/Internal/WitDatabaseModelFactory.cs:92")]
-    public void SqliteMasterCatalogIsQueryableTest()
+    public void SqliteCatalogsAreNotEmulatedTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY)");
 
-        Assert.That(
-            () => m_engine.Query("SELECT name FROM sqlite_master WHERE type = 'table'"),
-            Throws.Nothing,
-            "database-first scaffolding cannot work unless this catalog exists");
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => m_engine.Query("SELECT name FROM sqlite_master WHERE type = 'table'"),
+                Throws.Exception,
+                "sqlite_master is another database's private catalog and is deliberately absent");
+
+            Assert.That(() => m_engine.Query("PRAGMA table_info('T')"),
+                Throws.Exception,
+                "PRAGMA is not in this grammar, deliberately");
+        });
     }
 
+    /// <summary>
+    /// And the catalog scaffolding actually uses answers the same questions.
+    /// </summary>
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: raises WitSqlParsingException - PRAGMA is not in the grammar's " +
-            "statement set at all, so the column/PK/index metadata reads cannot execute either.")]
-    public void TableInfoPragmaIsSupportedTest()
+    public void TheStandardCatalogAnswersWhatScaffoldingAsksTest()
     {
-        m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY)");
+        m_engine.Execute("CREATE TABLE P (Id INT PRIMARY KEY)");
+        m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, Pid INT REFERENCES P (Id), S VARCHAR(5))");
 
-        Assert.That(() => m_engine.Query("PRAGMA table_info('T')"), Throws.Nothing,
-            "scaffolding reads column metadata through this PRAGMA");
+        Assert.Multiple(() =>
+        {
+            Assert.That(CountRows("SELECT TABLE_NAME FROM INFORMATION_SCHEMA.TABLES WHERE TABLE_TYPE = 'BASE TABLE'"),
+                Is.GreaterThanOrEqualTo(2), "the tables");
+
+            Assert.That(CountRows("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.COLUMNS WHERE TABLE_NAME = 'T'"),
+                Is.EqualTo(3), "the columns");
+
+            Assert.That(CountRows("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_NAME = 'T' AND REFERENCED_TABLE_NAME IS NOT NULL"),
+                Is.EqualTo(1), "the foreign key");
+
+            Assert.That(CountRows("SELECT COLUMN_NAME FROM INFORMATION_SCHEMA.KEY_COLUMN_USAGE WHERE TABLE_NAME = 'T' AND REFERENCED_TABLE_NAME IS NULL"),
+                Is.EqualTo(1), "the primary key");
+        });
+    }
+
+    private int CountRows(string sql)
+    {
+        var result = m_engine.Execute(sql);
+
+        var rows = 0;
+        while (result.Read())
+            rows++;
+
+        return rows;
     }
 
     #endregion
