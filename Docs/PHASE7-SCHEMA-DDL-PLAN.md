@@ -374,6 +374,61 @@ from one caller (§ 3c), a partial second builder (§ 3d), an overload of the sa
 
 ---
 
+## 3z. Closing summary — the phase, done
+
+**Closed 2026-07-31.** Every marker in the area is closed, the corpus is green in all sixteen entries,
+and the acceptance criterion is met: *everything the DDL accepts is recorded, enforced, or refused at
+declaration time — never accepted and ignored*, and `INFORMATION_SCHEMA` describes what was declared.
+
+### What the phase changed
+
+| | |
+|---|---|
+| Declared sizes | Recorded, reported and enforced, and the scale applied to the stored value. **In no audit** — the class the instrument existed for |
+| Named constraints | The name reaches the catalog, `INFORMATION_SCHEMA` lists it, and `DROP CONSTRAINT` removes the enforcement rather than only the name |
+| `ALTER TABLE ADD COLUMN` | Keeps `UNIQUE`, `CHECK` and `REFERENCES`; refuses `PRIMARY KEY` rather than half-recording it |
+| EF type mapping | A model's `HasMaxLength(5)` reaches the DDL, the catalog and enforcement — proved end to end |
+| Scaffolding | Reads `INFORMATION_SCHEMA` instead of SQLite's private catalog, so database-first works at all |
+| `UPDATE` | Enforces declared sizes, which its fast path never did |
+
+### Two recorded findings were stale
+
+`DROP COLUMN` leaving key metadata behind (fixed in 2.2.0) and EF migrations dropping `maxLength` (fixed
+earlier still). Both were carried forward in the plan's *already measured* list. **Seventh and eighth
+times in this project that a record about the past turned out false when re-run.**
+
+### The pattern the phase found, four times
+
+Every defect was a **correct piece of code that one route did not go through**:
+
+| Disguise | Where |
+|---|---|
+| A converter reachable from one caller only | named constraints |
+| A partial second builder | `ALTER TABLE ADD COLUMN` |
+| An overload of the same name | `CreateTable` vs `AddColumn` |
+| A fast path that became a second validator | `UPDATE` |
+
+**The rule: when a check is added, ask which paths reach it — not whether the check is right.**
+
+### And the instrument earned its cost twice over
+
+It was built because a whole class had escaped a 104-finding audit. It then found three defects nobody
+had recorded, caught **its own** first version reporting a constraint as unrecorded when the instrument
+was asking the wrong place, and caught a hole in **this phase's own fix** — because its tests were
+written one per write path rather than one per feature.
+
+### Ledger
+
+**35 `[Ignore(…)]` + 14 `[TestCase(… Ignore =)]` = 49**, from 37 + 14 = 51 when the phase opened, and
+every marker in the schema and DDL area is gone.
+
+### The release is a MAJOR
+
+Enforcement that never ran now refuses data that used to be accepted, and stored decimals change value.
+See § 4 for the list.
+
+---
+
 ## 4. What is next in this phase
 
 - ~~**Widen the corpus**~~ **Done** — § 3a. `DROP COLUMN` came out of it as stale rather than as work.
