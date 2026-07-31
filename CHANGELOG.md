@@ -1,5 +1,75 @@
 # Changelog
 
+## 8.0.0
+
+Closes phase 7, schema and DDL fidelity. **Major, and the breaking half is data:** constraints the DDL
+has always accepted are now enforced, so values that used to go in are refused, and decimals are stored
+at the scale their column declares.
+
+The theme: **a declaration can fail three independent ways** - it can fail to reach the catalog, fail to
+be reported by `INFORMATION_SCHEMA`, and fail to be enforced - and this release found all three
+diverging. The instrument that found them asks all three of every declaration, which is why the results
+were legible rather than a list.
+
+The headline: **declared sizes were being dropped in four separate layers.** `VARCHAR(5)` was parsed
+correctly and then lost by the EF type mapping source, by the migrations generator's `CREATE TABLE`
+path, by the DDL executor, and by validation - each independently. Fixing any one alone changed nothing
+observable, which is how a whole class of declaration escaped a 104-finding audit.
+
+### Breaking
+
+- **Declared lengths are enforced.** A string longer than its `VARCHAR(n)` or `CHAR(n)` is **refused**
+  rather than stored, on `INSERT` and on `UPDATE`. Code that has been writing over-long values into a
+  sized column will start failing. Refused rather than truncated on purpose: silently losing the end of
+  a value is the one outcome nobody can want.
+
+- **Decimals are stored at their declared scale.** `123.456` into a `DECIMAL(5,2)` column is now stored
+  as `123.46`, as PostgreSQL stores it. The value in the database changes; it is not an error.
+
+- **Numeric overflow is refused.** A value whose integer part does not fit in `precision - scale` digits
+  is rejected. Rounding cannot save it, and it used to be accepted.
+
+- **`ALTER TABLE ADD COLUMN … PRIMARY KEY` is refused** instead of silently recording half of it. A
+  primary key is a property of the table - it needs the key list rewritten and every existing row
+  checked - and adding a column only appends one. `ALTER TABLE ADD CONSTRAINT` has always refused it for
+  the same reason.
+
+- **`ALTER TABLE ADD COLUMN` now enforces `UNIQUE`, `CHECK` and `REFERENCES`.** It used to understand
+  only `NOT NULL` and `DEFAULT` and drop the rest in silence, so a column added with a constraint
+  arrived without one. Inserts that violate those constraints will now be refused.
+
+- **EF store types carry the size.** A property with `HasMaxLength(5)` now maps to `VARCHAR(5)` rather
+  than `TEXT`, so generated migrations, created schemas and scaffolded models all differ from 7.0.0.
+
+### Fixed
+
+- **A name given to a constraint inside `CREATE TABLE` reaches the catalog.** It never did, so
+  `INFORMATION_SCHEMA.TABLE_CONSTRAINTS` could not list it and `ALTER TABLE DROP CONSTRAINT` could not
+  find it - while the constraint itself was enforced the whole time. A constraint that worked, could not
+  be listed, and could not be removed.
+
+- **`DROP CONSTRAINT` removes the enforcement, not only the name.** Dropping used to be accepted and
+  change nothing.
+
+- **`INFORMATION_SCHEMA` describes the declared sizes**, which follows from recording them - the views
+  had always had the columns and always reported them empty.
+
+- **Database-first scaffolding works.** The model factory was issuing SQLite's own catalog queries -
+  `SELECT name FROM sqlite_master` and four `PRAGMA`s - which this engine has never had and whose
+  grammar does not contain the word `PRAGMA`, so `dotnet ef dbcontext scaffold` failed on its first
+  query. It reads `INFORMATION_SCHEMA` now. Two further defects came out of that rewrite: the primary
+  key was being inferred from which columns came back auto-generated, and the store type would have lost
+  its size again.
+
+- **`UPDATE` enforces declared sizes.** Its fast path has its own validation entry point, which the new
+  enforcement reached nowhere - so a hundred characters could be written into a `VARCHAR(5)` by updating
+  a row that already existed.
+
+### Ledger
+
+**35 `[Ignore(…)]` + 14 `[TestCase(… Ignore =)]` = 49 suppressed entries**, plus 2 `[Explicit]`, down
+from 37 + 14 = 51 at 7.0.0. Every marker in the schema and DDL area is closed.
+
 ## 7.0.0
 
 Closes phase 6, the ADO.NET and EF Core contract. **Major, and the breaking half is the point:** the
