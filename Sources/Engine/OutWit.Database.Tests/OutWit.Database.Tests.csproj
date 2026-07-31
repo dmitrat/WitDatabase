@@ -1,4 +1,4 @@
-﻿<Project Sdk="Microsoft.NET.Sdk">
+<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
 	<TargetFrameworks>net9.0;net10.0</TargetFrameworks>
@@ -46,6 +46,18 @@
            treat a backslash as a separator on Linux, where CI runs. -->
       <_Parameter2>$([System.IO.Path]::GetFullPath('$(MSBuildThisFileDirectory)../../../Tools/OutWit.Database.CrashRunner/bin/$(Configuration)/$(TargetFramework)'))</_Parameter2>
     </AssemblyAttribute>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!--
+      The pinned DDL round-trip corpus. Data rather than logic: it records, per declaration, whether
+      the declaration is recorded in the catalog, reported by INFORMATION_SCHEMA and enforced. The
+      corpus test fails in both directions, so a declaration that starts being honoured is reported
+      just as loudly as one that stops.
+    -->
+    <None Include="Schema\ddl-round-trip-corpus.txt">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
   <ItemGroup>

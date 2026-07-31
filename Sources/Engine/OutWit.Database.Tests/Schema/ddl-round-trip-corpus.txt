@@ -1,0 +1,26 @@
+# DDL round-trip corpus - phase 7, generated 2026-07-31
+#
+# A RECORD OF THE CURRENT STATE, NOT A TARGET. Each line is one declaration the grammar accepts, and
+# what became of it, asked three separate ways:
+#
+#   recorded  - did the declaration reach the catalog?
+#   reported  - does INFORMATION_SCHEMA describe it?  (n/a: no column there says it)
+#   enforced  - is a violating value refused?          (n/a: nothing to violate)
+#
+# The corpus test fails in BOTH directions. A declaration that stops being honoured is a regression;
+# one that starts being honoured means this file is stale and should be regenerated, which is a fix
+# landing rather than a failure.
+#
+# The four size declarations are the class that escaped a 104-finding audit: declared, accepted, and
+# then absent in all three dimensions at once.
+
+char-length                MaxLength = 3                recorded=no      reported=no      enforced=no
+check-column               a column CHECK               recorded=yes     reported=n/a     enforced=yes
+check-table                a table CHECK                recorded=yes     reported=n/a     enforced=yes
+decimal-precision-scale    Precision = 5, Scale = 2     recorded=no      reported=no      enforced=no
+default                    DefaultValue = 'x'           recorded=yes     reported=yes     enforced=n/a
+not-null                   IsNullable = false           recorded=yes     reported=yes     enforced=yes
+numeric-precision-scale    Precision = 4, Scale = 1     recorded=no      reported=no      enforced=no
+primary-key                IsPrimaryKey = true          recorded=yes     reported=n/a     enforced=yes
+unique                     IsUnique = true              recorded=yes     reported=n/a     enforced=yes
+varchar-length             MaxLength = 5                recorded=no      reported=no      enforced=no
