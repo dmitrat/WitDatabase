@@ -218,6 +218,60 @@ rather than new.
 
 ---
 
+## 3e. Cluster 3 — declared sizes, recorded, reported and enforced
+
+The class that escaped the audit, and the phase's behaviour change.
+
+### Recording was three lines, and reporting came free
+
+**The parser had always carried the sizes.** `VARCHAR(5)` arrives at the DDL executor with `Length = 5`,
+`DECIMAL(5,2)` with `Precision` and `Scale`; `DefinitionColumn` had always had `MaxLength`, `Precision`
+and `Scale` to put them in. **Nothing copied one to the other.** That is the whole of why a 104-finding
+audit missed it — both halves looked right, and only asking the database what it thought it had stored
+showed that they were never connected.
+
+`INFORMATION_SCHEMA.COLUMNS` reads those fields, so `recorded=yes` made `reported=yes` in the same
+change, with nothing else touched.
+
+### Enforcement follows PostgreSQL rather than being stricter
+
+Drop-in is the target, so the rules are the reference's:
+
+| Declaration | Rule |
+|---|---|
+| String longer than `VARCHAR(n)`/`CHAR(n)` | **Refused**, not truncated — silently losing the end of a value is the one outcome nobody can want |
+| More decimals than the scale | **Accepted** — PostgreSQL rounds; it is not an error |
+| Integer part too large for `precision - scale` | **Refused** — that is overflow, and no rounding saves it |
+
+**This is the behaviour change the plan predicted:** data that used to be accepted is now refused. It
+belongs in a major.
+
+### And the fix has a gap, pinned rather than glossed
+
+The declared **scale is not applied to the stored value**: `123.456` into `DECIMAL(5,2)` is accepted, its
+precision checked against the rounded value, and then stored as `123.456` where PostgreSQL stores
+`123.46`.
+
+**The test caught it, which is the reason the semantics got a test at all** — the rule had been written
+down in a comment and would have shipped as a description of something that was not happening. Applying
+the scale means *coercing the row before it is written*, in the insert and update paths, which is a
+change to the write path rather than another check, and it is not made here.
+
+It is pinned in place, the right way round:
+
+> `Assert.That(stored, Is.EqualTo(123.456m), "the scale is not applied to the stored value yet - if it
+> now is, invert this pin")`
+
+Saying "scale enforced" while storing an unrounded value would be the same defect this phase exists to
+close, one level in.
+
+### The corpus, complete
+
+Every one of the sixteen entries is now `recorded=yes`, `reported=yes` where `INFORMATION_SCHEMA` has a
+column for it, and `enforced=yes` where there is something to violate. **All three clusters closed.**
+
+---
+
 ## 4. What is next in this phase
 
 - ~~**Widen the corpus**~~ **Done** — § 3a. `DROP COLUMN` came out of it as stale rather than as work.

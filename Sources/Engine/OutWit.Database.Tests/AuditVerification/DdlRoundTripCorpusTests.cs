@@ -321,6 +321,58 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
         });
     }
 
+    /// <summary>
+    /// The declared-size rules, executed rather than only described. They follow PostgreSQL and SQL
+    /// Server rather than being stricter than them, because drop-in is the target - and a rule chosen
+    /// deliberately deserves a test that fails if someone later chooses differently.
+    /// </summary>
+    [Test]
+    public void ProbeTheDeclaredSizeRulesTest()
+    {
+        Execute("DROP TABLE IF EXISTS T");
+        Execute("CREATE TABLE T (Id INTEGER PRIMARY KEY, S VARCHAR(5), V DECIMAL(5,2))");
+
+        Assert.Multiple(() =>
+        {
+            // A string that fits is accepted, and one that does not is REFUSED rather than truncated:
+            // silently losing the end of a value is the one outcome nobody can want.
+            Assert.That(() => Execute("INSERT INTO T (Id, S) VALUES (1, '12345')"), Throws.Nothing,
+                "a string of exactly the declared length must be accepted");
+
+            Assert.That(() => Execute("INSERT INTO T (Id, S) VALUES (2, '123456')"),
+                Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("too long"),
+                "a string longer than its column must be refused, not truncated");
+
+            // More decimals than the scale are ACCEPTED rather than refused, which is what PostgreSQL
+            // does - it rounds. Rounding the stored value is the half still missing; see the pin below.
+            Assert.That(() => Execute("INSERT INTO T (Id, V) VALUES (3, 123.456)"), Throws.Nothing,
+                "more decimals than the scale must not be an error");
+
+            // But an integer part that does not fit precision - scale is overflow, and no rounding
+            // saves it.
+            Assert.That(() => Execute("INSERT INTO T (Id, V) VALUES (4, 12345.67)"),
+                Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("out of range"),
+                "an integer part too large for the precision must be refused");
+        });
+
+        var stored = m_engine.Execute("SELECT V FROM T WHERE Id = 3");
+        stored.Read();
+
+        TestContext.Out.WriteLine($"PROBE  123.456 into DECIMAL(5,2) is stored as  ->  {stored.CurrentRow[0].ToObject()}");
+
+        // PINS A GAP, NOT CORRECT BEHAVIOUR, and it is a gap in this phase's own fix. The declared
+        // PRECISION is enforced - an integer part that does not fit is refused - but the declared SCALE
+        // is not applied to the value: PostgreSQL stores 123.46, this stores 123.456. Applying it means
+        // COERCING the row before it is written, in the insert and update paths, which is a change to
+        // the write path rather than another check, and it is not made here. Invert to 123.46 when it
+        // is.
+        //
+        // Recorded this way round on purpose: saying "scale enforced" while storing an unrounded value
+        // would be the same defect this phase exists to close, one level in.
+        Assert.That(stored.CurrentRow[0].AsDecimal(), Is.EqualTo(123.456m),
+            "the scale is not applied to the stored value yet - if it now is, invert this pin");
+    }
+
     #endregion
 
     #region Measurement

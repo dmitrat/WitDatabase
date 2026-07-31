@@ -75,6 +75,16 @@ public sealed partial class StatementExecutor
             Name = colDef.Name,
             Type = colDef.DataType != null ? MapDataType(colDef.DataType) : WitDataType.StringVariable,
             Nullable = true,
+
+            // The declared size, kept. The parser has always carried it - VARCHAR(5) arrives here with
+            // Length = 5 - and the catalog has always had somewhere to put it; nothing copied one to the
+            // other, so MaxLength, Precision and Scale were null for every column ever created. That is
+            // the class this phase exists for: it escaped a 104-finding audit because nothing asked the
+            // database what it thought it had stored.
+            MaxLength = colDef.DataType?.Length,
+            Precision = colDef.DataType?.Precision,
+            Scale = colDef.DataType?.Scale,
+
             ComputedExpression = colDef.ComputedExpression != null 
                 ? WitSqlExpressionSerializer.Serialize(colDef.ComputedExpression) 
                 : null,
