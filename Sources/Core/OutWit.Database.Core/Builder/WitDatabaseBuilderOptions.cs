@@ -220,6 +220,17 @@ public sealed class WitDatabaseBuilderOptions
     /// </summary>
     public TimeSpan LockTimeout => TransactionParameters.Get("lockTimeout", TimeSpan.FromSeconds(30));
 
+    /// <summary>
+    /// How long <c>Build</c> waits for another engine to release this database before refusing.
+    /// </summary>
+    /// <remarks>
+    /// Five seconds by default, and the number is about one scenario: a host restart, where the
+    /// outgoing process is still flushing while the incoming one starts. One engine per database is a
+    /// design limit, so the wait is short - long enough to cover a shutdown, short enough that a
+    /// database somebody really is using is reported quickly. Zero means one attempt and no waiting.
+    /// </remarks>
+    public TimeSpan OpenTimeout => TransactionParameters.Get("openTimeout", TimeSpan.FromSeconds(5));
+
     #endregion
 
     #region Computed Properties - Index

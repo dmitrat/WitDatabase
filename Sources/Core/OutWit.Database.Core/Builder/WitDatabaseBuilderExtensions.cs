@@ -724,6 +724,19 @@ public static class WitDatabaseBuilderExtensions
     }
 
     /// <summary>
+    /// Sets how long <c>Build</c> waits for another engine to release the database before refusing.
+    /// </summary>
+    /// <remarks>
+    /// <see cref="TimeSpan.Zero"/> means one attempt and no waiting. See
+    /// <c>WitDatabaseBuilderOptions.OpenTimeout</c> for why the default is short.
+    /// </remarks>
+    public static WitDatabaseBuilder WithOpenTimeout(this WitDatabaseBuilder builder, TimeSpan timeout)
+    {
+        builder.Options.TransactionParameters.Set("openTimeout", timeout);
+        return builder;
+    }
+
+    /// <summary>
     /// Set the lock timeout for concurrent operations.
     /// </summary>
     public static WitDatabaseBuilder WithLockTimeout(this WitDatabaseBuilder builder, TimeSpan timeout)
