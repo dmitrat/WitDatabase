@@ -693,7 +693,12 @@ public sealed class WitMigrationsSqlGenerator : MigrationsSqlGenerator
             builder.Append("    ");
             builder.Append(Dependencies.SqlGenerationHelper.DelimitIdentifier(column.Name));
             builder.Append(" ");
-            builder.Append(column.ColumnType ?? GetColumnType(column.ClrType));
+            // GetColumnType(column), not GetColumnType(column.ClrType): the second overload knows only
+            // the CLR type and drops the declared size, so CREATE TABLE emitted TEXT where ADD COLUMN
+            // emitted VARCHAR(n). The two overloads share a name, which is why the wrong one reads as
+            // the right one - and why a model with HasMaxLength(5) produced an unsized column whenever
+            // the schema was created rather than migrated into.
+            builder.Append(column.ColumnType ?? GetColumnType(column));
 
             // Handle computed columns
             if (!string.IsNullOrEmpty(column.ComputedColumnSql))

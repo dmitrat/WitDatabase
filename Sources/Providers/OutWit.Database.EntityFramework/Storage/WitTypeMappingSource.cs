@@ -1,4 +1,5 @@
 using System.Data;
+using System.Globalization;
 using Microsoft.EntityFrameworkCore.Storage;
 
 namespace OutWit.Database.EntityFramework.Storage;
@@ -258,7 +259,15 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
         {
             // Handle nullable types
             var underlyingType = Nullable.GetUnderlyingType(clrType) ?? clrType;
-            
+
+            // The size the model declared, kept. Returning the plain mapping here dropped it: a property
+            // with HasMaxLength(5) got the same TEXT mapping as any other string, so ColumnType was
+            // "TEXT" by the time the migrations generator saw it, and the generator's own size handling
+            // never got a chance to run. That is the deepest of the places this size was being lost.
+            var sized = FindSizedMapping(underlyingType, mappingInfo);
+            if (sized != null)
+                return sized;
+
             if (m_clrTypeMappings.TryGetValue(underlyingType, out var clrMapping))
             {
                 return clrMapping;
@@ -273,6 +282,52 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
 
         // Fall back to base implementation
         return base.FindMapping(mappingInfo);
+    }
+
+    /// <summary>
+    /// The mapping for a type whose declared size changes its store type - a length for text and binary,
+    /// a precision and scale for decimals.
+    /// </summary>
+    /// <remarks>
+    /// Returns null when the model declared no size, which is the ordinary case and leaves the plain
+    /// mapping in charge.
+    /// </remarks>
+    private RelationalTypeMapping? FindSizedMapping(Type underlyingType, in RelationalTypeMappingInfo mappingInfo)
+    {
+        if (underlyingType == typeof(string) && mappingInfo.Size is > 0)
+        {
+            var size = mappingInfo.Size.Value;
+
+            return new StringTypeMapping(
+                $"VARCHAR({size.ToString(CultureInfo.InvariantCulture)})",
+                DbType.String,
+                unicode: false,
+                size: size);
+        }
+
+        if (underlyingType == typeof(byte[]) && mappingInfo.Size is > 0)
+        {
+            var size = mappingInfo.Size.Value;
+
+            return new ByteArrayTypeMapping(
+                $"VARBINARY({size.ToString(CultureInfo.InvariantCulture)})",
+                DbType.Binary,
+                size: size);
+        }
+
+        if (underlyingType == typeof(decimal) && mappingInfo.Precision is > 0)
+        {
+            var precision = mappingInfo.Precision.Value;
+            var scale = mappingInfo.Scale;
+
+            var storeType = scale is > 0
+                ? $"DECIMAL({precision.ToString(CultureInfo.InvariantCulture)},{scale.Value.ToString(CultureInfo.InvariantCulture)})"
+                : $"DECIMAL({precision.ToString(CultureInfo.InvariantCulture)})";
+
+            return new DecimalTypeMapping(storeType, DbType.Decimal, precision, scale);
+        }
+
+        return null;
     }
 
     private static string GetBaseTypeName(string storeTypeName)

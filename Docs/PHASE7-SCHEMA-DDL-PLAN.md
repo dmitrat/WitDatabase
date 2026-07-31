@@ -272,6 +272,46 @@ column for it, and `enforced=yes` where there is something to violate. **All thr
 
 ---
 
+## 3f. The size was being dropped in FOUR places, and only the last one was recorded
+
+With the engine half done, the EF half became testable for the first time — and the plan's entry for it
+turned out to be **stale in the same way `DROP COLUMN` was**: the migrations generator already emitted
+`VARCHAR(n)` for `AddColumn`, with a comment explaining the fix. So that was two of the plan's *already
+measured* items now overtaken.
+
+**But the end-to-end path had never been tested**, and it failed at once: a model with
+`HasMaxLength(5)`, created with `EnsureCreated()`, accepted six characters and reported no length at all.
+Following it down found **two more places** the size was being lost:
+
+| Layer | What it did |
+|---|---|
+| EF type mapping source | Returned the **plain `TEXT` mapping** whatever the model declared, so `ColumnType` was already `"TEXT"` before anything else ran |
+| Migrations generator, `CreateTable` | Called `GetColumnType(column.ClrType)` — the CLR-only overload — where `AddColumn` called `GetColumnType(column)` |
+| DDL executor | Never copied `Length`/`Precision`/`Scale` into the catalog *(§ 3e)* |
+| Validation | Never enforced them *(§ 3e)* |
+
+**The third occurrence of this phase's pattern, and the sharpest.** In `CreateTable` the "second
+implementation" was an **overload of the same method name**: `GetColumnType(column.ClrType)` reads exactly
+like a call to the right thing. `ADD COLUMN` kept the size and `CREATE TABLE` dropped it, which is why a
+migrated schema and a created one disagreed.
+
+And the type mapping source was the deepest of the four: with `ColumnType` already `"TEXT"`, the
+generator's own size handling could never run — `column.ColumnType ?? GetColumnType(column)` short-
+circuits. **Fixing the generator alone changed nothing observable**, which is the same shape as the
+original pair of defects and the reason this class survived so long.
+
+### End to end, executed
+
+```
+PROBE  six characters into HasMaxLength(5)  ->  Value too long for column 'Codes.Value': 6 characters, declared 5.
+PROBE  INFORMATION_SCHEMA says the column's length is  ->  5
+```
+
+`DeclaredSizeEndToEndTests` is deliberately an end-to-end test rather than another seam test: every seam
+here already had one, and **not one of them would have caught this**.
+
+---
+
 ## 4. What is next in this phase
 
 - ~~**Widen the corpus**~~ **Done** — § 3a. `DROP COLUMN` came out of it as stale rather than as work.
