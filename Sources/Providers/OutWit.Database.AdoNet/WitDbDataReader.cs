@@ -92,6 +92,9 @@ public sealed class WitDbDataReader : DbDataReader
         m_result = null;
         m_isClosed = true;
 
+        // Told before anything else, so a connection closing this reader does not then wait for it.
+        m_connection.UnregisterReader(this);
+
         if ((m_behavior & CommandBehavior.CloseConnection) != 0)
         {
             m_connection.Close();

@@ -69,7 +69,7 @@ public class ReadOnlyConnectionTests
         reader.Open();
 
         Assert.That(() => Execute(reader, sql),
-            Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("read-only"),
+            Throws.InstanceOf<DbException>().With.Message.Contains("read-only"),
             $"<{sql}> must be refused on a read-only connection");
     }
 
@@ -77,6 +77,13 @@ public class ReadOnlyConnectionTests
     /// The bulk API writes without parsing anything, so guarding statement execution alone would have
     /// left it as a way straight through a read-only connection.
     /// </summary>
+    /// <remarks>
+    /// <b>InvalidOperationException here, DbException everywhere else, and the difference is the point.</b>
+    /// This test reaches past the provider and calls the ENGINE directly, and the engine is not the
+    /// ADO.NET surface - it has no business raising ADO.NET's exception type. A consumer who goes around
+    /// the contract gets the engine's own vocabulary. Everything reached through <c>DbCommand</c> arrives
+    /// as a <c>DbException</c>, which is what the contract promises and what phase 6 fixed.
+    /// </remarks>
     [Test]
     public void ReadOnlyConnectionRefusesTheBulkApiTest()
     {
@@ -111,7 +118,7 @@ public class ReadOnlyConnectionTests
         reader.Open();
 
         Assert.That(() => Execute(reader, "INSERT INTO T (Id, V) VALUES (2, 'b')"),
-            Throws.InstanceOf<InvalidOperationException>());
+            Throws.InstanceOf<DbException>());
 
         // Counted by reading, not by COUNT(*): on this engine the count is a cached counter and a scan
         // is the rows, and a refused write must not have moved either.
@@ -163,7 +170,7 @@ public class ReadOnlyConnectionTests
             Assert.That(CountRows(reader, "SELECT Id FROM T"), Is.EqualTo(1),
                 "reads inside the transaction must work");
             Assert.That(() => Execute(reader, "INSERT INTO T (Id, V) VALUES (2, 'b')"),
-                Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("read-only"),
+                Throws.InstanceOf<DbException>().With.Message.Contains("read-only"),
                 "and the write must still be refused, inside a transaction as outside one");
         });
 
@@ -197,7 +204,7 @@ public class ReadOnlyConnectionTests
             Assert.That(CountRows(reader, "SELECT Id FROM T"), Is.EqualTo(2),
                 "the reader must see what the writer committed");
             Assert.That(() => Execute(reader, "INSERT INTO T (Id, V) VALUES (3, 'c')"),
-                Throws.InstanceOf<InvalidOperationException>(),
+                Throws.InstanceOf<DbException>(),
                 "and must still refuse to write itself");
             Assert.That(() => Execute(writer, "INSERT INTO T (Id, V) VALUES (3, 'c')"),
                 Throws.Nothing,
@@ -223,7 +230,7 @@ public class ReadOnlyConnectionTests
         {
             Assert.That(CountRows(reader, "SELECT Id FROM T"), Is.EqualTo(1), "reads must work");
             Assert.That(() => Execute(reader, "INSERT INTO T (Id, V) VALUES (2, 'b')"),
-                Throws.InstanceOf<InvalidOperationException>(), "writes must not");
+                Throws.InstanceOf<DbException>(), "writes must not");
         });
     }
 
@@ -238,7 +245,7 @@ public class ReadOnlyConnectionTests
         reader.Open();
 
         Assert.That(() => Execute(reader, "CREATE TABLE T (Id BIGINT PRIMARY KEY)"),
-            Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("read-only"),
+            Throws.InstanceOf<DbException>().With.Message.Contains("read-only"),
             "the in-memory branch of Open must honour the flag too");
     }
 
@@ -252,19 +259,16 @@ public class ReadOnlyConnectionTests
     /// turned out to be session-level, so it is a different change with a different blast radius - it
     /// affects what happens to every consumer who currently gets a database created for them.
     /// </remarks>
-    [Test]
-    [Ignore("CONFIRMED 2026-07-30: Mode=ReadWrite silently CREATES a database that does not exist, and "
-            + "leaves the file behind. ConfigureStorage only asks whether the mode is Memory, so the "
-            + "other three values are dropped - the same defect family as read-only, which this PR "
-            + "fixed, but a database-level one: honouring it means passing FileMode.Open instead of "
-            + "OpenOrCreate, which changes behaviour for anyone relying on a database being created. "
-            + "SQLite refuses this shape with 'unable to open database file'. "
-            + "adonet, AdoNet/WitDbConnection.cs:ConfigureStorage")]
-    public void ModeReadWriteRefusesToCreateAMissingDatabaseTest()
+    // FIXED 2026-07-31 (phase 6). Mode is no longer reduced to "is it Memory": ReadWrite and
+    // ReadOnly now mean what they say, and refuse a database that is not there. ReadOnly is added
+    // here - the marker only ever covered ReadWrite, and the two share the meaning.
+    [TestCase("ReadWrite")]
+    [TestCase("ReadOnly")]
+    public void ModeReadWriteRefusesToCreateAMissingDatabaseTest(string mode)
     {
-        var path = Path.Combine(m_testDir, "must_exist.witdb");
+        var path = Path.Combine(m_testDir, $"must_exist_{mode}.witdb");
 
-        using DbConnection conn = new WitDbConnection($"Data Source={path};Mode=ReadWrite");
+        using DbConnection conn = new WitDbConnection($"Data Source={path};Mode={mode}");
 
         Assert.Multiple(() =>
         {

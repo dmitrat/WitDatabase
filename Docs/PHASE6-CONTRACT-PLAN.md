@@ -181,6 +181,66 @@ Reverting the auto-enlistment turns **2** red.
 
 ---
 
+## 4b. The rest of the Inherited column — four clusters, and a breaking release
+
+All seven remaining markers were **re-verified before being touched**, and all seven still held.
+
+### Database failures were not `DbException`
+
+A missing table and a constraint violation arrived as `InvalidOperationException`, a syntax error as
+`WitSqlParsingException`. Every framework that handles database failures generically — EF Core execution
+strategies, Polly, ASP.NET diagnostics — keys off `DbException` and saw none of them. `WitDbException`
+existed, derived from `DbException`, had a `FromException` factory, and **nothing called it**.
+
+The fix has one seam: `ExecuteInternal`, which every execution path already went through. What comes out
+of the **engine** is wrapped; the provider's own guards for API misuse — no connection, no command text,
+transaction already in progress — stay `InvalidOperationException`, which is what ADO.NET means by them.
+`OperationCanceledException` is left alone: a cancelled command is the caller's doing.
+
+**The blast radius was measured, not guessed: 16 tests.** Every one of them asserted
+`InvalidOperationException` for something the *engine* had refused — read-only refusals, a missing table
+— so every one was an expectation that had encoded the defect. They now assert `DbException`, which is
+the stronger claim, and SQLite agrees: a write to a read-only database there raises `SqliteException`.
+
+**One was left alone, and the reason is the boundary:** `ReadOnlyConnectionRefusesTheBulkApiTest` reaches
+*past* the provider and calls `WitSqlEngine` directly. The engine is not the ADO.NET surface and has no
+business raising ADO.NET's exception type. Going around the contract gets the engine's own vocabulary.
+
+### A reader outlived the connection that made it
+
+`IsClosed` stayed false after `Close()` and the reader went on returning **four more rows** — correctly,
+which is undefined behaviour that happens to work rather than a clean error, and the worse kind. The
+connection now remembers the reader it handed out and closes it before the engine goes; a read afterwards
+raises `InvalidOperationException`, which is the ADO.NET semantic for using a closed reader.
+
+### `Mode` was reduced to "is it Memory"
+
+`ReadWrite` means *open an existing database and fail if it is not there*, and it silently created one — a
+mistyped path produced an empty database instead of an error. **`ReadOnly` had the same defect and the
+marker never covered it**, so the test now runs both. SQLite reports this shape as *unable to open
+database file*, and so does this provider now.
+
+### Two keywords that were parsed and dropped
+
+`Default Timeout` was declared and read by nothing; it now sets a new command's `CommandTimeout`, which is
+what ADO.NET means by it. `ConnectionTimeout` was inherited, so it reported the base class's 15 seconds —
+a number this provider had never heard of; it now reports the wait at `Open`, which is the only thing
+establishing a connection here waits for, and gets its own `Connection Timeout` keyword.
+
+**And a test was pinning that gap as though it were behaviour**, with no marker and a comment explaining
+the defect as a design note: *"WitDbConnection doesn't currently override ConnectionTimeout… It returns
+the base class default (15 seconds)"*. Inverted.
+
+### Consequence: the next release is a MAJOR
+
+Three of these change behaviour a consumer can be relying on:
+
+- engine failures raise `DbException` where they used to raise `InvalidOperationException`;
+- `Mode=ReadWrite` and `Mode=ReadOnly` refuse a database that is not there instead of creating it;
+- savepoints and ambient transactions are now advertised, so EF Core starts *using* both.
+
+---
+
 ## 4a. Exclusivity, decided rather than inherited — and the restart window closed
 
 Handed over from phase 5 § 3a-bis, and **decided by Dmitry 2026-07-31**: exclusivity is the *goal*, not a

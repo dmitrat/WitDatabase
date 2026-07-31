@@ -53,6 +53,7 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
     private const string KEY_MODE = "Mode";
     private const string KEY_READ_ONLY = "Read Only";
     private const string KEY_ENLIST = "Enlist";
+    private const string KEY_CONNECTION_TIMEOUT = "Connection Timeout";
     
     // Provider keys
     private const string KEY_STORE = "Store";
@@ -207,7 +208,7 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
     {
         var coreKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            KEY_DATA_SOURCE, KEY_MODE, KEY_READ_ONLY, KEY_ENLIST,
+            KEY_DATA_SOURCE, KEY_MODE, KEY_READ_ONLY, KEY_ENLIST, KEY_CONNECTION_TIMEOUT,
             KEY_STORE, KEY_ENCRYPTION, KEY_PASSWORD, KEY_USER, KEY_CACHE, KEY_JOURNAL,
             KEY_ISOLATION_LEVEL, KEY_MVCC, KEY_TRANSACTIONS, KEY_SYNCHRONOUS_COMMIT,
             KEY_PARALLEL_MODE, KEY_MAX_WRITERS,
@@ -268,6 +269,20 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
     {
         get => GetValue(KEY_ENLIST, true);
         set => SetValue(KEY_ENLIST, value);
+    }
+
+    /// <summary>
+    /// Gets or sets how long, in seconds, <c>Open</c> waits for another engine to release the database.
+    /// </summary>
+    /// <remarks>
+    /// ADO.NET's own meaning for this keyword - "time to wait while establishing a connection before
+    /// terminating the attempt" - and here that wait has exactly one cause: one engine per database, and
+    /// a host restart briefly overlaps the outgoing process with the incoming one. Zero refuses at once.
+    /// </remarks>
+    public int ConnectionTimeout
+    {
+        get => GetValue(KEY_CONNECTION_TIMEOUT, 5);
+        set => SetValue(KEY_CONNECTION_TIMEOUT, value);
     }
 
     #endregion

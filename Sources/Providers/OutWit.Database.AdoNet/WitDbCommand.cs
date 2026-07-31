@@ -129,7 +129,11 @@ public sealed class WitDbCommand : DbCommand
         EnsureConnectionOpen();
 
         var result = ExecuteInternal();
-        return new WitDbDataReader(result, m_connection!, behavior);
+
+        var reader = new WitDbDataReader(result, m_connection!, behavior);
+        m_connection!.RegisterReader(reader);
+
+        return reader;
     }
 
     /// <inheritdoc/>
@@ -178,6 +182,22 @@ public sealed class WitDbCommand : DbCommand
         return (WitDbDataReader)await ExecuteDbDataReaderAsync(behavior, cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// The single point every execution path goes through, and therefore the single place where an
+    /// engine failure becomes a <see cref="DbException"/>.
+    /// </summary>
+    /// <remarks>
+    /// <b>Only what comes out of the engine is wrapped.</b> The guards this provider raises for API
+    /// misuse - no connection, no command text, a transaction already in progress - stay
+    /// <see cref="InvalidOperationException"/>, which is what ADO.NET means by them and what SqlClient
+    /// raises too. What must be a <c>DbException</c> is a DATABASE failure: a missing table, a
+    /// constraint violation, a syntax error. Every framework that handles database failures generically
+    /// - EF Core execution strategies, Polly, ASP.NET diagnostics - keys off <c>DbException</c> and saw
+    /// none of them.
+    ///
+    /// <see cref="OperationCanceledException"/> is left alone: a cancelled command is the caller's
+    /// doing, not the database's, and callers catch it by its own type.
+    /// </remarks>
     private WitSqlResult ExecuteInternal(CancellationToken cancellationToken = default)
     {
         if (string.IsNullOrWhiteSpace(m_commandText))
@@ -186,15 +206,22 @@ public sealed class WitDbCommand : DbCommand
         var engine = m_connection!.Engine!;
         var parameters = BuildParametersDictionary();
 
-        // If we have a valid prepared statement for this exact command text, use it
-        if (m_preparedStatement != null && m_preparedCommandText == m_commandText)
+        try
         {
-            return m_preparedStatement.Execute(parameters, cancellationToken);
-        }
+            // If we have a valid prepared statement for this exact command text, use it
+            if (m_preparedStatement != null && m_preparedCommandText == m_commandText)
+            {
+                return m_preparedStatement.Execute(parameters, cancellationToken);
+            }
 
-        // Execute without prepared statement (uses engine's internal query plan cache)
-        var timeout = m_commandTimeout > 0 ? TimeSpan.FromSeconds(m_commandTimeout) : (TimeSpan?)null;
-        return engine.Execute(m_commandText, parameters, timeout, cancellationToken);
+            // Execute without prepared statement (uses engine's internal query plan cache)
+            var timeout = m_commandTimeout > 0 ? TimeSpan.FromSeconds(m_commandTimeout) : (TimeSpan?)null;
+            return engine.Execute(m_commandText, parameters, timeout, cancellationToken);
+        }
+        catch (Exception e) when (e is not DbException && e is not OperationCanceledException)
+        {
+            throw WitDbException.FromException(e);
+        }
     }
 
     private Dictionary<string, object?> BuildParametersDictionary()

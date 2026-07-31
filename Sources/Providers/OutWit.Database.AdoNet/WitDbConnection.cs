@@ -31,6 +31,7 @@ public sealed class WitDbConnection : DbConnection
     private ConnectionState m_state = ConnectionState.Closed;
     private WitSqlEngine? m_engine;
     private WitDbEnlistment? m_enlistment;
+    private WitDbDataReader? m_activeReader;
     private bool m_closePending;
     private WitDatabase? m_database;
     private WitDbTransaction? m_currentTransaction;
@@ -177,6 +178,13 @@ public sealed class WitDbConnection : DbConnection
             return;
         }
 
+        // The reader is closed BEFORE the engine goes, not left pointing at a disposed store. Every
+        // ADO.NET provider closes its readers with the connection; this one used to hand out a reader,
+        // forget about it, and dispose the storage underneath it - and the reader went on returning
+        // rows, correctly, which is undefined behaviour that happens to work rather than a clean error.
+        m_activeReader?.Close();
+        m_activeReader = null;
+
         lock (m_lock)
         {
             if (m_state == ConnectionState.Closed)
@@ -277,6 +285,39 @@ public sealed class WitDbConnection : DbConnection
         m_enlistment = enlistment;
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Inherited until phase 6, which meant this reported the base class's 15 seconds - a number this
+    /// provider had never heard of. It is the wait at <c>Open</c>, which is the only thing establishing
+    /// a connection here can wait for.
+    /// </remarks>
+    public override int ConnectionTimeout =>
+        string.IsNullOrEmpty(m_connectionString)
+            ? 5
+            : new WitDbConnectionStringBuilder(m_connectionString).ConnectionTimeout;
+
+    /// <summary>
+    /// Remembers the reader this connection handed out, so that closing the connection can close it.
+    /// </summary>
+    /// <remarks>
+    /// One at a time, which is what ADO.NET assumes without multiple active result sets: a second
+    /// reader replaces the first here, and the first is already finished as far as this connection is
+    /// concerned.
+    /// </remarks>
+    internal void RegisterReader(WitDbDataReader reader)
+    {
+        m_activeReader = reader;
+    }
+
+    /// <summary>
+    /// Called by a reader that has closed itself.
+    /// </summary>
+    internal void UnregisterReader(WitDbDataReader reader)
+    {
+        if (ReferenceEquals(m_activeReader, reader))
+            m_activeReader = null;
+    }
+
     /// <summary>
     /// Called by the enlistment once the ambient transaction has committed or rolled back.
     /// </summary>
@@ -344,9 +385,20 @@ public sealed class WitDbConnection : DbConnection
     #region Command
 
     /// <inheritdoc/>
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The command's timeout starts at the connection string's <c>Default Timeout</c>, which is what
+    /// ADO.NET means by that keyword. It was declared and read by nothing until phase 6 - the same family
+    /// as <c>Read Only</c> and <c>Mode</c>: a keyword accepted and dropped.
+    /// </remarks>
     protected override DbCommand CreateDbCommand()
     {
-        return new WitDbCommand { Connection = this };
+        var command = new WitDbCommand { Connection = this };
+
+        if (!string.IsNullOrEmpty(m_connectionString))
+            command.CommandTimeout = new WitDbConnectionStringBuilder(m_connectionString).DefaultTimeout;
+
+        return command;
     }
 
     /// <summary>
@@ -354,7 +406,9 @@ public sealed class WitDbConnection : DbConnection
     /// </summary>
     public new WitDbCommand CreateCommand()
     {
-        return new WitDbCommand { Connection = this };
+        // Through the contract method, so the concrete surface and the base one cannot drift - which is
+        // the whole subject of this phase.
+        return (WitDbCommand)CreateDbCommand();
     }
 
     #endregion
@@ -414,6 +468,8 @@ public sealed class WitDbConnection : DbConnection
         }
 
         // Configure storage
+        builder.WithOpenTimeout(TimeSpan.FromSeconds(Math.Max(0, options.ConnectionTimeout)));
+
         ConfigureStorage(builder, options);
 
         // Configure store engine
@@ -449,12 +505,42 @@ public sealed class WitDbConnection : DbConnection
         }
         else if (!string.IsNullOrEmpty(options.DataSource))
         {
+            RequireExistingDatabase(options);
             builder.WithFilePath(options.DataSource);
         }
         else
         {
             throw new ArgumentException("DataSource must be specified in connection string.");
         }
+    }
+
+    /// <summary>
+    /// Enforces the half of <c>Mode</c> that says "open what is there", for the two values that mean it.
+    /// </summary>
+    /// <remarks>
+    /// <c>ReadWriteCreate</c> - the default - creates a database that is not there, and
+    /// <c>ReadWrite</c> and <c>ReadOnly</c> do not: they mean open an existing one and fail if it is
+    /// absent. All three used to behave identically, because the only question asked of <c>Mode</c> was
+    /// whether it was <c>Memory</c>. A mistyped path therefore produced an empty database rather than an
+    /// error, which is the failure SQLite reports as "unable to open database file".
+    ///
+    /// A database is a file for the B+Tree store and a directory for the LSM one, so both count as
+    /// present.
+    /// </remarks>
+    private static void RequireExistingDatabase(WitDbConnectionStringBuilder options)
+    {
+        if (options.Mode != WitDbConnectionMode.ReadWrite && options.Mode != WitDbConnectionMode.ReadOnly)
+            return;
+
+        var path = options.DataSource!;
+
+        if (File.Exists(path) || Directory.Exists(path))
+            return;
+
+        throw new WitDbException(
+            $"Unable to open database file '{path}': it does not exist, and Mode={options.Mode} means "
+            + "open an existing database rather than create one. Use Mode=ReadWriteCreate to create it.",
+            WitDbException.ERROR_IO);
     }
 
     private static void ConfigureStore(WitDatabaseBuilder builder, WitDbConnectionStringBuilder options, ProviderParameters providerParams)

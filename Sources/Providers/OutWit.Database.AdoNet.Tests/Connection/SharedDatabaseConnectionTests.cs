@@ -372,7 +372,7 @@ public class SharedDatabaseConnectionTests
         second.Open();
 
         Assert.That(() => CountRows(second, "SELECT Id FROM T"),
-            Throws.InstanceOf<InvalidOperationException>(),
+            Throws.InstanceOf<DbException>(),
             "two :memory: connections are two databases - if that changes, it must be on purpose");
     }
 
