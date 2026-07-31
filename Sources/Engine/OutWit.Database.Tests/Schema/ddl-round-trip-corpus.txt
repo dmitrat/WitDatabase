@@ -1,4 +1,4 @@
-# DDL round-trip corpus - phase 7, regenerated 2026-07-31 after the ALTER ADD COLUMN fix
+# DDL round-trip corpus - phase 7, regenerated 2026-07-31 after the declared-size fix
 #
 # A RECORD OF THE CURRENT STATE, NOT A TARGET. Each line is one declaration the grammar accepts, and
 # what became of it, asked three separate ways:
@@ -9,25 +9,24 @@
 #
 # The corpus test fails in BOTH directions. A declaration that stops being honoured is a regression;
 # one that starts being honoured means this file is stale and should be regenerated, which is a fix
-# landing rather than a failure - as the named-* and add-column-* rows both did.
+# landing rather than a failure - which is what every row below did, in three passes.
 #
-# ONE CLUSTER LEFT:
-#
-#   sizes   no / no / no   declared, accepted, and gone in every dimension
+# ALL THREE CLUSTERS ARE CLOSED. Every declaration this corpus covers is now recorded, reported where
+# INFORMATION_SCHEMA has a column for it, and enforced where there is something to violate.
 
 add-column-check           a CHECK on the added column  recorded=yes     reported=n/a     enforced=yes
 add-column-references      a foreign key on the added column recorded=yes     reported=n/a     enforced=yes
 add-column-unique          IsUnique = true on the added column recorded=yes     reported=n/a     enforced=yes
-char-length                MaxLength = 3                recorded=no      reported=no      enforced=no
+char-length                MaxLength = 3                recorded=yes     reported=yes     enforced=yes
 check-column               a column CHECK               recorded=yes     reported=n/a     enforced=yes
 check-table                a table CHECK                recorded=yes     reported=n/a     enforced=yes
-decimal-precision-scale    Precision = 5, Scale = 2     recorded=no      reported=no      enforced=no
+decimal-precision-scale    Precision = 5, Scale = 2     recorded=yes     reported=yes     enforced=yes
 default                    DefaultValue = 'x'           recorded=yes     reported=yes     enforced=n/a
 named-check                a constraint named ck_v      recorded=yes     reported=yes     enforced=yes
 named-foreign-key          a constraint named fk_p      recorded=yes     reported=yes     enforced=yes
 named-unique               a constraint named uq_s      recorded=yes     reported=yes     enforced=yes
 not-null                   IsNullable = false           recorded=yes     reported=yes     enforced=yes
-numeric-precision-scale    Precision = 4, Scale = 1     recorded=no      reported=no      enforced=no
+numeric-precision-scale    Precision = 4, Scale = 1     recorded=yes     reported=yes     enforced=yes
 primary-key                IsPrimaryKey = true          recorded=yes     reported=n/a     enforced=yes
 unique                     IsUnique = true              recorded=yes     reported=n/a     enforced=yes
-varchar-length             MaxLength = 5                recorded=no      reported=no      enforced=no
+varchar-length             MaxLength = 5                recorded=yes     reported=yes     enforced=yes
