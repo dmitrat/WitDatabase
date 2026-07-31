@@ -221,7 +221,12 @@ public sealed class WitDbParameter : DbParameter, ICloneable
     /// <summary>
     /// Gets or sets the precision for numeric parameters.
     /// </summary>
-    public byte Precision
+    /// <remarks>
+    /// <c>override</c> matters here rather than being a formality: the base declares this virtual, so a
+    /// consumer holding a <see cref="DbParameter"/> - which is what <c>CreateParameter</c> returns -
+    /// wrote into the base class's own storage and the value never reached this provider.
+    /// </remarks>
+    public override byte Precision
     {
         get => m_precision;
         set => m_precision = value;
@@ -230,7 +235,8 @@ public sealed class WitDbParameter : DbParameter, ICloneable
     /// <summary>
     /// Gets or sets the scale for numeric parameters.
     /// </summary>
-    public byte Scale
+    /// <remarks>See <see cref="Precision"/> - the same gap, and the same reason it was invisible.</remarks>
+    public override byte Scale
     {
         get => m_scale;
         set => m_scale = value;

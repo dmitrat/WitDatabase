@@ -98,10 +98,21 @@ public sealed class WitDbTransaction : DbTransaction
     #region Savepoints
 
     /// <summary>
+    /// Savepoints are supported, and saying so is part of the contract.
+    /// </summary>
+    /// <remarks>
+    /// The base returns false, and a consumer that asks before calling - EF Core asks, because it uses
+    /// savepoints to retry <c>SaveChanges</c> - concluded this provider had none while the concrete type
+    /// implemented all six members.
+    /// </remarks>
+    public override bool SupportsSavepoints => true;
+
+
+    /// <summary>
     /// Creates a savepoint in the transaction.
     /// </summary>
     /// <param name="savepointName">The name of the savepoint.</param>
-    public void Save(string savepointName)
+    public override void Save(string savepointName)
     {
         EnsureNotCompleted();
         EnsureConnectionOpen();
@@ -118,7 +129,7 @@ public sealed class WitDbTransaction : DbTransaction
     /// <param name="savepointName">The name of the savepoint.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task SaveAsync(string savepointName, CancellationToken cancellationToken = default)
+    public override async Task SaveAsync(string savepointName, CancellationToken cancellationToken = default)
     {
         await Task.Run(() => Save(savepointName), cancellationToken).ConfigureAwait(false);
     }
@@ -127,7 +138,7 @@ public sealed class WitDbTransaction : DbTransaction
     /// Rolls back to a savepoint.
     /// </summary>
     /// <param name="savepointName">The name of the savepoint.</param>
-    public void Rollback(string savepointName)
+    public override void Rollback(string savepointName)
     {
         EnsureNotCompleted();
         EnsureConnectionOpen();
@@ -144,7 +155,7 @@ public sealed class WitDbTransaction : DbTransaction
     /// <param name="savepointName">The name of the savepoint.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task RollbackAsync(string savepointName, CancellationToken cancellationToken = default)
+    public override async Task RollbackAsync(string savepointName, CancellationToken cancellationToken = default)
     {
         await Task.Run(() => Rollback(savepointName), cancellationToken).ConfigureAwait(false);
     }
@@ -153,7 +164,7 @@ public sealed class WitDbTransaction : DbTransaction
     /// Releases a savepoint.
     /// </summary>
     /// <param name="savepointName">The name of the savepoint.</param>
-    public void Release(string savepointName)
+    public override void Release(string savepointName)
     {
         EnsureNotCompleted();
         EnsureConnectionOpen();
@@ -170,7 +181,7 @@ public sealed class WitDbTransaction : DbTransaction
     /// <param name="savepointName">The name of the savepoint.</param>
     /// <param name="cancellationToken">A cancellation token.</param>
     /// <returns>A task representing the asynchronous operation.</returns>
-    public async Task ReleaseAsync(string savepointName, CancellationToken cancellationToken = default)
+    public override async Task ReleaseAsync(string savepointName, CancellationToken cancellationToken = default)
     {
         await Task.Run(() => Release(savepointName), cancellationToken).ConfigureAwait(false);
     }

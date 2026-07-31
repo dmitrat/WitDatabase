@@ -24,10 +24,9 @@ public class DropInGapsAdoNetTests
     #region Savepoints are not wired to the ADO.NET contract
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: DbTransaction.SupportsSavepoints is False. WitDbTransaction declares "
-            + "Save/Rollback(string)/Release(string) as `public void`, not `override`, so the "
-            + "DbTransaction virtuals are never replaced. EF Core checks this property before using a "
-            + "savepoint to recover a failed SaveChanges. dropin-gaps, AdoNet/WitDbTransaction.cs:104")]
+    // FIXED 2026-07-31 (phase 6). The six savepoint members carry `override` now and
+    // SupportsSavepoints answers True. The census that found them - ContractCensusProbeTests - showed
+    // the audit had named three of the six: the async trio was shadowed too.
     public void SavepointsAreAdvertisedThroughTheContractTest()
     {
         using var connection = OpenConnection();
@@ -38,11 +37,9 @@ public class DropInGapsAdoNetTests
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: Save through the DbTransaction base type throws "
-            + "NotSupportedException(\"Specified method is not supported\"), because the shadowing "
-            + "`public void Save` is invisible to a caller holding the base type. The same call on the "
-            + "concrete WitDbTransaction works - which is exactly why the provider's own tests miss it "
-            + "and EF Core does not.")]
+    // FIXED 2026-07-31 (phase 6). Save through the base type reached the base class's virtual, which
+    // throws NotSupportedException; the identical call on the concrete type worked, which is exactly
+    // why the provider's own tests missed it and EF Core would not have.
     public void RollbackToSavepointThroughTheContractUndoesLaterWorkTest()
     {
         using var connection = OpenConnection();
