@@ -342,6 +342,38 @@ indexes from `INDEXES`.
 
 ---
 
+## 3h. The scale, applied — and the hole that finding it exposed
+
+The gap § 3e pinned rather than glossed: `DECIMAL(5,2)` had its precision checked and its **scale
+ignored**, so `123.456` was stored unrounded. Closing it means coercing the row before it is written -
+rounding to the declared scale, as PostgreSQL does - and the row is only rebuilt when a value actually
+changes, so an ordinary write allocates nothing.
+
+**Six write paths reach the store**, so the test was written as one case per path rather than one per
+feature. That is what caught the real finding.
+
+### `UPDATE` had a third validation entry point, and it enforced no sizes at all
+
+The insert paths call `ValidateConstraints` or `ValidateConstraintsWithAutoGen`. `UPDATE` has a **fast
+path** with its own — `ValidateConstraintsFastPath` — which the size enforcement shipped earlier in this
+phase never reached. So:
+
+> **A hundred characters could be written into a `VARCHAR(5)` by updating a row that already existed.**
+
+The enforcement looked complete because every test that exercised it inserted. **It was found by a test
+written for the scale, not for the length**, and only because that test wrote through more than one path.
+
+**Fourth occurrence of this phase's pattern**, and the fourth different disguise: a converter reachable
+from one caller (§ 3c), a partial second builder (§ 3d), an overload of the same name (§ 3f), and now a
+*fast path* — an optimisation that quietly became a second implementation of validation.
+
+### The rule this phase earned
+
+> **When a check is added, ask which paths reach it — not whether the check is right.** Every defect in
+> this phase was a correct piece of code that one route did not go through.
+
+---
+
 ## 4. What is next in this phase
 
 - ~~**Widen the corpus**~~ **Done** — § 3a. `DROP COLUMN` came out of it as stale rather than as work.
