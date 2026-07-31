@@ -1117,6 +1117,22 @@ rest of the database.
 locking is unreliable — network shares in particular — and it does **not** disable the in-process
 serialisation between writers, which is not optional.
 
+**What turning it off actually costs, measured rather than described.** With the guard off, nothing else
+enforces one engine per database *portably*, and the two platforms then behave differently:
+
+- **Windows** still refuses a second engine, but only as a side effect: the write-ahead log opens with a
+  share mode that excludes a second writer. That is not a guarantee the engine makes.
+- **Linux admits it.** .NET emulates `FileShare` with advisory `flock`, where every mode except
+  `FileShare.None` becomes a *shared* lock — so a second engine opens the same LSM database, and the two
+  then **silently disagree**: the engine that opened second replays the write-ahead log and sees the
+  first engine's rows, while the first engine cannot see the second's rows at all, because they live in
+  another engine's memtable and nothing invalidates or notifies it. Both writes survive; what is lost is
+  agreement, and nothing warns.
+
+So `FileLocking=false` is safe for the case it exists for — **one** engine on a filesystem whose locking
+cannot be trusted — and is not a way to run two. On Linux it silently permits exactly the configuration
+the guard exists to refuse.
+
 ### 15.0.1 Read-only connections
 
 `Read Only=true` — or equivalently `Mode=ReadOnly` — makes a connection refuse anything that could change

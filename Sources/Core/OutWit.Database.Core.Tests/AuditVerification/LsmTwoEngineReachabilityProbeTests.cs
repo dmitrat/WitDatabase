@@ -107,14 +107,27 @@ public class LsmTwoEngineReachabilityProbeTests
             return;
         }
 
-        // The Unix half is the one that matters and CI is what answers it. Both outcomes are legitimate
-        // and neither is a defect: FileLocking=false is documented as disabling the guard.
-        //   - refused  -> § 3a's shape is unreachable everywhere, and the promised experiment is moot.
-        //   - admitted -> it is reachable only in the configuration that documents itself as removing
-        //                 the protection, and the experiment measures the cost of a documented escape
-        //                 hatch rather than of a defect.
-        Assert.That(outcome.Divergence, Is.Not.Null.Or.Empty,
-            "the probe recorded nothing at all on this platform");
+        // PINS A DOCUMENTED SHARP EDGE, NOT A DEFECT. Answered by the Linux runner 2026-07-31, and it
+        // is § 3a's original finding reproduced exactly: with the guard off, .NET maps the write-ahead
+        // log's FileShare.Read to a SHARED advisory lock, both engines open, and the two disagree.
+        //
+        // The asymmetry is not arbitrary. The second engine replays wal.log when it opens, which
+        // already holds the first engine's row, so it sees it; the first engine cannot see the
+        // second's row at all, because that row lives in a memtable belonging to another engine and
+        // nothing invalidates or notifies. Both writes survive - this is divergence, not loss.
+        //
+        // If a later change makes this refuse instead, that is an improvement and this pin should be
+        // inverted rather than deleted: it is the only executed statement of what FileLocking=false
+        // costs on the platform the deployment target runs on.
+        Assert.Multiple(() =>
+        {
+            Assert.That(outcome.Refused, Is.Null,
+                "the guard is off, so nothing was expected to refuse the second engine here");
+            Assert.That(outcome.FirstSeesSecondsRow, Is.False,
+                "the first engine can now see a row written into another engine's memtable");
+            Assert.That(outcome.SecondSeesFirstsRow, Is.True,
+                "the second engine no longer replays the log it opened on top of");
+        });
     }
 
     #endregion
@@ -124,6 +137,10 @@ public class LsmTwoEngineReachabilityProbeTests
     private sealed class TwoEngineOutcome
     {
         public Exception? Refused { get; init; }
+
+        public bool FirstSeesSecondsRow { get; init; }
+
+        public bool SecondSeesFirstsRow { get; init; }
 
         public string Divergence { get; init; } = "";
     }
@@ -153,6 +170,8 @@ public class LsmTwoEngineReachabilityProbeTests
         }
 
         var divergence = "";
+        var firstSeesB = false;
+        var secondSeesA = false;
 
         if (second != null)
         {
@@ -160,8 +179,8 @@ public class LsmTwoEngineReachabilityProbeTests
             second.Flush();
 
             // Rows are read back, never counted through a cached counter.
-            var firstSeesB = first.Get("b") != null;
-            var secondSeesA = second.Get("a") != null;
+            firstSeesB = first.Get("b") != null;
+            secondSeesA = second.Get("a") != null;
 
             divergence = $"first sees the second's row = {firstSeesB}, "
                        + $"second sees the first's row = {secondSeesA}";
@@ -173,7 +192,13 @@ public class LsmTwoEngineReachabilityProbeTests
             $"PROBE  [{Platform}] two engines over one LSM database <{label}>  ->  "
             + (refused is null ? $"BOTH OPEN; {divergence}" : $"refused with {refused.GetType().Name}"));
 
-        return new TwoEngineOutcome { Refused = refused, Divergence = divergence };
+        return new TwoEngineOutcome
+        {
+            Refused = refused,
+            FirstSeesSecondsRow = firstSeesB,
+            SecondSeesFirstsRow = secondSeesA,
+            Divergence = divergence
+        };
     }
 
     private static WitDatabase Build(string dir, bool fileLocking)
