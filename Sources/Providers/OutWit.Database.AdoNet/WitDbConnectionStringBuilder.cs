@@ -52,6 +52,7 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
     private const string KEY_DATA_SOURCE = "Data Source";
     private const string KEY_MODE = "Mode";
     private const string KEY_READ_ONLY = "Read Only";
+    private const string KEY_ENLIST = "Enlist";
     
     // Provider keys
     private const string KEY_STORE = "Store";
@@ -206,7 +207,7 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
     {
         var coreKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
-            KEY_DATA_SOURCE, KEY_MODE, KEY_READ_ONLY,
+            KEY_DATA_SOURCE, KEY_MODE, KEY_READ_ONLY, KEY_ENLIST,
             KEY_STORE, KEY_ENCRYPTION, KEY_PASSWORD, KEY_USER, KEY_CACHE, KEY_JOURNAL,
             KEY_ISOLATION_LEVEL, KEY_MVCC, KEY_TRANSACTIONS, KEY_SYNCHRONOUS_COMMIT,
             KEY_PARALLEL_MODE, KEY_MAX_WRITERS,
@@ -252,6 +253,21 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
     {
         get => GetValue(KEY_READ_ONLY, false);
         set => SetValue(KEY_READ_ONLY, value);
+    }
+
+    /// <summary>
+    /// Gets or sets whether the connection enlists in the ambient transaction when it is opened.
+    /// </summary>
+    /// <remarks>
+    /// True by default, which is what every provider that supports System.Transactions does. Enlistment
+    /// happens at <c>Open</c> and only then: a connection opened before the <c>TransactionScope</c>
+    /// began is not part of it, here or in SqlClient, and has to be enlisted by hand with
+    /// <c>EnlistTransaction</c>.
+    /// </remarks>
+    public bool Enlist
+    {
+        get => GetValue(KEY_ENLIST, true);
+        set => SetValue(KEY_ENLIST, value);
     }
 
     #endregion
