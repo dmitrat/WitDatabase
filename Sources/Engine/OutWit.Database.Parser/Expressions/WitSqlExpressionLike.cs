@@ -1,10 +1,12 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Values;
 using OutWit.Database.Parser.Interfaces;
 
 namespace OutWit.Database.Parser.Expressions
 {
-    public class WitSqlExpressionLike : WitSqlExpression
+    [MemoryPackable]
+    public partial class WitSqlExpressionLike : WitSqlExpression
     {
         #region Functions
 

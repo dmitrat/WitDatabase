@@ -1,10 +1,12 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
 
 namespace OutWit.Database.Parser.Schema
 {
-    public sealed class WitSqlDataType : ModelBase
+    [MemoryPackable]
+    public sealed partial class WitSqlDataType : ModelBase
     {
         #region Model Base
 

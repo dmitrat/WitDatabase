@@ -1,9 +1,11 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Database.Parser.Interfaces;
 
 namespace OutWit.Database.Parser.Expressions
 {
-    public class WitSqlExpressionIif : WitSqlExpression
+    [MemoryPackable]
+    public partial class WitSqlExpressionIif : WitSqlExpression
     {
         #region Functions
 

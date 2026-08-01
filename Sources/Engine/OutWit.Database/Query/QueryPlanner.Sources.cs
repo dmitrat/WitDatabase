@@ -208,9 +208,7 @@ public sealed partial class QueryPlanner
 
     private IResultIterator CreateViewIterator(DefinitionView view, string alias)
     {
-        // Parse and plan the view's SELECT statement
-        var viewSelect = Parser.WitSql.ParseStatement(view.SelectSql) as WitSqlStatementSelect
-            ?? throw new InvalidOperationException($"View '{view.Name}' contains invalid SELECT statement");
+        var viewSelect = view.ResolveQuery();
 
         // Recursively plan the view query
         var viewIterator = Plan(viewSelect);

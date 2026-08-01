@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Collections;
@@ -8,7 +9,8 @@ namespace OutWit.Database.Parser
     /// <summary>
     /// Result of parsing SQL text.
     /// </summary>
-    public sealed class WitSqlParsingResult : ModelBase
+    [MemoryPackable]
+    public sealed partial class WitSqlParsingResult : ModelBase
     {
         #region Model Base
 

@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Values;
 using OutWit.Database.Parser.Schema.TableConstraints;
@@ -7,7 +8,8 @@ namespace OutWit.Database.Parser.Schema.AlterActions
     /// <summary>
     /// Represents ALTER TABLE ... ADD [CONSTRAINT name] constraint action.
     /// </summary>
-    public class AlterActionAddConstraint : AlterAction
+    [MemoryPackable]
+    public partial class AlterActionAddConstraint : AlterAction
     {
         #region Model Base
 

@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Collections;
 using OutWit.Common.Values;
@@ -9,7 +10,8 @@ namespace OutWit.Database.Parser.Schema.Clauses
     /// <summary>
     /// Represents an ON CONFLICT clause in an INSERT statement.
     /// </summary>
-    public class ClauseOnConflict : ModelBase
+    [MemoryPackable]
+    public partial class ClauseOnConflict : ModelBase
     {
         #region Model Base
 

@@ -1,9 +1,11 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 
 namespace OutWit.Database.Parser.Schema.AlterActions
 {
-    public sealed class AlterActionAddColumn : AlterAction
+    [MemoryPackable]
+    public sealed partial class AlterActionAddColumn : AlterAction
     {
         #region ModelBase
 

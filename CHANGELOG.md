@@ -1,5 +1,101 @@
 # Changelog
 
+## 9.0.0
+
+Closes phase 8, serializer round-trip. **Major, and the breaking half is the file format:** the catalog
+stores schema as parse trees rather than as SQL text, so a database written by 9.0.0 **cannot be opened
+by 8.x**. Upgrading is one-way.
+
+The theme: **the catalog's storage format was SQL text, and the code that produced it was incomplete.**
+That made an ordinary-looking serializer into the write half of a persistence codec whose read half is
+the parser - and a gap between them is not a formatting nuisance, it is schema corruption on disk. The
+gaps had two grades. The known one was *created then broken*: a view whose body contained a subquery
+was created successfully and then raised a parse error on every query against it, because the subquery
+had been written down as the literal text `SELECT ...`. The one nobody had seen was worse.
+
+**A view over `SELECT … UNION SELECT …` was stored as its first branch alone.** It was created without
+complaint, queried without any error at all, and answered from half its rows, for ever. The same
+happened to `WITH`, to `OFFSET` without `LIMIT`, and to nine other clauses. The round-trip harness could
+not see it: it compared two *serializations*, and a dropped clause is idempotent, so both passes agreed
+and the entry counted as clean.
+
+### Breaking
+
+- **The catalog file format changed, and the change is one-way.** 9.0.0 reads a database written by
+  8.x; 8.x cannot read one written by 9.0.0 - it fails with `property count is 3 but binary's header
+  marked as 4`. Take a copy before upgrading if a rollback has to stay possible.
+
+- **`IDatabase.CreateView` no longer takes the body as a string.** It takes the parsed `SELECT`. The
+  text is not stored at all now.
+
+- **`DefinitionView.SelectSql`, `DefinitionColumn.DefaultValue` / `CheckExpression` /
+  `ComputedExpression`, `DefinitionIndex.WhereExpression` / `ExpressionColumns`,
+  `DefinitionTable.CheckExpressions`, `DefinitionNamedConstraint.CheckExpression` and
+  `DefinitionTrigger.Body` / `WhenCondition` are legacy.** They are read for a database written before
+  9.0.0 and never written. Code reading them to learn what a column or index declares must call
+  `ResolveDefault()`, `ResolveCheck()`, `ResolveComputed()`, `ResolveWhere()` or `ResolveQuery()`; code
+  wanting the SQL to show a human must call `DisplayDefault()`, `DisplayCheck()`, `DisplayWhere()` or
+  `DisplayQuery()`.
+
+- **A trigger body may contain only `SELECT`, `INSERT`, `UPDATE`, `DELETE` and `MERGE`.** Anything else
+  is refused when the trigger is declared. The grammar admitted any statement and the engine could not
+  run most of them: DDL inside a trigger deadlocks against the write lock held by the statement that
+  fired it, and it failed **part-way**, leaving a table created by a trigger that then threw.
+
+- **`INFORMATION_SCHEMA` withholds a definition it cannot render faithfully** rather than reporting an
+  approximation of it. `VIEW_DEFINITION`, `CHECK_EXPRESSION`, `COLUMN_DEFAULT`, `FILTER_CONDITION` and
+  `ACTION_STATEMENT` are null in that case. Reporting `SELECT Id FROM A` as the definition of a view
+  over `A UNION B` is a false statement about a database, and someone would copy it.
+
+### Fixed
+
+- **A view keeps its whole body.** `UNION`, `UNION ALL`, `INTERSECT`, `EXCEPT`, `WITH`, `OFFSET` without
+  `LIMIT`, window frames, `NULLS LAST` and subqueries in any position all survive. Several of these
+  used to make the view answer *incorrectly and silently*; the rest made it unqueryable.
+
+- **A trigger keeps its whole body.** `ON CONFLICT` and `INSERT OR IGNORE` inside a trigger used to be
+  stored as a plain `INSERT`, so the conflict handling vanished and the trigger threw on a duplicate
+  instead of ignoring it. The body was also **split on `;`** rather than parsed, so a semicolon inside a
+  string literal cut a statement in half.
+
+- **Partial-index filters and `CHECK` conditions keep their subqueries.**
+
+- **Index maintenance is decided by reading the expression, not by searching its text.** A write used to
+  decide whether it had to maintain a filtered or expression index by asking whether the *rendered text*
+  contained the column's name - which said yes for a column named `Age` and a filter mentioning `Agent`.
+
+- **The reserved-word list is derived from the grammar** instead of being a hand-kept copy of it. The
+  copy held 68 words where the grammar reserves 170: **102 keywords did not survive being written out as
+  an identifier and read back**, among them `USING`, `WITH`, `ROW`, `COLUMN`, `CROSS`, `INTERVAL` and
+  `PARTITION`. It also held `KEY`, which the grammar had deliberately released.
+
+- **`ModelBase.Is` on the AST**: a `CROSS JOIN` threw `NullReferenceException` when compared or cloned;
+  an `INSERT … SELECT` never compared equal to itself; `VALUES (1,2),(3)` compared equal to
+  `VALUES (1),(2,3)`; and a `BLOB` literal never compared equal to itself.
+
+- **The schema is stored once.** An earlier form of this change kept the text beside the tree, and
+  `ALTER COLUMN SET DEFAULT` and `DROP DEFAULT` then updated the text and left the tree - reporting
+  success, changing the catalog, and changing nothing about what was inserted. Both work; nothing stores
+  a second copy of a fact any more.
+
+### Performance
+
+The engine no longer parses stored schema on the row path. A partial index used to run the full ANTLR
+parser **once per inserted row and twice per updated row** (37-70 µs per parse). The end-to-end effect
+is single-digit percent and smaller than run-to-run noise - the mechanism is removed with certainty, the
+magnitude is modest, and it is stated that way rather than claimed as a headline.
+
+Schema records are about **3.4x larger** (38 -> 128 bytes for a small view). Schema is small and written
+rarely; the trade is correctness for bytes, and it is not a compactness win.
+
+### Ledger
+
+**35 `[Ignore(…)]` + 14 `[TestCase(… Ignore =)]` = 49 suppressed entries**, plus 2 `[Explicit]`,
+unchanged from 8.0.0. Two markers closed - the view body's subquery and the partial index's filter - and
+two opened for defects the phase's audit found and **measured against 8.0.0 as pre-existing**:
+`RENAME COLUMN` leaves the column's `CHECK` naming the old column, and `DROP COLUMN` leaves a table
+`CHECK` naming the dropped one; in both cases the table cannot be written to afterwards.
+
 ## 8.0.0
 
 Closes phase 7, schema and DDL fidelity. **Major, and the breaking half is data:** constraints the DDL

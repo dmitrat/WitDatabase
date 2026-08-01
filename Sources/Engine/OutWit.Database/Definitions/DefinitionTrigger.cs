@@ -2,6 +2,10 @@ using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Collections;
 using OutWit.Common.Values;
+using OutWit.Database.Parser.Statements;
+using OutWit.Database.Parser.Expressions;
+using OutWit.Database.Parser;
+using OutWit.Database.Parser.Serializers;
 
 namespace OutWit.Database.Definitions
 {
@@ -25,7 +29,9 @@ namespace OutWit.Database.Definitions
                    && UpdateColumns.Is(other.UpdateColumns)
                    && ForEachRow.Is(other.ForEachRow)
                    && WhenCondition.Is(other.WhenCondition)
-                   && Body.Is(other.Body);
+                   && Body.Is(other.Body)
+                   && When.Check(other.When)
+                   && StatementsAre(other);
         }
 
         public override DefinitionTrigger Clone()
@@ -39,8 +45,21 @@ namespace OutWit.Database.Definitions
                 UpdateColumns = UpdateColumns?.ToArray(),
                 ForEachRow = ForEachRow,
                 WhenCondition = WhenCondition,
-                Body = Body
+                Body = Body,
+                When = When?.Clone() as WitSqlExpression,
+                Statements = Statements?.Select(s => (WitSqlStatement)s.Clone()).ToList()
             };
+        }
+
+        private bool StatementsAre(DefinitionTrigger other)
+        {
+            if (Statements is null || other.Statements is null)
+                return Statements is null && other.Statements is null;
+
+            if (Statements.Count != other.Statements.Count)
+                return false;
+
+            return !Statements.Where((s, i) => !s.Is(other.Statements[i])).Any();
         }
 
         #endregion
@@ -102,7 +121,70 @@ namespace OutWit.Database.Definitions
         /// Gets the trigger body (SQL statements).
         /// </summary>
         [MemoryPackOrder(7)]
-        public required string Body { get; init; }
+        public string? Body { get; init; }
+
+        /// <summary>
+        /// The <c>WHEN</c> condition, stored as a tree. <see cref="WhenCondition"/> renders it for
+        /// <c>INFORMATION_SCHEMA</c>.
+        /// </summary>
+        [MemoryPackOrder(8)]
+        public WitSqlExpression? When { get; init; }
+
+        /// <summary>
+        /// The trigger body, stored as statements. <see cref="Body"/> renders them for
+        /// <c>INFORMATION_SCHEMA</c>.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// Added in 9.0.0. Until then the body was a single string of statements joined with
+        /// <c>;</c> and split apart again on <c>;</c> at execution time - so a statement containing
+        /// a semicolon inside a string literal was torn in half. Storing the statements keeps them
+        /// statements, and no splitting is needed.
+        /// </para>
+        /// <para>
+        /// It also carried the rendering losses: a body of
+        /// <c>INSERT … ON CONFLICT DO NOTHING</c> was stored as a plain <c>INSERT</c>, measured
+        /// 2026-07-31, so the trigger's conflict handling vanished without a word.
+        /// </para>
+        /// </remarks>
+        [MemoryPackOrder(9)]
+        public IReadOnlyList<WitSqlStatement>? Statements { get; init; }
+
+        #endregion
+
+        #region Fields
+
+        private string? m_displayBody;
+
+        #endregion
+
+        #region Resolving
+
+        /// <summary>The <c>WHEN</c> condition as a tree, falling back to the stored text.</summary>
+        /// <summary>The <c>WHEN</c> condition as SQL for <c>INFORMATION_SCHEMA</c>.</summary>
+        public string? DisplayWhen() => SchemaText.Render(When) ?? WhenCondition;
+
+        /// <summary>The body as SQL for <c>INFORMATION_SCHEMA</c>, rendered from the statements.</summary>
+        public string? DisplayBody() => m_displayBody ??= SchemaText.Render(Statements) ?? Body;
+
+        public WitSqlExpression? ResolveWhen() =>
+            When ?? (string.IsNullOrEmpty(WhenCondition) ? null : WitSql.ParseExpression(WhenCondition));
+
+        /// <summary>
+        /// The body as statements, falling back to splitting and parsing the stored text for a
+        /// trigger written before 9.0.0.
+        /// </summary>
+        public IReadOnlyList<WitSqlStatement> ResolveStatements()
+        {
+            if (Statements is not null)
+                return Statements;
+
+            return (Body ?? string.Empty)
+                .Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+                .Where(sql => !string.IsNullOrWhiteSpace(sql) && !sql.StartsWith("/*"))
+                .Select(WitSql.ParseStatement)
+                .ToList();
+        }
 
         #endregion
     }

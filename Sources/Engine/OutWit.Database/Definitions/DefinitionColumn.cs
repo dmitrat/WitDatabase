@@ -2,6 +2,9 @@ using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Values;
 using OutWit.Database.Types;
+using OutWit.Database.Parser;
+using OutWit.Database.Parser.Expressions;
+using OutWit.Database.Parser.Serializers;
 
 namespace OutWit.Database.Definitions;
 
@@ -32,6 +35,9 @@ public sealed partial class DefinitionColumn : ModelBase
             && Precision.Is(other.Precision)
             && Scale.Is(other.Scale)
             && ComputedExpression.Is(other.ComputedExpression)
+            && Computed.Check(other.Computed)
+            && Check.Check(other.Check)
+            && Default.Check(other.Default)
             && IsStored.Is(other.IsStored)
             && Collation.Is(other.Collation)
             && ConstraintName.Is(other.ConstraintName);
@@ -55,6 +61,9 @@ public sealed partial class DefinitionColumn : ModelBase
             Precision = Precision,
             Scale = Scale,
             ComputedExpression = ComputedExpression,
+            Computed = Computed?.Clone() as WitSqlExpression,
+            Check = Check?.Clone() as WitSqlExpression,
+            Default = Default?.Clone() as WitSqlExpression,
             IsStored = IsStored,
             Collation = Collation,
             ConstraintName = ConstraintName
@@ -190,10 +199,85 @@ public sealed partial class DefinitionColumn : ModelBase
     public string? ConstraintName { get; init; }
 
     /// <summary>
+    /// The computed column's expression, stored as a tree.
+    /// <see cref="ComputedExpression"/> is a rendering of it for <c>INFORMATION_SCHEMA</c>.
+    /// </summary>
+    /// <remarks>
+    /// Added in 9.0.0. Seven separate places used to parse the text form; see
+    /// <see cref="ResolveComputed"/> for why they now go through one.
+    /// </remarks>
+    [MemoryPackOrder(17)]
+    public WitSqlExpression? Computed { get; init; }
+
+    /// <summary>
+    /// The column's <c>CHECK</c> condition, stored as a tree.
+    /// </summary>
+    [MemoryPackOrder(18)]
+    public WitSqlExpression? Check { get; set; }
+
+    /// <summary>
+    /// The column's <c>DEFAULT</c> expression, stored as a tree.
+    /// </summary>
+    [MemoryPackOrder(19)]
+    public WitSqlExpression? Default { get; set; }
+
+    /// <summary>
     /// Gets whether this is a computed column.
     /// </summary>
     [MemoryPackIgnore]
-    public bool IsComputed => ComputedExpression != null;
+    public bool IsComputed => ComputedExpression != null || Computed != null;
+
+    #endregion
+
+    #region Resolving
+
+    /// <summary>
+    /// The computed expression as a tree, parsing the stored text only for a column written before
+    /// 9.0.0.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One implementation, called by all seven readers - the DDL validator, three iterators, INSERT
+    /// in three places, MERGE and UPDATE. Converting six of seven would leave one route that still
+    /// reads the text, and a route that one check does not reach is the shape behind every defect
+    /// phase 7 found.
+    /// </para>
+    /// </remarks>
+    public WitSqlExpression? ResolveComputed() => Resolve(Computed, ComputedExpression);
+
+    /// <summary>The <c>CHECK</c> condition as a tree, falling back to the stored text.</summary>
+    public WitSqlExpression? ResolveCheck() => Resolve(Check, CheckExpression);
+
+    /// <summary>The <c>DEFAULT</c> expression as a tree, falling back to the stored text.</summary>
+    public WitSqlExpression? ResolveDefault() => Resolve(Default, DefaultValue);
+
+    private static WitSqlExpression? Resolve(WitSqlExpression? tree, string? text) =>
+        tree ?? (string.IsNullOrEmpty(text) ? null : WitSql.ParseExpression(text));
+
+    /// <summary>
+    /// The <c>DEFAULT</c> as SQL for <c>INFORMATION_SCHEMA</c>, or null if it has none or it cannot
+    /// be written down faithfully.
+    /// </summary>
+    /// <remarks>
+    /// Rendered from the tree on demand. From 9.0.0 nothing stores a second copy of these as text:
+    /// two copies of one fact is what let <c>SET DEFAULT</c> update the description and leave the
+    /// behaviour alone.
+    /// </remarks>
+    public string? DisplayDefault() => m_displayDefault ??= SchemaText.Render(Default) ?? DefaultValue;
+
+    /// <summary>The column's <c>CHECK</c> as SQL for <c>INFORMATION_SCHEMA</c>.</summary>
+    public string? DisplayCheck() => m_displayCheck ??= SchemaText.Render(Check) ?? CheckExpression;
+
+    /// <summary>The computed expression as SQL for <c>INFORMATION_SCHEMA</c>.</summary>
+    public string? DisplayComputed() => m_displayComputed ??= SchemaText.Render(Computed) ?? ComputedExpression;
+
+    #endregion
+
+    #region Fields
+
+    private string? m_displayDefault;
+    private string? m_displayCheck;
+    private string? m_displayComputed;
 
     #endregion
 }

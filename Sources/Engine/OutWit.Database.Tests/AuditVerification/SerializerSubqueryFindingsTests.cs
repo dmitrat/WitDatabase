@@ -47,14 +47,14 @@ public sealed class SerializerSubqueryFindingsTests : WitSqlEngineTestsBase
 
     #region A view whose body contains a subquery
 
+    /// <remarks>
+    /// Was ignored from 2026-07-28 to 2026-07-31 as a confirmed defect: <c>CREATE VIEW</c> succeeded
+    /// and every <c>SELECT</c> against the view then raised a parse error, because the body was
+    /// persisted as text with the subquery replaced by the literal <c>SELECT ...</c>. Closed by
+    /// storing the body as a tree rather than as text - see
+    /// <c>DefinitionView.Query</c> and <c>ViewBodyFidelityTests</c>.
+    /// </remarks>
     [Test]
-    [Ignore("CONFIRMED 2026-07-28 by execution, and worse than 'the subquery is lost': CREATE VIEW " +
-            "SUCCEEDS, and every SELECT against the view then throws WitSqlParsingException " +
-            "'Line 1:45 - mismatched input .'. QueryPlanner.CreateViewIterator re-parses the stored " +
-            "body at query time, and the body was persisted with the subquery replaced by the " +
-            "literal text 'SELECT ...'. So the view is accepted, written to the schema, and is " +
-            "permanently unusable. Found by phase 3's round-trip harness; not a phase-3 defect. " +
-            "parser, Parser/Serializers/WitSqlExpressionSerializer.cs:316")]
     public void ViewBodyKeepsItsSubqueryTest()
     {
         m_engine.Execute(@"
@@ -73,17 +73,36 @@ public sealed class SerializerSubqueryFindingsTests : WitSqlEngineTestsBase
 
     #region A partial index filtered by a subquery
 
+    /// <remarks>
+    /// <para>
+    /// Was ignored from 2026-07-28 as a confirmed defect: the filter was persisted as
+    /// <c>(CustomerId IN (SELECT ...))</c>, an ellipsis that is literal.
+    /// </para>
+    /// <para>
+    /// Rewritten when it was closed, because the original assertion - <c>FILTER_CONDITION</c> does
+    /// not contain <c>...</c> - would now pass for the wrong reason. The reported text is
+    /// <b>withheld</b> when it cannot be rendered faithfully, and nothing does not contain an
+    /// ellipsis either. What was actually wanted is asserted instead: the filter still <i>works</i>,
+    /// which is a question about rows, not about a string.
+    /// </para>
+    /// </remarks>
     [Test]
-    [Ignore("CONFIRMED 2026-07-28 by execution: INFORMATION_SCHEMA.INDEXES.FILTER_CONDITION reads " +
-            "'(CustomerId IN (SELECT ...))' - the subquery replaced by a literal ellipsis. Same root " +
-            "cause as ViewBodyKeepsItsSubqueryTest; Ddl.Indexes.cs persists the partial index's " +
-            "WHERE clause through the same serializer. " +
-            "parser, Parser/Serializers/WitSqlExpressionSerializer.cs:285")]
     public void PartialIndexKeepsItsSubqueryFilterTest()
     {
         m_engine.Execute(@"
             CREATE INDEX IX_Active ON Orders (Total)
             WHERE CustomerId IN (SELECT Id FROM Customers)");
+
+        // Every order here belongs to an existing customer, so all three are in the index and a
+        // query served by it must still see all three.
+        var served = m_engine.Query("SELECT Id FROM Orders WHERE Total > 50 ORDER BY Id")
+            .Select(row => row[0].AsInt64())
+            .ToArray();
+
+        Assert.That(served, Is.EqualTo(new long[] { 10, 11, 12 }),
+            "the partial index's filter must evaluate the real predicate; a filter that failed to " +
+            "evaluate excludes the row from the index, and rows then go missing from queries the " +
+            "index serves");
 
         var stored = m_engine.Query(
                 "SELECT FILTER_CONDITION FROM INFORMATION_SCHEMA.INDEXES WHERE INDEX_NAME = 'IX_Active'")
@@ -91,7 +110,8 @@ public sealed class SerializerSubqueryFindingsTests : WitSqlEngineTestsBase
             .FirstOrDefault();
 
         Assert.That(stored, Does.Not.Contain("..."),
-            $"the stored filter must be the real predicate, not a placeholder; it is <{stored}>");
+            $"a placeholder must never be reported as the filter; withholding it is allowed, " +
+            $"claiming a predicate that is not the one in force is not. It is <{stored}>");
     }
 
     #endregion

@@ -21,10 +21,8 @@ public sealed partial class StatementExecutor
             throw new InvalidOperationException($"View '{createView.ViewName}' already exists");
         }
 
-        // Serialize the SELECT statement back to SQL for storage
-        var selectSql = WitSqlStatementSerializer.Serialize(createView.Query);
-
-        m_context.Database.CreateView(createView.ViewName, selectSql, createView.ColumnNames);
+        // Only the tree is stored. INFORMATION_SCHEMA renders its own text from it when asked.
+        m_context.Database.CreateView(createView.ViewName, createView.Query, createView.ColumnNames);
         return new WitSqlResult();
     }
 

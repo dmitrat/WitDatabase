@@ -1,6 +1,7 @@
 using OutWit.Common.Utils;
 using OutWit.Database.Definitions;
 using OutWit.Database.Types;
+using OutWit.Database.Parser.Expressions;
 
 namespace OutWit.Database.Schema;
 
@@ -170,7 +171,13 @@ public sealed partial class SchemaCatalog
     /// <summary>
     /// Sets or clears a column's default value.
     /// </summary>
-    public void SetColumnDefault(string tableName, string columnName, string? defaultValue)
+    /// <remarks>
+    /// Sets both halves. From 9.0.0 the tree in <c>DefinitionColumn.Default</c> is what the engine
+    /// evaluates and <c>DefaultValue</c> only describes it, so writing the text alone leaves the
+    /// old tree in force: measured 2026-07-31, <c>SET DEFAULT 5</c> and <c>DROP DEFAULT</c> both
+    /// reported success, changed the catalog, and <b>changed nothing about what was inserted</b>.
+    /// </remarks>
+    public void SetColumnDefault(string tableName, string columnName, WitSqlExpression? defaultExpression)
     {
         m_lock.EnterWriteLock();
         try
@@ -180,7 +187,10 @@ public sealed partial class SchemaCatalog
 
             var newColumns = table.Columns
                 .Select(column => column.Name.Equals(columnName, StringComparison.OrdinalIgnoreCase)
-                    ? column.With(x => x.DefaultValue, defaultValue)
+                    ? column.With(x => x.Default, defaultExpression)
+                        // The legacy text is cleared too: a column written before 9.0.0 carries one,
+                        // and leaving it would let the fallback resurrect a default that was dropped.
+                        .With(x => x.DefaultValue, (string?)null)
                     : column)
                 .ToList();
 
@@ -282,10 +292,44 @@ public sealed partial class SchemaCatalog
     /// <b>Exactly one match is removed.</b> An identical constraint declared anonymously alongside a
     /// named one is a different constraint, and dropping the named one must not take it with it.
     /// </remarks>
+    /// <summary>Index of the first match, or -1. Exactly one match is ever removed.</summary>
+    private static int IndexOfFirst<T>(IReadOnlyList<T> items, Func<T, bool> predicate)
+    {
+        for (var i = 0; i < items.Count; i++)
+        {
+            if (predicate(items[i]))
+                return i;
+        }
+
+        return -1;
+    }
+
     private static DefinitionTable RemoveEnforcementFor(DefinitionNamedConstraint dropped, DefinitionTable table)
     {
         switch (dropped.Type)
         {
+            // Matched on the condition itself, not on its rendered text. From 9.0.0 the tree is
+            // what enforces the constraint and the text is only a description, so matching text
+            // would drop the description and leave the enforcement - a DROP CONSTRAINT that
+            // reports success and changes nothing, which is exactly what this method was written
+            // to stop. A rendering is also allowed to be absent now, and two different conditions
+            // can render to the same absence.
+            case ConstraintType.Check when dropped.ResolveCheck() is { } condition && table.Checks != null:
+            {
+                var index = IndexOfFirst(table.Checks, existing => existing.Is(condition));
+
+                if (index < 0)
+                    return table;
+
+                var trees = table.Checks.Where((_, i) => i != index).ToList();
+                var texts = table.CheckExpressions?.Where((_, i) => i != index).ToList();
+
+                return table
+                    .With(x => x.Checks, trees.Count > 0 ? trees : null)
+                    .With(x => x.CheckExpressions, texts is { Count: > 0 } ? texts : null);
+            }
+
+            // A table written before 9.0.0 has no trees, only text. Same rule, older data.
             case ConstraintType.Check when dropped.CheckExpression != null && table.CheckExpressions != null:
             {
                 var remaining = RemoveFirst(table.CheckExpressions,

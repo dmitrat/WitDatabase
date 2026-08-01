@@ -2,6 +2,7 @@ using OutWit.Database.Definitions;
 using OutWit.Database.Parser.Serializers;
 using OutWit.Database.Parser.Statements;
 using OutWit.Database.Sql;
+using OutWit.Database.Parser.Expressions;
 
 namespace OutWit.Database.Statements;
 
@@ -35,6 +36,7 @@ public sealed partial class StatementExecutor
         // This ensures Columns.Count == ExpressionColumns.Count
         var columns = new List<string>();
         var expressionColumns = new List<string?>();
+        var expressions = new List<WitSqlExpression?>();
         
         for (int i = 0; i < createIndex.Elements.Count; i++)
         {
@@ -42,15 +44,13 @@ public sealed partial class StatementExecutor
             if (element.ColumnName != null)
             {
                 columns.Add(element.ColumnName);
-                expressionColumns.Add(element.Expression != null 
-                    ? WitSqlExpressionSerializer.Serialize(element.Expression) 
-                    : null);
+                expressions.Add(element.Expression);
             }
             else if (element.Expression != null)
             {
                 // Pure expression index element - use placeholder column name
                 columns.Add($"$expr{i}");
-                expressionColumns.Add(WitSqlExpressionSerializer.Serialize(element.Expression));
+                expressions.Add(element.Expression);
             }
         }
 
@@ -61,11 +61,9 @@ public sealed partial class StatementExecutor
             Columns = columns,
             IsUnique = createIndex.IsUnique,
             ColumnDescending = createIndex.Elements.Select(e => e.Descending).ToList(),
-            WhereExpression = createIndex.WhereClause != null 
-                ? WitSqlExpressionSerializer.Serialize(createIndex.WhereClause) 
-                : null,
+            Where = createIndex.WhereClause,
             IncludeColumns = createIndex.IncludeColumns,
-            ExpressionColumns = expressionColumns
+            Expressions = expressions
         };
 
         m_context.Database.CreateIndex(metadata);

@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Collections;
 using OutWit.Common.Values;
@@ -6,7 +7,8 @@ using OutWit.Database.Parser.Schema.Clauses;
 
 namespace OutWit.Database.Parser.Schema.Specs;
 
-public sealed class SpecWindow : ModelBase
+[MemoryPackable]
+public sealed partial class SpecWindow : ModelBase
 {
     #region Model Base
 

@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -8,7 +9,8 @@ namespace OutWit.Database.Parser.Expressions
     /// <summary>
     /// Represents a COLLATE expression: expression COLLATE collation_name.
     /// </summary>
-    public sealed class WitSqlExpressionCollate : WitSqlExpression
+    [MemoryPackable]
+    public sealed partial class WitSqlExpressionCollate : WitSqlExpression
     {
         #region Functions
 
@@ -26,7 +28,10 @@ namespace OutWit.Database.Parser.Expressions
             if (other is not WitSqlExpressionCollate collate)
                 return false;
 
-            return Operand.Check(collate.Operand)
+            // base.Is compares Line/Column, which every other node in the AST compares and this one
+            // omitted until 2026-07-31.
+            return base.Is(collate, tolerance)
+                   && Operand.Check(collate.Operand)
                    && CollationName.Is(collate.CollationName);
         }
 

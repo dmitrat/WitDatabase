@@ -99,7 +99,7 @@ public class StatementExecutorTriggerSequenceTests : StatementExecutorTestsBase
         executor.Execute(stmt);
 
         m_database.Received(1).CreateTrigger(Arg.Is<DefinitionTrigger>(t =>
-            t.WhenCondition != null
+            t.When != null
         ));
     }
 

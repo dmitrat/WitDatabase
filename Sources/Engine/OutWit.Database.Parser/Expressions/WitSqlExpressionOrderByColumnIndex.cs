@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -15,7 +16,8 @@ namespace OutWit.Database.Parser.Expressions;
 /// when ORDER BY contains aggregate expressions like SUM(Amount) that need to
 /// reference the computed column from the SELECT list.
 /// </remarks>
-public sealed class WitSqlExpressionOrderByColumnIndex : WitSqlExpression
+[MemoryPackable]
+public sealed partial class WitSqlExpressionOrderByColumnIndex : WitSqlExpression
 {
     #region Functions
 

@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -5,7 +6,8 @@ using OutWit.Database.Parser.Expressions;
 
 namespace OutWit.Database.Parser.Schema.Clauses
 {
-    public sealed class ClauseSet : ModelBase
+    [MemoryPackable]
+    public sealed partial class ClauseSet : ModelBase
     {
         #region Model Base
 

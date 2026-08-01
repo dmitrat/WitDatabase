@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Collections;
 using OutWit.Common.Values;
@@ -9,7 +10,8 @@ using OutWit.Database.Parser.Schema.Types;
 
 namespace OutWit.Database.Parser.Statements
 {
-    public class WitSqlStatementSelect : WitSqlStatement
+    [MemoryPackable]
+    public partial class WitSqlStatementSelect : WitSqlStatement
     {
         #region Functions
 

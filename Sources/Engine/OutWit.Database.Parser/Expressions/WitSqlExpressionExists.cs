@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Values;
 using OutWit.Database.Parser.Interfaces;
@@ -8,7 +9,8 @@ namespace OutWit.Database.Parser.Expressions;
 /// <summary>
 /// Represents an EXISTS or NOT EXISTS expression with a subquery.
 /// </summary>
-public class WitSqlExpressionExists : WitSqlExpression
+[MemoryPackable]
+public partial class WitSqlExpressionExists : WitSqlExpression
 {
     #region Functions
 

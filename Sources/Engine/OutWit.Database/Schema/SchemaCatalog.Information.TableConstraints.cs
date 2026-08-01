@@ -135,10 +135,10 @@ public sealed partial class SchemaCatalog
                 }
 
                 // Table-level check constraints
-                if (table.CheckExpressions != null)
+                if (table.ResolveChecks().Count > 0)
                 {
                     int checkIndex = 1;
-                    foreach (var _ in table.CheckExpressions)
+                    foreach (var _ in table.ResolveChecks())
                     {
                         results.Add(new WitSqlRow([
                             WitSqlValue.FromText("WitDB"),
@@ -157,7 +157,7 @@ public sealed partial class SchemaCatalog
                 // Column-level check constraints
                 foreach (var column in table.Columns)
                 {
-                    if (!string.IsNullOrEmpty(column.CheckExpression))
+                    if (column.ResolveCheck() is not null)
                     {
                         results.Add(new WitSqlRow([
                             WitSqlValue.FromText("WitDB"),

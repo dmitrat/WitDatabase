@@ -416,41 +416,10 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
         return identifier;
     }
 
-    private static bool NeedsQuoting(string identifier)
-    {
-        if (string.IsNullOrEmpty(identifier))
-            return true;
-
-        // Check for special characters
-        foreach (var c in identifier)
-        {
-            if (!char.IsLetterOrDigit(c) && c != '_')
-                return true;
-        }
-
-        // Check if starts with digit
-        if (char.IsDigit(identifier[0]))
-            return true;
-
-        // Check for reserved words (case-insensitive)
-        if (IsReservedWord(identifier))
-            return true;
-
-        return false;
-    }
-
-    private static readonly HashSet<string> RESERVED_WORDS = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "SELECT", "FROM", "WHERE", "INSERT", "UPDATE", "DELETE", "CREATE", "DROP", "ALTER",
-        "TABLE", "INDEX", "VIEW", "TRIGGER", "SEQUENCE", "INTO", "VALUES", "SET", "AND", "OR",
-        "NOT", "NULL", "IS", "IN", "LIKE", "BETWEEN", "JOIN", "LEFT", "RIGHT", "INNER", "OUTER",
-        "ON", "AS", "ORDER", "BY", "GROUP", "HAVING", "LIMIT", "OFFSET", "UNION", "ALL", "DISTINCT",
-        "PRIMARY", "KEY", "FOREIGN", "REFERENCES", "CONSTRAINT", "CHECK", "UNIQUE", "DEFAULT",
-        "ASC", "DESC", "TRUE", "FALSE", "CASE", "WHEN", "THEN", "ELSE", "END", "CAST", "EXISTS",
-        "ANY", "SOME", "IF", "BEGIN", "COMMIT", "ROLLBACK", "TRANSACTION", "RETURNING"
-    };
-
-    private static bool IsReservedWord(string identifier) => RESERVED_WORDS.Contains(identifier);
+    // The hand-written set of 68 reserved words that used to live here was missing 103 of the 170
+    // the grammar actually reserves, and held one - KEY - the grammar had stopped reserving. It is
+    // gone; ReservedWords asks the parser instead, so the two cannot disagree.
+    private static bool NeedsQuoting(string identifier) => ReservedWords.NeedsQuoting(identifier);
 
     #endregion
 }

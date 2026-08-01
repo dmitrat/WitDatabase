@@ -66,11 +66,11 @@ internal sealed class IteratorTableScan : IteratorBase
         for (int i = 0; i < table.Columns.Count; i++)
         {
             var col = table.Columns[i];
-            if (col.IsComputed && !col.IsStored && !string.IsNullOrEmpty(col.ComputedExpression))
+            if (col.IsComputed && !col.IsStored && col.ResolveComputed() is not null)
             {
                 try
                 {
-                    var parsedExpr = WitSql.ParseExpression(col.ComputedExpression);
+                    var parsedExpr = col.ResolveComputed()!;
                     m_virtualComputedColumns ??= new List<(int, WitSqlExpression)>();
                     m_virtualComputedColumns.Add((i, parsedExpr));
                 }

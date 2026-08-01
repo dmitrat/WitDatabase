@@ -39,7 +39,7 @@ public sealed class WitSqlEngineAdvancedIndexTests : WitSqlEngineTestsBase
         var indexDef = m_engine.GetIndex("idx_active_users");
         Assert.That(indexDef, Is.Not.Null);
         Assert.That(indexDef!.IsFiltered, Is.True);
-        Assert.That(indexDef.WhereExpression, Is.Not.Null);
+        Assert.That(indexDef.Where, Is.Not.Null);
     }
 
     [Test]

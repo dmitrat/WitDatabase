@@ -1,4 +1,5 @@
 using OutWit.Database.Definitions;
+using OutWit.Database.Parser.Statements;
 
 namespace OutWit.Database.Engine;
 
@@ -27,14 +28,15 @@ public sealed partial class WitSqlEngine
     /// Create a view.
     /// </summary>
     /// <param name="name">The view name.</param>
-    /// <param name="selectSql">The SELECT statement defining the view.</param>
+    /// <param name="query">The view's body. INFORMATION_SCHEMA renders its own text from it.</param>
     /// <param name="columnAliases">Optional column aliases for the view.</param>
-    public void CreateView(string name, string selectSql, IReadOnlyList<string>? columnAliases)
+    public void CreateView(string name, WitSqlStatementSelect? query,
+        IReadOnlyList<string>? columnAliases)
     {
         m_schema.CreateView(new DefinitionView
         {
             Name = name,
-            SelectSql = selectSql,
+            Query = query,
             ColumnAliases = columnAliases
         });
     }

@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Values;
 
@@ -6,7 +7,8 @@ namespace OutWit.Database.Parser;
 /// <summary>
 /// Parsing error with location information.
 /// </summary>
-public sealed class WitSqlParsingError : ModelBase
+[MemoryPackable]
+public sealed partial class WitSqlParsingError : ModelBase
 {
     #region Model Base
 

@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -13,7 +14,8 @@ namespace OutWit.Database.Parser.Statements
     /// Syntax: SIGNAL SQLSTATE 'state_code' [SET MESSAGE_TEXT = expression]
     /// Example: SIGNAL SQLSTATE '45000' SET MESSAGE_TEXT = 'Balance cannot be negative'
     /// </remarks>
-    public class WitSqlStatementSignal : WitSqlStatement
+    [MemoryPackable]
+    public partial class WitSqlStatementSignal : WitSqlStatement
     {
         #region Functions
 

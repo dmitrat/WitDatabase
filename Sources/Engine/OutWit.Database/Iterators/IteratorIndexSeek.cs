@@ -8,6 +8,7 @@ using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Utils;
 using OutWit.Database.Values;
+using OutWit.Database.Parser.Expressions;
 
 namespace OutWit.Database.Iterators;
 
@@ -33,7 +34,7 @@ internal sealed class IteratorIndexSeek : IteratorBase
     private WitSqlRow m_current;
     
     // Cached info about virtual computed columns
-    private readonly List<(int Index, string Expression)>? m_virtualComputedColumns;
+    private readonly List<(int Index, WitSqlExpression Expression)>? m_virtualComputedColumns;
 
     #endregion
 
@@ -72,10 +73,10 @@ internal sealed class IteratorIndexSeek : IteratorBase
         for (int i = 0; i < table.Columns.Count; i++)
         {
             var col = table.Columns[i];
-            if (col.IsComputed && !col.IsStored && !string.IsNullOrEmpty(col.ComputedExpression))
+            if (col.IsComputed && !col.IsStored && col.ResolveComputed() is not null)
             {
-                m_virtualComputedColumns ??= new List<(int, string)>();
-                m_virtualComputedColumns.Add((i, col.ComputedExpression));
+                m_virtualComputedColumns ??= new List<(int, WitSqlExpression)>();
+                m_virtualComputedColumns.Add((i, col.ResolveComputed()!));
             }
         }
     }
@@ -162,8 +163,7 @@ internal sealed class IteratorIndexSeek : IteratorBase
             {
                 try
                 {
-                    var expr = WitSql.ParseExpression(expression);
-                    var computedValue = evaluator.Evaluate(expr, rowForEval);
+                    var computedValue = evaluator.Evaluate(expression, rowForEval);
                     values[colIndex + 1] = computedValue; // +1 because of _rowid
                 }
                 catch

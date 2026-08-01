@@ -10,6 +10,7 @@ using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Utils;
 using OutWit.Database.Values;
+using OutWit.Database.Parser.Schema.Types;
 
 namespace OutWit.Database.Engine;
 
@@ -202,9 +203,9 @@ public sealed partial class WitSqlEngine
 
         // Parse and evaluate default value expression if provided
         WitSqlExpression? defaultExpression = null;
-        if (!string.IsNullOrEmpty(column.DefaultValue))
+        if (column.ResolveDefault() is not null)
         {
-            defaultExpression = WitSql.ParseExpression(column.DefaultValue);
+            defaultExpression = column.ResolveDefault();
         }
 
         // Create execution context for evaluating default expression
@@ -458,7 +459,7 @@ public sealed partial class WitSqlEngine
     /// <param name="defaultValue">The default value (or null to clear).</param>
     public void SetColumnDefault(string tableName, string columnName, WitSqlValue? defaultValue)
     {
-        m_schema.SetColumnDefault(tableName, columnName, defaultValue?.AsString());
+        m_schema.SetColumnDefault(tableName, columnName, AsLiteral(defaultValue));
     }
 
     /// <summary>
@@ -466,6 +467,42 @@ public sealed partial class WitSqlEngine
     /// </summary>
     /// <param name="tableName">The table name.</param>
     /// <param name="columnName">The column name.</param>
+    /// <summary>
+    /// The evaluated default as a literal expression, which is what the column now stores.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Built from the value directly rather than from its text. Rendering the value and parsing it
+    /// back would work for a number and quietly not for anything else - <c>SET DEFAULT 'abc'</c>
+    /// renders as <c>abc</c>, which re-parses as a <b>reference to a column named abc</b>. That has
+    /// been the behaviour of a text default since before 9.0.0; constructing the literal removes it
+    /// as a side effect of keeping the two halves in step.
+    /// </para>
+    /// </remarks>
+    private static WitSqlExpression? AsLiteral(WitSqlValue? value)
+    {
+        if (value is null)
+            return null;
+
+        var literal = value.Value;
+
+        return literal.Type switch
+        {
+            WitSqlType.Null => Literal(LiteralType.Null, null),
+            WitSqlType.Integer => Literal(LiteralType.Integer, literal.AsInt64()),
+            WitSqlType.Real => Literal(LiteralType.Real, literal.AsDouble()),
+            WitSqlType.Decimal => Literal(LiteralType.Decimal, literal.AsDecimal()),
+            WitSqlType.Boolean => Literal(LiteralType.Boolean, literal.AsBool()),
+            WitSqlType.Blob => Literal(LiteralType.Blob, literal.AsBlob()),
+            // Dates, GUIDs and the rest have no literal form of their own in this grammar; they are
+            // written as text, which is how they were already being stored.
+            _ => Literal(LiteralType.String, literal.AsString())
+        };
+    }
+
+    private static WitSqlExpressionLiteral Literal(LiteralType type, object? value) =>
+        new() { Type = type, Value = value };
+
     public void DropColumnDefault(string tableName, string columnName)
     {
         m_schema.SetColumnDefault(tableName, columnName, null);
@@ -607,13 +644,13 @@ public sealed partial class WitSqlEngine
 
     private void ValidateCheckConstraint(DefinitionTable table, DefinitionNamedConstraint constraint)
     {
-        if (string.IsNullOrEmpty(constraint.CheckExpression))
+        if (constraint.ResolveCheck() is null)
         {
             throw new InvalidOperationException("CHECK constraint must have an expression");
         }
 
         // Parse the check expression
-        var expression = WitSql.ParseExpression(constraint.CheckExpression);
+        var expression = constraint.ResolveCheck()!;
         var context = new ContextExecution { Database = this };
         var evaluator = new ExpressionEvaluator(context);
 
@@ -836,7 +873,7 @@ public sealed partial class WitSqlEngine
     /// <param name="column">The computed column definition.</param>
     public void AddComputedColumn(string tableName, DefinitionColumn column)
     {
-        if (string.IsNullOrEmpty(column.ComputedExpression))
+        if (column.ResolveComputed() is null)
         {
             throw new InvalidOperationException("Computed column must have a computed expression");
         }
@@ -847,7 +884,7 @@ public sealed partial class WitSqlEngine
         tableName = table.Name;
 
         // Parse the computed expression
-        var expression = WitSql.ParseExpression(column.ComputedExpression);
+        var expression = column.ResolveComputed()!;
 
         // Create execution context for evaluating computed expression
         var context = new ContextExecution { Database = this };

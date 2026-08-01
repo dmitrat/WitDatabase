@@ -1,10 +1,18 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
 
 namespace OutWit.Database.Parser.Schema.TableConstraints
 {
-    public abstract class TableConstraint : ModelBase
+    [MemoryPackable]
+    // Persisted format. Tags are append-only: never renumber one and
+    // never reuse a retired one, or old files read back as the wrong type.
+    [MemoryPackUnion(0, typeof(TableConstraintCheck))]
+    [MemoryPackUnion(1, typeof(TableConstraintForeignKey))]
+    [MemoryPackUnion(2, typeof(TableConstraintPrimaryKey))]
+    [MemoryPackUnion(3, typeof(TableConstraintUnique))]
+    public abstract partial class TableConstraint : ModelBase
     {
         #region Model Base
 

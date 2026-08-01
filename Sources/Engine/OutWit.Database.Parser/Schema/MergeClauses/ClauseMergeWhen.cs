@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Collections;
@@ -11,7 +12,8 @@ namespace OutWit.Database.Parser.Schema.MergeClauses
     /// <summary>
     /// Represents a WHEN clause in a MERGE statement.
     /// </summary>
-    public sealed class ClauseMergeWhen : ModelBase
+    [MemoryPackable]
+    public sealed partial class ClauseMergeWhen : ModelBase
     {
         #region Model Base
 

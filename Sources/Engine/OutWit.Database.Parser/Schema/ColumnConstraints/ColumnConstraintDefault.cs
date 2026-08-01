@@ -1,10 +1,12 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Database.Parser.Expressions;
 
 namespace OutWit.Database.Parser.Schema.ColumnConstraints
 {
-    public sealed class ColumnConstraintDefault : ColumnConstraint
+    [MemoryPackable]
+    public sealed partial class ColumnConstraintDefault : ColumnConstraint
     {
         #region Model Base
 

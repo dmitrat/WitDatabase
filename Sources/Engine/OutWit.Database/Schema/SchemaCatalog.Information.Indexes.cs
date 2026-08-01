@@ -55,8 +55,8 @@ public sealed partial class SchemaCatalog
                         WitSqlValue.FromInt(position++),                                   // ORDINAL_POSITION
                         WitSqlValue.FromText(index.IsUnique ? "YES" : "NO"),               // IS_UNIQUE
                         WitSqlValue.Null,                                                  // INDEX_TYPE (B-tree, etc.)
-                        index.WhereExpression != null
-                            ? WitSqlValue.FromText(index.WhereExpression)
+                        index.DisplayWhere() is { } filter
+                            ? WitSqlValue.FromText(filter)
                             : WitSqlValue.Null,                                            // FILTER_CONDITION
                     ], INDEXES_COLUMNS));
                 }

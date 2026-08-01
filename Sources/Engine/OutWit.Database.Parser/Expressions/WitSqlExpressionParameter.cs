@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -10,7 +11,8 @@ namespace OutWit.Database.Parser.Expressions;
 /// Represents a parameter placeholder in a SQL statement.
 /// Supports named (@param, :param, $param), positional (?), and numbered ($1) parameters.
 /// </summary>
-public class WitSqlExpressionParameter : WitSqlExpression
+[MemoryPackable]
+public partial class WitSqlExpressionParameter : WitSqlExpression
 {
     #region Functions
 

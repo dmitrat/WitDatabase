@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -6,7 +7,8 @@ using OutWit.Database.Parser.Schema.AlterActions;
 
 namespace OutWit.Database.Parser.Statements
 {
-    public class WitSqlStatementAlterTable : WitSqlStatement
+    [MemoryPackable]
+    public partial class WitSqlStatementAlterTable : WitSqlStatement
     {
         #region Functions
 

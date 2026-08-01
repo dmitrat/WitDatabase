@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -8,7 +9,8 @@ namespace OutWit.Database.Parser.Schema.Specs;
 /// <summary>
 /// Represents a window frame clause (ROWS/RANGE BETWEEN ... AND ...).
 /// </summary>
-public sealed class SpecFrame : ModelBase
+[MemoryPackable]
+public sealed partial class SpecFrame : ModelBase
 {
     #region Model Base
 

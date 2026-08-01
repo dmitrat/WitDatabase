@@ -1,9 +1,11 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Database.Parser.Expressions;
 
 namespace OutWit.Database.Parser.Schema.TableConstraints
 {
-    public sealed class TableConstraintCheck : TableConstraint
+    [MemoryPackable]
+    public sealed partial class TableConstraintCheck : TableConstraint
     {
         #region Model Base
 

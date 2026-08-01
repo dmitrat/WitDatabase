@@ -11,6 +11,7 @@ using OutWit.Database.Parser.Statements;
 using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Values;
+using OutWit.Database.Parser.Expressions;
 
 namespace OutWit.Database.Statements;
 
@@ -36,6 +37,7 @@ public sealed partial class StatementExecutor
         var columns = new List<DefinitionColumn>();
         var primaryKeyColumns = new List<string>();
         var tableChecks = new List<string>();
+        var tableCheckTrees = new List<WitSqlExpression>();
         var tableForeignKeys = new List<DefinitionForeignKey>();
         var tableUniqueConstraints = new List<IReadOnlyList<string>>();
         var namedConstraints = new List<DefinitionNamedConstraint>();
@@ -50,7 +52,8 @@ public sealed partial class StatementExecutor
         if (createTable.Constraints != null)
         {
             ProcessTableConstraints(createTable.Constraints, columns, primaryKeyColumns,
-                tableChecks, tableForeignKeys, tableUniqueConstraints, namedConstraints);
+                tableChecks, tableCheckTrees, tableForeignKeys, tableUniqueConstraints,
+                namedConstraints);
         }
 
         var metadata = new DefinitionTable
@@ -59,7 +62,7 @@ public sealed partial class StatementExecutor
             Columns = columns,
             PrimaryKey = primaryKeyColumns.Count > 0 ? primaryKeyColumns : null,
             UniqueConstraints = tableUniqueConstraints.Count > 0 ? tableUniqueConstraints : null,
-            CheckExpressions = tableChecks.Count > 0 ? tableChecks : null,
+            Checks = tableCheckTrees.Count > 0 ? tableCheckTrees : null,
             ForeignKeys = tableForeignKeys.Count > 0 ? tableForeignKeys : null,
             NamedConstraints = namedConstraints.Count > 0 ? namedConstraints : null
         };
@@ -85,9 +88,9 @@ public sealed partial class StatementExecutor
             Precision = colDef.DataType?.Precision,
             Scale = colDef.DataType?.Scale,
 
-            ComputedExpression = colDef.ComputedExpression != null 
-                ? WitSqlExpressionSerializer.Serialize(colDef.ComputedExpression) 
-                : null,
+            // The tree is what gets stored and evaluated; the text beside it exists so
+            // INFORMATION_SCHEMA has something to report.
+            Computed = colDef.ComputedExpression,
             IsStored = colDef.ComputedType == ComputedColumnType.Stored
         };
 
@@ -114,11 +117,11 @@ public sealed partial class StatementExecutor
                     break;
 
                 case ColumnConstraintDefault def:
-                    col.DefaultValue = WitSqlExpressionSerializer.Serialize(def.Value);
+                    col.Default = def.Value;
                     break;
 
                 case ColumnConstraintCheck check:
-                    col.CheckExpression = WitSqlExpressionSerializer.Serialize(check.Condition);
+                    col.Check = check.Condition;
                     break;
 
                 case ColumnConstraintReferences refs:
@@ -142,6 +145,7 @@ public sealed partial class StatementExecutor
         List<DefinitionColumn> columns,
         List<string> primaryKeyColumns,
         List<string> tableChecks,
+        List<WitSqlExpression> tableCheckTrees,
         List<DefinitionForeignKey> tableForeignKeys,
         List<IReadOnlyList<string>> tableUniqueConstraints,
         List<DefinitionNamedConstraint> namedConstraints)
@@ -188,7 +192,7 @@ public sealed partial class StatementExecutor
                     break;
 
                 case TableConstraintCheck tc:
-                    tableChecks.Add(WitSqlExpressionSerializer.Serialize(tc.Condition));
+                    tableCheckTrees.Add(tc.Condition);
                     break;
 
                 case TableConstraintForeignKey fk:
@@ -281,7 +285,7 @@ public sealed partial class StatementExecutor
                 // For computed columns, infer type from expression or use default
                 Type = colDef.DataType != null ? MapDataType(colDef.DataType) : WitDataType.StringVariable,
                 Nullable = true,
-                ComputedExpression = WitSqlExpressionSerializer.Serialize(colDef.ComputedExpression!),
+                Computed = colDef.ComputedExpression,
                 IsStored = colDef.ComputedType == ComputedColumnType.Stored
             };
 
@@ -356,7 +360,7 @@ public sealed partial class StatementExecutor
             {
                 Name = name,
                 Type = ConstraintType.Check,
-                CheckExpression = WitSqlExpressionSerializer.Serialize(check.Condition)
+                Check = check.Condition
             },
             TableConstraintUnique unique => new DefinitionNamedConstraint
             {

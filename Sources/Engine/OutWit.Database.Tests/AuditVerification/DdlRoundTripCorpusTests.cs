@@ -79,7 +79,9 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
 
         Table("default", "S TEXT DEFAULT 'x'", "DefaultValue = 'x'",
             "",
-            t => !string.IsNullOrEmpty(t.Column("S").DefaultValue)),
+            // Asks the catalog, not its description: from 9.0.0 the declaration is stored as a
+            // tree and the text is rendered on demand.
+            t => t.Column("S").ResolveDefault() is not null),
 
         Table("primary-key", "Id INTEGER PRIMARY KEY", "IsPrimaryKey = true",
             "INSERT INTO T (Id) VALUES (1)",
@@ -94,7 +96,7 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
         // enforced as unrecorded, which would have been the instrument's mistake, not a finding.
         Table("check-column", "V INTEGER CHECK (V > 0)", "a column CHECK",
             "INSERT INTO T (V) VALUES (0)",
-            t => !string.IsNullOrEmpty(t.Column("V").CheckExpression)),
+            t => t.Column("V").ResolveCheck() is not null),
 
         Table("check-table", "V INTEGER, CHECK (V > 0)", "a table CHECK",
             "INSERT INTO T (V) VALUES (0)",
@@ -130,7 +132,7 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
             ["CREATE TABLE T (Id INTEGER PRIMARY KEY)", "ALTER TABLE T ADD COLUMN V INTEGER CHECK (V > 0)"],
             "a CHECK on the added column",
             "INSERT INTO T (Id, V) VALUES (1, 0)",
-            t => !string.IsNullOrEmpty(t.Column("V").CheckExpression)),
+            t => t.Column("V").ResolveCheck() is not null),
 
         new("add-column-references",
             [
@@ -574,7 +576,7 @@ public sealed class DdlRoundTripCorpusTests : WitSqlEngineTestsBase
         m_engine.Catalog.GetTable("T")?.GetConstraint(name) != null;
 
     private bool HasTableCheck(string table) =>
-        m_engine.Catalog.GetTable(table)?.CheckExpressions?.Count > 0;
+        m_engine.Catalog.GetTable(table)?.ResolveChecks().Count > 0;
 
     /// <summary>
     /// The pinned record lives in a file because it is data rather than logic, and because a diff to it

@@ -41,7 +41,9 @@ public sealed partial class SchemaCatalog
                     WitSqlValue.FromText("WitDB"),                     // TABLE_CATALOG
                     WitSqlValue.FromText("public"),                    // TABLE_SCHEMA
                     WitSqlValue.FromText(view.Name),                   // TABLE_NAME
-                    WitSqlValue.FromText(view.SelectSql),              // VIEW_DEFINITION
+                    view.DisplayQuery() is { } definition
+                        ? WitSqlValue.FromText(definition)
+                        : WitSqlValue.Null,                           // VIEW_DEFINITION
                     WitSqlValue.FromText("NONE"),                      // CHECK_OPTION
                     WitSqlValue.FromText("NO"),                        // IS_UPDATABLE
                 ], VIEWS_COLUMNS));

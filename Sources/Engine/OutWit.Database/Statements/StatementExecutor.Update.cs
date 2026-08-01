@@ -194,10 +194,10 @@ public sealed partial class StatementExecutor
                 {
                     if (dataColumnNames[i].Equals(computedCol.Name, StringComparison.OrdinalIgnoreCase))
                     {
-                        if (!string.IsNullOrEmpty(computedCol.ComputedExpression))
+                        if (computedCol.ResolveComputed() is not null)
                         {
                             // Use cached expression parsing for better performance
-                            var expr = GetOrParseExpression(computedCol.ComputedExpression);
+                            var expr = computedCol.ResolveComputed()!;
                             newValues[i] = evaluator.Evaluate(expr, intermediateRow);
                         }
                         break;
@@ -382,10 +382,10 @@ public sealed partial class StatementExecutor
                     {
                         if (dataColumnNames[i].Equals(computedCol.Name, StringComparison.OrdinalIgnoreCase))
                         {
-                            if (!string.IsNullOrEmpty(computedCol.ComputedExpression))
+                            if (computedCol.ResolveComputed() is not null)
                             {
                                 // Use cached expression parsing for better performance
-                                var expr = GetOrParseExpression(computedCol.ComputedExpression);
+                                var expr = computedCol.ResolveComputed()!;
                                 newValues[i] = evaluator.Evaluate(expr, intermediateRow);
                             }
                             break;
@@ -615,9 +615,9 @@ public sealed partial class StatementExecutor
                     {
                         if (dataColumnNames[i].Equals(computedCol.Name, StringComparison.OrdinalIgnoreCase))
                         {
-                            if (!string.IsNullOrEmpty(computedCol.ComputedExpression))
+                            if (computedCol.ResolveComputed() is not null)
                             {
-                                var expr = GetOrParseExpression(computedCol.ComputedExpression);
+                                var expr = computedCol.ResolveComputed()!;
                                 newValues[i] = evaluator.Evaluate(expr, intermediateRow);
                             }
                             break;
@@ -704,7 +704,7 @@ public sealed partial class StatementExecutor
         // Validate column-level CHECK constraints only for modified columns
         foreach (var col in table.Columns)
         {
-            if (col.CheckExpression == null)
+            if (col.ResolveCheck() is null)
                 continue;
 
             // Only check if this column was modified
@@ -716,7 +716,7 @@ public sealed partial class StatementExecutor
                 continue;
 
             // Use cached expression parsing
-            var checkExpr = GetOrParseExpression(col.CheckExpression);
+            var checkExpr = col.ResolveCheck()!;
             var result = evaluator.Evaluate(checkExpr, row);
 
             if (!result.IsNull && !result.AsBool())
@@ -726,12 +726,10 @@ public sealed partial class StatementExecutor
         }
 
         // Table-level CHECK constraints might depend on any column, so check all
-        if (table.CheckExpressions != null)
+        if (table.ResolveChecks().Count > 0)
         {
-            foreach (var checkSql in table.CheckExpressions)
+            foreach (var checkExpr in table.ResolveChecks())
             {
-                // Use cached expression parsing
-                var checkExpr = GetOrParseExpression(checkSql);
                 var result = evaluator.Evaluate(checkExpr, row);
 
                 if (!result.IsNull && !result.AsBool())
@@ -1061,9 +1059,9 @@ public sealed partial class StatementExecutor
                     {
                         if (columnNames[i].Equals(computedCol.Name, StringComparison.OrdinalIgnoreCase))
                         {
-                            if (!string.IsNullOrEmpty(computedCol.ComputedExpression))
+                            if (computedCol.ResolveComputed() is not null)
                             {
-                                var expr = Parser.WitSql.ParseExpression(computedCol.ComputedExpression);
+                                var expr = computedCol.ResolveComputed()!;
                                 newValues[i] = evaluator.Evaluate(expr, intermediateRow);
                             }
                             break;
@@ -1204,8 +1202,7 @@ public sealed partial class StatementExecutor
         var view = m_context.Database.GetView(simple.TableName);
         if (view != null)
         {
-            var viewSelect = Parser.WitSql.ParseStatement(view.SelectSql) as WitSqlStatementSelect
-                ?? throw new InvalidOperationException($"View '{view.Name}' contains invalid SELECT statement");
+            var viewSelect = view.ResolveQuery();
             
             var planner = new Query.QueryPlanner(m_context);
             var viewIterator = planner.Plan(viewSelect);

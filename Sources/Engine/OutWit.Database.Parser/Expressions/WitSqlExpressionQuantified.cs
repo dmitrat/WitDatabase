@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Values;
 using OutWit.Database.Parser.Interfaces;
@@ -9,7 +10,8 @@ namespace OutWit.Database.Parser.Expressions
     /// <summary>
     /// Represents a quantified comparison expression: expression &lt;op&gt; ANY/SOME/ALL (subquery)
     /// </summary>
-    public class WitSqlExpressionQuantified : WitSqlExpression
+    [MemoryPackable]
+    public partial class WitSqlExpressionQuantified : WitSqlExpression
     {
         #region Functions
 

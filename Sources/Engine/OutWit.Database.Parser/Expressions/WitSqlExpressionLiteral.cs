@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -6,7 +7,8 @@ using OutWit.Database.Parser.Schema.Types;
 
 namespace OutWit.Database.Parser.Expressions;
 
-public class WitSqlExpressionLiteral : WitSqlExpression
+[MemoryPackable]
+public partial class WitSqlExpressionLiteral : WitSqlExpression
 {
     #region Functions
 
@@ -24,10 +26,23 @@ public class WitSqlExpressionLiteral : WitSqlExpression
         if (other is not WitSqlExpressionLiteral literal)
             return false;
 
-        return base.Is(literal, tolerance) 
-               && Type.Is(literal.Type) 
-               && Equals(Value, literal.Value);
+        return base.Is(literal, tolerance)
+               && Type.Is(literal.Type)
+               && ValuesAre(Value, literal.Value);
     }
+
+    /// <summary>
+    /// Compares two literal payloads.
+    /// </summary>
+    /// <remarks>
+    /// A <c>BLOB</c> literal carries a <c>byte[]</c>, and until 2026-07-31 this used
+    /// <c>Equals</c> - reference equality for an array. So <c>X'DEADBEEF'</c> never compared equal
+    /// to an identical literal, <b>including a second parse of its own text</b>.
+    /// </remarks>
+    private static bool ValuesAre(object? left, object? right) =>
+        left is byte[] first && right is byte[] second
+            ? first.AsSpan().SequenceEqual(second)
+            : Equals(left, right);
 
     public override WitSqlExpressionLiteral Clone()
     {
@@ -47,6 +62,7 @@ public class WitSqlExpressionLiteral : WitSqlExpression
     [ToString]
     public required LiteralType Type { get; init; }
 
+    [Serializers.LiteralValueFormatter.Apply]
     public object? Value { get; init; }
 
     #endregion

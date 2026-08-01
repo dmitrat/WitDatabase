@@ -53,10 +53,12 @@ public sealed partial class SchemaCatalog
                     WitSqlValue.FromText("public"),                                     // EVENT_OBJECT_SCHEMA
                     WitSqlValue.FromText(trigger.TableName),                            // EVENT_OBJECT_TABLE
                     WitSqlValue.FromInt(order++),                                       // ACTION_ORDER
-                    trigger.WhenCondition != null
-                        ? WitSqlValue.FromText(trigger.WhenCondition)
+                    trigger.DisplayWhen() is { } when
+                        ? WitSqlValue.FromText(when)
                         : WitSqlValue.Null,                                             // ACTION_CONDITION
-                    WitSqlValue.FromText(trigger.Body),                                 // ACTION_STATEMENT
+                    trigger.DisplayBody() is { } body
+                        ? WitSqlValue.FromText(body)
+                        : WitSqlValue.Null,                                            // ACTION_STATEMENT
                     WitSqlValue.FromText(trigger.ForEachRow ? "ROW" : "STATEMENT"),     // ACTION_ORIENTATION
                     WitSqlValue.FromText(GetActionTiming(trigger.Time)),                // ACTION_TIMING
                     WitSqlValue.Null,                                                   // ACTION_REFERENCE_OLD_TABLE
