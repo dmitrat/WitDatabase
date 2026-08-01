@@ -233,7 +233,7 @@ dotnet run -c Release --project Benchmarks/OutWit.Database.Benchmarks \
 
 ## Requirements
 
-- .NET 9.0 or .NET 10.0
+- .NET 10.0
 - Windows, Linux, or macOS
 
 ## Project Structure
