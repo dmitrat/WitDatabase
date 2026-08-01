@@ -47,6 +47,19 @@ public class QueryPlannerTests
         return new MockIterator(rows);
     }
 
+    /// <summary>
+    /// Looks through the SELECT * wrapper to the plan underneath.
+    /// </summary>
+    /// <remarks>
+    /// SELECT * emits exactly the source schema, and from 2026-08-01 it always does so through
+    /// IteratorExcludeInternal rather than only when an internal column was present. Without that,
+    /// a derived table's doubled row - IteratorAlias puts every column in twice so both X.Id and Id
+    /// resolve - reached the caller as a result twice as wide as asked for. These tests assert what
+    /// the plan is made of, which is one layer down now.
+    /// </remarks>
+    private static IResultIterator Unwrap(IResultIterator iterator) =>
+        iterator is OutWit.Database.Iterators.IteratorExcludeInternal wrapper ? wrapper.Source : iterator;
+
     private static WitSqlRow CreateRow(params (string name, WitSqlValue value)[] columns)
     {
         var names = columns.Select(c => c.name).ToArray();
@@ -84,7 +97,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         Assert.That(iterator, Is.InstanceOf<IteratorProject>());
     }
@@ -98,7 +111,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // SELECT * without FROM returns single row iterator
         Assert.That(iterator, Is.InstanceOf<IteratorSingleRow>());
@@ -126,7 +139,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // Should wrap with alias
         Assert.That(iterator, Is.InstanceOf<IteratorAlias>());
@@ -151,7 +164,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         Assert.That(iterator, Is.InstanceOf<IteratorAlias>());
     }
@@ -181,7 +194,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // Filter should be applied
         Assert.That(iterator, Is.InstanceOf<IteratorFilter>());
@@ -214,7 +227,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         Assert.That(iterator, Is.InstanceOf<IteratorSort>());
     }
@@ -240,7 +253,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         Assert.That(iterator, Is.InstanceOf<IteratorLimit>());
     }
@@ -264,7 +277,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         var rows = CollectAllRows(iterator);
         Assert.That(rows, Has.Count.EqualTo(1));
@@ -290,7 +303,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         Assert.That(iterator, Is.InstanceOf<IteratorDistinct>());
     }
@@ -332,7 +345,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // The top iterator should be the join (wrapped in alias potentially)
         // Note: Join optimization may call CreateTableScan multiple times for size estimation
@@ -363,7 +376,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // Should create cross join for multiple tables in FROM
         // Note: Join optimization may call CreateTableScan multiple times for size estimation
@@ -408,7 +421,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // Should have GroupBy iterator in the chain
         Assert.That(iterator, Is.InstanceOf<IteratorGroupBy>());
@@ -439,7 +452,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // For simple aggregates without GROUP BY, uses IteratorStreamingAggregate
         Assert.That(iterator, Is.InstanceOf<IteratorStreamingAggregate>());
@@ -477,7 +490,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // HAVING is now integrated into IteratorGroupBy
         Assert.That(iterator, Is.InstanceOf<IteratorGroupBy>());
@@ -509,7 +522,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // Should have called GetView and then created table scan for underlying table
         m_database.Received(1).GetView("ActiveUsers");
@@ -541,7 +554,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         Assert.That(iterator, Is.InstanceOf<IteratorProject>());
     }
@@ -561,7 +574,7 @@ public class QueryPlannerTests
         };
 
         var planner = new QueryPlanner(m_context);
-        var iterator = planner.Plan(select);
+        var iterator = Unwrap(planner.Plan(select));
 
         // Should be IteratorAlias (wrapping table scan), not IteratorProject
         Assert.That(iterator, Is.InstanceOf<IteratorAlias>());

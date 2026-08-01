@@ -30,6 +30,21 @@
     <PackageReference Include="Microsoft.EntityFrameworkCore.Sqlite" Version="10.0.2" />
   </ItemGroup>
 
+  <!--
+    The phase-9 dialect oracle. Every other conformance instrument here compares against SQLite,
+    which lacks most of the capabilities phase 9 has to decide about - so SQLite cannot answer
+    "does the drop-in target have this". PostgreSQL and SQL Server can.
+
+    Test-only, and this project is not packable, so nothing ships them. The oracle skips when no
+    server is reachable, so a machine without Docker runs the rest of the suite unaffected.
+  -->
+  <ItemGroup>
+    <PackageReference Include="Npgsql" Version="9.0.3" />
+    <PackageReference Include="Microsoft.Data.SqlClient" Version="6.0.2" />
+    <PackageReference Include="Testcontainers.PostgreSql" Version="4.1.0" />
+    <PackageReference Include="Testcontainers.MsSql" Version="4.1.0" />
+  </ItemGroup>
+
   <ItemGroup>
     <ProjectReference Include="..\OutWit.Database.EntityFramework\OutWit.Database.EntityFramework.csproj" />
   </ItemGroup>

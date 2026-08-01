@@ -103,7 +103,12 @@ cteDefinition
 
 queryTerm
     : selectStatement
+    | valuesQuery
     | LPAREN queryExpression RPAREN
+    ;
+
+valuesQuery
+    : VALUES valuesList
     ;
 
 setOperation
@@ -117,12 +122,16 @@ setOperation
 // ============================================================================
 
 selectStatement
-    : SELECT (DISTINCT | ALL)? selectList
+    : SELECT (DISTINCT | ALL)? topClause? selectList
       fromClause?
       whereClause?
       groupByClause?
       havingClause?
       forClause?
+    ;
+
+topClause
+    : TOP expression
     ;
 
 forClause
@@ -151,7 +160,18 @@ fromClause
 tableSource
     : tableName (AS? alias)?                        # simpleTableSource
     | tableSource joinType tableSource (ON expression)?   # joinTableSource
-    | LPAREN queryExpression RPAREN AS alias        # subqueryTableSource
+    | LPAREN queryExpression RPAREN AS alias derivedColumnList?   # subqueryTableSource
+    | LATERAL LPAREN queryExpression RPAREN AS? alias derivedColumnList?   # lateralTableSource
+    | tableSource applyKind LPAREN queryExpression RPAREN AS? alias derivedColumnList?   # applyTableSource
+    ;
+
+derivedColumnList
+    : LPAREN columnName (COMMA columnName)* RPAREN
+    ;
+
+applyKind
+    : CROSS APPLY
+    | OUTER APPLY
     ;
 
 joinType
@@ -754,6 +774,10 @@ nonReservedKeyword
     | CONFLICT | DO | NOTHING | WRITE | SHARE
     | FIRST | LAST
     | PLAN | QUERY
+    // TOP is SQL Server's row limit, added 2026-08-01. Kept usable as an identifier: it was one
+    // before, the keyword corpus caught it being taken away, and PostgreSQL does not reserve it
+    // either. SELECT TOP 1 Id and a column named Top both parse.
+    | TOP | APPLY | LATERAL
     // KEY is an ordinary column name in PostgreSQL, SQL Server and SQLite, and it only ever appears
     // after PRIMARY or FOREIGN in this grammar, so it is unambiguous here. Until 2026-07-30
     // `CREATE TABLE T (Key TEXT)` did not parse, and the failure had been recorded against

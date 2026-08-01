@@ -39,6 +39,7 @@ namespace OutWit.Database.Parser.Statements
                    && GroupByClause.Is(select.GroupByClause)
                    && HavingClause.Check(select.HavingClause)
                    && OrderByClause.Is(select.OrderByClause)
+                   && ValuesRowsAre(select)
                    && LimitCount.Check(select.LimitCount)
                    && LimitOffset.Check(select.LimitOffset)
                    && SetOperations.Is(select.SetOperations)
@@ -60,6 +61,8 @@ namespace OutWit.Database.Parser.Statements
                 GroupByClause = GroupByClause?.Select(expression => (WitSqlExpression)expression.Clone()).ToList(),
                 HavingClause = (WitSqlExpression?)HavingClause?.Clone(),
                 OrderByClause = OrderByClause?.Select(item => item.Clone()).ToList(),
+                ValuesRows = ValuesRows?.Select(row =>
+                    (IReadOnlyList<WitSqlExpression>)row.Select(v => (WitSqlExpression)v.Clone()).ToList()).ToList(),
                 LimitCount = (WitSqlExpression?)LimitCount?.Clone(),
                 LimitOffset = (WitSqlExpression?)LimitOffset?.Clone(),
                 SetOperations = SetOperations?.Select(op => op.Clone()).ToList(),
@@ -137,5 +140,47 @@ namespace OutWit.Database.Parser.Statements
         public ClauseFor? ForClause { get; init; }
 
         #endregion
+    
+    /// <summary>
+    /// The literal rows of a <c>VALUES</c> query, or null for an ordinary <c>SELECT</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>VALUES (1), (2)</c> is a query: PostgreSQL and SQL Server both accept it wherever a query
+    /// goes, and <c>SELECT * FROM (VALUES …) AS V</c> is the shape EF Core and hand-written SQL use
+    /// it in.
+    /// </para>
+    /// <para>
+    /// Carried on the select rather than given a statement type of its own, deliberately. A new
+    /// statement type would need a MemoryPack union tag - a persisted format - and would force
+    /// every place typed to <c>WitSqlStatementSelect</c> to learn a second shape, starting with
+    /// <c>TableSourceSubquery.Subquery</c>. A VALUES query is a query that produces rows; this says
+    /// exactly that and costs one appended member.
+    /// </para>
+    /// </remarks>
+    public IReadOnlyList<IReadOnlyList<WitSqlExpression>>? ValuesRows { get; init; }
+
+    private bool ValuesRowsAre(WitSqlStatementSelect other)
+    {
+        if (ValuesRows is null || other.ValuesRows is null)
+            return ValuesRows is null && other.ValuesRows is null;
+
+        if (ValuesRows.Count != other.ValuesRows.Count)
+            return false;
+
+        for (var row = 0; row < ValuesRows.Count; row++)
+        {
+            if (ValuesRows[row].Count != other.ValuesRows[row].Count)
+                return false;
+
+            for (var column = 0; column < ValuesRows[row].Count; column++)
+            {
+                if (!ValuesRows[row][column].Is(other.ValuesRows[row][column]))
+                    return false;
+            }
+        }
+
+        return true;
     }
+}
 }

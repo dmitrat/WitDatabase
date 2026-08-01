@@ -44,13 +44,24 @@ public sealed partial class QueryPlanner
         IReadOnlyList<TableSource> tables, 
         WitSqlExpression? whereClause)
     {
-        // Try to optimize join order
-        var joinOptimizer = new OptimizerJoinOrder(m_context.Database);
-        var joinConditions = ExtractJoinConditions(whereClause);
-        var optimizedOrder = joinOptimizer.OptimizeJoinOrder(tables, joinConditions);
+        // A LATERAL item reads the row beside it, so it cannot be moved before the source it
+        // reads - reordering is off whenever one is present. The optimiser has no way to know that
+        // on its own, and a lateral moved to the front would resolve its outer columns against
+        // nothing.
+        var hasLateral = tables.Any(table => table is TableSourceLateral);
 
-        // Use optimized order if available, otherwise use original
-        var orderedTables = optimizedOrder ?? tables;
+        IReadOnlyList<TableSource> orderedTables;
+
+        if (hasLateral)
+        {
+            orderedTables = tables;
+        }
+        else
+        {
+            var joinOptimizer = new OptimizerJoinOrder(m_context.Database);
+            var joinConditions = ExtractJoinConditions(whereClause);
+            orderedTables = joinOptimizer.OptimizeJoinOrder(tables, joinConditions) ?? tables;
+        }
 
         // Start with the first table source (with index optimization)
         var iterator = CreateTableSourceIterator(orderedTables[0], whereClause);
@@ -58,6 +69,16 @@ public sealed partial class QueryPlanner
         // Handle implicit cross joins
         for (int i = 1; i < orderedTables.Count; i++)
         {
+            // FROM T, LATERAL (…) AS X - the lateral's left is everything built so far, not a
+            // cross join partner. This is the FROM-list spelling; the APPLY spelling carries its
+            // left in the tree and is built by CreateLateralIterator.
+            if (orderedTables[i] is TableSourceLateral lateral && lateral.Left is null)
+            {
+                iterator = new IteratorLateral(iterator, lateral.Subquery, m_context, lateral.IsOuter,
+                    lateral.Alias, lateral.ColumnAliases);
+                continue;
+            }
+
             var rightIterator = CreateTableSourceIterator(orderedTables[i], null);
             iterator = new IteratorJoin(iterator, rightIterator, JoinType.Cross, null, m_context);
         }
@@ -138,6 +159,7 @@ public sealed partial class QueryPlanner
             TableSourceSimple simple => CreateSimpleTableIterator(simple, whereClause),
             TableSourceJoin join => CreateJoinIterator(join),
             TableSourceSubquery subquery => CreateSubqueryIterator(subquery),
+            TableSourceLateral lateral => CreateLateralIterator(lateral),
             _ => throw new NotSupportedException($"Table source type not supported: {source.GetType().Name}")
         };
     }
@@ -260,10 +282,33 @@ public sealed partial class QueryPlanner
         return new IteratorJoin(left, right, join.JoinType, join.OnCondition, m_context);
     }
 
+    /// <summary>
+    /// A correlated subquery in FROM - LATERAL, CROSS APPLY, OUTER APPLY.
+    /// </summary>
+    /// <remarks>
+    /// The APPLY spelling writes the source it correlates with on its left; the LATERAL spelling
+    /// takes it from the FROM list, and the caller has already built that when it gets here.
+    /// </remarks>
+    private IResultIterator CreateLateralIterator(TableSourceLateral lateral)
+    {
+        var left = lateral.Left is not null
+            ? CreateTableSourceIterator(lateral.Left)
+            : throw new InvalidOperationException(
+                "LATERAL must follow a table source it can correlate with - write it after one in "
+                + "the FROM list, or use CROSS APPLY / OUTER APPLY.");
+
+        return new IteratorLateral(left, lateral.Subquery, m_context, lateral.IsOuter,
+            lateral.Alias, lateral.ColumnAliases);
+    }
+
     private IResultIterator CreateSubqueryIterator(TableSourceSubquery subquery)
     {
         var subqueryIterator = Plan(subquery.Subquery);
         var alias = subquery.Alias ?? throw new InvalidOperationException("Subquery in FROM must have an alias");
+
+        if (subquery.ColumnAliases is { Count: > 0 } names)
+            subqueryIterator = new IteratorRenameColumns(subqueryIterator, names);
+
         return WrapWithAlias(subqueryIterator, alias);
     }
 

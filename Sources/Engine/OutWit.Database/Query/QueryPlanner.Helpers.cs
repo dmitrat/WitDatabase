@@ -3,6 +3,7 @@ using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Clauses;
 using OutWit.Database.Parser.Schema.TableSources;
 using OutWit.Database.Parser.Statements;
+using OutWit.Database.Parser.Analysis;
 
 namespace OutWit.Database.Query;
 
@@ -32,40 +33,27 @@ public sealed partial class QueryPlanner
         return false;
     }
 
-    private static bool ContainsNonWindowAggregateFunction(WitSqlExpression? expression)
-    {
-        if (expression == null)
-            return false;
-
-        return expression switch
-        {
-            // Aggregate function WITHOUT OVER clause = regular aggregate
-            WitSqlExpressionFunctionCall func => 
-                SqlFunctions.IsAggregate(func.FunctionName) && func.Over == null,
-            WitSqlExpressionBinary binary => 
-                ContainsNonWindowAggregateFunction(binary.Left) || ContainsNonWindowAggregateFunction(binary.Right),
-            WitSqlExpressionUnary unary => 
-                ContainsNonWindowAggregateFunction(unary.Operand),
-            WitSqlExpressionCase caseExpr => 
-                ContainsNonWindowAggregateFunctionInCase(caseExpr),
-            _ => false
-        };
-    }
-
-    private static bool ContainsNonWindowAggregateFunctionInCase(WitSqlExpressionCase caseExpr)
-    {
-        if (ContainsNonWindowAggregateFunction(caseExpr.Operand))
-            return true;
-
-        foreach (var whenClause in caseExpr.WhenClauses)
-        {
-            if (ContainsNonWindowAggregateFunction(whenClause.When) || 
-                ContainsNonWindowAggregateFunction(whenClause.Then))
-                return true;
-        }
-
-        return ContainsNonWindowAggregateFunction(caseExpr.ElseResult);
-    }
+    /// <summary>
+    /// Whether the expression calls an aggregate anywhere, window functions excepted.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Until 2026-08-01 this was a switch over four of the AST's nineteen expression types, falling
+    /// through to <c>false</c> - so an aggregate inside <c>BETWEEN</c>, <c>IN</c>, <c>LIKE</c>,
+    /// <c>CAST</c>, <c>IIF</c> or a quantified comparison was invisible to it, and
+    /// <c>HAVING COUNT(*) BETWEEN 1 AND 5</c> reached the row evaluator, which refuses aggregates.
+    /// All three reference engines accept that query.
+    /// </para>
+    /// <para>
+    /// It walks the tree generically now, so a node type cannot be forgotten and a new one is
+    /// covered the day the grammar gains it. The walk stops at a nested statement, which is the
+    /// boundary the old switch drew by accident: an aggregate inside a subquery is the subquery's.
+    /// </para>
+    /// </remarks>
+    private static bool ContainsNonWindowAggregateFunction(WitSqlExpression? expression) =>
+        WitSqlNodes.SelfAndDescendants(expression)
+            .OfType<WitSqlExpressionFunctionCall>()
+            .Any(func => SqlFunctions.IsAggregate(func.FunctionName) && func.Over == null);
 
     private static bool HasAggregates(IReadOnlyList<ClauseSelectItem> selectList)
     {

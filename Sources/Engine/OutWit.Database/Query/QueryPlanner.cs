@@ -66,6 +66,16 @@ public sealed partial class QueryPlanner
         // Register CTE definitions if present
         RegisterCteDefinitions(select);
 
+        // A VALUES query has its rows written out rather than read from anywhere, so it short-cuts
+        // every step below - there is no source to build, nothing to filter and nothing to group.
+        // ORDER BY and LIMIT still apply, which is why they are re-applied rather than skipped.
+        if (select.ValuesRows is { } valuesRows)
+        {
+            IResultIterator values = new IteratorValues(valuesRows, m_context);
+            values = ApplyOrderByClause(values, select.OrderByClause);
+            return ApplyLimitClause(values, select.LimitCount, select.LimitOffset);
+        }
+
         // Try optimized path for simple COUNT(*) without WHERE
         if (TryOptimizeSimpleCountStar(select, out var optimizedIterator))
         {

@@ -80,3 +80,6 @@ Migrations/
 
 # BenchmarkDotNet artifacts
 BenchmarkDotNet.Artifacts/
+
+# VS Code workspace file - local, not shared
+*.code-workspace

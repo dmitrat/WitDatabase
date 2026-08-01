@@ -35,11 +35,20 @@ public sealed partial class ExpressionEvaluator
     {
         var funcName = func.FunctionName.ToUpperInvariant();
 
+        // An aggregate already computed for the current group - see EvaluateAggregate. This is what
+        // lets an aggregate appear anywhere in a HAVING expression rather than only beside a
+        // comparison operator.
+        if (m_aggregates is not null && m_aggregates.TryGetValue(func, out var aggregated))
+            return aggregated;
+
         // Special functions
         if (func.IsStar && funcName == "COUNT")
         {
-            // COUNT(*) is handled by aggregation iterator
-            throw new InvalidOperationException("COUNT(*) should be handled by aggregation iterator");
+            // A caller error, and worded as one. It used to read "COUNT(*) should be handled by
+            // aggregation iterator", which is an internal invariant and told the caller nothing.
+            throw new InvalidOperationException(
+                "COUNT(*) is only meaningful in an aggregate query - use it in the SELECT list or "
+                + "HAVING clause of a query with GROUP BY, or of an aggregate query without one.");
         }
 
         // Evaluate arguments

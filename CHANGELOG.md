@@ -1,5 +1,65 @@
 # Changelog
 
+## 10.0.0
+
+Phase 9 up to the routine subsystem: two defects that the feature work sat on, and four capabilities
+both drop-in targets have. **Major**, and for two reasons - a `SELECT *` over a derived table returns
+a different result shape, and schema that uses the new table source cannot be read by 9.0.0.
+
+The phase opened by re-measuring its own list, which had been assembled a month earlier and was wrong
+in three of ten places: JSON columns work end to end, database-first scaffolding works, and the
+`HAVING COUNT(*) BETWEEN` entry is a defect rather than a missing feature. The tenth time in this
+project that a record about the past turned out false when re-run.
+
+**The instrument the phase needed was a dialect oracle**, because every other one here compares
+against SQLite - which lacks most of the list itself and so cannot answer whether the drop-in target
+has a capability. Run against PostgreSQL 17 and SQL Server 2022, it earned itself on its first
+report: a **derived column list is rejected by SQLite and supported by both targets**. Against the
+SQLite oracle that would have read as parity, and the decision would have gone the wrong way.
+
+### Breaking
+
+- **`SELECT *` over a derived table returns each column once.** It used to return every column twice,
+  qualified and bare - `(SELECT Id, TId FROM S) AS X` yielded `X.Id, X.TId, Id, TId`. Code reading
+  such a result by ordinal was reading a row twice as wide as it asked for; code reading it by name
+  is unaffected.
+
+- **A database using `LATERAL` / `APPLY` in a view cannot be opened by 9.0.0.** The new table source
+  has a new union tag, and an older engine does not know it. Databases that do not use one are
+  unaffected, and 10.0.0 reads everything 9.0.0 wrote.
+
+- **`COUNT(*)` outside an aggregate query reports a caller error.** The message used to be
+  `COUNT(*) should be handled by aggregation iterator`, an internal invariant.
+
+### Added
+
+- **`TOP n`** - SQL Server's spelling of a row limit, mapped onto the existing `LIMIT` rather than
+  carried as a second concept. `TOP` stays usable as a column name.
+
+- **`VALUES` as a query** - `SELECT * FROM (VALUES (1), (2)) AS V`, and anywhere else a query goes.
+  Columns are named `column1`, `column2` after PostgreSQL; ragged rows are refused rather than padded.
+
+- **A derived column list** - `(SELECT Id, Name FROM T) AS V (Key, Label)`, renaming positionally.
+  A list whose width does not match the subquery is refused, as both targets refuse it.
+
+- **A correlated subquery in `FROM`** - `LATERAL`, `CROSS APPLY` and `OUTER APPLY`. One capability
+  with two spellings; both targets have it. The subquery is planned per outer row, because its plan
+  depends on the outer values.
+
+### Fixed
+
+- **An aggregate resolves the same way wherever it appears.** `HAVING COUNT(*) > 1` worked and
+  `HAVING COUNT(*) BETWEEN 1 AND 5` raised; so did `SUM`/`MIN` inside `BETWEEN`, and the same
+  aggregate inside `IN`. All three reference engines accept every one of those. The capability was
+  torn across three places - detection, `HAVING` evaluation and the select-list projection - and a
+  fourth surfaced after those were fixed: the group's rows were kept only when a `HAVING` clause
+  existed, so an aggregate that needed them was computed over an empty list and returned NULL.
+
+### Ledger
+
+**33 `[Ignore(…)]` + 14 `[TestCase(… Ignore =)]` = 47**, plus 2 `[Explicit]`, down from 35 + 14 = 49
+at 9.0.0.
+
 ## 9.0.0
 
 Closes phase 8, serializer round-trip. **Major, and the breaking half is the file format:** the catalog

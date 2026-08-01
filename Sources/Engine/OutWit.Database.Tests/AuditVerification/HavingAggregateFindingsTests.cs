@@ -66,12 +66,6 @@ public sealed class HavingAggregateFindingsTests : WitSqlEngineTestsBase
     #region The findings
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-28 by execution, and pre-existing - the same failure occurs at parent " +
-            "commit 39d22e4, before the grammar was touched. HAVING COUNT(*) BETWEEN 1 AND 5 raises " +
-            "InvalidOperationException 'COUNT(*) should be handled by aggregation iterator'. SQLite " +
-            "returns both groups. The aggregation iterator collects aggregates from comparison " +
-            "operands only, so an aggregate inside BETWEEN reaches the row evaluator, which refuses " +
-            "it. engine-query, Engine/Iterators - aggregate collection for HAVING")]
     public void AggregateInsideBetweenWorksTest()
     {
         var flags = Select("SELECT Flag FROM People GROUP BY Flag HAVING COUNT(*) BETWEEN 1 AND 5");
@@ -81,11 +75,6 @@ public sealed class HavingAggregateFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-28 by execution, and pre-existing at 39d22e4. Same root cause as " +
-            "AggregateInsideBetweenWorksTest, reached through IN rather than BETWEEN - which is why " +
-            "this is not a BETWEEN defect. HAVING COUNT(*) IN (1, 2) raises the same " +
-            "InvalidOperationException; SQLite returns both groups. " +
-            "engine-query, Engine/Iterators - aggregate collection for HAVING")]
     public void AggregateInsideInWorksTest()
     {
         var flags = Select("SELECT Flag FROM People GROUP BY Flag HAVING COUNT(*) IN (1, 2)");
@@ -99,6 +88,35 @@ public sealed class HavingAggregateFindingsTests : WitSqlEngineTestsBase
 
     private long[] Select(string sql) =>
         m_engine.Query(sql).Select(row => row[0].AsInt64()).OrderBy(value => value).ToArray();
+
+    #endregion
+
+    #region Detection - an aggregate query with no GROUP BY to announce it
+
+    /// <summary>
+    /// An aggregate inside <c>BETWEEN</c> in the <b>select list</b>, with no <c>GROUP BY</c>.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This covers the other half of the fix, and it exists because a revert test showed the half
+    /// was uncovered: with the detector put back to its old top-level-only form, the three tests
+    /// above stayed green. They all write <c>GROUP BY</c> explicitly, and that alone routes the
+    /// query to the aggregation iterator - so they never asked the detector anything.
+    /// </para>
+    /// <para>
+    /// Here there is no <c>GROUP BY</c>, so whether this is an aggregate query at all is decided by
+    /// looking into the expression. A detector that stops at the top level sees a <c>BETWEEN</c>,
+    /// not an aggregate, and plans a row-by-row query over an aggregate.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void AggregateInsideBetweenIsDetectedWithoutGroupByTest()
+    {
+        var rows = m_engine.Query("SELECT MAX(Age) BETWEEN 1 AND 200 AS InRange FROM People");
+
+        Assert.That(rows, Has.Count.EqualTo(1), "an aggregate query without GROUP BY returns one row");
+        Assert.That(rows[0][0].AsBool(), Is.True);
+    }
 
     #endregion
 }

@@ -3,6 +3,7 @@ using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Types;
 using OutWit.Database.Sql;
 using OutWit.Database.Values;
+using OutWit.Database.Parser.Analysis;
 
 namespace OutWit.Database.Expressions;
 
@@ -23,21 +24,63 @@ public sealed partial class ExpressionEvaluator
     /// <param name="groupRows">The rows in the current group.</param>
     /// <param name="resultRow">The aggregated result row (for non-aggregate column access).</param>
     /// <returns>The evaluated value.</returns>
+    /// <summary>
+    /// Evaluates an expression that may contain aggregates, over one group.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Until 2026-08-01 this was a switch over four expression types whose default handed the whole
+    /// expression to the plain row evaluator - which refuses aggregates. So the same aggregate that
+    /// works beside a comparison threw inside <c>BETWEEN</c> or <c>IN</c>, and the message a caller
+    /// saw was an internal invariant.
+    /// </para>
+    /// <para>
+    /// The structure is gone. Every aggregate call in the expression is computed for this group
+    /// first, and the expression is then evaluated by the ordinary evaluator with those results in
+    /// hand. That is total by construction: it works for every node type the grammar has and for
+    /// every one it gains, because the ordinary evaluator already handles them all.
+    /// </para>
+    /// </remarks>
     public WitSqlValue EvaluateAggregate(WitSqlExpression expression, IReadOnlyList<WitSqlRow> groupRows, WitSqlRow resultRow)
     {
-        return expression switch
+        var calls = WitSqlNodes.SelfAndDescendants(expression)
+            .OfType<WitSqlExpressionFunctionCall>()
+            .Where(func => IsAggregateFunction(func) && func.Over == null)
+            .ToArray();
+
+        if (calls.Length == 0)
+            return Evaluate(expression, resultRow);
+
+        var resolved = new Dictionary<WitSqlExpressionFunctionCall, WitSqlValue>(ReferenceComparer.Instance);
+
+        foreach (var call in calls)
+            resolved[call] = EvaluateAggregateFunctionOverGroup(call, groupRows);
+
+        m_aggregates = resolved;
+
+        try
         {
-            WitSqlExpressionFunctionCall func when IsAggregateFunction(func) 
-                => EvaluateAggregateFunctionOverGroup(func, groupRows),
-            WitSqlExpressionBinary bin 
-                => EvaluateAggregateBinary(bin, groupRows, resultRow),
-            WitSqlExpressionUnary unary 
-                => EvaluateAggregateUnary(unary, groupRows, resultRow),
-            WitSqlExpressionColumnRef col 
-                => EvaluateAggregateColumnRef(col, resultRow),
-            // For non-aggregate expressions, delegate to base evaluator using result row
-            _ => Evaluate(expression, resultRow)
-        };
+            return Evaluate(expression, resultRow);
+        }
+        finally
+        {
+            m_aggregates = null;
+        }
+    }
+
+    /// <summary>
+    /// Aggregate calls are matched by identity, not by value: two occurrences of the same call text
+    /// in one expression are separate nodes, and each is computed for its own arguments.
+    /// </summary>
+    private sealed class ReferenceComparer : IEqualityComparer<WitSqlExpressionFunctionCall>
+    {
+        public static readonly ReferenceComparer Instance = new();
+
+        public bool Equals(WitSqlExpressionFunctionCall? x, WitSqlExpressionFunctionCall? y) =>
+            ReferenceEquals(x, y);
+
+        public int GetHashCode(WitSqlExpressionFunctionCall obj) =>
+            System.Runtime.CompilerServices.RuntimeHelpers.GetHashCode(obj);
     }
 
     #endregion
