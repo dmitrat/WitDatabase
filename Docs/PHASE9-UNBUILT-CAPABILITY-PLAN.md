@@ -255,10 +255,16 @@ opened and closed within the phase.
 
 ## 7. Next
 
-- **9d, the routine subsystem**, in its own session. Its acceptance is the design note in § 5, and
-  the question that shapes everything else is re-entrancy against the write lock: phase 8 measured
-  DDL inside a trigger deadlocking against its caller *and failing part-way*, and a function reachable
-  from a computed column or an index expression re-enters the engine **per row**.
+- **9d, the routine subsystem.** The design note § 5 asked for is written:
+  `Docs/PHASE9D-ROUTINE-SUBSYSTEM-DESIGN.md`, 2026-08-01, answering all six questions against
+  measurements taken at head rather than against the code as read. Its four load-bearing answers: a
+  function's body is an **expression** and a procedure's is a **statement list**, which keeps
+  functions off the execution-nesting path entirely; a routine may contain neither DDL nor
+  transaction control, because **DDL inside any transaction throws and keeps the change anyway**
+  (`AUDIT-2026-07.md` finding 19, re-verified at head across five DDL kinds) and a nested `COMMIT`
+  **tears the calling statement with no error at all**; and execution nesting has **no bound today**
+  — 600 levels of trigger self-recursion kill the process with an uncatchable stack overflow, which
+  is a live defect on the trigger path and the prerequisite for any routine work.
 - The oracle measures **syntax acceptance**. Whether the engines agree on the *answer* is a further
   question, and phase 3's lesson applies: an acceptance oracle cannot see a wrong answer. The shapes
   9b and 9c added are the natural first candidates for value comparison.
