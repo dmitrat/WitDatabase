@@ -94,12 +94,12 @@ public sealed partial class SchemaCatalog
     private void SaveTriggers()
     {
         List<DefinitionTrigger> triggers = m_triggers.Values.ToList();
-        m_store.Put(TRIGGERS_KEY_BYTES.AsSpan(), triggers.ToMemoryPackBytes());
+        PutSchemaRecord(TRIGGERS_KEY_BYTES.AsSpan(), triggers.ToMemoryPackBytes());
     }
 
     private void LoadTriggers()
     {
-        var triggersData = m_store.Get(TRIGGERS_KEY_BYTES.AsSpan());
+        var triggersData = GetSchemaRecord(TRIGGERS_KEY_BYTES.AsSpan());
         if (triggersData == null || triggersData.Length == 0)
             return;
 

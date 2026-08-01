@@ -90,12 +90,12 @@ public sealed partial class SchemaCatalog
     private void SaveViews()
     {
         List<DefinitionView> views = m_views.Values.ToList();
-        m_store.Put(VIEWS_KEY_BYTES.AsSpan(), views.ToMemoryPackBytes());
+        PutSchemaRecord(VIEWS_KEY_BYTES.AsSpan(), views.ToMemoryPackBytes());
     }
 
     private void LoadViews()
     {
-        var viewsData = m_store.Get(VIEWS_KEY_BYTES.AsSpan());
+        var viewsData = GetSchemaRecord(VIEWS_KEY_BYTES.AsSpan());
         if (viewsData == null || viewsData.Length == 0)
             return;
 

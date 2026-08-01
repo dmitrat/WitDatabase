@@ -63,7 +63,7 @@ public sealed partial class WitSqlEngine
         var tablePrefix = SchemaCatalog.GetTableDataPrefix(indexDef.TableName);
         var endPrefix = SchemaCatalog.GetTableDataEndPrefix(indexDef.TableName);
 
-        foreach (var (key, value) in m_database.Scan(tablePrefix, endPrefix))
+        foreach (var (key, value) in ScanStore(tablePrefix, endPrefix))
         {
             // Parse row ID from key
             var rowId = SchemaCatalog.ParseRowId(key, indexDef.TableName);

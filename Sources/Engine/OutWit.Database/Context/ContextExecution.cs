@@ -80,4 +80,22 @@ public sealed class ContextExecution
     /// Contains the values that would have been inserted if there was no conflict.
     /// </summary>
     public WitSqlRow? ExcludedRow { get; set; }
+
+    /// <summary>
+    /// How many statements deep execution currently is. The statement a caller submitted is 1;
+    /// a statement in a trigger body it fires is 2.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It lives on the context rather than on <c>StatementExecutor</c> because a nested body runs on
+    /// the <b>same</b> executor - <c>ExecuteTriggerBody</c> calls <c>Execute</c> on itself - so the
+    /// executor cannot tell the levels apart. A fresh context is built for every statement a caller
+    /// submits, which is what resets the count.
+    /// </para>
+    /// <para>
+    /// See <see cref="StatementExecutor"/>'s nesting limit for why this is counted at all: measured
+    /// 2026-08-01, 600 levels of trigger self-recursion killed the host process outright.
+    /// </para>
+    /// </remarks>
+    public int ExecutionDepth { get; set; }
 }
