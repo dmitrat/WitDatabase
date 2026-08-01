@@ -14,7 +14,7 @@ This sample showcases a complete e-commerce API with:
 
 ### Prerequisites
 
-- .NET 9.0 SDK or .NET 10.0 SDK
+- .NET 10.0 SDK
 - Windows, Linux, or macOS
 - (Optional) A REST client like Postman, curl, or the built-in Swagger UI
 

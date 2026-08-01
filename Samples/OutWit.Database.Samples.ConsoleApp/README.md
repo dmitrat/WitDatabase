@@ -16,7 +16,7 @@ This sample showcases various WitDatabase capabilities through interactive examp
 
 ### Prerequisites
 
-- .NET 9.0 SDK or .NET 10.0 SDK
+- .NET 10.0 SDK
 - Windows, Linux, or macOS
 
 ### Step 1: Clone the Repository

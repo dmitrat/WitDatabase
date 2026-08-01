@@ -33,7 +33,7 @@ A modern Blazor WebAssembly application demonstrating WitDatabase with IndexedDB
 
 ### Prerequisites
 
-- .NET 9.0 or .NET 10.0 SDK
+- .NET 10.0 SDK
 - Modern browser with IndexedDB support
 
 ### Run with .NET CLI
@@ -205,7 +205,7 @@ OutWit.Database.Samples.BlazorWasm/
 
 ## Technologies Used
 
-- **.NET 9.0 / 10.0** - Target frameworks
+- **.NET 10.0** - Target framework
 - **Blazor WebAssembly** - Client-side web UI
 - **MudBlazor 8.x** - Material Design components
 - **CommunityToolkit.Mvvm** - MVVM pattern support
