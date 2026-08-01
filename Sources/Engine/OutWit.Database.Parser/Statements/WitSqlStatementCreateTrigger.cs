@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Collections;
@@ -8,7 +9,8 @@ using OutWit.Database.Parser.Schema.Types;
 
 namespace OutWit.Database.Parser.Statements
 {
-    public class WitSqlStatementCreateTrigger : WitSqlStatement
+    [MemoryPackable]
+    public partial class WitSqlStatementCreateTrigger : WitSqlStatement
     {
         #region Functions
 

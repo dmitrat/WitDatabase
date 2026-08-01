@@ -82,9 +82,10 @@ public sealed partial class StatementExecutor
         try
         {
             // Evaluate WHEN condition if present
-            if (trigger.WhenCondition != null)
+            var whenExpr = trigger.ResolveWhen();
+
+            if (whenExpr != null)
             {
-                var whenExpr = WitSql.ParseExpression(trigger.WhenCondition);
                 var evaluator = new ExpressionEvaluator(m_context);
                 var contextRow = newRow ?? oldRow ?? new WitSqlRow([], []);
                 var result = evaluator.Evaluate(whenExpr, contextRow);
@@ -94,7 +95,7 @@ public sealed partial class StatementExecutor
             }
 
             // Execute trigger body statements
-            ExecuteTriggerBody(trigger.Body);
+            ExecuteTriggerBody(trigger);
 
             // Check if operation was cancelled (BEFORE triggers only)
             if (trigger.Time == TriggerTime.Before && m_context.TriggerContext.Cancel)
@@ -118,20 +119,12 @@ public sealed partial class StatementExecutor
         }
     }
 
-    private void ExecuteTriggerBody(string bodySql)
+    private void ExecuteTriggerBody(DefinitionTrigger trigger)
     {
-        // Parse and execute each statement in the trigger body
         try
         {
-            var statements = bodySql.Split(';', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-            foreach (var stmtSql in statements)
-            {
-                if (string.IsNullOrWhiteSpace(stmtSql) || stmtSql.StartsWith("/*"))
-                    continue;
-
-                var stmt = WitSql.ParseStatement(stmtSql);
-                Execute(stmt);
-            }
+            foreach (var statement in trigger.ResolveStatements())
+                Execute(statement);
         }
         catch (Exception ex)
         {

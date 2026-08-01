@@ -164,8 +164,8 @@ public class WitSqlEngineCascadeTests : WitSqlEngineTestsBase
         
         var deptIdCol = empTable!.GetColumn("DepartmentId");
         Assert.That(deptIdCol, Is.Not.Null, "DepartmentId column should exist");
-        Assert.That(deptIdCol!.DefaultValue, Is.Not.Null, "DepartmentId should have DefaultValue set");
-        Assert.That(deptIdCol.DefaultValue, Is.EqualTo("0"), "DefaultValue should be '0'");
+        Assert.That(deptIdCol!.ResolveDefault(), Is.Not.Null, "DepartmentId should have a default");
+        Assert.That(deptIdCol.DisplayDefault(), Is.EqualTo("0"), "the default should read as '0'");
         Assert.That(deptIdCol.ForeignKey, Is.Not.Null, "DepartmentId should have ForeignKey set");
         Assert.That(deptIdCol.ForeignKey!.ForeignTable, Is.EqualTo("Departments"), "FK should reference Departments table");
         Assert.That(deptIdCol.ForeignKey.OnDelete, Is.EqualTo(ReferenceAction.SetDefault), 
@@ -433,7 +433,7 @@ public class WitSqlEngineCascadeTests : WitSqlEngineTestsBase
         
         var deptIdCol = empTable!.GetColumn("DepartmentId");
         Assert.That(deptIdCol, Is.Not.Null, "DepartmentId column should exist");
-        Assert.That(deptIdCol!.DefaultValue, Is.EqualTo("0"), $"DefaultValue should be '0', was: '{deptIdCol.DefaultValue}'");
+        Assert.That(deptIdCol!.DisplayDefault(), Is.EqualTo("0"), $"the default should read as '0', was: '{deptIdCol.DisplayDefault()}'");
         Assert.That(deptIdCol.ForeignKey, Is.Not.Null, "FK should be set");
         Assert.That(deptIdCol.ForeignKey!.OnDelete, Is.EqualTo(ReferenceAction.SetDefault), 
             $"OnDelete should be SetDefault, was: {deptIdCol.ForeignKey.OnDelete}");

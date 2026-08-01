@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -9,7 +10,8 @@ namespace OutWit.Database.Parser.Statements
     /// <summary>
     /// Represents a SET TRANSACTION ISOLATION LEVEL statement.
     /// </summary>
-    public class WitSqlStatementSetTransaction : WitSqlStatement
+    [MemoryPackable]
+    public partial class WitSqlStatementSetTransaction : WitSqlStatement
     {
         #region Functions
 

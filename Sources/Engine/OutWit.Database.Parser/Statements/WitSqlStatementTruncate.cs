@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -9,7 +10,8 @@ namespace OutWit.Database.Parser.Statements
     /// Represents a TRUNCATE TABLE statement.
     /// Removes all rows from a table, faster than DELETE without WHERE.
     /// </summary>
-    public class WitSqlStatementTruncate : WitSqlStatement
+    [MemoryPackable]
+    public partial class WitSqlStatementTruncate : WitSqlStatement
     {
         #region Functions
 

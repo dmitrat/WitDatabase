@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -13,7 +14,8 @@ namespace OutWit.Database.Parser.Statements;
 ///   EXPLAIN select_statement
 ///   EXPLAIN QUERY PLAN select_statement
 /// </remarks>
-public class WitSqlStatementExplain : WitSqlStatement
+[MemoryPackable]
+public partial class WitSqlStatementExplain : WitSqlStatement
 {
     #region Functions
 

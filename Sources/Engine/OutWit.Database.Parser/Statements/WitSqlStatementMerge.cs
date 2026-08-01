@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Collections;
@@ -11,7 +12,8 @@ namespace OutWit.Database.Parser.Statements
     /// <summary>
     /// MERGE statement for upsert operations.
     /// </summary>
-    public class WitSqlStatementMerge : WitSqlStatement
+    [MemoryPackable]
+    public partial class WitSqlStatementMerge : WitSqlStatement
     {
         #region Functions
 

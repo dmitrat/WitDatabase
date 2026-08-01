@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Collections;
@@ -7,7 +8,8 @@ using OutWit.Database.Parser.Schema.Clauses;
 
 namespace OutWit.Database.Parser.Expressions
 {
-    public class WitSqlExpressionCase : WitSqlExpression
+    [MemoryPackable]
+    public partial class WitSqlExpressionCase : WitSqlExpression
     {
         #region Functions
 

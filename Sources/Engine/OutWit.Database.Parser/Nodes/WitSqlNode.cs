@@ -1,13 +1,21 @@
-﻿using OutWit.Common.Abstract;
+﻿using MemoryPack;
+using OutWit.Common.Abstract;
 using OutWit.Common.Values;
+using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Interfaces;
+using OutWit.Database.Parser.Statements;
 
 namespace OutWit.Database.Parser.Nodes
 {
     /// <summary>
     /// Base class for all SQL AST nodes.
     /// </summary>
-    public abstract class WitSqlNode : ModelBase
+    [MemoryPackable]
+    // Persisted format. Tags are append-only: never renumber one and
+    // never reuse a retired one, or old files read back as the wrong type.
+    [MemoryPackUnion(0, typeof(WitSqlExpression))]
+    [MemoryPackUnion(1, typeof(WitSqlStatement))]
+    public abstract partial class WitSqlNode : ModelBase
     {
         #region Model Base
 

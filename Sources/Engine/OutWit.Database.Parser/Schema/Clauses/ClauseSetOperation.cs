@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -9,7 +10,8 @@ namespace OutWit.Database.Parser.Schema.Clauses;
 /// <summary>
 /// Represents a set operation (UNION, INTERSECT, EXCEPT) with its right operand.
 /// </summary>
-public class ClauseSetOperation : ModelBase
+[MemoryPackable]
+public partial class ClauseSetOperation : ModelBase
 {
     #region Model Base
 

@@ -1,10 +1,12 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
 
 namespace OutWit.Database.Parser.Schema.Clauses;
 
-public sealed class ClauseIndexColumn : ModelBase
+[MemoryPackable]
+public sealed partial class ClauseIndexColumn : ModelBase
 {
     #region Model Base
 

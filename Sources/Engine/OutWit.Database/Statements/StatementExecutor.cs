@@ -29,7 +29,6 @@ public sealed partial class StatementExecutor
     /// <summary>
     /// Maximum number of expressions to cache.
     /// </summary>
-    private const int MAX_EXPRESSION_CACHE_SIZE = 256;
 
     #endregion
 
@@ -42,7 +41,6 @@ public sealed partial class StatementExecutor
     /// Cache for parsed SQL expressions (CHECK constraints, computed columns, etc.).
     /// Key is the SQL expression string, value is the parsed expression.
     /// </summary>
-    private readonly Dictionary<string, WitSqlExpression> m_expressionCache = new(StringComparer.Ordinal);
 
     #endregion
 
@@ -120,34 +118,9 @@ public sealed partial class StatementExecutor
 
     #region Expression Cache
 
-    /// <summary>
-    /// Gets a parsed expression from cache or parses it and adds to cache.
-    /// </summary>
-    /// <param name="expressionSql">The SQL expression string.</param>
-    /// <returns>The parsed expression.</returns>
-    private WitSqlExpression GetOrParseExpression(string expressionSql)
-    {
-        if (m_expressionCache.TryGetValue(expressionSql, out var cached))
-            return cached;
-
-        var parsed = WitSql.ParseExpression(expressionSql);
-
-        // Only cache if we haven't exceeded the limit
-        if (m_expressionCache.Count < MAX_EXPRESSION_CACHE_SIZE)
-        {
-            m_expressionCache[expressionSql] = parsed;
-        }
-
-        return parsed;
-    }
-
-    /// <summary>
-    /// Clears the expression cache.
-    /// </summary>
-    public void ClearExpressionCache()
-    {
-        m_expressionCache.Clear();
-    }
+    // Removed in 9.0.0 together with its ten callers. It existed to amortise re-parsing schema
+    // expressions that were stored as text; the catalog now stores them as trees, so there is
+    // nothing to parse and nothing to cache. ClearExpressionCache had no callers at all.
 
     #endregion
 

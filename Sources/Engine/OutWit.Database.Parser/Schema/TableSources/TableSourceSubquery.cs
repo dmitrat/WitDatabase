@@ -1,9 +1,11 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Database.Parser.Statements;
 
 namespace OutWit.Database.Parser.Schema.TableSources;
 
-public sealed class TableSourceSubquery : TableSource
+[MemoryPackable]
+public sealed partial class TableSourceSubquery : TableSource
 {
     #region Model Base
 

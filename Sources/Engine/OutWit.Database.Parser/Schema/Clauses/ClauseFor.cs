@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Values;
 using OutWit.Database.Parser.Schema.Types;
@@ -7,7 +8,8 @@ namespace OutWit.Database.Parser.Schema.Clauses
     /// <summary>
     /// Represents a FOR UPDATE/SHARE clause in a SELECT statement.
     /// </summary>
-    public class ClauseFor : ModelBase
+    [MemoryPackable]
+    public partial class ClauseFor : ModelBase
     {
         #region Model Base
 

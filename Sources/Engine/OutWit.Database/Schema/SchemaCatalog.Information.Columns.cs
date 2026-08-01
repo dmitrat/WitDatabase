@@ -55,8 +55,8 @@ public sealed partial class SchemaCatalog
                         WitSqlValue.FromText(table.Name),                                 // TABLE_NAME
                         WitSqlValue.FromText(column.Name),                                // COLUMN_NAME
                         WitSqlValue.FromInt(column.Ordinal + 1),                          // ORDINAL_POSITION (1-based)
-                        column.DefaultValue != null
-                            ? WitSqlValue.FromText(column.DefaultValue)
+                        column.DisplayDefault() is { } columnDefault
+                            ? WitSqlValue.FromText(columnDefault)
                             : WitSqlValue.Null,                                           // COLUMN_DEFAULT
                         WitSqlValue.FromText(isNullable ? "YES" : "NO"),                  // IS_NULLABLE
                         WitSqlValue.FromText(GetDataTypeName(column.Type)),               // DATA_TYPE
@@ -69,16 +69,19 @@ public sealed partial class SchemaCatalog
                         column.Scale.HasValue
                             ? WitSqlValue.FromInt(column.Scale.Value)
                             : WitSqlValue.Null,                                           // NUMERIC_SCALE
-                        column.IsComputed
-                            ? WitSqlValue.FromText(column.ComputedExpression!)
+                        // Guarded on the text, not on IsComputed. A column can be computed and have
+                        // no reportable expression: the rendering is withheld when it would not be
+                        // faithful, and IsComputed answers from the stored tree.
+                        column.DisplayComputed() is { } generation
+                            ? WitSqlValue.FromText(generation)
                             : WitSqlValue.Null,                                           // GENERATION_EXPRESSION
                         WitSqlValue.FromText(column.IsComputed
                             ? (column.IsStored ? "STORED" : "VIRTUAL")
                             : "NEVER"),                                                   // IS_GENERATED
                         WitSqlValue.FromText(column.IsAutoIncrement ? "YES" : "NO"),      // IS_AUTOINCREMENT
                         WitSqlValue.FromText(column.IsUnique ? "YES" : "NO"),             // IS_UNIQUE
-                        column.CheckExpression != null
-                            ? WitSqlValue.FromText(column.CheckExpression)
+                        column.DisplayCheck() is { } columnCheck
+                            ? WitSqlValue.FromText(columnCheck)
                             : WitSqlValue.Null,                                           // CHECK_EXPRESSION
                         column.Collation != null
                             ? WitSqlValue.FromText(column.Collation)

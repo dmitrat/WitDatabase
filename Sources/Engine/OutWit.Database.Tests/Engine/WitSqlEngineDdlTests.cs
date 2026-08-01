@@ -164,7 +164,7 @@ public sealed class WitSqlEngineDdlTests : WitSqlEngineTestsBase
         var statusColumn = table!.Columns.FirstOrDefault(c => c.Name == "Status");
         
         Assert.That(statusColumn, Is.Not.Null);
-        Assert.That(statusColumn!.DefaultValue, Is.EqualTo("'active'"));
+        Assert.That(statusColumn!.DisplayDefault(), Is.EqualTo("'active'"));
         
         // New inserts should use default
         m_engine.Execute("INSERT INTO Users (Name, Email) VALUES ('Test', 'test@test.com')");

@@ -394,11 +394,12 @@ public class SchemaCatalogTests
         };
 
         m_catalog.CreateTable(table);
-        m_catalog.SetColumnDefault("Users", "Status", "'active'");
+        m_catalog.SetColumnDefault("Users", "Status",
+            Parser.WitSql.ParseExpression("'active'"));
 
         var retrieved = m_catalog.GetTable("Users");
         Assert.That(retrieved, Is.Not.Null);
-        Assert.That(retrieved.Columns[1].DefaultValue, Is.EqualTo("'active'"));
+        Assert.That(retrieved.Columns[1].DisplayDefault(), Is.EqualTo("'active'"));
     }
 
     [Test]

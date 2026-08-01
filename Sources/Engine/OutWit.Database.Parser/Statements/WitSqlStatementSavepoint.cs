@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -8,7 +9,8 @@ namespace OutWit.Database.Parser.Statements;
 /// <summary>
 /// Represents a SAVEPOINT statement.
 /// </summary>
-public class WitSqlStatementSavepoint : WitSqlStatement
+[MemoryPackable]
+public partial class WitSqlStatementSavepoint : WitSqlStatement
 {
     #region Functions
 

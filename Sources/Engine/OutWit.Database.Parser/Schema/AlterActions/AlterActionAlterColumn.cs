@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -8,7 +9,8 @@ namespace OutWit.Database.Parser.Schema.AlterActions
     /// <summary>
     /// ALTER TABLE ALTER COLUMN action - change type, default, nullability.
     /// </summary>
-    public sealed class AlterActionAlterColumn : AlterAction
+    [MemoryPackable]
+    public sealed partial class AlterActionAlterColumn : AlterAction
     {
         #region Model Base
 

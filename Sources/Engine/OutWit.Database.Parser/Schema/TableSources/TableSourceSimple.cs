@@ -1,10 +1,12 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
 
 namespace OutWit.Database.Parser.Schema.TableSources
 {
-    public sealed class TableSourceSimple : TableSource
+    [MemoryPackable]
+    public sealed partial class TableSourceSimple : TableSource
     {
         #region Model Base
 

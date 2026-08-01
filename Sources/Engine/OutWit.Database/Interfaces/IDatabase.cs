@@ -3,6 +3,7 @@ using OutWit.Database.Definitions;
 using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Values;
+using OutWit.Database.Parser.Statements;
 
 namespace OutWit.Database.Interfaces;
 
@@ -243,7 +244,7 @@ public interface IDatabase
     /// <summary>
     /// Create a view.
     /// </summary>
-    void CreateView(string name, string selectSql, IReadOnlyList<string>? columnAliases);
+    void CreateView(string name, WitSqlStatementSelect? query, IReadOnlyList<string>? columnAliases);
 
     /// <summary>
     /// Drop a view.

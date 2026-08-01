@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -7,7 +8,8 @@ namespace OutWit.Database.Parser.Schema.AlterActions
     /// <summary>
     /// Represents ALTER TABLE ... DROP CONSTRAINT constraint_name action.
     /// </summary>
-    public class AlterActionDropConstraint : AlterAction
+    [MemoryPackable]
+    public partial class AlterActionDropConstraint : AlterAction
     {
         #region Model Base
 

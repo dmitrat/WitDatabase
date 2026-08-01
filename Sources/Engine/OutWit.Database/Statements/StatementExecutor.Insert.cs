@@ -161,9 +161,9 @@ public sealed partial class StatementExecutor
                         rowId = m_context.Database.GetNextAutoIncrement(table.Name);
                         values[i] = WitSqlValue.FromInt(rowId);
                     }
-                    else if (col.DefaultValue != null)
+                    else if (col.ResolveDefault() is not null)
                     {
-                        var defaultExpr = Parser.WitSql.ParseExpression(col.DefaultValue);
+                        var defaultExpr = col.ResolveDefault()!;
                         values[i] = evaluator.Evaluate(defaultExpr, dummyRow);
                     }
                     else
@@ -214,9 +214,9 @@ public sealed partial class StatementExecutor
                 for (int i = 0; i < table.Columns.Count; i++)
                 {
                     var col = table.Columns[i];
-                    if (col.IsComputed && col.IsStored && !string.IsNullOrEmpty(col.ComputedExpression))
+                    if (col.IsComputed && col.IsStored && col.ResolveComputed() is not null)
                     {
-                        var expr = Parser.WitSql.ParseExpression(col.ComputedExpression);
+                        var expr = col.ResolveComputed()!;
                         values[i] = evaluator.Evaluate(expr, intermediateRow);
                     }
                 }
@@ -312,9 +312,9 @@ public sealed partial class StatementExecutor
                     values[i] = WitSqlValue.Null; // Placeholder, will be overwritten
                 }
             }
-            else if (col.DefaultValue != null)
+            else if (col.ResolveDefault() is not null)
             {
-                var defaultExpr = Parser.WitSql.ParseExpression(col.DefaultValue);
+                var defaultExpr = col.ResolveDefault()!;
                 values[i] = evaluator.Evaluate(defaultExpr, dummyRow);
             }
             else
@@ -391,9 +391,9 @@ public sealed partial class StatementExecutor
         for (int i = 0; i < table.Columns.Count; i++)
         {
             var col = table.Columns[i];
-            if (col.IsComputed && col.IsStored && !string.IsNullOrEmpty(col.ComputedExpression))
+            if (col.IsComputed && col.IsStored && col.ResolveComputed() is not null)
             {
-                var expr = Parser.WitSql.ParseExpression(col.ComputedExpression);
+                var expr = col.ResolveComputed()!;
                 values[i] = evaluator.Evaluate(expr, intermediateRow);
             }
         }
@@ -667,9 +667,9 @@ public sealed partial class StatementExecutor
             {
                 if (columnNames[i].Equals(computedCol.Name, StringComparison.OrdinalIgnoreCase))
                 {
-                    if (!string.IsNullOrEmpty(computedCol.ComputedExpression))
+                    if (computedCol.ResolveComputed() is not null)
                     {
-                        var expr = Parser.WitSql.ParseExpression(computedCol.ComputedExpression);
+                        var expr = computedCol.ResolveComputed()!;
                         newValues[i] = evaluator.Evaluate(expr, intermediateRow);
                     }
                     break;

@@ -1,9 +1,11 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Values;
 
 namespace OutWit.Database.Parser.Schema.AlterActions
 {
-    public sealed class AlterActionRenameTable : AlterAction
+    [MemoryPackable]
+    public sealed partial class AlterActionRenameTable : AlterAction
     {
         #region Model Base
 

@@ -6,6 +6,7 @@ using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Utils;
 using OutWit.Database.Values;
+using OutWit.Database.Parser.Expressions;
 
 namespace OutWit.Database.Engine;
 
@@ -155,35 +156,11 @@ public sealed partial class WitSqlEngine
                 return true;
         }
 
-        // For expression indexes, we need to check if any modified column appears in the expression
-        // This is a conservative check - if we can't determine, assume the index is affected
-        if (indexDef.ExpressionColumns != null)
-        {
-            foreach (var expr in indexDef.ExpressionColumns)
-            {
-                if (!string.IsNullOrEmpty(expr))
-                {
-                    // Check if any modified column name appears in the expression
-                    foreach (var col in columns)
-                    {
-                        if (expr.Contains(col, StringComparison.OrdinalIgnoreCase))
-                            return true;
-                    }
-                }
-            }
-        }
-
-        // Check if index has a WHERE clause that references modified columns
-        if (!string.IsNullOrEmpty(indexDef.WhereExpression))
-        {
-            foreach (var col in columns)
-            {
-                if (indexDef.WhereExpression.Contains(col, StringComparison.OrdinalIgnoreCase))
-                    return true;
-            }
-        }
-
-        return false;
+        // An expression index, or a filtered one, is affected when the write touches a column the
+        // expression actually reads. Until 9.0.0 this asked whether the rendered text of the
+        // expression *contained* the column's name, which said yes for a column named Age and a
+        // filter mentioning Agent, and would now say no whenever the rendering was absent.
+        return indexDef.ReferencedColumns().Overlaps(columns);
     }
 
     #endregion
@@ -249,13 +226,13 @@ public sealed partial class WitSqlEngine
     private bool EvaluatePartialIndexCondition(DefinitionIndex indexDef, WitSqlRow row)
     {
         // If no WHERE clause, all rows are included
-        if (string.IsNullOrEmpty(indexDef.WhereExpression))
+        var expression = indexDef.ResolveWhere();
+
+        if (expression is null)
             return true;
 
         try
         {
-            // Parse and evaluate the WHERE expression
-            var expression = WitSql.ParseExpression(indexDef.WhereExpression);
             var context = new ContextExecution { Database = this };
             var evaluator = new ExpressionEvaluator(context);
             var result = evaluator.Evaluate(expression, row);
@@ -287,11 +264,11 @@ public sealed partial class WitSqlEngine
             WitDataType columnType;
             
             // Check if this is an expression column
-            var expressionSql = indexDef.GetColumnExpression(i);
-            if (!string.IsNullOrEmpty(expressionSql))
+            var indexExpression = indexDef.ResolveColumnExpression(i);
+            if (indexExpression != null)
             {
                 // Evaluate the expression
-                value = EvaluateIndexExpression(expressionSql, row);
+                value = EvaluateIndexExpression(indexExpression, row);
                 // For expression indexes, determine type from the result
                 columnType = DetermineTypeFromValue(value);
             }
@@ -325,11 +302,10 @@ public sealed partial class WitSqlEngine
     /// <summary>
     /// Evaluates an expression for an expression index.
     /// </summary>
-    private WitSqlValue EvaluateIndexExpression(string expressionSql, WitSqlRow row)
+    private WitSqlValue EvaluateIndexExpression(WitSqlExpression expression, WitSqlRow row)
     {
         try
         {
-            var expression = WitSql.ParseExpression(expressionSql);
             var context = new ContextExecution { Database = this };
             var evaluator = new ExpressionEvaluator(context);
             return evaluator.Evaluate(expression, row);

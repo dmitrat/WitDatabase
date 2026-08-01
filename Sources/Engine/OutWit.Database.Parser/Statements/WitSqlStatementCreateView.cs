@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Collections;
@@ -6,7 +7,8 @@ using OutWit.Database.Parser.Interfaces;
 
 namespace OutWit.Database.Parser.Statements
 {
-    public class WitSqlStatementCreateView : WitSqlStatement
+    [MemoryPackable]
+    public partial class WitSqlStatementCreateView : WitSqlStatement
     {
         #region Functions
 

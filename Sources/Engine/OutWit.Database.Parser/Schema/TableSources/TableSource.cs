@@ -1,10 +1,17 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
 
 namespace OutWit.Database.Parser.Schema.TableSources
 {
-    public abstract class TableSource : ModelBase
+    [MemoryPackable]
+    // Persisted format. Tags are append-only: never renumber one and
+    // never reuse a retired one, or old files read back as the wrong type.
+    [MemoryPackUnion(0, typeof(TableSourceJoin))]
+    [MemoryPackUnion(1, typeof(TableSourceSimple))]
+    [MemoryPackUnion(2, typeof(TableSourceSubquery))]
+    public abstract partial class TableSource : ModelBase
     {
         #region Model Base
 

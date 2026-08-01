@@ -424,7 +424,7 @@ internal sealed class SchemaProvider
                 row["TABLE_NAME"] = tableName;
                 row["COLUMN_NAME"] = col.Name;
                 row["ORDINAL_POSITION"] = i + 1;
-                row["COLUMN_DEFAULT"] = col.DefaultValue ?? (object)DBNull.Value;
+                row["COLUMN_DEFAULT"] = col.DisplayDefault() ?? (object)DBNull.Value;
                 row["IS_NULLABLE"] = col.Nullable ? "YES" : "NO";
                 row["DATA_TYPE"] = col.Type.ToString();
                 row["CHARACTER_MAXIMUM_LENGTH"] = col.MaxLength.HasValue ? col.MaxLength.Value : (object)DBNull.Value;

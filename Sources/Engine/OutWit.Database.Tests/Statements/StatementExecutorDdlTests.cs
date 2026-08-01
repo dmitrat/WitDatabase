@@ -3,6 +3,7 @@ using OutWit.Database.Definitions;
 using OutWit.Database.Parser;
 using OutWit.Database.Statements;
 using OutWit.Database.Types;
+using OutWit.Database.Parser.Statements;
 
 namespace OutWit.Database.Tests.Statements;
 
@@ -86,8 +87,8 @@ public class StatementExecutorDdlTests : StatementExecutorTestsBase
 
         m_database.Received(1).CreateTable(Arg.Is<DefinitionTable>(t =>
             t.Name == "Items" &&
-            t.Columns[1].DefaultValue == "'active'" &&
-            t.Columns[2].DefaultValue == "0"
+            t.Columns[1].DisplayDefault() == "'active'" &&
+            t.Columns[2].DisplayDefault() == "0"
         ));
     }
 
@@ -123,7 +124,7 @@ public class StatementExecutorDdlTests : StatementExecutorTestsBase
         executor.Execute(stmt);
 
         m_database.Received(1).CreateTable(Arg.Is<DefinitionTable>(t =>
-            t.Columns[1].CheckExpression != null
+            t.Columns[1].Check != null
         ));
     }
 
@@ -187,8 +188,8 @@ public class StatementExecutorDdlTests : StatementExecutorTestsBase
         executor.Execute(stmt);
 
         m_database.Received(1).CreateTable(Arg.Is<DefinitionTable>(t =>
-            t.CheckExpressions != null &&
-            t.CheckExpressions.Count > 0 &&
+            t.Checks != null &&
+            t.Checks.Count > 0 &&
             t.ForeignKeys != null &&
             t.ForeignKeys.Count > 0
         ));
@@ -310,7 +311,7 @@ public class StatementExecutorDdlTests : StatementExecutorTestsBase
         m_database.Received(1).AddColumn("Users", Arg.Is<DefinitionColumn>(c =>
             c.Name == "Status" &&
             !c.Nullable &&
-            c.DefaultValue == "'active'"
+            c.DisplayDefault() == "'active'"
         ));
     }
 
@@ -464,7 +465,8 @@ public class StatementExecutorDdlTests : StatementExecutorTestsBase
 
         executor.Execute(stmt);
 
-        m_database.Received(1).CreateView("ActiveUsers", Arg.Any<string>(), Arg.Any<IReadOnlyList<string>?>());
+        m_database.Received(1).CreateView("ActiveUsers", Arg.Any<WitSqlStatementSelect?>(),
+            Arg.Any<IReadOnlyList<string>?>());
     }
 
     [Test]
@@ -477,7 +479,7 @@ public class StatementExecutorDdlTests : StatementExecutorTestsBase
 
         executor.Execute(stmt);
 
-        m_database.Received(1).CreateView("UserSummary", Arg.Any<string>(),
+        m_database.Received(1).CreateView("UserSummary", Arg.Any<WitSqlStatementSelect?>(),
             Arg.Is<IReadOnlyList<string>?>(cols => cols != null && cols.Contains("UserId") && cols.Contains("UserName")));
     }
 
@@ -504,7 +506,8 @@ public class StatementExecutorDdlTests : StatementExecutorTestsBase
         // Should not throw
         executor.Execute(stmt);
 
-        m_database.DidNotReceive().CreateView(Arg.Any<string>(), Arg.Any<string>(), Arg.Any<IReadOnlyList<string>?>());
+        m_database.DidNotReceive().CreateView(Arg.Any<string>(), Arg.Any<WitSqlStatementSelect?>(),
+            Arg.Any<IReadOnlyList<string>?>());
     }
 
     #endregion

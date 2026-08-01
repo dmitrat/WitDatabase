@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Database.Parser.Interfaces;
 
@@ -6,7 +7,8 @@ namespace OutWit.Database.Parser.Statements;
 /// <summary>
 /// Represents a COMMIT statement.
 /// </summary>
-public class WitSqlStatementCommit : WitSqlStatement
+[MemoryPackable]
+public partial class WitSqlStatementCommit : WitSqlStatement
 {
     #region Functions
 

@@ -1,10 +1,12 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Database.Parser.Interfaces;
 using OutWit.Database.Parser.Statements;
 
 namespace OutWit.Database.Parser.Expressions;
 
-public class WitSqlExpressionSubquery : WitSqlExpression
+[MemoryPackable]
+public partial class WitSqlExpressionSubquery : WitSqlExpression
 {
     #region Functions
 

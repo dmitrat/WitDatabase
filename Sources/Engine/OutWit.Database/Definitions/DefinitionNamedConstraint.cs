@@ -3,6 +3,9 @@ using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Collections;
 using OutWit.Common.Values;
+using OutWit.Database.Parser;
+using OutWit.Database.Parser.Expressions;
+using OutWit.Database.Parser.Serializers;
 
 namespace OutWit.Database.Definitions
 {
@@ -23,6 +26,7 @@ namespace OutWit.Database.Definitions
                    && Type.Is(other.Type)
                    && Columns.Is(other.Columns)
                    && CheckExpression.Is(other.CheckExpression)
+                   && Check.Check(other.Check)
                    && ForeignKey.Check(other.ForeignKey);
         }
 
@@ -34,6 +38,7 @@ namespace OutWit.Database.Definitions
                 Type = Type,
                 Columns = Columns?.ToList(),
                 CheckExpression = CheckExpression,
+                Check = Check?.Clone() as WitSqlExpression,
                 ForeignKey = ForeignKey?.Clone()
             };
         }
@@ -77,6 +82,22 @@ namespace OutWit.Database.Definitions
         /// </summary>
         [MemoryPackOrder(3)]
         public string? CheckExpression { get; init; }
+
+        /// <summary>
+        /// The constraint's condition, stored as a tree. <see cref="CheckExpression"/> is a
+        /// rendering of it for <c>INFORMATION_SCHEMA</c>.
+        /// </summary>
+        [MemoryPackOrder(5)]
+        public WitSqlExpression? Check { get; init; }
+
+        /// <summary>The condition as a tree, falling back to the stored text before 9.0.0.</summary>
+        /// <summary>The condition as SQL for <c>INFORMATION_SCHEMA</c>, rendered from the tree.</summary>
+        public string? DisplayCheck() => SchemaText.Render(Check) ?? CheckExpression;
+
+        public WitSqlExpression? ResolveCheck() =>
+            Check ?? (string.IsNullOrEmpty(CheckExpression)
+                ? null
+                : WitSql.ParseExpression(CheckExpression));
 
         /// <summary>
         /// Gets the foreign key definition.

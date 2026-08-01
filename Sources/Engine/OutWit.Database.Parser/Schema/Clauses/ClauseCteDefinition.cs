@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Collections;
@@ -9,7 +10,8 @@ namespace OutWit.Database.Parser.Schema.Clauses;
 /// <summary>
 /// Represents a single CTE (Common Table Expression) definition in a WITH clause.
 /// </summary>
-public class ClauseCteDefinition : ModelBase
+[MemoryPackable]
+public partial class ClauseCteDefinition : ModelBase
 {
     #region Model Base
 

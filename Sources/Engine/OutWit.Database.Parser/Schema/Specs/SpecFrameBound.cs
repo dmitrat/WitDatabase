@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -8,7 +9,8 @@ namespace OutWit.Database.Parser.Schema.Specs;
 /// <summary>
 /// Represents a frame bound (start or end) in a window frame clause.
 /// </summary>
-public sealed class SpecFrameBound : ModelBase
+[MemoryPackable]
+public sealed partial class SpecFrameBound : ModelBase
 {
     #region Model Base
 

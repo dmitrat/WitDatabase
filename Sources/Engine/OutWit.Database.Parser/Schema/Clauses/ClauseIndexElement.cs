@@ -1,3 +1,4 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 using OutWit.Common.Attributes;
 using OutWit.Common.Values;
@@ -8,7 +9,8 @@ namespace OutWit.Database.Parser.Schema.Clauses;
 /// <summary>
 /// Represents an index element - either a column name or an expression.
 /// </summary>
-public sealed class ClauseIndexElement : ModelBase
+[MemoryPackable]
+public sealed partial class ClauseIndexElement : ModelBase
 {
     #region Model Base
 

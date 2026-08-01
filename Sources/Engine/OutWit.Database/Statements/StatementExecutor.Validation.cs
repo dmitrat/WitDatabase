@@ -618,10 +618,10 @@ public sealed partial class StatementExecutor
                 // Get the default value for this column from table definition
                 var col = table.GetColumn(colName);
                 
-                if (col?.DefaultValue != null)
+                if (col?.ResolveDefault() is not null)
                 {
                     // Use cached expression parsing
-                    var defaultExpr = GetOrParseExpression(col.DefaultValue);
+                    var defaultExpr = col.ResolveDefault()!;
                     var defaultValue = evaluator.Evaluate(defaultExpr, oldRow);
                     newValues[i] = defaultValue;
                 }
@@ -983,7 +983,7 @@ public sealed partial class StatementExecutor
         // Validate column-level CHECK constraints
         foreach (var col in table.Columns)
         {
-            if (col.CheckExpression == null)
+            if (col.ResolveCheck() is null)
                 continue;
 
             // Skip CHECK if the column value is NULL (SQL standard behavior)
@@ -992,7 +992,7 @@ public sealed partial class StatementExecutor
                 continue;
 
             // Use cached expression parsing
-            var checkExpr = GetOrParseExpression(col.CheckExpression);
+            var checkExpr = col.ResolveCheck()!;
             var result = evaluator.Evaluate(checkExpr, row);
 
             // Skip if result is NULL
@@ -1006,12 +1006,10 @@ public sealed partial class StatementExecutor
         }
 
         // Validate table-level CHECK constraints
-        if (table.CheckExpressions != null)
+        if (table.ResolveChecks().Count > 0)
         {
-            foreach (var checkSql in table.CheckExpressions)
+            foreach (var checkExpr in table.ResolveChecks())
             {
-                // Use cached expression parsing
-                var checkExpr = GetOrParseExpression(checkSql);
                 var result = evaluator.Evaluate(checkExpr, row);
 
                 // Skip if result is NULL
@@ -1162,11 +1160,11 @@ public sealed partial class StatementExecutor
         string tableName,
         ExpressionEvaluator evaluator)
     {
-        if (string.IsNullOrEmpty(constraint.CheckExpression))
+        if (constraint.ResolveCheck() is null)
             return;
 
         // Use cached expression parsing
-        var checkExpr = GetOrParseExpression(constraint.CheckExpression);
+        var checkExpr = constraint.ResolveCheck()!;
         var result = evaluator.Evaluate(checkExpr, row);
 
         // Skip if result is NULL (SQL standard: NULL is not FALSE)

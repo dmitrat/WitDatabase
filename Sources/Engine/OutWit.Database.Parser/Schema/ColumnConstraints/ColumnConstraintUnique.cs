@@ -1,8 +1,10 @@
+using MemoryPack;
 using OutWit.Common.Abstract;
 
 namespace OutWit.Database.Parser.Schema.ColumnConstraints
 {
-    public sealed class ColumnConstraintUnique : ColumnConstraint
+    [MemoryPackable]
+    public sealed partial class ColumnConstraintUnique : ColumnConstraint
     {
         #region Model Base
 

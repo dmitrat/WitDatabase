@@ -3,6 +3,9 @@ using OutWit.Common.Abstract;
 using OutWit.Common.Collections;
 using OutWit.Common.Values;
 using OutWit.Database.Attributes;
+using OutWit.Database.Parser;
+using OutWit.Database.Parser.Expressions;
+using OutWit.Database.Parser.Serializers;
 
 namespace OutWit.Database.Definitions
 {
@@ -31,6 +34,7 @@ namespace OutWit.Database.Definitions
                    && RowIdColumn.Is(other.RowIdColumn)
                    && AutoIncrementRowId.Is(other.AutoIncrementRowId)
                    && CheckExpressions.Is(other.CheckExpressions)
+                   && ChecksAre(other)
                    && ForeignKeys.Is(other.ForeignKeys)
                    && NamedConstraints.Is(other.NamedConstraints)
                    && UniqueConstraints?
@@ -51,6 +55,7 @@ namespace OutWit.Database.Definitions
                 RowIdColumn = RowIdColumn,
                 AutoIncrementRowId = AutoIncrementRowId,
                 CheckExpressions = CheckExpressions?.ToList(),
+                Checks = Checks?.Select(c => c.Clone() as WitSqlExpression).ToList()!,
                 ForeignKeys = ForeignKeys?.Select(key => key.Clone()).ToList(),
                 UniqueConstraints = UniqueConstraints?.Select(list => list.ToList()).ToList(),
                 NamedConstraints = NamedConstraints?.Select(c => c.Clone()).ToList()
@@ -98,6 +103,13 @@ namespace OutWit.Database.Definitions
 
         #endregion
 
+        #region Fields
+
+        private IReadOnlyList<WitSqlExpression>? m_legacyChecks;
+        private IReadOnlyList<string?>? m_displayChecks;
+
+        #endregion
+
         #region Properties
 
         /// <summary>
@@ -135,6 +147,50 @@ namespace OutWit.Database.Definitions
         /// </summary>
         [MemoryPackOrder(5)]
         public IReadOnlyList<string>? CheckExpressions { get; init; }
+
+        /// <summary>
+        /// The table-level <c>CHECK</c> conditions, stored as trees.
+        /// <see cref="CheckExpressions"/> renders them for <c>INFORMATION_SCHEMA</c>.
+        /// </summary>
+        [MemoryPackOrder(9)]
+        public IReadOnlyList<WitSqlExpression>? Checks { get; init; }
+
+        #endregion
+
+        #region Resolving
+
+        /// <summary>
+        /// The table-level conditions as trees, parsing the stored text only for a table written
+        /// before 9.0.0.
+        /// </summary>
+        /// <summary>The table-level conditions as SQL, rendered from the trees.</summary>
+        public IReadOnlyList<string?> DisplayChecks() =>
+            m_displayChecks ??= ResolveChecks().Select(SchemaText.Render).ToList();
+
+        public IReadOnlyList<WitSqlExpression> ResolveChecks()
+        {
+            if (Checks is not null)
+                return Checks;
+
+            if (CheckExpressions is null)
+                return [];
+
+            return m_legacyChecks ??= CheckExpressions
+                .Where(text => !string.IsNullOrEmpty(text))
+                .Select(WitSql.ParseExpression)
+                .ToList();
+        }
+
+        private bool ChecksAre(DefinitionTable other)
+        {
+            if (Checks is null || other.Checks is null)
+                return Checks is null && other.Checks is null;
+
+            if (Checks.Count != other.Checks.Count)
+                return false;
+
+            return !Checks.Where((c, i) => !c.Is(other.Checks[i])).Any();
+        }
 
         /// <summary>
         /// Gets the table-level foreign key constraints.
