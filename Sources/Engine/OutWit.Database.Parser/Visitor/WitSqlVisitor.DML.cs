@@ -253,6 +253,25 @@ internal sealed partial class WitSqlVisitor
                 OnCondition = join.expression() != null ? VisitExpression(join.expression()) : null,
                 Alias = null
             },
+            WitSqlParser.LateralTableSourceContext lat => new TableSourceLateral
+            {
+                Subquery = VisitQueryExpression(lat.queryExpression()),
+                IsOuter = false,
+                ColumnAliases = lat.derivedColumnList() is { } lateralNames
+                    ? lateralNames.columnName().Select(GetColumnName).ToList()
+                    : null,
+                Alias = NormalizeIdentifier(lat.alias().GetText())
+            },
+            WitSqlParser.ApplyTableSourceContext app => new TableSourceLateral
+            {
+                Left = VisitTableSource(app.tableSource()),
+                Subquery = VisitQueryExpression(app.queryExpression()),
+                IsOuter = app.applyKind().OUTER() != null,
+                ColumnAliases = app.derivedColumnList() is { } applyNames
+                    ? applyNames.columnName().Select(GetColumnName).ToList()
+                    : null,
+                Alias = NormalizeIdentifier(app.alias().GetText())
+            },
             WitSqlParser.SubqueryTableSourceContext sub => new TableSourceSubquery
             {
                 Subquery = VisitQueryExpression(sub.queryExpression()),

@@ -49,12 +49,6 @@ public sealed class UnbuiltCapabilityCorpusTests : WitSqlEngineTestsBase
     /// Each of these is refused by the parser. Refusal is the honest failure for something unbuilt,
     /// and it is what this test pins: none of them may start silently half-working.
     /// </summary>
-    [TestCase("SELECT T.Id, X.Score FROM T, LATERAL (SELECT Score FROM S WHERE S.TId = T.Id) AS X",
-        TestName = "lateral join")]
-    [TestCase("SELECT T.Id, X.Score FROM T CROSS APPLY (SELECT Score FROM S WHERE S.TId = T.Id) AS X",
-        TestName = "CROSS APPLY")]
-    [TestCase("SELECT T.Id, X.Score FROM T OUTER APPLY (SELECT Score FROM S WHERE S.TId = T.Id) AS X",
-        TestName = "OUTER APPLY")]
     [TestCase("CREATE FUNCTION Double(N INT) RETURNS INT AS BEGIN RETURN N * 2; END",
         TestName = "user-defined function")]
     [TestCase("CREATE PROCEDURE GetAll AS BEGIN SELECT * FROM T; END", TestName = "stored procedure")]
@@ -102,8 +96,8 @@ public sealed class UnbuiltCapabilityCorpusTests : WitSqlEngineTestsBase
     }
 
     /// <summary>
-    /// Built by phase 9b, 2026-08-01: all three were on the absent list and all three are supported
-    /// by both drop-in targets.
+    /// Built by phases 9b and 9c, 2026-08-01. Every one was on the absent list and every one is
+    /// supported by both drop-in targets.
     /// </summary>
     /// <remarks>
     /// They are pinned here rather than only in their own fixture because this corpus is the list
@@ -113,6 +107,12 @@ public sealed class UnbuiltCapabilityCorpusTests : WitSqlEngineTestsBase
     [TestCase("SELECT TOP 1 Id FROM T", TestName = "TOP n")]
     [TestCase("SELECT * FROM (VALUES (1), (2)) AS V", TestName = "VALUES as a table source")]
     [TestCase("SELECT * FROM (SELECT Id FROM T) AS V (Alias)", TestName = "derived column list")]
+    [TestCase("SELECT T.Id, X.Score FROM T, LATERAL (SELECT Score FROM S WHERE S.TId = T.Id) AS X",
+        TestName = "lateral join")]
+    [TestCase("SELECT T.Id, X.Score FROM T CROSS APPLY (SELECT Score FROM S WHERE S.TId = T.Id) AS X",
+        TestName = "CROSS APPLY")]
+    [TestCase("SELECT T.Id, X.Score FROM T OUTER APPLY (SELECT Score FROM S WHERE S.TId = T.Id) AS X",
+        TestName = "OUTER APPLY")]
     public void CapabilityBuiltByPhase9bWorksTest(string sql)
     {
         Assert.That(() => m_engine.Query(sql), Throws.Nothing);

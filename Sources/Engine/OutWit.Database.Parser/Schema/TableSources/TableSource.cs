@@ -11,6 +11,8 @@ namespace OutWit.Database.Parser.Schema.TableSources
     [MemoryPackUnion(0, typeof(TableSourceJoin))]
     [MemoryPackUnion(1, typeof(TableSourceSimple))]
     [MemoryPackUnion(2, typeof(TableSourceSubquery))]
+    // Appended 2026-08-01. Tags are a persisted format: append only, never renumber.
+    [MemoryPackUnion(3, typeof(TableSourceLateral))]
     public abstract partial class TableSource : ModelBase
     {
         #region Model Base
