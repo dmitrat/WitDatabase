@@ -173,7 +173,12 @@ public sealed partial class ExpressionEvaluator
             "TOSTRING" or "STR" => WitSqlValue.FromText(args[0].AsString()),
             "TOINT" or "INT" => WitSqlValue.FromInt(args[0].AsInt64()),
             "TOREAL" or "REAL" or "TODOUBLE" => WitSqlValue.FromReal(args[0].AsDouble()),
-            "TOBOOL" or "BOOL" => WitSqlValue.FromBool(args[0].AsBool()),
+            // TOBOOLEAN is the spelling the grammar has always admitted, and the only one of the
+            // TO... conversions that had no implementation - TOSTRING, TOINT, TODOUBLE, TODECIMAL,
+            // TODATE, TODATETIME and TOGUID all work. Found by KnownFunctionCorpusTests on its first
+            // green run, which is what that corpus is for: it asks the question of every function
+            // token the lexer defines rather than of the ones somebody thought to try.
+            "TOBOOL" or "TOBOOLEAN" or "BOOL" => WitSqlValue.FromBool(args[0].AsBool()),
             "TODECIMAL" => WitSqlValue.FromDecimal(args[0].AsDecimal()),
             "TODATETIME" => WitSqlValue.FromDateTime(args[0].AsDateTime()),
             "TOGUID" => WitSqlValue.FromGuid(args[0].AsGuid()),

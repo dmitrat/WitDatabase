@@ -24,6 +24,8 @@ public sealed partial class StatementExecutor
 
     private WitSqlResult ExecuteCreateTable(WitSqlStatementCreateTable createTable)
     {
+        RefuseUnknownFunctions(createTable, createTable.TableName);
+
         // Check IF NOT EXISTS
         if (createTable.IfNotExists)
         {
@@ -235,6 +237,8 @@ public sealed partial class StatementExecutor
 
     private WitSqlResult ExecuteAlterTable(WitSqlStatementAlterTable alterTable)
     {
+        RefuseUnknownFunctions(alterTable, alterTable.TableName);
+
         switch (alterTable.Action)
         {
             case AlterActionAddColumn addColumn:

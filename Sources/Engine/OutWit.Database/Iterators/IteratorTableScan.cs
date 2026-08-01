@@ -199,16 +199,8 @@ internal sealed class IteratorTableScan : IteratorBase
             
             foreach (var (colIndex, expr) in m_virtualComputedColumns)
             {
-                try
-                {
-                    var computedValue = m_evaluator.Evaluate(expr, rowForEval);
-                    values[colIndex + 1] = computedValue; // +1 because of _rowid
-                }
-                catch
-                {
-                    // If evaluation fails, keep NULL
-                    values[colIndex + 1] = WitSqlValue.Null;
-                }
+                values[colIndex + 1] = IteratorComputedColumn.Evaluate(
+                    m_evaluator, expr, rowForEval, m_table.Name, m_table.Columns[colIndex].Name);
             }
         }
 

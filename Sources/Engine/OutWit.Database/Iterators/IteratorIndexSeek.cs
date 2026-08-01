@@ -161,16 +161,8 @@ internal sealed class IteratorIndexSeek : IteratorBase
 
             foreach (var (colIndex, expression) in m_virtualComputedColumns)
             {
-                try
-                {
-                    var computedValue = evaluator.Evaluate(expression, rowForEval);
-                    values[colIndex + 1] = computedValue; // +1 because of _rowid
-                }
-                catch
-                {
-                    // If evaluation fails, keep NULL
-                    values[colIndex + 1] = WitSqlValue.Null;
-                }
+                values[colIndex + 1] = IteratorComputedColumn.Evaluate(
+                    evaluator, expression, rowForEval, m_table.Name, m_table.Columns[colIndex].Name);
             }
         }
 

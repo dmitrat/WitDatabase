@@ -160,6 +160,50 @@ public sealed class DdlInsideTransactionFindingsTests : WitSqlEngineTestsBase
 
     #endregion
 
+    #region The ALTER family sees the rows of its own transaction
+
+    /// <summary>
+    /// A migration that writes rows and then reshapes the table must not lose the rows it wrote.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This is <c>AUDIT-2026-07.md</c> finding 35, a separate item from finding 19: the ALTER family
+    /// migrates rows by scanning them, and eleven of those scans went to the store directly rather
+    /// than through the transaction. Recorded consequence - <c>RenameTable</c>, <c>DropColumn</c> and
+    /// <c>AlterColumnType</c> could not see rows written in the same transaction, so those rows ended
+    /// up committed under the old prefix or the old encoding.
+    /// </para>
+    /// <para>
+    /// It is closed here as a consequence of finding 19's fix rather than as a separate change: the
+    /// scans now go through <c>ScanStore</c>, which is the helper that had been added for them and
+    /// left unused. Kept as its own test because the two findings are separate, and because "it works
+    /// now" and "it works for the reason we think" are different claims - <b>this one asserts the
+    /// row, not the absence of an exception.</b>
+    /// </para>
+    /// </remarks>
+    [TestCase("ALTER TABLE T RENAME TO T2", "T2", TestName = "RENAME TABLE")]
+    [TestCase("ALTER TABLE T DROP COLUMN W", "T", TestName = "DROP COLUMN")]
+    [TestCase("ALTER TABLE T ALTER COLUMN W TYPE VARCHAR(50)", "T", TestName = "ALTER COLUMN TYPE")]
+    [TestCase("ALTER TABLE T ADD COLUMN Q INT DEFAULT 7", "T", TestName = "ADD COLUMN")]
+    public void AlterKeepsRowsWrittenInTheSameTransactionTest(string ddl, string readFrom)
+    {
+        m_engine.Execute("ALTER TABLE T ADD COLUMN W INT");
+
+        m_engine.Execute("BEGIN TRANSACTION");
+        m_engine.Execute("INSERT INTO T (Id, V, W) VALUES (2, 20, 200)");
+        m_engine.Execute(ddl);
+        m_engine.Execute("COMMIT");
+
+        var rows = m_engine.Query($"SELECT Id, V FROM {readFrom} ORDER BY Id")
+            .Select(row => (row[0].AsInt64(), row[1].AsInt64()))
+            .ToArray();
+
+        Assert.That(rows, Is.EqualTo(new[] { (1L, 10L), (2L, 20L) }),
+            "the row written inside the transaction must survive the reshaping that followed it");
+    }
+
+    #endregion
+
     #region The failure must not leave half the work
 
     /// <summary>

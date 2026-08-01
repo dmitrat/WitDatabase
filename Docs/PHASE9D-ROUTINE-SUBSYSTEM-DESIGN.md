@@ -383,8 +383,9 @@ their own pins so the boundary is measured rather than remembered.
 
 Dependencies, not value — the same rule phases 5–10 used.
 
-1. **The nesting depth cap.** A live defect on the trigger path, process-fatal, independent of
-   routines. Includes measuring the async path's missing recursion guard.
+1. ~~**The nesting depth cap.**~~ **Done** — see § 9. The async path was checked rather than
+   assumed: the engine has no separate async execution path at all, so there was nothing for the
+   limit to miss.
 2. **Catalog + `INFORMATION_SCHEMA.ROUTINES`/`PARAMETERS`**, with nothing to put in them yet.
 3. **Grammar + AST + union tags 26–30**, with the keyword corpus as the net.
 4. **Scalar functions** — declaration, determinism at declaration, evaluator substitution, dependency
@@ -400,25 +401,55 @@ three of its prerequisites were paid by phase 8.
 
 ---
 
-## 9. Findings this audit produced
+## 9. Findings this audit produced — all five fixed
 
-Recorded here, to be pinned as marked tests in the implementation branch rather than carried as
-prose:
+Dmitry's call, taken after the note was read: **fix what the audit found first, then build the
+subsystem.** All five are closed, each with a test that was red before the change, and none needed a
+suppression marker — **the ledger is unchanged at 33 `[Ignore(…)]` + 14 = 47**, counted by command.
 
-1. **No bound on execution nesting.** 600 levels of trigger self-recursion kill the process with an
-   uncatchable stack overflow. Live, trigger-path, pre-existing.
-2. **A computed column naming an unknown function silently yields NULL** where a `CHECK` and a view
-   throw. A wrong answer rather than an error.
-3. **An unresolved function name is accepted at declaration** in a `CHECK`, a computed column, an
-   index expression and a view.
-4. **An index expression may contain a subquery**, so its stored key can disagree with the
-   expression's current value. Pre-existing, not fixed inside 9d. Acceptance is measured; a wrong
-   answer from it is not — the marker must say which.
-5. **DDL inside a transaction throws and keeps the change** — `AUDIT-2026-07.md` finding 19,
-   re-verified at head across five DDL kinds, with the "keeps the change" half now measured directly.
+1. **No bound on execution nesting** — 600 levels of trigger self-recursion killed the process with
+   an uncatchable stack overflow. Counted in `StatementExecutor.Execute`, the one door every nested
+   statement passes through, on `ContextExecution`, which is what resets per submitted statement.
+   Limit 32, not configurable. `ExecutionNestingFindingsTests`, whose 5000-level case **takes the
+   whole run down when the limit is reverted** — verified, not asserted.
+2. **A computed column that cannot be evaluated answered NULL** — three iterators each ended their
+   per-row evaluation with a bare `catch` returning NULL. Now one shared evaluation that names the
+   table and column and carries the cause. `ComputedColumnFailureFindingsTests`, five of seven red
+   against the reverted code.
+3. **An unresolved function name was accepted at declaration** in a `CHECK`, a computed column, a
+   `DEFAULT` and an index expression. Refused now, by name, asked of the whole DDL statement rather
+   than clause by clause. Views are deliberately out — stated in the code, not omitted.
+4. **An index expression could contain a subquery**, and equally `RANDOM()` or `NOW()`. Refused at
+   declaration by `ExpressionDeterminism`, which is the same predicate § 5 needs before a
+   user-defined function may appear in an index key.
+5. **DDL inside a transaction threw and kept the change** — `AUDIT-2026-07.md` finding 19, closed.
+   Schema records go through the caller's open transaction, held **ambient and per execution flow**
+   because the catalog is shared between sessions and MVCC lets two of them be in transactions at
+   once; rollback reloads the whole catalog; the eleven DDL row scans go through `ScanStore`.
 
-Ledger at the opening of 9d: **33 `[Ignore(…)]` + 14 = 47**, plus 2 `[Explicit]` — counted by command,
-not recalled.
+### And one the instruments found on their own
+
+**`TOBOOLEAN` was in the grammar and not in the engine.** Every other `TO…` conversion works;
+`SELECT TOBOOLEAN(1)` reached the evaluator and was refused. Found by `KnownFunctionCorpusTests` on
+its first green run, because that corpus asks the question of **every function token the lexer
+defines** rather than of the ones somebody thought to try. `CAST(1)` — the no-target-type form the
+grammar also admits — is pinned as a deliberate exception with its reason.
+
+That corpus also had to be proved before it could be believed, and it failed twice on the way:
+first it found **zero** functions, because this grammar builds keywords from case-insensitive
+fragments so the lexer records no literal for any of them; then it found **everything**, because
+`functionName` admits `IDENTIFIER`, so `SELECT WS(1)` parses and the lexer's whitespace rule was
+being reported as an unknown function. Its "found no function tokens at all" guard caught the first;
+the second is the dialect oracle's mistake exactly — one probe measuring two things and the result
+attributed to the wrong one.
+
+### Suites
+
+```
+Engine 2119 / 0    Core 2278 / 0    Parser 774 / 0    AdoNet 788 / 0    EntityFramework 554 / 0
+EF Specification: 1198 failed / 6937 passed - identical to this branch before the fixes, and to the
+                  pre-existing figure on main
+```
 
 ---
 
@@ -430,6 +461,32 @@ not recalled.
 2. **A procedure is restricted to the same statements as a trigger, plus `CALL`.** Less than the plan
    expected, and § 2 is why. Accept, or hold 9d until audit finding 19 is fixed and procedures can
    have DDL bodies honestly?
-3. **The depth cap default of 32**, and that it lands as its own change before any routine work.
-4. **Findings 2–4 of § 9** — pinned as markers in this branch, or fixed inside 9d? Finding 1 is not
-   optional; it is the prerequisite.
+3. ~~**The depth cap default of 32.**~~ Built at 32, deliberately not configurable — raising it
+   trades a catchable error for the crash it exists to prevent.
+4. ~~**Findings 2–4 — markers or fixes?**~~ **Fixed, all five**, on Dmitry's instruction. § 9 has the
+   result.
+
+**What is left to agree is questions 1 and 2**, which are the two that shape the code:
+
+- a function's body is an **expression** and a procedure's a **statement list**;
+- what a procedure body may contain — and **the ground under this question has moved.**
+
+### Question 2 has to be re-asked, because its premise is gone
+
+The note argued that a routine body may not contain DDL *because DDL inside any transaction threw
+and kept the change*. That was true when it was written and is not true now: § 9 closed it. And the
+follow-up claim this section first carried — that the ALTER family would still scan rows outside the
+transaction — **was written without measuring and turned out to be wrong.** Measured afterwards:
+`RENAME TABLE`, `DROP COLUMN`, `ALTER COLUMN TYPE` and `ADD COLUMN`, each run inside a transaction
+that had just inserted a row, all keep that row. Routing the eleven scans through `ScanStore` closed
+`AUDIT-2026-07.md` finding 35 as well as finding 19, and the test asserts the row rather than the
+absence of an exception.
+
+So the honest position is now: **nothing measured today prevents a procedure body from containing
+DDL.** What remains against it is not a defect but a design question — whether a routine that
+reshapes the schema mid-statement is something this engine should offer at all, given that the
+statement firing it is holding a plan built against the old schema. That is a decision, and it is
+Dmitry's, not a limitation to report.
+
+Transaction control in a body stays refused regardless: § 2's measurement of a nested `COMMIT`
+tearing the calling statement with no error at all is untouched by any of this.
