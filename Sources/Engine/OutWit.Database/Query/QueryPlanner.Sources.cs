@@ -264,6 +264,10 @@ public sealed partial class QueryPlanner
     {
         var subqueryIterator = Plan(subquery.Subquery);
         var alias = subquery.Alias ?? throw new InvalidOperationException("Subquery in FROM must have an alias");
+
+        if (subquery.ColumnAliases is { Count: > 0 } names)
+            subqueryIterator = new IteratorRenameColumns(subqueryIterator, names);
+
         return WrapWithAlias(subqueryIterator, alias);
     }
 

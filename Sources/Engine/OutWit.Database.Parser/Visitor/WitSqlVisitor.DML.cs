@@ -34,6 +34,10 @@ internal sealed partial class WitSqlVisitor
         {
             select = VisitSelectStatementWithCte(selectCtx, isRecursive, cteDefinitions);
         }
+        else if (queryTerm.valuesQuery() is { } valuesCtx)
+        {
+            select = VisitValuesQuery(valuesCtx);
+        }
         else
         {
             // Nested queryExpression in parentheses
@@ -55,6 +59,10 @@ internal sealed partial class WitSqlVisitor
                 if (rightTerm.selectStatement() is { } rightSelectCtx)
                 {
                     rightQuery = VisitSelectStatement(rightSelectCtx);
+                }
+                else if (rightTerm.valuesQuery() is { } rightValuesCtx)
+                {
+                    rightQuery = VisitValuesQuery(rightValuesCtx);
                 }
                 else
                 {
@@ -135,6 +143,10 @@ internal sealed partial class WitSqlVisitor
             Line = context.Start.Line,
             Column = context.Start.Column,
             IsDistinct = context.DISTINCT() != null,
+            // TOP n is SQL Server's spelling of a row limit, and it is mapped onto the limit the
+            // engine already has rather than carried as a second concept. Nothing downstream needs
+            // to learn two ways of saying the same thing.
+            LimitCount = context.topClause() is { } top ? VisitExpression(top.expression()) : null,
             IsRecursive = isRecursive,
             CteDefinitions = cteDefinitions,
             SelectList = VisitSelectList(context.selectList()),
@@ -173,6 +185,26 @@ internal sealed partial class WitSqlVisitor
     public override WitSqlStatementSelect VisitSelectStatement(WitSqlParser.SelectStatementContext context)
     {
         return VisitSelectStatementWithCte(context, false, null);
+    }
+
+    /// <summary>
+    /// <c>VALUES (1), (2)</c> - a query whose rows are written out rather than read.
+    /// </summary>
+    private WitSqlStatementSelect VisitValuesQuery(WitSqlParser.ValuesQueryContext context)
+    {
+        var rows = context.valuesList().valueRow()
+            .Select(row => (IReadOnlyList<WitSqlExpression>)row.expression()
+                .Select(VisitExpression)
+                .ToList())
+            .ToList();
+
+        return new WitSqlStatementSelect
+        {
+            Line = context.Start.Line,
+            Column = context.Start.Column,
+            SelectList = [new ClauseSelectItem { IsStar = true }],
+            ValuesRows = rows
+        };
     }
 
     public override List<ClauseSelectItem> VisitSelectList(WitSqlParser.SelectListContext context)
@@ -224,6 +256,9 @@ internal sealed partial class WitSqlVisitor
             WitSqlParser.SubqueryTableSourceContext sub => new TableSourceSubquery
             {
                 Subquery = VisitQueryExpression(sub.queryExpression()),
+                ColumnAliases = sub.derivedColumnList() is { } derived
+                    ? derived.columnName().Select(GetColumnName).ToList()
+                    : null,
                 Alias = NormalizeIdentifier(sub.alias().GetText())
             },
             _ => throw new InvalidOperationException($"Unknown table source type: {context.GetType()}")
