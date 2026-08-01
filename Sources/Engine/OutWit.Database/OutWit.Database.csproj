@@ -11,6 +11,15 @@
   </PropertyGroup>
 
   <ItemGroup>
+    <!--
+      IteratorExcludeInternal is internal - it is a plan detail, not API. The planner's own tests
+      assert plan shape, and SELECT * now always ends in that wrapper, so they have to be able to
+      see through it to the iterator underneath.
+    -->
+    <InternalsVisibleTo Include="OutWit.Database.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="OutWit.Common" Version="1.3.2" />
     <PackageReference Include="OutWit.Common.MemoryPack" Version="1.1.3" />
   </ItemGroup>

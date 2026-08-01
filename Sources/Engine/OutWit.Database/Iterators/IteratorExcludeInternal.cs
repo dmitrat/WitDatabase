@@ -61,6 +61,19 @@ internal sealed class IteratorExcludeInternal : IteratorBase
 
     #endregion
 
+    #region Properties
+
+    /// <summary>
+    /// The iterator whose rows this one narrows to the schema.
+    /// </summary>
+    /// <remarks>
+    /// Exposed for plan-shape tests. SELECT * now always ends in this wrapper, so a test that wants
+    /// to assert what the plan underneath looks like has to be able to see through it.
+    /// </remarks>
+    internal IResultIterator Source => m_source;
+
+    #endregion
+
     #region Functions
 
     /// <summary>

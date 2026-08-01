@@ -312,16 +312,22 @@ public sealed partial class QueryPlanner
 
     private IResultIterator ApplyProjection(IResultIterator iterator, IReadOnlyList<ClauseSelectItem> selectList)
     {
-        // For SELECT *, we need to exclude internal columns like _rowid
+        // SELECT * emits exactly the source schema: its columns, once, under their own names.
+        //
+        // This used to wrap only when the source carried an internal column such as _rowid, and pass
+        // the raw rows through otherwise - which was wrong for a derived table. IteratorAlias
+        // deliberately puts every column into the row TWICE, qualified and bare, so that both X.Id
+        // and Id resolve; its schema is correct but its rows are not a result. With no _rowid to
+        // trigger the wrapper, that doubling reached the caller:
+        //
+        //     SELECT * FROM (SELECT Id, TId FROM S) AS X  ->  X.Id, X.TId, Id, TId
+        //
+        // A row twice as wide as asked for, with duplicate names - which an ordinal reader misreads
+        // silently rather than failing on. The wrapper maps by schema ordinal, so applying it always
+        // is both the fix and the simpler rule. Every table scan already carried _rowid and was
+        // wrapped anyway, so the only newly wrapped shape is the derived table.
         if (IsSelectStar(selectList))
-        {
-            // Only wrap if the source contains internal columns
-            if (IteratorExcludeInternal.NeedsFiltering(iterator.Schema))
-            {
-                return new IteratorExcludeInternal(iterator);
-            }
-            return iterator;
-        }
+            return new IteratorExcludeInternal(iterator);
 
         return new IteratorProject(iterator, selectList, m_context);
     }

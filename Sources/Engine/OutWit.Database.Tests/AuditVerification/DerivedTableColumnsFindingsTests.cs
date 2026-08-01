@@ -49,11 +49,6 @@ public sealed class DerivedTableColumnsFindingsTests : WitSqlEngineTestsBase
     #region Tests
 
     [Test]
-    [Ignore("CONFIRMED 2026-08-01 by execution, and pre-existing - v9.0.0 behaves identically. " +
-            "SELECT * over an aliased subquery expands to every column TWICE, once qualified and " +
-            "once bare: (SELECT Id, TId FROM S) AS X yields X.Id, X.TId, Id, TId. SELECT * over a " +
-            "plain table is correct, and naming the columns explicitly is correct, so the fault is " +
-            "the star expansion over a derived table. engine, Query/QueryPlanner + IteratorAlias")]
     public void StarOverADerivedTableExpandsEachColumnOnceTest()
     {
         var row = m_engine.Query("SELECT * FROM (SELECT Id, TId FROM S) AS X")[0];
