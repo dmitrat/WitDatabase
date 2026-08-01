@@ -199,10 +199,68 @@ built. Nothing on the list is currently in this bucket: every item was decided a
 
 ---
 
-## 6. Next
+## 6. What was built, 2026-08-01
 
-- The oracle measures **syntax acceptance**. Whether the engines *agree on the answer* is a further
-  question, and phase 3's lesson applies directly: an acceptance oracle cannot see a wrong answer. The
-  corpus should grow value comparisons for the shapes 9b and 9c add.
-- `UnbuiltCapabilityCorpusTests` inverts as each item lands: a capability that starts working must
-  fail its "absent" pin, and that failure is the signal to move it.
+**9a and 9b and 9c are done.** 9d is the remaining item and is deliberately left to its own session.
+
+### 9a - the two defects the feature work sat on
+
+**An aggregate now resolves the same way wherever it appears.** One capability was torn across three
+places, and each had to be fixed for any of them to matter: detection was a switch over four of the
+AST's nineteen expression types falling through to `false`; `HAVING` evaluation was a switch over the
+same four whose default handed the expression to the plain row evaluator, which refuses aggregates;
+and the select-list projection used the accumulator only when the item *was* an aggregate rather than
+when it *contained* one. A fourth thing surfaced only after those three - the group's rows were kept
+only when a `HAVING` clause existed, so an item that needed them computed its aggregate over an empty
+list and returned NULL, a wrong answer rather than an error.
+
+**The revert test earned its keep again.** Putting the detector back left all three recorded tests
+green: each writes `GROUP BY` explicitly, and that alone routes the query, so the detector was never
+asked anything. The test that asks it drops `GROUP BY` - and finding that is what exposed the third
+and fourth breaks.
+
+**`SELECT *` over a derived table returns its columns once.** `IteratorAlias` puts every column into
+the row twice on purpose, qualified and bare, so both `X.Id` and `Id` resolve; its schema is correct
+and its rows are not a result. `SELECT *` passed rows through untouched unless an internal column was
+present, and a derived table has none. Applying the wrapper conditionally was measured to be wrong:
+with the condition "the top iterator is an alias", the same query under `WHERE`, `ORDER BY` or
+`LIMIT` slips past, because each hands the row through unchanged.
+
+### 9b - three additions, and a regression the corpus caught
+
+`TOP n`, a `VALUES` table source, a derived column list. `VALUES` is a query term rather than only a
+table source, so it works wherever a query goes, and it is carried on the select statement rather
+than given a statement type of its own - which would have needed a union tag and forced every place
+typed to `WitSqlStatementSelect` to learn a second shape.
+
+**Adding `TOP` as a token took `Top` away as a column name**, and the keyword corpus said so:
+*"these keywords stopped working as column names - a grammar regression"*. It is non-reserved now.
+A pinned list that has been proved able to fail is worth having.
+
+### 9c - one capability, cheaper than priced
+
+`LATERAL`, `CROSS APPLY`, `OUTER APPLY`. The estimate said "real planner work"; the measurement said
+the engine already evaluates a subquery per outer row in `EXISTS`, `IN` and a scalar position, and
+what was missing was reaching that from a table source.
+
+Join reordering is off whenever a `LATERAL` is present: the optimiser cannot know that a lateral
+reads the row beside it, and one moved to the front would resolve its outer columns against nothing.
+
+### Ledger
+
+**33 `[Ignore(…)]` + 14 = 47**, from 35 + 14 = 49 when the phase opened. Three markers closed, one
+opened and closed within the phase.
+
+---
+
+## 7. Next
+
+- **9d, the routine subsystem**, in its own session. Its acceptance is the design note in § 5, and
+  the question that shapes everything else is re-entrancy against the write lock: phase 8 measured
+  DDL inside a trigger deadlocking against its caller *and failing part-way*, and a function reachable
+  from a computed column or an index expression re-enters the engine **per row**.
+- The oracle measures **syntax acceptance**. Whether the engines agree on the *answer* is a further
+  question, and phase 3's lesson applies: an acceptance oracle cannot see a wrong answer. The shapes
+  9b and 9c added are the natural first candidates for value comparison.
+- `UnbuiltCapabilityCorpusTests` now pins six capabilities as built and two as absent. It inverted as
+  each landed, which is what it was written to do rather than to be remembered.
