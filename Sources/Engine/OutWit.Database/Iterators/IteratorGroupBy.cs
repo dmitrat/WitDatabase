@@ -7,6 +7,7 @@ using OutWit.Database.Parser.Schema.Clauses;
 using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Values;
+using OutWit.Database.Parser.Analysis;
 
 namespace OutWit.Database.Iterators;
 
@@ -71,7 +72,11 @@ public sealed class IteratorGroupBy : IteratorBase
         m_schema = BuildSchema(selectList);
         
         // Only store all rows if HAVING clause exists (needed for aggregate evaluation in HAVING)
-        m_needsAllRows = havingClause != null;
+        // HAVING is not the only thing that needs the group's rows. A select item that CONTAINS an
+        // aggregate without BEING one - MAX(Age) BETWEEN 1 AND 200 - is evaluated over the group
+        // rather than from an accumulator, and with this left at "HAVING only" it was computed over
+        // an empty list and quietly returned NULL. A wrong answer, not an error.
+        m_needsAllRows = havingClause != null || selectList.Any(NeedsGroupRows);
     }
 
     #endregion
@@ -239,6 +244,17 @@ public sealed class IteratorGroupBy : IteratorBase
         }
     }
 
+    /// <summary>
+    /// Whether this select item has to be evaluated over the whole group rather than from an
+    /// accumulator: it mentions an aggregate somewhere but is not itself a single aggregate call.
+    /// </summary>
+    private static bool NeedsGroupRows(ClauseSelectItem item) =>
+        item.Expression is not null
+        && !(item.Expression is WitSqlExpressionFunctionCall direct && IsAggregateFunction(direct))
+        && WitSqlNodes.SelfAndDescendants(item.Expression)
+            .OfType<WitSqlExpressionFunctionCall>()
+            .Any(IsAggregateFunction);
+
     private static WitSqlValue GetAggregateResult(Accumulator acc, WitSqlExpressionFunctionCall func)
     {
         var funcName = func.FunctionName.ToUpperInvariant();
@@ -277,7 +293,11 @@ public sealed class IteratorGroupBy : IteratorBase
             }
             else if (item.Expression != null && group.FirstRow.HasValue)
             {
-                values[i] = m_evaluator.Evaluate(item.Expression, group.FirstRow.Value);
+                // EvaluateAggregate, not Evaluate: the select item may CONTAIN an aggregate without
+                // being one - MAX(Age) BETWEEN 1 AND 200, IIF(COUNT(*) > 1, …), CAST(SUM(x) AS INT).
+                // The plain evaluator refuses aggregates, so those threw "Function not supported".
+                // It falls back to plain evaluation when there is no aggregate in the expression.
+                values[i] = m_evaluator.EvaluateAggregate(item.Expression, group.AllRows, group.FirstRow.Value);
             }
             else
             {

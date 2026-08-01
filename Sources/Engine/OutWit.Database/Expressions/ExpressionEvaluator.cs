@@ -14,6 +14,9 @@ public sealed partial class ExpressionEvaluator
 
     private readonly ContextExecution m_context;
 
+    /// <summary>Aggregates already computed for the group being evaluated, or null.</summary>
+    private IReadOnlyDictionary<WitSqlExpressionFunctionCall, WitSqlValue>? m_aggregates;
+
     #endregion
 
     #region Constructors
