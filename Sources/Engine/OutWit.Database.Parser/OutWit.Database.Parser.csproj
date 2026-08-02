@@ -37,6 +37,17 @@
       unchanged, which is the point of the internalisation in the first place.
     -->
     <InternalsVisibleTo Include="OutWit.Database.Parser.Tests" />
+
+    <!--
+      And to the engine's tests, for one corpus: KnownFunctionCorpusTests asks the generated lexer
+      which tokens can head a function call, and checks every one of them against the set of
+      functions the engine can actually evaluate. The question spans both assemblies - the grammar
+      admits the name, the engine implements it - so the fixture has to live with the engine and
+      still see the vocabulary. Taking the list from the lexer rather than maintaining one by hand
+      is the whole point: a function added to the grammar tomorrow is covered without anyone
+      remembering.
+    -->
+    <InternalsVisibleTo Include="OutWit.Database.Tests" />
   </ItemGroup>
 
 	<!--

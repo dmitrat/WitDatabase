@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Definitions;
 
@@ -40,6 +40,7 @@ public sealed partial class SchemaCatalog : IDisposable
     #region Fields
 
     private readonly IKeyValueStore m_store;
+    private readonly AsyncLocal<ITransaction?> m_ambientTransaction = new();
     private readonly ReaderWriterLockSlim m_lock = new(LockRecursionPolicy.NoRecursion);
     private readonly Dictionary<string, DefinitionTable> m_tables = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DefinitionIndex> m_indexes = new(StringComparer.OrdinalIgnoreCase);
@@ -58,10 +59,116 @@ public sealed partial class SchemaCatalog : IDisposable
     /// <summary>
     /// Creates a new SchemaCatalog backed by the specified store.
     /// </summary>
+    /// <param name="store">The key-value store holding the schema records.</param>
     public SchemaCatalog(IKeyValueStore store)
     {
         m_store = store;
         LoadSchema();
+    }
+
+    #endregion
+
+    #region Transaction Routing
+
+    /// <summary>
+    /// The transaction the calling flow currently has open, or null for an autocommit caller.
+    /// Schema writes are routed through it - see <see cref="PutSchemaRecord"/> for why.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Ambient, and per execution flow, for two measured reasons.</b> A catalog is a property of
+    /// the <i>database</i> and is deliberately shared between sessions, while a transaction belongs
+    /// to <i>one</i> session - so a single field on the catalog would let one session's DDL be
+    /// written into another session's transaction. And under MVCC, which is the ADO and EF default,
+    /// <c>BeginTransaction</c> takes no write lock at all, so two sessions really are inside
+    /// transactions at the same time. This is the same shape as
+    /// <c>System.Transactions.Transaction.Current</c>, and for the same reason.
+    /// </para>
+    /// <para>
+    /// The limit, stated rather than discovered later: a caller that opens its transaction on one
+    /// execution flow and runs DDL on an unrelated one is not covered - the value does not flow
+    /// there, and such a caller falls back to the direct store write, which is what every caller did
+    /// before. An <c>ITransaction</c> is not thread-safe and neither is a <c>DbConnection</c>, so
+    /// that caller is already outside the contract.
+    /// </para>
+    /// </remarks>
+    public ITransaction? AmbientTransaction
+    {
+        get => m_ambientTransaction.Value;
+        set => m_ambientTransaction.Value = value;
+    }
+
+    /// <summary>
+    /// Writes a schema record through the caller's open transaction when there is one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The whole of <c>AUDIT-2026-07.md</c> finding 19 sits behind this method. The catalog is built
+    /// over the <c>TransactionalStore</c> itself, so <c>m_store.Put</c> is an <b>autocommit</b> write
+    /// that asks for the database write lock. A transaction holds that lock for its lifetime and
+    /// <c>DatabaseLock</c> refuses same-thread re-entry, so every schema write inside a transaction
+    /// threw <c>LockRecursionException</c> - <b>after</b> the in-memory dictionary had already been
+    /// changed, so the caller was told the statement failed while the change was permanent.
+    /// </para>
+    /// <para>
+    /// Routing through the transaction fixes both halves at once: the write reaches the
+    /// transaction's buffer rather than the lock, and a rollback discards it along with the rows it
+    /// describes. It is the same treatment <c>SaveTableRowId</c> and <c>SaveTableRowCount</c> were
+    /// given when the row counters had the same fault; the schema-blob writers were simply never
+    /// included.
+    /// </para>
+    /// <para>
+    /// Which transaction that is comes from <see cref="AmbientTransaction"/> rather than from a
+    /// parameter, so that no schema writer can be added later that forgets to accept one - the way
+    /// the blob writers were left out when the row counters were given theirs.
+    /// </para>
+    /// </remarks>
+    private void PutSchemaRecord(ReadOnlySpan<byte> key, ReadOnlySpan<byte> value)
+    {
+        var transaction = m_ambientTransaction.Value;
+
+        // The ambient transaction when the caller did not name one: a DML path passes the engine's
+        // transaction explicitly and gets the same object either way, while a DDL path - which never
+        // had a parameter to pass - would otherwise write straight to the store and ask for the
+        // write lock its own transaction is holding.
+        transaction ??= m_ambientTransaction.Value;
+
+        if (transaction == null)
+            m_store.Put(key, value);
+        else
+            transaction.Put(key, value);
+    }
+
+    /// <summary>
+    /// Deletes a schema record through the caller's open transaction when there is one.
+    /// </summary>
+    private void DeleteSchemaRecord(ReadOnlySpan<byte> key)
+    {
+        var transaction = m_ambientTransaction.Value;
+
+        if (transaction == null)
+            m_store.Delete(key);
+        else
+            transaction.Delete(key);
+    }
+
+    /// <summary>
+    /// Reads a schema record through the caller's open transaction when there is one.
+    /// </summary>
+    /// <remarks>
+    /// A plain <c>m_store.Get</c> takes a <b>read</b> lock, which the same recursion guard refuses to
+    /// a thread already holding the write lock - measured as
+    /// <c>ALTER TABLE ADD COLUMN</c> failing with <i>"Cannot acquire read lock"</i> rather than the
+    /// write-lock message its neighbours gave. Reading through the transaction also means a reload
+    /// sees what the transaction itself has written.
+    /// </remarks>
+    private byte[]? GetSchemaRecord(ReadOnlySpan<byte> key)
+    {
+        var transaction = m_ambientTransaction.Value;
+
+        return transaction == null
+            ? m_store.Get(key)
+            : transaction.Get(key);
     }
 
     #endregion
@@ -331,6 +438,12 @@ public sealed partial class SchemaCatalog : IDisposable
         //
         // Note it goes to the transaction's buffer, not to the store, so it does not reach for a
         // write lock the transactional store already holds.
+        // The ambient transaction when the caller did not name one: a DML path passes the engine's
+        // transaction explicitly and gets the same object either way, while a DDL path - which never
+        // had a parameter to pass - would otherwise write straight to the store and ask for the
+        // write lock its own transaction is holding.
+        transaction ??= m_ambientTransaction.Value;
+
         if (transaction == null)
             m_store.Put(keyBytes.AsSpan(), rowIdBytes);
         else
@@ -344,7 +457,7 @@ public sealed partial class SchemaCatalog : IDisposable
         ROWID_PREFIX_BYTES.CopyTo(keyBytes, 0);
         tableNameBytes.CopyTo(keyBytes, ROWID_PREFIX_BYTES.Length);
 
-        var rowIdData = m_store.Get(keyBytes.AsSpan());
+        var rowIdData = GetSchemaRecord(keyBytes.AsSpan());
         if (rowIdData != null && rowIdData.Length == 8)
         {
             m_tableRowIds[tableName] = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(rowIdData);
@@ -358,7 +471,7 @@ public sealed partial class SchemaCatalog : IDisposable
         ROWID_PREFIX_BYTES.CopyTo(keyBytes, 0);
         tableNameBytes.CopyTo(keyBytes, ROWID_PREFIX_BYTES.Length);
 
-        m_store.Delete(keyBytes.AsSpan());
+        DeleteSchemaRecord(keyBytes.AsSpan());
         m_tableRowIds.Remove(tableName);
     }
 
@@ -444,6 +557,12 @@ public sealed partial class SchemaCatalog : IDisposable
         
         // Through the transaction when there is one - same reasoning as the row counts and the row-id
         // counters above, and it keeps all three consistent with each other.
+        // The ambient transaction when the caller did not name one: a DML path passes the engine's
+        // transaction explicitly and gets the same object either way, while a DDL path - which never
+        // had a parameter to pass - would otherwise write straight to the store and ask for the
+        // write lock its own transaction is holding.
+        transaction ??= m_ambientTransaction.Value;
+
         if (transaction == null)
             m_store.Put(ROWVERSION_KEY_BYTES.AsSpan(), valueBytes);
         else
@@ -476,7 +595,7 @@ public sealed partial class SchemaCatalog : IDisposable
 
     private void LoadRowVersion()
     {
-        var data = m_store.Get(ROWVERSION_KEY_BYTES.AsSpan());
+        var data = GetSchemaRecord(ROWVERSION_KEY_BYTES.AsSpan());
         if (data != null && data.Length == 8)
         {
             m_globalRowVersion = System.Buffers.Binary.BinaryPrimitives.ReadUInt64LittleEndian(data);
@@ -798,6 +917,12 @@ public sealed partial class SchemaCatalog : IDisposable
         //
         // Repeated writes to the same key inside one transaction collapse to a single entry in its
         // buffer, so this costs one write-set entry per table touched, not one per row.
+        // The ambient transaction when the caller did not name one: a DML path passes the engine's
+        // transaction explicitly and gets the same object either way, while a DDL path - which never
+        // had a parameter to pass - would otherwise write straight to the store and ask for the
+        // write lock its own transaction is holding.
+        transaction ??= m_ambientTransaction.Value;
+
         if (transaction == null)
             m_store.Put(keyBytes.AsSpan(), countBytes);
         else
@@ -811,7 +936,7 @@ public sealed partial class SchemaCatalog : IDisposable
         ROWCOUNT_PREFIX_BYTES.CopyTo(keyBytes, 0);
         tableNameBytes.CopyTo(keyBytes, ROWCOUNT_PREFIX_BYTES.Length);
 
-        var countData = m_store.Get(keyBytes.AsSpan());
+        var countData = GetSchemaRecord(keyBytes.AsSpan());
         if (countData != null && countData.Length == 8)
         {
             m_tableRowCounts[tableName] = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(countData);
@@ -825,7 +950,7 @@ public sealed partial class SchemaCatalog : IDisposable
         ROWCOUNT_PREFIX_BYTES.CopyTo(keyBytes, 0);
         tableNameBytes.CopyTo(keyBytes, ROWCOUNT_PREFIX_BYTES.Length);
 
-        m_store.Delete(keyBytes.AsSpan());
+        DeleteSchemaRecord(keyBytes.AsSpan());
         m_tableRowCounts.Remove(tableName);
     }
 

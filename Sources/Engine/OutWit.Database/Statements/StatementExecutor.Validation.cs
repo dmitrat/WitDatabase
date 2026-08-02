@@ -1,6 +1,7 @@
 using OutWit.Database.Definitions;
 using OutWit.Database.Expressions;
 using OutWit.Database.Parser;
+using OutWit.Database.Parser.Statements;
 using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Values;
@@ -1232,6 +1233,49 @@ public sealed partial class StatementExecutor
             return;
 
         ValidateForeignKeyReference(constraint.ForeignKey, row, tableName);
+    }
+
+    #endregion
+
+    #region Declaration-time validation
+
+    /// <summary>
+    /// Refuses a DDL statement whose stored expressions name a function the engine cannot evaluate.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured 2026-08-01: a <c>CHECK</c>, a computed column, an index expression and a view all
+    /// accepted <c>NoSuchFunc(V)</c> at declaration. Two threw at first use and the computed column
+    /// answered NULL, which is worse. Phase 7's rule is accepted, enforced, or refused, and the
+    /// declaration is the last moment the caller still has the statement that is wrong in their hand
+    /// and the table has no rows depending on it.
+    /// </para>
+    /// <para>
+    /// Asked of the <b>whole statement</b> rather than of each clause, so a place a function can be
+    /// written that nobody listed here is still covered - a column <c>CHECK</c>, a table
+    /// <c>CHECK</c>, a computed column and a <c>DEFAULT</c> are four such places in
+    /// <c>CREATE TABLE</c> alone, and <c>ALTER TABLE</c> reaches three of them again. The walk stops
+    /// at a nested statement, so a <c>CREATE TABLE … AS SELECT</c> is not dragged in.
+    /// </para>
+    /// <para>
+    /// <b>Views are deliberately not covered.</b> A view body is a query, and a query naming an
+    /// unknown function already fails loudly when it is selected from - there is no silent answer to
+    /// close there, and validating an arbitrary query body at declaration is a larger surface than
+    /// this finding asked for. Stated so the gap is a decision and not an oversight.
+    /// </para>
+    /// </remarks>
+    private static void RefuseUnknownFunctions(WitSqlStatement statement, string objectName)
+    {
+        var unknown = ExpressionFunctions.FirstUnknownFunction(statement);
+
+        if (unknown == null)
+            return;
+
+        throw new NotSupportedException(
+            $"'{objectName}' cannot be declared because it uses the function {unknown}(), which this "
+            + "engine does not have. A function named in a CHECK, a computed column, a DEFAULT or an "
+            + "index expression is evaluated for every row, so it has to exist before the schema can "
+            + "depend on it.");
     }
 
     #endregion

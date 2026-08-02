@@ -162,7 +162,7 @@ public sealed partial class WitSqlEngine
         var rowsToMove = new List<(long rowId, byte[] data)>();
 
         // Collect all rows with old prefix using Scan
-        foreach (var (key, value) in m_database.Scan(oldPrefix, GetNextPrefix(oldPrefix)))
+        foreach (var (key, value) in ScanStore(oldPrefix, GetNextPrefix(oldPrefix)))
         {
             var rowId = SchemaCatalog.ParseRowId(key, oldName);
             rowsToMove.Add((rowId, value));
@@ -226,7 +226,7 @@ public sealed partial class WitSqlEngine
         var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
         var rowsToUpdate = new List<(long rowId, WitSqlValue[] newValues)>();
 
-        foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+        foreach (var (key, value) in ScanStore(prefix, GetNextPrefix(prefix)))
         {
             var rowId = SchemaCatalog.ParseRowId(key, tableName);
             var existingRow = table.DeserializeRow(value);
@@ -420,7 +420,7 @@ public sealed partial class WitSqlEngine
         var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
         var rowsToUpdate = new List<(long rowId, WitSqlValue[] values)>();
 
-        foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+        foreach (var (key, value) in ScanStore(prefix, GetNextPrefix(prefix)))
         {
             var rowId = SchemaCatalog.ParseRowId(key, tableName);
             var existingRow = oldTable.DeserializeRow(value);
@@ -543,7 +543,7 @@ public sealed partial class WitSqlEngine
 
             // Check for NULL values
             var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
-            foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+            foreach (var (key, value) in ScanStore(prefix, GetNextPrefix(prefix)))
             {
                 var row = table.DeserializeRow(value);
                 if (row[columnIndex].IsNull)
@@ -656,7 +656,7 @@ public sealed partial class WitSqlEngine
 
         // Validate all existing rows satisfy the check constraint
         var prefix = SchemaCatalog.GetTableDataPrefix(table.Name);
-        foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+        foreach (var (key, value) in ScanStore(prefix, GetNextPrefix(prefix)))
         {
             var row = table.DeserializeRow(value);
             var result = evaluator.Evaluate(expression, row);
@@ -693,7 +693,7 @@ public sealed partial class WitSqlEngine
         var seenValues = new HashSet<string>();
         var prefix = SchemaCatalog.GetTableDataPrefix(table.Name);
 
-        foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+        foreach (var (key, value) in ScanStore(prefix, GetNextPrefix(prefix)))
         {
             var row = table.DeserializeRow(value);
 
@@ -771,7 +771,7 @@ public sealed partial class WitSqlEngine
         var validValues = new HashSet<string>();
         // refTable.Name, not fk.ForeignTable: the parsed name may differ in case from the catalog's.
         var refPrefix = SchemaCatalog.GetTableDataPrefix(refTable.Name);
-        foreach (var (key, value) in m_database.Scan(refPrefix, GetNextPrefix(refPrefix)))
+        foreach (var (key, value) in ScanStore(refPrefix, GetNextPrefix(refPrefix)))
         {
             var row = refTable.DeserializeRow(value);
             var keyParts = new string[refColumnIndices.Length];
@@ -785,7 +785,7 @@ public sealed partial class WitSqlEngine
 
         // Validate all source rows reference valid values
         var sourcePrefix = SchemaCatalog.GetTableDataPrefix(table.Name);
-        foreach (var (key, value) in m_database.Scan(sourcePrefix, GetNextPrefix(sourcePrefix)))
+        foreach (var (key, value) in ScanStore(sourcePrefix, GetNextPrefix(sourcePrefix)))
         {
             var row = table.DeserializeRow(value);
 
@@ -896,7 +896,7 @@ public sealed partial class WitSqlEngine
             var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
             var rowsToUpdate = new List<(long rowId, WitSqlValue[] newValues)>();
 
-            foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+            foreach (var (key, value) in ScanStore(prefix, GetNextPrefix(prefix)))
             {
                 var rowId = SchemaCatalog.ParseRowId(key, tableName);
                 var existingRow = table.DeserializeRow(value);
@@ -935,7 +935,7 @@ public sealed partial class WitSqlEngine
             var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
             var rowsToUpdate = new List<(long rowId, WitSqlValue[] newValues)>();
 
-            foreach (var (key, value) in m_database.Scan(prefix, GetNextPrefix(prefix)))
+            foreach (var (key, value) in ScanStore(prefix, GetNextPrefix(prefix)))
             {
                 var rowId = SchemaCatalog.ParseRowId(key, tableName);
                 var existingRow = table.DeserializeRow(value);

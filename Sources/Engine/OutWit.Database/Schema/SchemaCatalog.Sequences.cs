@@ -185,7 +185,7 @@ public sealed partial class SchemaCatalog
         var key = $"{SEQUENCE_PREFIX}{name}:val";
         Span<byte> valueBytes = stackalloc byte[8];
         System.Buffers.Binary.BinaryPrimitives.WriteInt64LittleEndian(valueBytes, currentValue);
-        m_store.Put(Encoding.UTF8.GetBytes(key).AsSpan(), valueBytes);
+        PutSchemaRecord(Encoding.UTF8.GetBytes(key).AsSpan(), valueBytes);
     }
 
     /// <summary>
@@ -195,7 +195,7 @@ public sealed partial class SchemaCatalog
     private void SaveSequence(DefinitionSequence sequence)
     {
         var key = $"{SEQUENCE_PREFIX}{sequence.Name}:def";
-        m_store.Put(Encoding.UTF8.GetBytes(key).AsSpan(), sequence.ToMemoryPackBytes());
+        PutSchemaRecord(Encoding.UTF8.GetBytes(key).AsSpan(), sequence.ToMemoryPackBytes());
     }
 
     /// <summary>
@@ -205,8 +205,8 @@ public sealed partial class SchemaCatalog
     {
         var defKey = $"{SEQUENCE_PREFIX}{name}:def";
         var valKey = $"{SEQUENCE_PREFIX}{name}:val";
-        m_store.Delete(Encoding.UTF8.GetBytes(defKey).AsSpan());
-        m_store.Delete(Encoding.UTF8.GetBytes(valKey).AsSpan());
+        DeleteSchemaRecord(Encoding.UTF8.GetBytes(defKey).AsSpan());
+        DeleteSchemaRecord(Encoding.UTF8.GetBytes(valKey).AsSpan());
     }
 
     /// <summary>
@@ -215,13 +215,13 @@ public sealed partial class SchemaCatalog
     private void SaveSequencesList()
     {
         var names = m_sequences.Keys.ToList();
-        m_store.Put(SEQUENCES_KEY_BYTES.AsSpan(), names.ToMemoryPackBytes());
+        PutSchemaRecord(SEQUENCES_KEY_BYTES.AsSpan(), names.ToMemoryPackBytes());
     }
 
     private void LoadSequences()
     {
         // Load list of sequence names
-        var namesData = m_store.Get(SEQUENCES_KEY_BYTES.AsSpan());
+        var namesData = GetSchemaRecord(SEQUENCES_KEY_BYTES.AsSpan());
         if (namesData == null || namesData.Length == 0)
             return;
 
@@ -231,7 +231,7 @@ public sealed partial class SchemaCatalog
         foreach (var name in names)
         {
             var defKey = $"{SEQUENCE_PREFIX}{name}:def";
-            var defData = m_store.Get(Encoding.UTF8.GetBytes(defKey).AsSpan());
+            var defData = GetSchemaRecord(Encoding.UTF8.GetBytes(defKey).AsSpan());
             if (defData == null)
                 continue;
 
@@ -239,7 +239,7 @@ public sealed partial class SchemaCatalog
 
             // Load current value separately (may have been updated)
             var valKey = $"{SEQUENCE_PREFIX}{name}:val";
-            var valData = m_store.Get(Encoding.UTF8.GetBytes(valKey).AsSpan());
+            var valData = GetSchemaRecord(Encoding.UTF8.GetBytes(valKey).AsSpan());
             if (valData != null && valData.Length == 8)
             {
                 sequence.CurrentValue = System.Buffers.Binary.BinaryPrimitives.ReadInt64LittleEndian(valData);

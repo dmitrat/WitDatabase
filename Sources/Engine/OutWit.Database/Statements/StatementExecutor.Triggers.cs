@@ -126,7 +126,7 @@ public sealed partial class StatementExecutor
             foreach (var statement in trigger.ResolveStatements())
                 Execute(statement);
         }
-        catch (Exception ex)
+        catch (Exception ex) when (ex is not NestingLimitException)
         {
             throw new InvalidOperationException($"Error executing trigger body: {ex.Message}", ex);
         }

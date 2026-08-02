@@ -41,6 +41,12 @@ public sealed partial class WitSqlEngine
 
         m_currentTransaction = m_database.BeginTransaction(isolationLevel);
         m_rowCountDeltaSinceSavepoint = null;
+
+        // The catalog writes its records through this from here until the transaction ends. Without
+        // it every schema write is an autocommit Put that asks for the write lock this transaction
+        // is already holding, and DDL inside a transaction threw - after changing the catalog.
+        m_schema.AmbientTransaction = m_currentTransaction;
+
         return new TransactionHandle(this);
     }
 
@@ -69,6 +75,7 @@ public sealed partial class WitSqlEngine
         m_currentTransaction.Dispose();
         m_currentTransaction = null;
         m_rowCountDeltaSinceSavepoint = null;
+        m_schema.AmbientTransaction = null;
     }
 
     /// <summary>
@@ -83,10 +90,14 @@ public sealed partial class WitSqlEngine
         m_currentTransaction.Dispose();
         m_currentTransaction = null;
         m_rowCountDeltaSinceSavepoint = null;
-        
-        // Reload cached metadata (row counts, row IDs) from the store
-        // to ensure they reflect the actual persisted state after rollback.
-        m_schema.ReloadMetadataFromStore();
+        m_schema.AmbientTransaction = null;
+
+        // The whole catalog, not only the row counters. A rolled-back transaction may have created
+        // or dropped tables, views, indexes, triggers and sequences, and those changes went into the
+        // transaction and died with it - so the in-memory dictionaries now describe a schema the
+        // store does not have. Reloading the counters alone is what let a rolled-back CREATE TABLE
+        // leave its table behind and a rolled-back DROP TABLE lose one for good.
+        m_schema.ReloadFromStore();
     }
 
     #endregion

@@ -34,7 +34,7 @@ public sealed partial class SchemaCatalog
     private void LoadSchema()
     {
         // Load tables
-        var tablesData = m_store.Get(TABLES_KEY_BYTES.AsSpan());
+        var tablesData = GetSchemaRecord(TABLES_KEY_BYTES.AsSpan());
         if (tablesData != null)
         {
             var tableList = ReadSchemaRecord<List<DefinitionTable>>(tablesData, "tables");
@@ -47,7 +47,7 @@ public sealed partial class SchemaCatalog
         }
 
         // Load indexes
-        var indexesData = m_store.Get(INDEXES_KEY_BYTES.AsSpan());
+        var indexesData = GetSchemaRecord(INDEXES_KEY_BYTES.AsSpan());
         if (indexesData != null)
         {
             var indexList = ReadSchemaRecord<List<DefinitionIndex>>(indexesData, "indexes");
@@ -70,15 +70,52 @@ public sealed partial class SchemaCatalog
         LoadRowVersion();
     }
 
+    /// <summary>
+    /// Throws away the whole in-memory catalog and reads it back from the store.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Called after a rollback. Until schema writes went through the transaction they were
+    /// autocommit, so a rolled-back <c>CREATE TABLE</c> left the table and a rolled-back
+    /// <c>DROP TABLE</c> lost it for good; now the store no longer has the change, and this is what
+    /// makes the dictionaries agree with it again.
+    /// </para>
+    /// <para>
+    /// <c>ReloadMetadataFromStore</c> is deliberately not this: it reloads the row counters only, and
+    /// it is called on paths where the schema itself cannot have moved. Reloading everything is the
+    /// right answer after a rollback and the wrong one after a savepoint release.
+    /// </para>
+    /// </remarks>
+    public void ReloadFromStore()
+    {
+        m_lock.EnterWriteLock();
+        try
+        {
+            m_tables.Clear();
+            m_indexes.Clear();
+            m_views.Clear();
+            m_triggers.Clear();
+            m_sequences.Clear();
+            m_tableRowIds.Clear();
+            m_tableRowCounts.Clear();
+
+            LoadSchema();
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
     private void SaveSchema()
     {
         // Save tables
         var tableList = m_tables.Values.ToList();
-        m_store.Put(TABLES_KEY_BYTES.AsSpan(), tableList.ToMemoryPackBytes());
+        PutSchemaRecord(TABLES_KEY_BYTES.AsSpan(), tableList.ToMemoryPackBytes());
 
         // Save indexes
         var indexList = m_indexes.Values.ToList();
-        m_store.Put(INDEXES_KEY_BYTES.AsSpan(), indexList.ToMemoryPackBytes());
+        PutSchemaRecord(INDEXES_KEY_BYTES.AsSpan(), indexList.ToMemoryPackBytes());
     }
 
     #endregion

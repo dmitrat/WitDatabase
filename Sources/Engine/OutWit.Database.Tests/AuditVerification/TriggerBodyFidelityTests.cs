@@ -1,3 +1,6 @@
+using OutWit.Database.Definitions;
+using OutWit.Database.Parser;
+
 namespace OutWit.Database.Tests.AuditVerification;
 
 /// <summary>
@@ -130,15 +133,23 @@ public sealed class TriggerBodyFidelityTests : WitSqlEngineTestsBase
     /// </summary>
     /// <remarks>
     /// <para>
-    /// DDL inside a trigger deadlocks against the write lock held by the statement that fired it.
-    /// Measured 2026-07-31, with the storage fix in place and before this refusal was added:
-    /// <c>CREATE TRIGGER</c> succeeded, the first <c>INSERT</c> raised <i>"Cannot acquire write lock
-    /// - current thread already holds write lock"</i>, <b>and table Z had been created anyway</b> -
-    /// a failure that left half its work behind.
-    /// </para>
-    /// <para>
     /// This is phase 7's rule applied one area over: accepted, enforced, or refused at declaration
     /// time - never accepted and ignored.
+    /// </para>
+    /// <para>
+    /// <b>Why, as of 2026-08-01.</b> The original answer - DDL deadlocks against the write lock the
+    /// firing statement holds, and fails part-way - <b>no longer applies</b>: schema writes go
+    /// through the caller's transaction now and <c>AUDIT-2026-07.md</c> finding 19 is closed. The
+    /// reason the refusal is kept is measured and worse:
+    /// <see cref="DdlInsideATriggerDestroysWhatTheStatementIsWritingTest"/> shows a trigger body
+    /// dropping the table its own statement is writing, <b>reporting success</b>, and leaving
+    /// nothing. Read that test before considering this list obsolete.
+    /// </para>
+    /// <para>
+    /// <c>COMMIT</c> is in this list for a different and stronger reason: it is stopped by nothing at
+    /// runtime. It commits the firing statement's transaction, so the rest of that statement runs
+    /// outside one - measured as a three-row <c>INSERT</c> leaving two rows behind after its third
+    /// failed. DDL fails loudly; this does not fail.
     /// </para>
     /// </remarks>
     [TestCase("CREATE TABLE Z (Id INT)", "CREATE TABLE")]
@@ -151,6 +162,54 @@ public sealed class TriggerBodyFidelityTests : WitSqlEngineTestsBase
                 $"CREATE TRIGGER T AFTER INSERT ON Source FOR EACH ROW BEGIN {body}; END"),
             Throws.InstanceOf<NotSupportedException>().With.Message.Contains(named),
             "the refusal must name what it refused, so the caller can act on it");
+    }
+
+    /// <summary>
+    /// What the refusal above is actually protecting against, demonstrated by going round it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Written because the refusal's original justification stopped being true.</b> It rested on
+    /// DDL inside a trigger deadlocking against the write lock and failing part-way; that was fixed
+    /// on 2026-08-01 when schema writes were routed through the caller's transaction
+    /// (<c>AUDIT-2026-07.md</c> finding 19). A guard whose stated reason has been repaired is a guard
+    /// the next reader removes - correctly, on the evidence in front of them - so the real reason
+    /// needs to be a test rather than a sentence.
+    /// </para>
+    /// <para>
+    /// The real reason, measured: a trigger body runs <b>inside a loop over rows</b>, and
+    /// <c>DROP TABLE</c> against the table that loop is walking <b>reports success and destroys
+    /// it</b>. The statement says it worked; the table and the row it just wrote are gone; nothing
+    /// is raised. Compare the neighbouring cases, also measured: DDL against an unrelated object
+    /// works, and a DDL that fails rolls back cleanly. Only the object underneath the statement is
+    /// the problem.
+    /// </para>
+    /// <para>
+    /// The declaration refusal is bypassed here on purpose - through the catalog API, which takes a
+    /// definition rather than SQL. That is the only way to reach this state, which is the point:
+    /// <b>the refusal is the whole defence.</b>
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void DdlInsideATriggerDestroysWhatTheStatementIsWritingTest()
+    {
+        m_engine.CreateTrigger(new DefinitionTrigger
+        {
+            Name = "Destroyer",
+            TableName = "Source",
+            Time = TriggerTime.After,
+            Event = TriggerEvent.Insert,
+            ForEachRow = true,
+            Statements = WitSql.Parse("DROP TABLE Source").ToList()
+        });
+
+        // No exception: the statement reports success.
+        m_engine.Execute("INSERT INTO Source (Id) VALUES (1)");
+
+        Assert.That(m_engine.GetTable("Source"), Is.Null,
+            "this is what CREATE TRIGGER refuses at declaration - a statement that reports success "
+            + "and destroys the table it was writing to. If this ever stops being true, the refusal "
+            + "in RefuseNonDmlBody can be revisited; until then it is the only thing standing here");
     }
 
     /// <summary>
