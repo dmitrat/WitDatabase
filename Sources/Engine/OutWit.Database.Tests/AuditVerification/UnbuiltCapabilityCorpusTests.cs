@@ -70,8 +70,6 @@ public sealed class UnbuiltCapabilityCorpusTests : WitSqlEngineTestsBase
     /// alone.
     /// </para>
     /// </remarks>
-    [TestCase("CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END",
-        TestName = "user-defined function")]
     [TestCase("CREATE PROCEDURE GetAll AS BEGIN SELECT * FROM T; END", TestName = "stored procedure")]
     public void RoutineSyntaxParsesAndIsNotYetExecutedTest(string sql)
     {
@@ -85,6 +83,43 @@ public sealed class UnbuiltCapabilityCorpusTests : WitSqlEngineTestsBase
                 Throws.InstanceOf<NotSupportedException>(),
                 "execution is not built yet, and an unbuilt capability must be refused rather than "
                 + "half-performed. When this starts working, move the row out of this fixture");
+        });
+    }
+
+    #endregion
+
+    #region Built - and this fixture is where each one stopped being unbuilt
+
+    /// <summary>
+    /// User-defined functions work end to end.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This row has moved twice, and both moves were the fixture doing its job rather than being
+    /// maintained. It began as "refused by the parser"; the grammar landed and it failed. It became
+    /// "parses, execution refused"; execution landed and it failed again, with the message that told
+    /// whoever read it what to do - <i>move the row out of this fixture</i>.
+    /// </para>
+    /// <para>
+    /// It stays here rather than being deleted, in the section for capabilities the plan recorded as
+    /// absent and which are not. The full behaviour is covered by <c>ScalarFunctionTests</c>; what
+    /// this asserts is the one thing the corpus is for - the status of the item on the phase-9 list.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void UserDefinedFunctionsWorkEndToEndTest()
+    {
+        m_engine.Execute("CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_engine.Query("SELECT Doubled(21)")[0][0].AsInt64(), Is.EqualTo(42),
+                "a function is callable and returns its body's value");
+
+            Assert.That(m_engine.Query("SELECT Doubled(Age) FROM T ORDER BY Id")
+                    .Select(row => row[0].AsInt64()).ToArray(),
+                Is.EqualTo(new[] { 20L, 40L }),
+                "and it is evaluated per row when its argument is a column");
         });
     }
 

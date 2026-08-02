@@ -1,5 +1,7 @@
 using OutWit.Common.MemoryPack;
 using OutWit.Database.Definitions;
+using OutWit.Database.Parser.Analysis;
+using OutWit.Database.Parser.Expressions;
 
 namespace OutWit.Database.Schema;
 
@@ -83,14 +85,20 @@ public sealed partial class SchemaCatalog
     /// <summary>
     /// Drops a function. Returns false when there was none of that name.
     /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// A stored expression still names it - see <see cref="RefuseDropWhileDependedOn"/>.
+    /// </exception>
     public bool DropFunction(string name)
     {
         m_lock.EnterWriteLock();
         try
         {
-            if (!m_functions.Remove(name))
+            if (!m_functions.ContainsKey(name))
                 return false;
 
+            RefuseDropWhileDependedOn(name);
+
+            m_functions.Remove(name);
             SaveFunctions();
             return true;
         }
@@ -98,6 +106,105 @@ public sealed partial class SchemaCatalog
         {
             m_lock.ExitWriteLock();
         }
+    }
+
+    /// <summary>
+    /// Refuses to drop a function that a stored expression still names.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>RESTRICT</c> semantics, with no <c>CASCADE</c> offered. The reason is already on the books
+    /// in its worst form: <c>RENAME COLUMN</c> and <c>DROP COLUMN</c> leave expressions naming
+    /// something that no longer exists, and after that <b>the table cannot be written to at all</b>.
+    /// A dangling function reference is the same class, and refusing the drop is far cheaper than
+    /// discovering the table is dead.
+    /// </para>
+    /// <para>
+    /// <b>It walks the definitions rather than a dependency list.</b> A list is a second copy of a
+    /// fact, and phase 8 spent an entire audit on what happens when two copies disagree - the one
+    /// thing that actually broke came from storing a fact twice. Walking is slower and cannot go
+    /// stale, and this is a <c>DROP</c>, which happens once.
+    /// </para>
+    /// <para>
+    /// Here rather than in the executor because this is where the tables and indexes are. An
+    /// invariant enforced beside the data it protects cannot be bypassed by a second caller who did
+    /// not know to ask.
+    /// </para>
+    /// </remarks>
+    private void RefuseDropWhileDependedOn(string functionName)
+    {
+        foreach (var table in m_tables.Values)
+        {
+            foreach (var (expression, where) in StoredExpressionsOf(table))
+            {
+                if (!NamesFunction(expression, functionName))
+                    continue;
+
+                throw new InvalidOperationException(
+                    $"Function '{functionName}' cannot be dropped because {where} still uses it. "
+                    + "Drop or alter that first - a schema expression left naming a function that "
+                    + "does not exist makes the object it belongs to unusable.");
+            }
+        }
+
+        foreach (var index in m_indexes.Values)
+        {
+            if (index.Expressions is null)
+                continue;
+
+            foreach (var expression in index.Expressions)
+            {
+                if (expression is not null && NamesFunction(expression, functionName))
+                {
+                    throw new InvalidOperationException(
+                        $"Function '{functionName}' cannot be dropped because index '{index.Name}' "
+                        + "is built on an expression that uses it.");
+                }
+            }
+        }
+
+        foreach (var function in m_functions.Values)
+        {
+            if (!string.Equals(function.Name, functionName, StringComparison.OrdinalIgnoreCase)
+                && NamesFunction(function.Body, functionName))
+            {
+                throw new InvalidOperationException(
+                    $"Function '{functionName}' cannot be dropped because function "
+                    + $"'{function.Name}' calls it.");
+            }
+        }
+    }
+
+    private static IEnumerable<(WitSqlExpression Expression, string Where)> StoredExpressionsOf(
+        DefinitionTable table)
+    {
+        foreach (var column in table.Columns)
+        {
+            if (column.Check is { } check)
+                yield return (check, $"the CHECK on {table.Name}.{column.Name}");
+
+            if (column.Computed is { } computed)
+                yield return (computed, $"the computed column {table.Name}.{column.Name}");
+
+            if (column.Default is { } @default)
+                yield return (@default, $"the DEFAULT on {table.Name}.{column.Name}");
+        }
+
+        if (table.Checks is null)
+            yield break;
+
+        foreach (var check in table.Checks)
+        {
+            if (check is not null)
+                yield return (check, $"a CHECK on {table.Name}");
+        }
+    }
+
+    private static bool NamesFunction(WitSqlExpression expression, string functionName)
+    {
+        return WitSqlNodes.SelfAndDescendants(expression)
+            .OfType<WitSqlExpressionFunctionCall>()
+            .Any(call => string.Equals(call.FunctionName, functionName, StringComparison.OrdinalIgnoreCase));
     }
 
     #endregion

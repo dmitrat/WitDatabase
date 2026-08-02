@@ -135,6 +135,10 @@ public sealed partial class StatementExecutor
             WitSqlStatementCreateTrigger createTrigger => ExecuteCreateTrigger(createTrigger),
             WitSqlStatementDropTrigger dropTrigger => ExecuteDropTrigger(dropTrigger),
             
+            // DDL - Routines
+            WitSqlStatementCreateFunction createFunction => ExecuteCreateFunction(createFunction),
+            WitSqlStatementDropFunction dropFunction => ExecuteDropFunction(dropFunction),
+
             // DDL - Sequences
             WitSqlStatementCreateSequence createSequence => ExecuteCreateSequence(createSequence),
             WitSqlStatementDropSequence dropSequence => ExecuteDropSequence(dropSequence),

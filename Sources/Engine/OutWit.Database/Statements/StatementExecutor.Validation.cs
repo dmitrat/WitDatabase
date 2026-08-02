@@ -1264,9 +1264,16 @@ public sealed partial class StatementExecutor
     /// this finding asked for. Stated so the gap is a decision and not an oversight.
     /// </para>
     /// </remarks>
-    private static void RefuseUnknownFunctions(WitSqlStatement statement, string objectName)
+    private void RefuseUnknownFunctions(WitSqlStatement statement, string objectName)
     {
-        var unknown = ExpressionFunctions.FirstUnknownFunction(statement);
+        var unknown = ExpressionFunctions.FirstUnknownFunction(
+            statement,
+
+            // A user-defined function counts as known once the catalog has it. This is the one line
+            // phase 9d was always going to need here, and it is why the predicate takes a callback
+            // rather than consulting a fixed set: the answer depends on the database, not only on
+            // the build.
+            name => m_context.Database.GetFunction(name) != null);
 
         if (unknown == null)
             return;

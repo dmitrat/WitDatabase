@@ -252,6 +252,32 @@ public interface IDatabase
     void DropView(string name);
 
     /// <summary>
+    /// Get a user-defined function by name, or null.
+    /// </summary>
+    /// <remarks>
+    /// On this interface rather than reached through a cast to the engine, because the expression
+    /// evaluator needs it on the row path: a function call whose name is not a built-in resolves
+    /// here. The planner casts to <c>WitSqlEngine</c> for <c>INFORMATION_SCHEMA</c>, which is a cold
+    /// path; this one is evaluated per row and per argument, and it must not depend on which
+    /// implementation of the interface a caller supplied.
+    /// </remarks>
+    DefinitionFunction? GetFunction(string name);
+
+    /// <summary>
+    /// Create a user-defined function.
+    /// </summary>
+    void CreateFunction(DefinitionFunction function);
+
+    /// <summary>
+    /// Drop a user-defined function. Returns false when there was none of that name.
+    /// </summary>
+    /// <exception cref="InvalidOperationException">
+    /// A stored expression still names it. The catalog refuses the drop rather than leaving a
+    /// dangling reference, which is the state that makes a table unwritable.
+    /// </exception>
+    bool DropFunction(string name);
+
+    /// <summary>
     /// Get a trigger by name.
     /// </summary>
     DefinitionTrigger? GetTrigger(string triggerName);
