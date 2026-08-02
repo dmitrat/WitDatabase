@@ -61,6 +61,65 @@ public enum WitDbEngineMode
 }
 
 /// <summary>
+/// Lets a sweep be narrowed without editing the benchmark classes.
+/// </summary>
+/// <remarks>
+/// The full matrix is five engine modes times two or three table sizes across seven classes -
+/// roughly 1,175 benchmark cases, which is hours per pass. A baseline that is only ever taken once
+/// is not a baseline: a single run of anything in this repository has twice reported the opposite
+/// of what repeated runs reported. Narrowing the matrix from the environment is what makes running
+/// the same sweep twice and comparing the spread affordable.
+///
+/// <c>WITDB_BENCH_MODES=Default,BTree</c> and <c>WITDB_BENCH_SIZES=min</c> (or an explicit list such
+/// as <c>1000,5000</c>). Unset means the whole matrix, so a plain run is unchanged.
+/// </remarks>
+public static class BenchmarkSweep
+{
+    public static IEnumerable<WitDbEngineMode> Modes(params WitDbEngineMode[] all)
+    {
+        var requested = Environment.GetEnvironmentVariable("WITDB_BENCH_MODES");
+        if (string.IsNullOrWhiteSpace(requested))
+            return all;
+
+        var names = requested.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var selected = all.Where(m => names.Contains(m.ToString(), StringComparer.OrdinalIgnoreCase)).ToArray();
+
+        // An empty selection would silently measure nothing at all, which is the failure mode this
+        // whole exercise exists to avoid. Refuse instead.
+        if (selected.Length == 0)
+            throw new InvalidOperationException(
+                $"WITDB_BENCH_MODES='{requested}' selected none of: {string.Join(", ", all)}");
+
+        return selected;
+    }
+
+    public static IEnumerable<int> Sizes(params int[] all)
+    {
+        var requested = Environment.GetEnvironmentVariable("WITDB_BENCH_SIZES");
+        if (string.IsNullOrWhiteSpace(requested))
+            return all;
+
+        if (requested.Equals("min", StringComparison.OrdinalIgnoreCase))
+            return new[] { all.Min() };
+
+        if (requested.Equals("max", StringComparison.OrdinalIgnoreCase))
+            return new[] { all.Max() };
+
+        var wanted = requested
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Select(int.Parse)
+            .ToArray();
+
+        var selected = all.Where(wanted.Contains).ToArray();
+        if (selected.Length == 0)
+            throw new InvalidOperationException(
+                $"WITDB_BENCH_SIZES='{requested}' selected none of: {string.Join(", ", all)}");
+
+        return selected;
+    }
+}
+
+/// <summary>
 /// Helper class for creating WitDb connections with different configurations.
 /// </summary>
 public static class WitDbConnectionHelper

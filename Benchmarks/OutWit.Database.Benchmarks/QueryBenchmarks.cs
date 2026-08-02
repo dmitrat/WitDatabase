@@ -30,11 +30,15 @@ public class QueryBenchmarks : IDisposable
 
     #region Parameters
 
-    [Params(1000, 10000)]
+    [ParamsSource(nameof(TableSizeValues))]
     public int TableSize { get; set; }
 
-    [Params(WitDbEngineMode.BTree, WitDbEngineMode.Lsm, WitDbEngineMode.BTreeParallelAuto, WitDbEngineMode.LsmParallelAuto)]
+    public IEnumerable<int> TableSizeValues => BenchmarkSweep.Sizes(1000, 10000);
+
+    [ParamsSource(nameof(EngineModeValues))]
     public WitDbEngineMode EngineMode { get; set; }
+
+    public IEnumerable<WitDbEngineMode> EngineModeValues => BenchmarkSweep.Modes(WitDbEngineMode.Default, WitDbEngineMode.BTree, WitDbEngineMode.Lsm, WitDbEngineMode.BTreeParallelAuto, WitDbEngineMode.LsmParallelAuto);
 
     #endregion
 
@@ -235,7 +239,13 @@ public class QueryBenchmarks : IDisposable
         return cnt;
     }
 
-    [Benchmark(Description = "SELECT * (full scan) - SQLite", Baseline = true)]
+    // No Baseline here on purpose. BenchmarkDotNet allows one baseline per class unless the
+    // benchmarks are split into categories, so a single [Benchmark(Baseline = true)] made the Ratio
+    // column compare every operation in the class against one unrelated operation - the January
+    // report rated a 20-iteration seek "2.74x faster" than a 100-iteration one. Until the classes
+    // carry [BenchmarkCategory] the honest report has no Ratio column at all; ratios are computed
+    // per operation from the Mean column instead.
+    [Benchmark(Description = "SELECT * (full scan) - SQLite")]
     public int SelectAllSqlite()
     {
         int cnt = 0;

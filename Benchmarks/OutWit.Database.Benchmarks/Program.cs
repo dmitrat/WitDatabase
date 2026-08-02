@@ -4,18 +4,22 @@ namespace OutWit.Database.Benchmarks;
 
 public class Program
 {
-    public static void Main(string[] args)
+    public static int Main(string[] args)
     {
-        // Run all benchmarks or use command line filters
-        var summary = BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+        // "verify" runs the equivalence check rather than a timing sweep: every benchmark body
+        // once, comparing what WitDatabase, SQLite and LiteDB actually return. A timing comparison
+        // between engines that do not compute the same thing is not a measurement, so this is meant
+        // to be green before any sweep is believed. Exits non-zero on a disagreement.
+        if (args.Length > 0 && args[0].Equals("verify", StringComparison.OrdinalIgnoreCase))
+        {
+            var mode = args.Length > 1
+                ? Enum.Parse<WitDbEngineMode>(args[1], ignoreCase: true)
+                : WitDbEngineMode.Default;
 
-        // Or run specific benchmarks:
-        // BenchmarkRunner.Run<QueryBenchmarks>();
-        // BenchmarkRunner.Run<InsertBenchmarks>();
-        // BenchmarkRunner.Run<UpdateBenchmarks>();
-        // BenchmarkRunner.Run<JoinBenchmarks>();
-        // BenchmarkRunner.Run<AggregateBenchmarks>();
-        // BenchmarkRunner.Run<IndexBenchmarks>();
-        // BenchmarkRunner.Run<TransactionBenchmarks>();
+            return EquivalenceCheck.Run(mode);
+        }
+
+        BenchmarkSwitcher.FromAssembly(typeof(Program).Assembly).Run(args);
+        return 0;
     }
 }
