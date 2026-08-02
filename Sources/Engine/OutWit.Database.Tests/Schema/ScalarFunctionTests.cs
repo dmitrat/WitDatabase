@@ -342,6 +342,75 @@ public sealed class ScalarFunctionTests : WitSqlEngineTestsBase
     }
 
     /// <summary>
+    /// A view, a procedure - every object kind that can name a function holds the drop.
+    /// </summary>
+    /// <remarks>
+    /// <b>Views were missing, and the pre-release audit found it by execution.</b> A view's body is a
+    /// query rather than a stored row expression, so it was not among the definitions the refusal
+    /// walked - and a view could be left selecting a function that no longer exists, which is the
+    /// exact state the refusal was written to prevent. It prevented it for every object kind that
+    /// was on the list.
+    /// </remarks>
+    [Test]
+    public void EveryObjectKindThatNamesAFunctionHoldsTheDropTest()
+    {
+        m_engine.Execute("CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END");
+        m_engine.Execute("CREATE VIEW VW AS SELECT Doubled(V) AS D FROM T");
+
+        Assert.That(() => m_engine.Execute("DROP FUNCTION Doubled"),
+            Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("VW"),
+            "a view selecting it must hold the drop");
+
+        m_engine.Execute("DROP VIEW VW");
+        m_engine.Execute("CREATE PROCEDURE P AS BEGIN SELECT Doubled(1); END");
+
+        Assert.That(() => m_engine.Execute("DROP FUNCTION Doubled"),
+            Throws.InstanceOf<InvalidOperationException>().With.Message.Contains("P"),
+            "and so must a procedure using it");
+    }
+
+    /// <summary>
+    /// The declared return type is applied to what the body produces.
+    /// </summary>
+    /// <remarks>
+    /// <b>Found by the pre-release audit.</b> A function declared <c>RETURNS INT</c> whose body
+    /// returned <c>'not a number'</c> handed the text straight through, while
+    /// <c>INFORMATION_SCHEMA.ROUTINES</c> reported its type as <c>INTEGER</c> - the catalog
+    /// describing something the engine was not doing. A declared type that nothing checks is worse
+    /// than no declared type, because a consumer reads the catalog and builds against it. The same
+    /// converter a column write uses is applied, so a function and a column agree about what a
+    /// declared type means.
+    /// </remarks>
+    [Test]
+    public void TheDeclaredReturnTypeIsAppliedTest()
+    {
+        m_engine.Execute("CREATE FUNCTION AsText(N INT) RETURNS VARCHAR(20) AS BEGIN RETURN N * 2; END");
+        m_engine.Execute("CREATE FUNCTION AsNumber(S VARCHAR(20)) RETURNS INT AS BEGIN RETURN S; END");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_engine.Query("SELECT AsText(21)")[0][0].AsString(), Is.EqualTo("42"),
+                "an INT body under a VARCHAR return type comes back as text");
+
+            Assert.That(m_engine.Query("SELECT AsNumber('42')")[0][0].AsInt64(), Is.EqualTo(42),
+                "and a text body under an INT return type comes back as a number");
+        });
+    }
+
+    /// <summary>
+    /// And NULL stays NULL rather than being converted into a zero of the declared type.
+    /// </summary>
+    [Test]
+    public void ANullResultStaysNullTest()
+    {
+        m_engine.Execute("CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END");
+
+        Assert.That(m_engine.Query("SELECT Doubled(NULL)")[0][0].IsNull, Is.True,
+            "NULL is the absence of a value, and coercing it to a typed zero would be an answer "
+            + "where there was none");
+    }
+
+    /// <summary>
     /// And the refusal must be narrow: an unrelated function drops cleanly.
     /// </summary>
     [Test]

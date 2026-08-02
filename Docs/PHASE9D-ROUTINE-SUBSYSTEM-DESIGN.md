@@ -440,9 +440,103 @@ Dependencies, not value — the same rule phases 5–10 used.
    allowed and bounded at 32 - the opposite of a function, and for the reason that matters: every
    body statement passes `Execute`, which counts, while a function is evaluated inside an expression
    and never does. Two defects were found by the fixture's own tests, both recorded in the commit.
-6. **`CommandType.StoredProcedure`** on the ADO surface.
-7. **Corpus inversion** — `UnbuiltCapabilityCorpusTests` and the oracle report both move these two
-   from absent to built.
+6. ~~**`CommandType.StoredProcedure`** on the ADO surface.~~ **Done.** The command text is the
+   routine name and the parameter collection is the argument list, written into the `CALL` as the
+   parameters' own **names** so nothing is interpolated into SQL. Order is the collection's order,
+   because matching by name against the catalog would silently reorder a caller's arguments when the
+   names differ. Exercised through `DbConnection`/`DbCommand` only.
+7. ~~**Corpus inversion**~~ — **done as it happened.** Each row moved because a test failed, never
+   because someone remembered: `UnbuiltCapabilityCorpusTests` now holds both as built and its
+   half-built section is empty, and the old ADO pin asserting `StoredProcedure` threw failed the
+   moment it stopped being true.
+
+**Phase 9d is complete.** What is deliberately not in it is listed in § 7: table-valued functions,
+control flow in a body, `OUT` parameters, multiple result sets, transaction control in a body, and
+external code of any kind.
+
+---
+
+## 11. The audit before release, 2026-08-01
+
+Taken at Dmitry's instruction after the six steps, and by execution rather than by reading — the same
+rule that made the phase-8 audit worth more than the work it checked.
+
+### It found two defects, both mine, both the same class
+
+**1. `RETURNS` was decorative.** A function declared `RETURNS INT` whose body returned
+`'not a number'` handed the text straight through, and one declared `RETURNS VARCHAR(3)` returned
+twenty-two characters — while `INFORMATION_SCHEMA.ROUTINES` reported the type as `INTEGER`. The
+catalog described something the engine was not doing, which is exactly the class phase 7 spent
+itself closing, and **a declared type nothing checks is worse than no declared type**, because a
+consumer reads the catalog and builds against it. The value is now put through the same converter a
+column write uses, so a function and a column agree about what a declared type means. `NULL` stays
+`NULL` rather than becoming a typed zero.
+
+**2. `DROP FUNCTION` did not see views.** The refusal walked tables, indexes and other functions —
+every object kind that was on the list. A view's body is a query rather than a stored row expression,
+so a view could be left selecting a function that no longer exists, which is the exact state the
+refusal exists to prevent. Views and procedure bodies are now walked too.
+
+### What it confirmed rather than changed
+
+Probed by execution: a function in `GROUP BY`, `HAVING`, `ORDER BY`, `WHERE`, `UPDATE … SET`,
+`DELETE … WHERE`, `INSERT … VALUES` and over a scalar subquery; a `NULL` argument yielding `NULL`; a
+function called from a trigger body; a procedure calling a function; DDL in a procedure body rolled
+back by a later failure in the same call; `INFORMATION_SCHEMA` for routines created through SQL; and
+two sessions sharing one catalog seeing each other's routines. A cycle of functions **cannot form** —
+the drop is refused while a caller exists and the name cannot be redeclared — which was claimed when
+recursion was refused at declaration and is now measured.
+
+### The whole corpus, no category filter
+
+```
+Engine 2262 / 4    Core 2289 / 0    Parser 797 / 0    AdoNet 798 / 0    EntityFramework 554 / 0
+```
+
+**All four Engine failures are threshold assertions in `Category=Performance`, which CI excludes.**
+Three of them fail identically at the pre-9d baseline `c23b983`, so they are pre-existing. The fourth
+— the index scaling ratio — passes on both when the machine is not saturated: 8.15–8.80× against a
+limit of 12, where the single loaded run had said 13.30.
+
+**The write path was measured, not reasoned about.** Interleaved over three rounds, baseline against
+branch:
+
+```
+base    2.138   2.157   2.315 ms/row
+branch  2.205   2.347   2.176 ms/row
+```
+
+Under 2% apart with overlapping ranges and the branch faster in the third round — no measurable cost
+from the nesting counter, the ambient-transaction lookup or the routine dispatch. The first
+single-run comparison had shown 2.096 against 2.954 and would have read as a 40% regression; it was
+a loaded machine, and this is the second time this session that one run of a timing test said
+something three runs did not.
+
+### The oracle, run against the real servers
+
+Docker was started and `DialectCoverageOracle` ran against PostgreSQL 17 and SQL Server 2022 through
+Testcontainers. **The report is identical to the one recorded in `PHASE9-UNBUILT-CAPABILITY-PLAN.md`
+§ 2** — no drift in what the drop-in targets accept, including `user-defined-function` and
+`stored-procedure` as `yes` on both.
+
+### And running it found a column nobody had ever executed
+
+`DialectCorpus.Entry` has carried a **`WitDatabase` spelling** since the oracle was built, documented
+as *"how WitDatabase would spell it if it had it"* — ten sentences that **nothing ran**. A record
+about the engine rather than a measurement of it, which is the class this project has found false ten
+times.
+
+It could not have been run before: every one of those shapes was genuinely absent when the corpus was
+written. Phases 9a–9d built them, so the claim became checkable, and `WitDatabaseCorpusTests` now
+checks it — **all ten pass**. That closes the loop the oracle only half draws: the oracle says the
+targets accept a capability, and this says WitDatabase accepts it **in the same words the corpus
+wrote down**.
+
+It asserts where the oracle reports, and the difference is deliberate: the oracle measures servers
+this repository does not control and can only describe them, while a capability the corpus claims and
+the engine refuses is a defect in one of the two. It carries its own emptiness guard, because a loop
+over an empty corpus passes for the wrong reason — which happened once already this session, to the
+function-name corpus, and was caught by exactly such a guard.
 
 The audit's estimate for the pair was **1 week** for functions and **2–3 weeks** for procedures; the
 scope here is narrower than the one it priced (no `OUT` parameters, no multiple result sets), and

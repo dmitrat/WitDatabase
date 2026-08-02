@@ -205,23 +205,63 @@ public sealed class WitDbCommand : DbCommand
 
         var engine = m_connection!.Engine!;
         var parameters = BuildParametersDictionary();
+        var sql = m_commandType == CommandType.StoredProcedure ? BuildCallStatement() : m_commandText;
 
         try
         {
-            // If we have a valid prepared statement for this exact command text, use it
-            if (m_preparedStatement != null && m_preparedCommandText == m_commandText)
+            // If we have a valid prepared statement for this exact command text, use it.
+            // A stored-procedure command is never prepared: what is prepared is SQL, and the SQL
+            // here is built from the parameter collection, which the caller may change between
+            // executions.
+            if (m_commandType == CommandType.Text
+                && m_preparedStatement != null
+                && m_preparedCommandText == m_commandText)
             {
                 return m_preparedStatement.Execute(parameters, cancellationToken);
             }
 
             // Execute without prepared statement (uses engine's internal query plan cache)
             var timeout = m_commandTimeout > 0 ? TimeSpan.FromSeconds(m_commandTimeout) : (TimeSpan?)null;
-            return engine.Execute(m_commandText, parameters, timeout, cancellationToken);
+            return engine.Execute(sql, parameters, timeout, cancellationToken);
         }
         catch (Exception e) when (e is not DbException && e is not OperationCanceledException)
         {
             throw WitDbException.FromException(e);
         }
+    }
+
+    /// <summary>
+    /// Turns a <c>StoredProcedure</c> command into the <c>CALL</c> the engine runs.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The command text is the routine name and the parameter collection is the argument list, which
+    /// is what every ADO.NET caller expects. The arguments are written as the parameters' own names
+    /// rather than as values, so nothing is interpolated into SQL - the engine binds them from the
+    /// same dictionary a text command uses, and a string argument cannot become syntax.
+    /// </para>
+    /// <para>
+    /// <b>Order is the collection's order.</b> ADO parameters are named, a <c>CALL</c>'s are
+    /// positional, and there is no third thing to consult: the routine's own parameter order lives
+    /// in the catalog and matching by name against it would silently reorder a caller's arguments
+    /// when the names differ. The collection order is what the caller wrote, and a mismatch is
+    /// refused by the engine with the routine's arity rather than papered over here.
+    /// </para>
+    /// </remarks>
+    private string BuildCallStatement()
+    {
+        var arguments = new string[m_parameters.Count];
+
+        for (var i = 0; i < m_parameters.Count; i++)
+        {
+            var name = ((WitDbParameter)m_parameters[i]!).ParameterName;
+
+            arguments[i] = name.StartsWith('@') || name.StartsWith(':') || name.StartsWith('$')
+                ? name
+                : "@" + name;
+        }
+
+        return $"CALL {m_commandText.Trim()}({string.Join(", ", arguments)})";
     }
 
     private Dictionary<string, object?> BuildParametersDictionary()
@@ -422,13 +462,31 @@ public sealed class WitDbCommand : DbCommand
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// <c>Text</c> and <c>StoredProcedure</c>. The second is how every ADO.NET caller invokes a
+    /// procedure - set <see cref="DbCommand.CommandText"/> to the routine name, add the parameters,
+    /// and read the result - and until phase 9d it threw, which meant a procedure could exist in
+    /// this database and not be reachable from ordinary consumer code at all.
+    /// </para>
+    /// <para>
+    /// <c>TableDirect</c> stays refused: it means "the CommandText is a table name, return all of
+    /// it", which is a shape this provider has no translation for and which almost nothing uses.
+    /// Refusing it is better than answering something approximate.
+    /// </para>
+    /// </remarks>
     public override CommandType CommandType
     {
         get => m_commandType;
         set
         {
-            if (value != CommandType.Text)
-                throw new NotSupportedException("Only CommandType.Text is supported.");
+            if (value is not (CommandType.Text or CommandType.StoredProcedure))
+            {
+                throw new NotSupportedException(
+                    $"CommandType.{value} is not supported. Use Text, or StoredProcedure with the "
+                    + "routine name as the CommandText.");
+            }
+
             m_commandType = value;
         }
     }

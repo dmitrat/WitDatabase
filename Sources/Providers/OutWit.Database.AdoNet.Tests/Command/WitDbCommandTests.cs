@@ -371,12 +371,27 @@ public class WitDbCommandTests
         Assert.That(cmd.CommandType, Is.EqualTo(CommandType.Text));
     }
 
+    /// <summary>
+    /// <c>StoredProcedure</c> is accepted since phase 9d; <c>TableDirect</c> is still refused.
+    /// </summary>
+    /// <remarks>
+    /// This test asserted that <c>StoredProcedure</c> threw, and it failed the moment procedures
+    /// became reachable - which is the right way for a pin to stop being true. It is kept rather than
+    /// deleted because the other half is still worth pinning: <c>TableDirect</c> means "the
+    /// CommandText is a table name", which this provider has no translation for, and answering
+    /// something approximate would be worse than refusing.
+    /// <c>StoredProcedureCommandTests</c> covers what the accepted one now does.
+    /// </remarks>
     [Test]
-    public void CommandTypeStoredProcedureNotSupportedTest()
+    public void CommandTypeAcceptsStoredProcedureAndRefusesTableDirectTest()
     {
         using var cmd = m_connection.CreateCommand();
 
-        Assert.Throws<NotSupportedException>(() => cmd.CommandType = CommandType.StoredProcedure);
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => cmd.CommandType = CommandType.StoredProcedure, Throws.Nothing);
+            Assert.Throws<NotSupportedException>(() => cmd.CommandType = CommandType.TableDirect);
+        });
     }
 
     #endregion

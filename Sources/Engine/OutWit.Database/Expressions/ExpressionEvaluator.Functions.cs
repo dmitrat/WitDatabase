@@ -1,5 +1,6 @@
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Sql;
+using OutWit.Database.Types;
 using OutWit.Database.Values;
 
 namespace OutWit.Database.Expressions;
@@ -260,7 +261,18 @@ public sealed partial class ExpressionEvaluator
         for (var i = 0; i < parameters.Count; i++)
             names[i] = parameters[i].Name;
 
-        return Evaluate(function.Body, new WitSqlRow(args, names));
+        var value = Evaluate(function.Body, new WitSqlRow(args, names));
+
+        // Coerced to the declared return type, because otherwise RETURNS is decorative. Measured in
+        // the pre-release audit: a function declared RETURNS INT whose body returned 'not a number'
+        // handed the text straight through, and INFORMATION_SCHEMA.ROUTINES reported the column type
+        // as INTEGER while the function produced text. That is the accepted-but-not-enforced class
+        // phase 7 spent itself closing, and a declared type nothing checks is worse than no declared
+        // type at all - a consumer reading the catalog would build against it.
+        //
+        // The same converter a column write uses, so a function and a column agree about what a
+        // declared type means, including when the value cannot be converted at all.
+        return value.IsNull ? value : WitTypeConverter.Convert(value, function.ReturnType);
     }
 
     #endregion
