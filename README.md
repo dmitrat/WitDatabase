@@ -2,7 +2,7 @@
 
 A high-performance embedded key-value database for .NET with support for multiple storage engines, ACID transactions, and encryption.
 
-[![.NET](https://img.shields.io/badge/.NET-9.0%20%7C%2010.0-512BD4)](https://dotnet.microsoft.com/)
+[![.NET](https://img.shields.io/badge/.NET-10.0-512BD4)](https://dotnet.microsoft.com/)
 [![License](https://img.shields.io/badge/License-Apache%202.0-blue.svg)](LICENSE)
 
 ## Features
@@ -31,7 +31,16 @@ A high-performance embedded key-value database for .NET with support for multipl
   - ADO.NET provider
   - Entity Framework Core provider
   - Window functions, CTEs, subqueries
+  - `LATERAL` / `CROSS APPLY` / `OUTER APPLY`, `VALUES` as a table source, `TOP n`
   - 60+ built-in functions
+
+- **User-Defined Functions and Stored Procedures**
+  - `CREATE FUNCTION` — a scalar expression over its parameters, callable anywhere an expression
+    may appear: a `SELECT` list, a `WHERE`, a `CHECK`, a computed column, an index key
+  - `CREATE PROCEDURE` / `CALL` — a body of statements, invoked as one unit of work, and reachable
+    from ADO.NET through `CommandType.StoredProcedure`
+  - SQL bodies only: no external code and no assembly loading
+  - Reported by `INFORMATION_SCHEMA.ROUTINES` and `.PARAMETERS`
 
 - **Fluent API**
   - Easy configuration with builder pattern
@@ -110,6 +119,38 @@ cmd.Parameters.AddWithValue("@id", 1);
 cmd.Parameters.AddWithValue("@name", "John Doe");
 cmd.ExecuteNonQuery();
 ```
+
+### Functions and Stored Procedures
+
+```csharp
+using var cmd = connection.CreateCommand();
+
+// A function is a scalar expression over its parameters, callable anywhere an
+// expression may appear - a SELECT list, a WHERE, a CHECK, an index key.
+cmd.CommandText = "CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END";
+cmd.ExecuteNonQuery();
+
+cmd.CommandText = "SELECT Doubled(21)";
+var answer = cmd.ExecuteScalar();          // 42
+
+// A procedure is a body of statements. The last statement's result is the call's.
+cmd.CommandText = @"
+    CREATE PROCEDURE RecentUsers AS BEGIN
+        SELECT * FROM Users ORDER BY Id DESC;
+    END";
+cmd.ExecuteNonQuery();
+
+// Invoked the ordinary ADO.NET way.
+using var call = connection.CreateCommand();
+call.CommandType = CommandType.StoredProcedure;
+call.CommandText = "RecentUsers";
+
+using var reader = call.ExecuteReader();
+```
+
+Bodies are SQL — no external code and no assembly loading. See
+[Docs/WitSQL.md](Docs/WitSQL.md) § 2.10–2.11 for the rules: what a body may contain, how determinism
+decides whether a function may key an index, and why a trigger body may not `CALL`.
 
 ### Entity Framework Core
 
@@ -259,7 +300,10 @@ WitDatabase/
 
 ## Documentation
 
-- [ROADMAP.md](ROADMAP.md) - Future plans and version 2.0 features
+- [Docs/WitSQL.md](Docs/WitSQL.md) - The WitSQL language specification: types, statements,
+  functions, routines, transactions and concurrency
+- [Docs/KnownIssues.md](Docs/KnownIssues.md) - Known issues
+- [CHANGELOG.md](CHANGELOG.md) - What changed in each release, and why
 - [Sources/Core/OutWit.Database.Core/EXTENSIBILITY.md](Sources/Core/OutWit.Database.Core/EXTENSIBILITY.md) - Extension guide
 
 ## Running Tests
@@ -305,4 +349,5 @@ Contributions are welcome! Please feel free to submit a Pull Request.
 
 ## Changelog
 
-See [ROADMAP.md](ROADMAP.md) for version history and planned features.
+See [CHANGELOG.md](CHANGELOG.md) for version history. Each package carries its own `ROADMAP.md` for
+what is planned in that layer.

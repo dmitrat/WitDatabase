@@ -247,6 +247,13 @@ CREATE TRIGGER [IF NOT EXISTS] trigger_name
     END;
 ```
 
+**A trigger body may contain only `SELECT`, `INSERT`, `UPDATE`, `DELETE` and `MERGE`** — no DDL, no
+transaction control, and no `CALL`. A trigger runs inside a loop over rows, and DDL against the
+object that loop is walking is not something the engine can survive: `DROP TABLE` fired from a
+trigger on the table being written reports success and destroys it. `CALL` is refused for the same
+reason one step removed — a procedure body *is* allowed DDL, precisely because a `CALL` at the top
+level is a statement rather than a row loop. See § 2.11.
+
 **Trigger Timing:**
 - `BEFORE` - Fires before the operation; can modify NEW values or cancel operation
 - `AFTER` - Fires after successful operation; for auditing/logging
@@ -306,6 +313,132 @@ CREATE TRIGGER InsertIntoUserView
 ```sql
 DROP TRIGGER [IF EXISTS] trigger_name;
 ```
+
+### 2.10 User-Defined Functions
+
+```sql
+CREATE FUNCTION [IF NOT EXISTS] function_name ( [param type [, param type]...] )
+    RETURNS type
+    [LANGUAGE SQL]
+    AS BEGIN RETURN expression; END;
+
+DROP FUNCTION [IF EXISTS] function_name;
+```
+
+**A function body is one expression, not a list of statements.** It is evaluated over its arguments
+and nothing else — there is no row behind it and no statement runs. That is what lets a function be
+called from anywhere an expression may appear, including places evaluated per row.
+
+```sql
+CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END;
+
+SELECT Doubled(Price) FROM Orders;
+SELECT * FROM Orders WHERE Doubled(Price) > 100;
+SELECT * FROM Orders ORDER BY Doubled(Price);
+
+CREATE TABLE Items (
+    Id       INT PRIMARY KEY,
+    Price    INT CHECK (Doubled(Price) < 1000),
+    Doubled2 AS (Doubled(Price)),          -- a computed column takes no type of its own
+    Tax      INT DEFAULT (Doubled(5))
+);
+
+CREATE INDEX IX_Doubled ON Orders ((Doubled(Price)));
+```
+
+**Rules, all enforced when the function is declared:**
+
+- Every name in the body must be one of the parameters. A body has no row to read a column from.
+- Every function it calls must exist — a built-in, or another user-defined function.
+- **A function may not call itself.** An expression body has nothing to stop the recursion with, and
+  an exhausted stack cannot be caught.
+- **`LANGUAGE SQL` only.** No external code, no assembly loading. Any other language is refused.
+- The declared `RETURNS` type is **applied** to the result, using the same conversion a column write
+  uses. `NULL` stays `NULL`.
+
+**Determinism.** A function is deterministic when its body reads no table and calls nothing whose
+answer moves — `NOW()`, `RANDOM()`, `NEWGUID()`, a sequence. It is decided from the body when the
+function is declared, reported by `INFORMATION_SCHEMA.ROUTINES.IS_DETERMINISTIC`, and it composes: a
+function calling a non-deterministic one is non-deterministic. **Only a deterministic function may
+key an index**, because an index key is computed once when the row is written and never recomputed.
+
+**Dropping.** `DROP FUNCTION` is refused while anything still names it — a `CHECK`, a computed
+column, a `DEFAULT`, an index expression, a view, a procedure body, or another function. There is no
+`CASCADE`: a schema expression left naming a function that does not exist makes the object it belongs
+to unusable.
+
+### 2.11 Stored Procedures
+
+```sql
+CREATE PROCEDURE [IF NOT EXISTS] procedure_name [ ( [param type [, param type]...] ) ]
+    [LANGUAGE SQL]
+    AS BEGIN
+        sql_statements
+    END;
+
+DROP PROCEDURE [IF EXISTS] procedure_name;
+
+CALL procedure_name ( [argument [, argument]...] );
+```
+
+A procedure body is a list of statements. The parameter list may be omitted entirely.
+
+```sql
+CREATE PROCEDURE ArchiveOrder(OrderId INT) AS BEGIN
+    INSERT INTO OrdersArchive SELECT * FROM Orders WHERE Id = OrderId;
+    DELETE FROM Orders WHERE Id = OrderId;
+END;
+
+CALL ArchiveOrder(42);
+```
+
+**The last statement's result is the call's result**, so a body ending in a `SELECT` returns rows:
+
+```sql
+CREATE PROCEDURE RecentOrders AS BEGIN SELECT * FROM Orders ORDER BY Created DESC; END;
+
+CALL RecentOrders();
+```
+
+One result set only — a body with two `SELECT`s hands back the second.
+
+**A body may contain** `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `MERGE`, DDL, and `CALL` of another
+procedure.
+
+**A body may not contain transaction control** — `BEGIN TRANSACTION`, `COMMIT`, `ROLLBACK`,
+`SAVEPOINT`. Committing inside a routine would commit the statement that called it, leaving the rest
+of that statement running outside any transaction, and nothing would report it. Refused when the
+procedure is declared.
+
+**A body may not declare or drop a routine**, and **a trigger body may not `CALL` a procedure.** The
+second is what lets a procedure contain DDL at all: a `CALL` at the top level is a statement, while a
+trigger runs inside a loop over rows, and DDL against the object that loop is walking is not
+something the engine can survive.
+
+**Atomicity.** A `CALL` is one statement to its caller, so it is one unit of work: a body that fails
+part-way leaves nothing behind, including the DDL it had already run.
+
+**Recursion is allowed and bounded.** A procedure may call itself; statements may nest 32 deep, after
+which the call is refused with an error the caller can catch. (A *function* may not recurse — see
+2.10 — because a function is evaluated inside an expression and never passes through that counter.)
+
+**From ADO.NET**, a procedure is invoked the ordinary way:
+
+```csharp
+using var command = connection.CreateCommand();
+command.CommandType = CommandType.StoredProcedure;
+command.CommandText = "ArchiveOrder";
+
+var parameter = command.CreateParameter();
+parameter.ParameterName = "OrderId";
+parameter.Value = 42;
+command.Parameters.Add(parameter);
+
+command.ExecuteNonQuery();
+```
+
+Arguments are bound, never interpolated, and they are passed in the order they were added to the
+collection.
 
 ---
 
@@ -992,7 +1125,31 @@ SELECT * FROM INFORMATION_SCHEMA.INDEXES;
 
 -- Views
 SELECT * FROM INFORMATION_SCHEMA.VIEWS;
+
+-- Triggers
+SELECT * FROM INFORMATION_SCHEMA.TRIGGERS;
+
+-- Sequences
+SELECT * FROM INFORMATION_SCHEMA.SEQUENCES;
+
+-- Functions and procedures
+SELECT * FROM INFORMATION_SCHEMA.ROUTINES;
+-- Columns: SPECIFIC_CATALOG, SPECIFIC_SCHEMA, SPECIFIC_NAME,
+--          ROUTINE_CATALOG, ROUTINE_SCHEMA, ROUTINE_NAME, ROUTINE_TYPE,
+--          DATA_TYPE, ROUTINE_BODY, ROUTINE_DEFINITION,
+--          IS_DETERMINISTIC, SQL_DATA_ACCESS, PARAMETER_STYLE, IS_USER_DEFINED_CAST
+
+-- Their parameters
+SELECT * FROM INFORMATION_SCHEMA.PARAMETERS;
+-- Columns: SPECIFIC_CATALOG, SPECIFIC_SCHEMA, SPECIFIC_NAME,
+--          ORDINAL_POSITION, PARAMETER_MODE, IS_RESULT, PARAMETER_NAME,
+--          DATA_TYPE, CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
 ```
+
+`ROUTINE_TYPE` is `FUNCTION` or `PROCEDURE`; `DATA_TYPE` is the return type and is `NULL` for a
+procedure. `ROUTINE_DEFINITION` is rendered from the stored body on demand, and is `NULL` when the
+body cannot be written back faithfully — never a placeholder. `PARAMETER_MODE` is always `IN`: there
+are no `OUT` parameters.
 
 ### 13.2 Extended Type Specifications
 

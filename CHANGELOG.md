@@ -1,5 +1,92 @@
 # Changelog
 
+## 11.0.0
+
+Phase 9d: **user-defined functions and stored procedures**, and the five defects the area's audit
+found before any of them was written. **Major**, because the AST format gained five union tags and
+the catalog gained two records — 10.0.0 cannot open a database that uses either, while 11.0.0 reads
+everything 10.0.0 wrote.
+
+The subsystem was designed before it was built, against measurements rather than against the code,
+and three of the design's six answers changed because of what the measurements said. The working
+record is `Docs/PHASE9D-ROUTINE-SUBSYSTEM-DESIGN.md`.
+
+### Added
+
+- **`CREATE FUNCTION`** — a scalar function whose body is **one expression** over its parameters,
+  callable anywhere an expression may appear: a select list, a `WHERE`, a `CHECK`, a computed
+  column, a `DEFAULT`, an index key, a view, a trigger body.
+
+  ```sql
+  CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END;
+  SELECT Doubled(Price) FROM Orders WHERE Doubled(Price) > 100;
+  ```
+
+  An expression body rather than a statement list is the decision the rest of the subsystem rests
+  on: calling a function is a substitution inside the expression evaluator, so it runs no statements,
+  opens no transaction and consumes no nesting budget — which is what makes it safe to reach from a
+  path evaluated per row.
+
+- **`CREATE PROCEDURE` and `CALL`** — a body of statements, invoked as one unit of work. The last
+  statement's result is the call's result, so a body ending in a `SELECT` returns rows.
+
+  ```sql
+  CREATE PROCEDURE ArchiveOrder(OrderId INT) AS BEGIN
+      INSERT INTO OrdersArchive SELECT * FROM Orders WHERE Id = OrderId;
+      DELETE FROM Orders WHERE Id = OrderId;
+  END;
+
+  CALL ArchiveOrder(42);
+  ```
+
+- **`CommandType.StoredProcedure`** on the ADO.NET provider. Without it a procedure could exist in
+  the database and not be reachable from ordinary consumer code.
+
+- **`INFORMATION_SCHEMA.ROUTINES` and `.PARAMETERS`**, which is what scaffolding reads.
+
+### Fixed
+
+- **Nested execution had no bound.** A trigger writing to its own table recursed until the stack ran
+  out: 400 levels passed and 600 **killed the host process**, because `StackOverflowException` cannot
+  be caught. Statements now nest at most 32 deep and the limit is a catchable error.
+
+- **DDL inside a transaction threw and kept the change anyway.** `CREATE TABLE`, `CREATE INDEX`,
+  `CREATE VIEW`, `CREATE SEQUENCE`, `CREATE TRIGGER` and `DROP TABLE` all raised
+  `LockRecursionException` inside an open transaction — *and the catalog kept the change*, so the
+  caller was told the statement failed about something permanent. Every migration tool wraps DDL in a
+  transaction. Schema records now go through the caller's transaction, and a rollback discards them.
+
+- **The `ALTER` family could not see rows written in its own transaction.** `RENAME TABLE`,
+  `DROP COLUMN`, `ALTER COLUMN TYPE` and `ADD COLUMN` scanned past them, so a migration that wrote
+  and then reshaped lost what it had written.
+
+- **A computed column that could not be evaluated answered `NULL`.** Three read paths each turned
+  every failure into a legal value — and `NULL` is the one answer a caller cannot tell from a real
+  one. It now names the table, the column and the cause. This is how a column left dangling by
+  `DROP COLUMN` or `RENAME COLUMN` stayed quiet.
+
+- **An unknown function name was accepted in schema.** A `CHECK`, a computed column, a `DEFAULT` or
+  an index expression naming a function the engine does not have was accepted at declaration and
+  failed later. Refused when it is written now.
+
+- **An index could be built on an expression whose value moves** — a subquery, `RANDOM()`, `NOW()`.
+  An index key is computed once when the row is written and never recomputed.
+
+- **`TOBOOLEAN` was in the grammar and not in the engine.** Every other `TO…` conversion worked.
+
+### Notes
+
+- A routine body is **SQL only**. No external code, no assembly loading, no `LANGUAGE` other than
+  `SQL`.
+- A routine body may **not** control transactions. Committing inside one commits the statement that
+  called it, and nothing reports that.
+- A **trigger** body may not `CALL` a procedure. A procedure may contain DDL precisely because a
+  `CALL` is a statement rather than a loop over rows.
+- Not included, and listed in the design note § 7: table-valued functions, control flow in a body
+  (`IF`/`WHILE`), `OUT` parameters, and multiple result sets.
+- The package READMEs said `.NET 9` and showed `Version="1.0.0"` in their install snippets. Both were
+  stale; both are corrected.
+
 ## 10.0.0
 
 Phase 9 up to the routine subsystem: two defects that the feature work sat on, and four capabilities

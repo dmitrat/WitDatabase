@@ -19,15 +19,16 @@ OutWit.Database is the SQL execution engine built on top of OutWit.Database.Core
 - **Index Support** - Seek, range scan, partial, expression, and covering indexes
 - **Query Optimization** - Cost-based index selection, join ordering, plan caching
 - **Window Functions** - ROW_NUMBER, RANK, LAG, LEAD, aggregates OVER
+- **User-Defined Routines** - scalar `CREATE FUNCTION` and `CREATE PROCEDURE` / `CALL`, SQL bodies only
 - **JSON Support** - Full JSON manipulation functions
-- **.NET 9/10** - Targets latest .NET versions
+- **.NET 10** - Targets the current .NET version
 
 ---
 
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database" Version="1.0.0" />
+<PackageReference Include="OutWit.Database" Version="11.0.0" />
 ```
 
 ---
@@ -593,7 +594,7 @@ INSERT INTO Users (Name) VALUES ('Alice');
 
 #### Explicit Primary Keys (Slow Without Index ??)
 
-When you explicitly provide PK values, the engine must validate uniqueness. **Without an index**, this requires a full table scan per insert (O(n) per insert = O(n²) total for batch inserts):
+When you explicitly provide PK values, the engine must validate uniqueness. **Without an index**, this requires a full table scan per insert (O(n) per insert = O(nï¿½) total for batch inserts):
 
 ```sql
 CREATE TABLE Items (
@@ -658,6 +659,5 @@ engine.Execute("CREATE UNIQUE INDEX IX_Products_SKU ON Products(SKU)");
 
 ## See Also
 
-- [WitSql.md](../../WitSql.md) - Full WitSQL language specification
-- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
-- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap
+- [WitSQL.md](../../../Docs/WitSQL.md) - Full WitSQL language specification
+- [ROADMAP.md](ROADMAP.md) - Planned features

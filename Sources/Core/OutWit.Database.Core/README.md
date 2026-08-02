@@ -28,24 +28,24 @@ OutWit.Database.Core is a production-ready embedded database engine designed for
 - **Secondary Indexes**: Unique and non-unique, with auto-persistence
 - **WAL and Recovery**: Write-ahead logging, crash recovery
 - **Blazor WASM**: IndexedDB storage provider for browser-based apps
-- **.NET 9/10**: Targets latest .NET versions
+- **.NET 10**: Targets the current .NET version
 
 ---
 
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core" Version="1.0.0" />
+<PackageReference Include="OutWit.Database.Core" Version="11.0.0" />
 ```
 
 For ChaCha20-Poly1305 encryption:
 ```xml
-<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="1.0.0" />
+<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="11.0.0" />
 ```
 
 For Blazor WebAssembly (IndexedDB storage):
 ```xml
-<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="1.0.0" />
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="11.0.0" />
 ```
 
 ---
@@ -474,7 +474,7 @@ WitDatabase can run entirely in the browser using IndexedDB as the storage backe
 ### Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="1.0.0" />
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="11.0.0" />
 ```
 
 Add JavaScript files to `index.html`:
@@ -555,8 +555,7 @@ See [OutWit.Database.Core.IndexedDb](../OutWit.Database.Core.IndexedDb/) for ful
 ## See Also
 
 - [EXTENSIBILITY.md](EXTENSIBILITY.md) - Extension guide
-- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
-- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap
+- [ROADMAP.md](ROADMAP.md) - Planned features
 
 ## License
 

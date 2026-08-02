@@ -9,7 +9,7 @@ This package provides an alternative encryption algorithm when AES-NI hardware a
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="1.0.0" />
+<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="11.0.0" />
 ```
 
 ---
@@ -199,5 +199,4 @@ You may not:
 - [OutWit.Database.Core](../OutWit.Database.Core/) - Core database library
 - [OutWit.Database.Core.IndexedDb](../OutWit.Database.Core.IndexedDb/) - Blazor WASM support
 - [BouncyCastle](https://www.bouncycastle.org/) - Cryptography library
-- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
-- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap
+- [ROADMAP.md](ROADMAP.md) - Planned features

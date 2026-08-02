@@ -12,20 +12,21 @@ OutWit.Database.Parser is a high-performance SQL parser built on [ANTLR4](https:
 
 ### Key Features
 
-- **Complete SQL Support** - DDL, DML, transactions, window functions, CTEs
+- **Complete SQL Support** - DDL, DML, transactions, window functions, CTEs, routines
+  (`CREATE FUNCTION`, `CREATE PROCEDURE`, `CALL`)
 - **ANTLR4-based** - Industry-standard parser generator
 - **Rich AST** - Fully typed Abstract Syntax Tree
 - **Visitor Pattern** - Easy AST traversal and transformation
 - **Expression Serializer** - Convert AST back to SQL text
 - **Detailed Error Reporting** - Line/column positions for syntax errors
-- **.NET 9/10** - Targets latest .NET versions
+- **.NET 10** - Targets the current .NET version
 
 ---
 
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Parser" Version="1.0.0" />
+<PackageReference Include="OutWit.Database.Parser" Version="11.0.0" />
 ```
 
 ---
@@ -458,6 +459,5 @@ You may not:
 
 ## See Also
 
-- [WitSql.md](../../WitSql.md) - Full WitSQL language specification
-- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
-- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap
+- [WitSQL.md](../../../Docs/WitSQL.md) - Full WitSQL language specification
+- [ROADMAP.md](ROADMAP.md) - Planned features
