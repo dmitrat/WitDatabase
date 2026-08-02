@@ -19,6 +19,8 @@ public sealed partial class SchemaCatalog : IDisposable
     private const string VIEWS_KEY = "$schema:_views";
     private const string TRIGGERS_KEY = "$schema:_triggers";
     private const string SEQUENCES_KEY = "$schema:_sequences";
+    private const string FUNCTIONS_KEY = "$schema:_functions";
+    private const string PROCEDURES_KEY = "$schema:_procedures";
     private const string ROWID_PREFIX = "$schema:_rowid:";
     private const string ROWVERSION_KEY = "$schema:_rowversion";
     private const string ROWCOUNT_PREFIX = "$schema:_rowcount:";
@@ -31,6 +33,8 @@ public sealed partial class SchemaCatalog : IDisposable
     private static readonly byte[] VIEWS_KEY_BYTES = Encoding.UTF8.GetBytes(VIEWS_KEY);
     private static readonly byte[] TRIGGERS_KEY_BYTES = Encoding.UTF8.GetBytes(TRIGGERS_KEY);
     private static readonly byte[] SEQUENCES_KEY_BYTES = Encoding.UTF8.GetBytes(SEQUENCES_KEY);
+    private static readonly byte[] FUNCTIONS_KEY_BYTES = Encoding.UTF8.GetBytes(FUNCTIONS_KEY);
+    private static readonly byte[] PROCEDURES_KEY_BYTES = Encoding.UTF8.GetBytes(PROCEDURES_KEY);
     private static readonly byte[] ROWID_PREFIX_BYTES = Encoding.UTF8.GetBytes(ROWID_PREFIX);
     private static readonly byte[] ROWVERSION_KEY_BYTES = Encoding.UTF8.GetBytes(ROWVERSION_KEY);
     private static readonly byte[] ROWCOUNT_PREFIX_BYTES = Encoding.UTF8.GetBytes(ROWCOUNT_PREFIX);
@@ -47,6 +51,8 @@ public sealed partial class SchemaCatalog : IDisposable
     private readonly Dictionary<string, DefinitionView> m_views = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DefinitionTrigger> m_triggers = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, DefinitionSequence> m_sequences = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DefinitionFunction> m_functions = new(StringComparer.OrdinalIgnoreCase);
+    private readonly Dictionary<string, DefinitionProcedure> m_procedures = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, long> m_tableRowIds = new(StringComparer.OrdinalIgnoreCase);
     private readonly Dictionary<string, long> m_tableRowCounts = new(StringComparer.OrdinalIgnoreCase);
     private ulong m_globalRowVersion;

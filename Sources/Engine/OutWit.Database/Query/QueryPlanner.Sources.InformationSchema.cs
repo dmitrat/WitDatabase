@@ -74,6 +74,16 @@ public sealed partial class QueryPlanner
                 SchemaCatalog.GetInformationSchemaTriggersColumns(),
                 SchemaCatalog.GetInformationSchemaTriggersColumnTypes()),
                 
+            "ROUTINES" => new IteratorInformationSchema(
+                catalog.GetInformationSchemaRoutines(),
+                SchemaCatalog.GetInformationSchemaRoutinesColumns(),
+                SchemaCatalog.GetInformationSchemaRoutinesColumnTypes()),
+
+            "PARAMETERS" => new IteratorInformationSchema(
+                catalog.GetInformationSchemaParameters(),
+                SchemaCatalog.GetInformationSchemaParametersColumns(),
+                SchemaCatalog.GetInformationSchemaParametersColumnTypes()),
+
             "SEQUENCES" => new IteratorInformationSchema(
                 catalog.GetInformationSchemaSequences(),
                 SchemaCatalog.GetInformationSchemaSequencesColumns(),
