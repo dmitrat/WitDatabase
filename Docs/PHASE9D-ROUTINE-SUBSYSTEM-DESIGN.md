@@ -440,9 +440,19 @@ Dependencies, not value — the same rule phases 5–10 used.
    allowed and bounded at 32 - the opposite of a function, and for the reason that matters: every
    body statement passes `Execute`, which counts, while a function is evaluated inside an expression
    and never does. Two defects were found by the fixture's own tests, both recorded in the commit.
-6. **`CommandType.StoredProcedure`** on the ADO surface.
-7. **Corpus inversion** — `UnbuiltCapabilityCorpusTests` and the oracle report both move these two
-   from absent to built.
+6. ~~**`CommandType.StoredProcedure`** on the ADO surface.~~ **Done.** The command text is the
+   routine name and the parameter collection is the argument list, written into the `CALL` as the
+   parameters' own **names** so nothing is interpolated into SQL. Order is the collection's order,
+   because matching by name against the catalog would silently reorder a caller's arguments when the
+   names differ. Exercised through `DbConnection`/`DbCommand` only.
+7. ~~**Corpus inversion**~~ — **done as it happened.** Each row moved because a test failed, never
+   because someone remembered: `UnbuiltCapabilityCorpusTests` now holds both as built and its
+   half-built section is empty, and the old ADO pin asserting `StoredProcedure` threw failed the
+   moment it stopped being true.
+
+**Phase 9d is complete.** What is deliberately not in it is listed in § 7: table-valued functions,
+control flow in a body, `OUT` parameters, multiple result sets, transaction control in a body, and
+external code of any kind.
 
 The audit's estimate for the pair was **1 week** for functions and **2–3 weeks** for procedures; the
 scope here is narrower than the one it priced (no `OUT` parameters, no multiple result sets), and
