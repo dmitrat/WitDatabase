@@ -174,22 +174,53 @@ Question 3 comes after question 2 because question 2 is what decides it.
 
 **A function body:** one expression. No statements, no `SELECT`, no control flow, no recursion (§ 5).
 
-**A procedure body:** `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `MERGE`, and `CALL` of another
-procedure. Refused at declaration, by name, each with a reason a caller can act on:
+**A procedure body:** `SELECT`, `INSERT`, `UPDATE`, `DELETE`, `MERGE`, **DDL**, and `CALL` of another
+procedure. **Agreed 2026-08-01**, after the audit fixes changed what the answer could be.
+
+### The measurement that decided it
+
+The first version of this section refused DDL, because DDL inside any transaction threw and kept the
+change. § 9 closed that. So the question was re-asked by measurement rather than by argument — DDL
+run from inside a body that is itself running **in a loop over rows**:
+
+| | |
+|---|---|
+| DDL on an unrelated object (`CREATE TABLE Z`) | **Works.** Z created, the writing table intact |
+| `ALTER TABLE T ADD COLUMN` from a trigger on `T` | **Works.** Both rows present |
+| A multi-row `INSERT` whose DDL fails on the second row | **Fails loudly and rolls back cleanly** |
+| `DROP TABLE T` from a trigger on `T` | **Reports success. T is gone**, with the row just written. Nothing raised |
+| *Control:* the same `ALTER` between statements in a transaction | Works, and backfills the `DEFAULT` |
+
+So the hazard is not "DDL in a routine". It is **DDL against the object a statement is currently
+iterating** — and that situation exists only when the routine was reached from a trigger body. A
+procedure invoked by `CALL` at the top level is a statement, not a row loop.
+
+### The rule, in one sentence
+
+**A procedure body may contain DML and DDL; a trigger body may not contain `CALL`.**
+
+That puts the restriction exactly where the measurement puts the hazard. It needs no transitive
+analysis over the call graph — which is the alternative, and which would have to re-run every time a
+procedure is redefined — and it is one refusal at declaration, the same shape as the trigger's
+existing one.
+
+### Still refused, and why
 
 | Refused | Why, measured |
 |---|---|
-| DDL of any kind | Fails inside any transaction and keeps the change (§ 2). Blocked on audit finding 19 |
-| `BEGIN` / `COMMIT` / `ROLLBACK` / `SAVEPOINT` | Tears the calling statement with no error (M9) |
-| `CREATE`/`DROP FUNCTION`/`PROCEDURE` | DDL, and self-modification during execution |
+| `BEGIN` / `COMMIT` / `ROLLBACK` / `SAVEPOINT`, in any body | Stopped by **nothing** at runtime: a nested `COMMIT` commits the firing statement's transaction, so the rest of it runs outside one. A three-row `INSERT` left two rows behind and raised only the key violation. DDL fails loudly; this does not fail |
+| `CALL`, in a **trigger** body | The rule above |
+| `CREATE`/`DROP FUNCTION`/`PROCEDURE`, in any body | Self-modification during execution |
+| Control flow — `IF`, `WHILE`, `DECLARE`, `SET` | A **new class of failure with no answer here**: a `WHILE` is iteration, not nesting, so the depth cap of § 2 does not see it, and a loop that does not terminate holds its transaction's write lock while every other session waits for the lock timeout. Excluded until there is a guard for it, which is a piece of work of its own |
+| `OUT` parameters, more than one result set | `WitDbDataReader.NextResult` is hard-coded `false` (verified at head) |
 
-**Stated honestly: a procedure is not less restricted than a trigger today**, except that it may call
-another procedure. The plan expected procedures to want fewer restrictions; the measurements say the
-restrictions are not the trigger's arbitrary choice but the engine's transaction model, and lifting
-them is a different piece of work with a name and an owner already.
+### And the trigger's own DDL refusal was re-justified rather than left standing
 
-This is the answer this note gives rather than the answer it hoped to give, and it is stated that way
-on purpose — the alternative is a procedure that accepts a `CREATE TABLE` and half-performs it.
+`RefuseNonDmlBody` refused DDL in a trigger body *because of the lock recursion this phase fixed*. A
+guard resting on a repaired defect is a guard the next reader deletes, correctly, on the evidence in
+front of them. Its reason is now the `DROP TABLE` measurement above, and that measurement is pinned
+by `TriggerBodyFidelityTests.DdlInsideATriggerDestroysWhatTheStatementIsWritingTest` — reached
+through the catalog API, because the declaration refusal is the only thing preventing it.
 
 ---
 
@@ -466,27 +497,21 @@ EF Specification: 1198 failed / 6937 passed - identical to this branch before th
 4. ~~**Findings 2–4 — markers or fixes?**~~ **Fixed, all five**, on Dmitry's instruction. § 9 has the
    result.
 
-**What is left to agree is questions 1 and 2**, which are the two that shape the code:
+**Both are now agreed, 2026-08-01, and § 1 and § 3 carry the answers:**
 
-- a function's body is an **expression** and a procedure's a **statement list**;
-- what a procedure body may contain — and **the ground under this question has moved.**
+1. **A function's body is an expression**, a procedure's a statement list — taken on the balance of
+   capability against complexity. It is the choice that keeps a function off the execution-nesting
+   path entirely, and its cost is stated where it is made: PostgreSQL's `SELECT`-bodied and
+   table-returning forms are out.
+2. **A procedure body may contain DML and DDL; a trigger body may not contain `CALL`.** Decided
+   against the row-loop measurement in § 3 rather than against the earlier argument, whose premise
+   the audit fixes had removed.
 
-### Question 2 has to be re-asked, because its premise is gone
+One claim in the earlier version of this section was **written without measuring and was wrong**: it
+said the ALTER family would still scan rows outside the transaction. Measured afterwards,
+`RENAME TABLE`, `DROP COLUMN`, `ALTER COLUMN TYPE` and `ADD COLUMN` each keep a row inserted in the
+same transaction — routing the eleven scans through `ScanStore` closed `AUDIT-2026-07.md` finding 35
+as well as finding 19. Left on the record because it is the reason § 3 could be answered the way it
+was.
 
-The note argued that a routine body may not contain DDL *because DDL inside any transaction threw
-and kept the change*. That was true when it was written and is not true now: § 9 closed it. And the
-follow-up claim this section first carried — that the ALTER family would still scan rows outside the
-transaction — **was written without measuring and turned out to be wrong.** Measured afterwards:
-`RENAME TABLE`, `DROP COLUMN`, `ALTER COLUMN TYPE` and `ADD COLUMN`, each run inside a transaction
-that had just inserted a row, all keep that row. Routing the eleven scans through `ScanStore` closed
-`AUDIT-2026-07.md` finding 35 as well as finding 19, and the test asserts the row rather than the
-absence of an exception.
-
-So the honest position is now: **nothing measured today prevents a procedure body from containing
-DDL.** What remains against it is not a defect but a design question — whether a routine that
-reshapes the schema mid-statement is something this engine should offer at all, given that the
-statement firing it is holding a plan built against the old schema. That is a decision, and it is
-Dmitry's, not a limitation to report.
-
-Transaction control in a body stays refused regardless: § 2's measurement of a nested `COMMIT`
-tearing the calling statement with no error at all is untouched by any of this.
+**Nothing else blocks implementation.** The order of work in § 8 stands, starting at the catalog.

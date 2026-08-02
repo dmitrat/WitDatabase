@@ -63,18 +63,48 @@ public sealed partial class StatementExecutor
     /// <remarks>
     /// <para>
     /// The grammar admits any statement in a trigger body, because the body rule references the
-    /// top-level <c>statement</c> rule. The engine cannot run most of them: DDL and transaction
-    /// control take the write lock that the statement which fired the trigger is already holding,
-    /// so the trigger throws <i>"Cannot acquire write lock - current thread already holds write
-    /// lock"</i> when it fires - <b>and it throws part-way through</b>. Measured 2026-07-31:
-    /// <c>BEGIN CREATE TABLE Z (Id INT); END</c> fired, failed, and left table Z created.
+    /// top-level <c>statement</c> rule.
     /// </para>
     /// <para>
-    /// Before 9.0.0 this was hidden: the body had to be rendered as text to be stored, and the
-    /// renderer refused non-DML, so <c>CREATE TRIGGER</c> failed with
-    /// <c>NotSupportedException</c> - the right outcome for the wrong reason, from a piece of code
-    /// that only exists to fill a catalog column. With the body now stored as a tree that accident
-    /// is gone, so the refusal is made deliberate and given a reason a caller can act on.
+    /// <b>The reason this refusal was written is gone, and this paragraph replaces it.</b> Until
+    /// 2026-08-01 it said: DDL takes the write lock the firing statement is already holding, so the
+    /// trigger throws part-way and leaves half its work behind. That was true and is not any more -
+    /// schema writes now go through the caller's transaction, and <c>AUDIT-2026-07.md</c> finding 19
+    /// is closed. A refusal resting on a defect that has been fixed is a refusal the next reader
+    /// deletes, correctly, on the evidence in front of them.
+    /// </para>
+    /// <para>
+    /// <b>The reason it is kept is different and was measured on 2026-08-01.</b> A trigger body runs
+    /// <i>inside a loop over rows</i>, and DDL against the object that loop is walking is not
+    /// something the engine can survive:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description>
+    /// <c>DROP TABLE T</c> from a trigger on <c>T</c> <b>reports success and destroys T</b>, taking
+    /// the row the statement had just written with it. No error is raised anywhere - see
+    /// <c>TriggerBodyFidelityTests.DdlInsideATriggerDestroysWhatTheStatementIsWritingTest</c>, which
+    /// pins it precisely so this refusal cannot be deleted on the assumption that it is obsolete.
+    /// </description></item>
+    /// <item><description>
+    /// DDL against an <i>unrelated</i> object does work now, and a failing one rolls back cleanly.
+    /// Both were measured. Allowing only that would mean deciding, per statement, whether a trigger
+    /// body's DDL touches the object underneath it - a check on a moving target, for a case nobody
+    /// has asked for.
+    /// </description></item>
+    /// </list>
+    /// <para>
+    /// Transaction control is refused for its own measured reason, and a stronger one: a nested
+    /// <c>COMMIT</c> is stopped by nothing at all. It commits the firing statement's transaction, so
+    /// the rest of that statement runs outside any transaction - a three-row <c>INSERT</c> whose
+    /// third row failed left the first two behind and raised only the key violation. DDL fails
+    /// loudly; this does not fail.
+    /// </para>
+    /// <para>
+    /// <b>This is also why a trigger body may not <c>CALL</c> a procedure</b>, once procedures exist:
+    /// a procedure is allowed DDL precisely because <c>CALL</c> at the top level is a statement and
+    /// not a row loop. Letting a trigger reach one would put the row loop back underneath it, and
+    /// would need a transitive check over the whole call graph to notice. Refusing <c>CALL</c> here
+    /// is one line and needs no analysis. See <c>Docs/PHASE9D-ROUTINE-SUBSYSTEM-DESIGN.md</c> § 3.
     /// </para>
     /// <para>
     /// SQLite's trigger bodies are DML-only for the same practical reason. PostgreSQL runs triggers
