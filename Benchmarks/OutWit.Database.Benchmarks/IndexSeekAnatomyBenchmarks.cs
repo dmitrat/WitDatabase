@@ -56,7 +56,7 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
     [ParamsSource(nameof(TableSizeValues))]
     public int TableSize { get; set; }
 
-    public IEnumerable<int> TableSizeValues => BenchmarkSweep.Sizes(250, 500, 1000, 2000, 5000, 20000);
+    public IEnumerable<int> TableSizeValues => BenchmarkSweep.Sizes(250, 500, 1000, 2000, 5000, 20000, 100000);
 
     [ParamsSource(nameof(EngineModeValues))]
     public WitDbEngineMode EngineMode { get; set; }
@@ -319,6 +319,52 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
     [Benchmark(Description = "PK equality narrow projection x100 - SQLite")]
     public int PkNarrowSqlite() =>
         Probe(m_sqliteConn!, "SELECT Id FROM Products WHERE Id = @key", id => (long)id + 1);
+
+    /// <summary>
+    /// Reads every row matching a range that selects about 75% of the table, once.
+    /// </summary>
+    /// <remarks>
+    /// The pair below asks whether having an index can make a query *slower*. Both predicates
+    /// select the same share of the table; one is on an indexed column and one is not. With no
+    /// statistics the planner has no selectivity estimate, so an index it can use is an index it
+    /// will use - and fetching 75% of the rows one index entry at a time is not obviously cheaper
+    /// than reading them in order.
+    ///
+    /// Suggested by the 100,000-row sweep, where `SELECT * FROM Users WHERE Age > 30` (74% of the
+    /// table, indexed column) cost 405 ms while an unfiltered `SELECT *` over the same table cost
+    /// 129 ms. Reading fewer rows was three times more expensive.
+    /// </remarks>
+    private int Range(System.Data.Common.DbConnection connection, string sql, object threshold)
+    {
+        using var c = connection.CreateCommand();
+        c.CommandText = sql;
+        var p = Add(c, "@key");
+        p.Value = threshold;
+
+        using var r = c.ExecuteReader();
+
+        var rows = 0;
+        while (r.Read())
+            rows++;
+
+        return rows;
+    }
+
+    [Benchmark(Description = "Range 75% on INDEXED column - WitDb")]
+    public int RangeIndexedWitDb() =>
+        Range(m_witConn!, "SELECT * FROM Products WHERE AltInt > @key", TableSize / 4);
+
+    [Benchmark(Description = "Range 75% on INDEXED column - SQLite")]
+    public int RangeIndexedSqlite() =>
+        Range(m_sqliteConn!, "SELECT * FROM Products WHERE AltInt > @key", TableSize / 4);
+
+    [Benchmark(Description = "Range 75% on UNINDEXED column - WitDb")]
+    public int RangeUnindexedWitDb() =>
+        Range(m_witConn!, "SELECT * FROM Products WHERE Price > @key", 250.0);
+
+    [Benchmark(Description = "Range 75% on UNINDEXED column - SQLite")]
+    public int RangeUnindexedSqlite() =>
+        Range(m_sqliteConn!, "SELECT * FROM Products WHERE Price > @key", 250.0);
 
     [Benchmark(Description = "No index forced scan x100 - WitDb")]
     public int NoIndexWitDb() =>

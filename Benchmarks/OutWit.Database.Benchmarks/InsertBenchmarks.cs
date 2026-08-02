@@ -39,6 +39,13 @@ public class InsertBenchmarks : IDisposable
 
     public IEnumerable<WitDbEngineMode> EngineModeValues => BenchmarkSweep.Modes(WitDbEngineMode.Default, WitDbEngineMode.BTree, WitDbEngineMode.Lsm, WitDbEngineMode.BTreeParallelAuto, WitDbEngineMode.LsmParallelAuto);
 
+    /// <summary>
+    /// What the engine said it wrote in the iteration just timed, and which engine said it.
+    /// Checked against a scan in IterationCleanup, which is outside the measured region.
+    /// </summary>
+    private int m_claimed = -1;
+    private string? m_claimedEngine;
+
     #endregion
 
     #region Setup/Cleanup
@@ -113,6 +120,8 @@ public class InsertBenchmarks : IDisposable
     [IterationCleanup]
     public void IterationCleanup()
     {
+        VerifyLastWrite();
+
         m_witConn?.Dispose(); m_witConn = null;
         m_sqliteConn?.Dispose(); m_sqliteConn = null;
         m_liteDb?.Dispose(); m_liteDb = null;
@@ -121,16 +130,70 @@ public class InsertBenchmarks : IDisposable
         CleanupPaths();
     }
 
+
+    /// <summary>
+    /// Checks the claim made by the iteration just timed against what a scan can actually see.
+    /// This runs in IterationCleanup, outside the measured region, and before the databases are
+    /// deleted. It never asks COUNT(*) - on this engine that is a cached counter, which is separate
+    /// state from the rows and has disagreed with them after a crash.
+    /// </summary>
+    private void VerifyLastWrite()
+    {
+        if (m_claimed < 0 || m_claimedEngine == null)
+            return;
+
+        var claimed = m_claimed;
+        var engine = m_claimedEngine;
+        m_claimed = -1;
+        m_claimedEngine = null;
+
+        switch (engine)
+        {
+            case "WitDb" when m_witConn != null:
+                WriteVerification.Verify(engine, claimed,
+                    WriteVerification.CountRowsByScan(m_witConn, "T"));
+                break;
+
+            case "SQLite" when m_sqliteConn != null:
+                WriteVerification.Verify(engine, claimed,
+                    WriteVerification.CountRowsByScan(m_sqliteConn, "T"));
+                break;
+
+            case "LiteDB" when m_liteCollection != null:
+                // LiteDB has no SQL surface here; enumerating the collection is the same idea -
+                // count the documents that are actually there, not a number kept about them.
+                WriteVerification.Verify(engine, claimed, m_liteCollection.FindAll().Count());
+                break;
+        }
+    }
+
     [GlobalCleanup]
     public void GlobalCleanup() => IterationCleanup();
+
+    #endregion
+
+    #region Claim
+
+    /// <summary>
+    /// Records what the engine said it wrote so IterationCleanup can check it against a scan, and
+    /// returns it so BenchmarkDotNet consumes the value and the equivalence check can compare the
+    /// three engines. See <see cref="WriteVerification"/> for why the claim alone is not enough.
+    /// </summary>
+    private int Claim(string engine, int written)
+    {
+        m_claimed = written;
+        m_claimedEngine = engine;
+        return written;
+    }
 
     #endregion
 
     #region Benchmarks - Single INSERT in Transaction
 
     [Benchmark(Description = "INSERT in transaction - WitDb")]
-    public void InsertInTxWitDb()
+    public int InsertInTxWitDb()
     {
+        var written = 0;
         var tx = (WitDbTransaction)m_witConn!.BeginTransaction();
         using var c = m_witConn.CreateCommand();
         c.Transaction = tx;
@@ -146,10 +209,11 @@ public class InsertBenchmarks : IDisposable
             pn.Value = $"Item_{i}";
             pv.Value = i * 1.5;
             pd.Value = now;
-            c.ExecuteNonQuery();
+            written += c.ExecuteNonQuery();
         }
         tx.Commit();
         tx.Dispose();
+        return Claim("WitDb", written);
     }
 
     // No Baseline here on purpose. BenchmarkDotNet allows one baseline per class unless the
@@ -159,8 +223,9 @@ public class InsertBenchmarks : IDisposable
     // carry [BenchmarkCategory] the honest report has no Ratio column at all; ratios are computed
     // per operation from the Mean column instead.
     [Benchmark(Description = "INSERT in transaction - SQLite")]
-    public void InsertInTxSqlite()
+    public int InsertInTxSqlite()
     {
+        var written = 0;
         var tx = m_sqliteConn!.BeginTransaction();
         using var c = m_sqliteConn.CreateCommand();
         c.Transaction = tx;
@@ -176,27 +241,32 @@ public class InsertBenchmarks : IDisposable
             pn.Value = $"Item_{i}";
             pv.Value = i * 1.5;
             pd.Value = now.ToString("o");
-            c.ExecuteNonQuery();
+            written += c.ExecuteNonQuery();
         }
         tx.Commit();
         tx.Dispose();
+        return Claim("SQLite", written);
     }
 
     [Benchmark(Description = "INSERT in transaction - LiteDB")]
-    public void InsertInTxLiteDb()
+    public int InsertInTxLiteDb()
     {
+        var written = 0;
         m_liteDb!.BeginTrans();
         var now = DateTime.UtcNow;
         for (int i = 0; i < RowCount; i++)
         {
-            m_liteCollection!.Insert(new BenchmarkDoc
+            var id = m_liteCollection!.Insert(new BenchmarkDoc
             {
                 Name = $"Item_{i}",
                 Value = i * 1.5,
                 CreatedAt = now
             });
+            if (id != null)
+                written++;
         }
         m_liteDb.Commit();
+        return Claim("LiteDB", written);
     }
 
     #endregion
@@ -204,8 +274,9 @@ public class InsertBenchmarks : IDisposable
     #region Benchmarks - INSERT without Transaction
 
     [Benchmark(Description = "INSERT no transaction (100 rows) - WitDb")]
-    public void InsertNoTxWitDb()
+    public int InsertNoTxWitDb()
     {
+        var written = 0;
         using var c = m_witConn!.CreateCommand();
         c.CommandText = "INSERT INTO T (Name, Value, CreatedAt) VALUES (@n, @v, @d)";
 
@@ -220,13 +291,15 @@ public class InsertBenchmarks : IDisposable
             pn.Value = $"Item_{i}";
             pv.Value = i * 1.5;
             pd.Value = now;
-            c.ExecuteNonQuery();
+            written += c.ExecuteNonQuery();
         }
+        return Claim("WitDb", written);
     }
 
     [Benchmark(Description = "INSERT no transaction (100 rows) - SQLite")]
-    public void InsertNoTxSqlite()
+    public int InsertNoTxSqlite()
     {
+        var written = 0;
         using var c = m_sqliteConn!.CreateCommand();
         c.CommandText = "INSERT INTO T (Name, Value, CreatedAt) VALUES (@n, @v, @d)";
 
@@ -241,24 +314,29 @@ public class InsertBenchmarks : IDisposable
             pn.Value = $"Item_{i}";
             pv.Value = i * 1.5;
             pd.Value = now.ToString("o");
-            c.ExecuteNonQuery();
+            written += c.ExecuteNonQuery();
         }
+        return Claim("SQLite", written);
     }
 
     [Benchmark(Description = "INSERT no transaction (100 rows) - LiteDB")]
-    public void InsertNoTxLiteDb()
+    public int InsertNoTxLiteDb()
     {
+        var written = 0;
         var now = DateTime.UtcNow;
         int count = Math.Min(100, RowCount);
         for (int i = 0; i < count; i++)
         {
-            m_liteCollection!.Insert(new BenchmarkDoc
+            var id = m_liteCollection!.Insert(new BenchmarkDoc
             {
                 Name = $"Item_{i}",
                 Value = i * 1.5,
                 CreatedAt = now
             });
+            if (id != null)
+                written++;
         }
+        return Claim("LiteDB", written);
     }
 
     #endregion
@@ -266,8 +344,9 @@ public class InsertBenchmarks : IDisposable
     #region Benchmarks - INSERT RETURNING / Bulk
 
     [Benchmark(Description = "INSERT RETURNING - WitDb")]
-    public void InsertReturningWitDb()
+    public int InsertReturningWitDb()
     {
+        var written = 0;
         var tx = (WitDbTransaction)m_witConn!.BeginTransaction();
         using var c = m_witConn.CreateCommand();
         c.Transaction = tx;
@@ -281,15 +360,20 @@ public class InsertBenchmarks : IDisposable
         {
             pn.Value = $"Item_{i}";
             pv.Value = i * 1.5;
-            c.ExecuteScalar();
+            // RETURNING hands back the generated key, so a null here is the engine saying it wrote
+            // nothing - exactly the shape this counting exists to catch.
+            if (c.ExecuteScalar() != null)
+                written++;
         }
         tx.Commit();
         tx.Dispose();
+        return Claim("WitDb", written);
     }
 
     [Benchmark(Description = "INSERT RETURNING - SQLite")]
-    public void InsertReturningSqlite()
+    public int InsertReturningSqlite()
     {
+        var written = 0;
         var tx = m_sqliteConn!.BeginTransaction();
         using var c = m_sqliteConn.CreateCommand();
         c.Transaction = tx;
@@ -303,14 +387,16 @@ public class InsertBenchmarks : IDisposable
         {
             pn.Value = $"Item_{i}";
             pv.Value = i * 1.5;
-            c.ExecuteScalar();
+            if (c.ExecuteScalar() != null)
+                written++;
         }
         tx.Commit();
         tx.Dispose();
+        return Claim("SQLite", written);
     }
 
     [Benchmark(Description = "InsertBulk - LiteDB")]
-    public void InsertBulkLiteDb()
+    public int InsertBulkLiteDb()
     {
         var now = DateTime.UtcNow;
         var docs = new List<BenchmarkDoc>(RowCount);
@@ -323,7 +409,7 @@ public class InsertBenchmarks : IDisposable
                 CreatedAt = now
             });
         }
-        m_liteCollection!.InsertBulk(docs);
+        return Claim("LiteDB", m_liteCollection!.InsertBulk(docs));
     }
 
     #endregion
