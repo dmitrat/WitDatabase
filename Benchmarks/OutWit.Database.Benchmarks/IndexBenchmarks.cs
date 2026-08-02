@@ -43,11 +43,15 @@ public class IndexBenchmarks : IDisposable
 
     #region Parameters
 
-    [Params(5000, 20000)]
+    [ParamsSource(nameof(TableSizeValues))]
     public int TableSize { get; set; }
 
-    [Params(WitDbEngineMode.BTree, WitDbEngineMode.Lsm, WitDbEngineMode.BTreeParallelAuto, WitDbEngineMode.LsmParallelAuto)]
+    public IEnumerable<int> TableSizeValues => BenchmarkSweep.Sizes(5000, 20000);
+
+    [ParamsSource(nameof(EngineModeValues))]
     public WitDbEngineMode EngineMode { get; set; }
+
+    public IEnumerable<WitDbEngineMode> EngineModeValues => BenchmarkSweep.Modes(WitDbEngineMode.Default, WitDbEngineMode.BTree, WitDbEngineMode.Lsm, WitDbEngineMode.BTreeParallelAuto, WitDbEngineMode.LsmParallelAuto);
 
     #endregion
 
@@ -268,7 +272,13 @@ public class IndexBenchmarks : IDisposable
         return cnt;
     }
 
-    [Benchmark(Description = "Index Seek (unique) x100 - SQLite", Baseline = true)]
+    // No Baseline here on purpose. BenchmarkDotNet allows one baseline per class unless the
+    // benchmarks are split into categories, so a single [Benchmark(Baseline = true)] made the Ratio
+    // column compare every operation in the class against one unrelated operation - the January
+    // report rated a 20-iteration seek "2.74x faster" than a 100-iteration one. Until the classes
+    // carry [BenchmarkCategory] the honest report has no Ratio column at all; ratios are computed
+    // per operation from the Mean column instead.
+    [Benchmark(Description = "Index Seek (unique) x100 - SQLite")]
     public int IndexSeekUniqueSqlite()
     {
         int cnt = 0;
@@ -295,7 +305,11 @@ public class IndexBenchmarks : IDisposable
         for (int i = 0; i < 100; i++)
         {
             int id = rnd.Next(0, TableSize);
-            var doc = m_liteCollection!.FindOne(x => x.SKU == $"SKU-{id:D8}");
+            // The interpolation has to happen outside the predicate: LiteDB translates the lambda
+            // to BSON and throws NotImplementedException on an interpolated string inside it. With
+            // it inline this benchmark threw on every run and reported NA from January onwards.
+            var sku = $"SKU-{id:D8}";
+            var doc = m_liteCollection!.FindOne(x => x.SKU == sku);
             if (doc != null) cnt++;
         }
         return cnt;
