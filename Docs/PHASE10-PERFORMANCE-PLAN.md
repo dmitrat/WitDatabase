@@ -320,3 +320,89 @@ entire argument for the rule this phase opened with.
 - **`--inProcess` was used** to make two passes affordable (~8 s per case against ~34 s). Both passes
   used it, so the spread and the engine-to-engine comparisons are sound, but these numbers are not
   directly comparable to the out-of-process January ones.
+
+---
+
+## 8. The unique-index seek, diagnosed
+
+The decision in § 6 was to localise the fixed per-seek cost before changing anything.
+`IndexSeekAnatomyBenchmarks` does that: eight shapes, each fetching exactly one row out of the same
+table 100 times from the same seeded key sequence, so the shapes differ only in the one property
+each is named for. Every shape returns 100 and the equivalence check confirms it, so none of them is
+quietly measuring a lookup that found nothing.
+
+### The cost is invariant to everything it could plausibly depend on
+
+Default mode, 5,000 rows, allocated per 100 lookups, two passes agreeing within 10%:
+
+| shape | mean | allocated |
+|---|---|---|
+| PK equality | 0.258 ms | 569 KB |
+| PK equality, narrow projection | 0.227 ms | 463 KB |
+| UNIQUE index, **string** key | 52.0 ms | 131,710 KB |
+| UNIQUE index, **int** key | 50.2 ms | 131,706 KB |
+| **Non-unique** index, string key | 51.1 ms | 131,782 KB |
+| UNIQUE index, **narrow projection** | 50.5 ms | 131,676 KB |
+| UNIQUE index, **PK-only projection** | 53.0 ms | 131,676 KB |
+| No index, forced scan | 291.8 ms | 662,489 KB |
+
+Every secondary-index shape costs the same to within 0.1%. So the cost is **not** the string key
+(the int key costs the same), **not** uniqueness (the non-unique index costs the same), **not**
+materialising the row (asking for one column, or only the key the index already holds, costs the
+same), and **not** the table size. It is also **not the storage layer**: run with `Mode=Memory` and
+no file underneath, the same shapes allocate 131,696 KB — indistinguishable.
+
+The index is genuinely being used: the forced scan costs 292 ms against the seek's 51 ms. The engine
+is paying 51 ms to avoid 292 ms, while the primary-key path does the identical logical work for
+0.26 ms.
+
+### The mechanism, and the prediction that proved it
+
+`QueryPlanner.EstimateTableRowCount`
+([QueryPlanner.Sources.Indexes.cs:128](../Sources/Engine/OutWit.Database/Query/QueryPlanner.Sources.Indexes.cs#L128))
+**opens a table scan and reads up to 1,000 rows, on every query execution**, to estimate a row count
+so that `CreateOptimizedTableIterator` can decide whether an index is worth using. Its own comment
+says *"do a quick scan to count rows (expensive but accurate) … TODO: Implement proper statistics
+collection"*.
+
+Reading that is not evidence in this repository, so it was turned into a falsifiable prediction: if
+the cost is a scan capped at 1,000 rows, it must grow **linearly below 1,000 rows and be flat above
+them**. Measured:
+
+| rows in table | 250 | 500 | **1,000** | 2,000 | 5,000 | 20,000 |
+|---|---|---|---|---|---|---|
+| KB per lookup | 335 | 660 | **1,314** | 1,317 | 1,317 | 1,317 |
+| ms per 100 lookups | 13.3 | 25.9 | 51.7 | 50.6 | 52.3 | 51.8 |
+
+250 → 500 is 1.97x, 500 → 1,000 is 1.99x, and 1,000 → 2,000 is 1.002x. The measurement lands on the
+`sampleLimit = 1000` constant to three significant figures, and the plateau is 1,000 rows times the
+~1.32 KB this engine allocates per row scanned. The primary-key path is 568 KB at every size, so it
+does not reach this code at all.
+
+**The diagnosis: every `SELECT` carrying a `WHERE` clause against a table that has any index scans up
+to 1,000 rows of that table before deciding whether to use an index. Deciding to use the index costs
+about 200x the lookup it saves.**
+
+### What this explains beyond the seek
+
+This is not one benchmark's problem. It is a fixed tax on every indexed-predicate query, and it is
+the plausible cause of most of the "behind LiteDB" column in § 5 — `UPDATE` by indexed column
+(3.9x), composite index query (2.6x), non-unique index seek (2.4x). Those all run the same planner
+on tables that all have indexes.
+
+### The fix, and why it is small
+
+The engine **already maintains an O(1) per-table row counter** — that is exactly what § 1.5 measured
+when `COUNT(*)` came back flat at 0.0006 ms for both 1,000 and 10,000 rows. A planner estimate is
+precisely the consumer that counter is good enough for: it is an estimate, the code asks for one, and
+the `TODO` asks for statistics rather than a scan.
+
+**The one caveat to carry into the fix**, from this project's own record: the counter is separate
+state from the rows and the two can disagree after a crash. That is disqualifying for answering a
+user's `COUNT(*)` and irrelevant for choosing a plan — but it must be stated in the change, not
+discovered later.
+
+**Not done here.** The change alters plan selection (an exact count where a capped sample stood, so
+estimates cross `MIN_ROWS_FOR_INDEX` differently) and therefore needs the full suite behind it. It is
+a `Sources/` behaviour change and deserves its own decision and its own PR, with this benchmark as
+the before-and-after.
