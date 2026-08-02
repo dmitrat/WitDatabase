@@ -138,6 +138,9 @@ public sealed partial class StatementExecutor
             // DDL - Routines
             WitSqlStatementCreateFunction createFunction => ExecuteCreateFunction(createFunction),
             WitSqlStatementDropFunction dropFunction => ExecuteDropFunction(dropFunction),
+            WitSqlStatementCreateProcedure createProcedure => ExecuteCreateProcedure(createProcedure),
+            WitSqlStatementDropProcedure dropProcedure => ExecuteDropProcedure(dropProcedure),
+            WitSqlStatementCall call => ExecuteCall(call),
 
             // DDL - Sequences
             WitSqlStatementCreateSequence createSequence => ExecuteCreateSequence(createSequence),

@@ -278,6 +278,21 @@ public interface IDatabase
     bool DropFunction(string name);
 
     /// <summary>
+    /// Get a procedure by name, or null.
+    /// </summary>
+    DefinitionProcedure? GetProcedure(string name);
+
+    /// <summary>
+    /// Create a procedure.
+    /// </summary>
+    void CreateProcedure(DefinitionProcedure procedure);
+
+    /// <summary>
+    /// Drop a procedure. Returns false when there was none of that name.
+    /// </summary>
+    bool DropProcedure(string name);
+
+    /// <summary>
     /// Get a trigger by name.
     /// </summary>
     DefinitionTrigger? GetTrigger(string triggerName);
