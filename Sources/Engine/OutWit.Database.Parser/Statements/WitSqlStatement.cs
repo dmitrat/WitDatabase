@@ -37,6 +37,14 @@ namespace OutWit.Database.Parser.Statements
     [MemoryPackUnion(23, typeof(WitSqlStatementSignal))]
     [MemoryPackUnion(24, typeof(WitSqlStatementTruncate))]
     [MemoryPackUnion(25, typeof(WitSqlStatementUpdate))]
+    // Routines, phase 9d. Appended, never inserted: the numbers are what a stored procedure body
+    // deserialises by, and renumbering one would make an old file read back as a different type
+    // without a word.
+    [MemoryPackUnion(26, typeof(WitSqlStatementCreateFunction))]
+    [MemoryPackUnion(27, typeof(WitSqlStatementDropFunction))]
+    [MemoryPackUnion(28, typeof(WitSqlStatementCreateProcedure))]
+    [MemoryPackUnion(29, typeof(WitSqlStatementDropProcedure))]
+    [MemoryPackUnion(30, typeof(WitSqlStatementCall))]
     public abstract partial class WitSqlStatement : WitSqlNode
     {
     }

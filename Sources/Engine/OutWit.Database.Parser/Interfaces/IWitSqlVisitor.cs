@@ -26,6 +26,11 @@ namespace OutWit.Database.Parser.Interfaces
         T VisitStatementDropView(WitSqlStatementDropView node);
         T VisitStatementCreateTrigger(WitSqlStatementCreateTrigger node);
         T VisitStatementDropTrigger(WitSqlStatementDropTrigger node);
+        T VisitStatementCreateFunction(WitSqlStatementCreateFunction node);
+        T VisitStatementDropFunction(WitSqlStatementDropFunction node);
+        T VisitStatementCreateProcedure(WitSqlStatementCreateProcedure node);
+        T VisitStatementDropProcedure(WitSqlStatementDropProcedure node);
+        T VisitStatementCall(WitSqlStatementCall node);
         T VisitStatementCreateSequence(WitSqlStatementCreateSequence node);
         T VisitStatementDropSequence(WitSqlStatementDropSequence node);
         T VisitStatementAlterSequence(WitSqlStatementAlterSequence node);

@@ -22,6 +22,7 @@ statement
     | transactionStatement
     | signalStatement
     | explainStatement
+    | callStatement
     ;
 
 dmlStatement
@@ -46,6 +47,10 @@ ddlStatement
     | dropSequenceStatement
     | alterSequenceStatement
     | truncateTableStatement
+    | createFunctionStatement
+    | dropFunctionStatement
+    | createProcedureStatement
+    | dropProcedureStatement
     ;
 
 transactionStatement
@@ -476,6 +481,81 @@ triggerName
     : IDENTIFIER
     ;
 
+// ============================================================================
+// Routines - functions and procedures
+// ============================================================================
+//
+// The spellings are fixed by the dialect oracle's corpus rather than chosen here, which is what
+// makes them a measurement instead of a preference:
+//
+//     CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END
+//     CREATE PROCEDURE GetAll AS BEGIN SELECT * FROM T; END
+//
+// A function's body is ONE expression, which is the load-bearing decision of phase 9d: invoking a
+// function becomes substitution inside the expression evaluator rather than re-entry into the
+// statement executor, so it consumes no execution nesting and cannot open a transaction. RETURN is
+// therefore part of this rule and is NOT a statement of its own - it has exactly one legal position,
+// and a statement type for it would be a permanent union tag bought for nothing.
+//
+// A procedure's body is a statement list, exactly as a trigger's is.
+//
+// LANGUAGE is admitted as an identifier rather than pinned to SQL here, so that a caller writing
+// LANGUAGE plpgsql is told what is wrong by the executor instead of getting a parse error pointing
+// at a token. Anything but SQL is refused there.
+
+createFunctionStatement
+    : CREATE FUNCTION (IF NOT EXISTS)? routineName
+      LPAREN routineParameters? RPAREN
+      RETURNS dataType
+      (LANGUAGE routineLanguage)?
+      AS BEGIN RETURN expression SEMI? END
+    ;
+
+dropFunctionStatement
+    : DROP FUNCTION (IF EXISTS)? routineName
+    ;
+
+createProcedureStatement
+    : CREATE PROCEDURE (IF NOT EXISTS)? routineName
+      (LPAREN routineParameters? RPAREN)?
+      (LANGUAGE routineLanguage)?
+      AS BEGIN statement (SEMI statement)* SEMI? END
+    ;
+
+dropProcedureStatement
+    : DROP PROCEDURE (IF EXISTS)? routineName
+    ;
+
+callStatement
+    : CALL routineName LPAREN (expression (COMMA expression)*)? RPAREN
+    ;
+
+routineParameters
+    : routineParameter (COMMA routineParameter)*
+    ;
+
+routineParameter
+    : routineParameterName dataType
+    ;
+
+// A parameter name is an ordinary identifier and admits the non-reserved keywords, like a column
+// name does. Measured while building the catalog: a parameter called Text could not be referred to
+// from a body, because the lexer takes TEXT as a type keyword.
+routineParameterName
+    : IDENTIFIER
+    | nonReservedKeyword
+    ;
+
+routineName
+    : IDENTIFIER
+    | nonReservedKeyword
+    ;
+
+routineLanguage
+    : IDENTIFIER
+    | nonReservedKeyword
+    ;
+
 createSequenceStatement
     : CREATE SEQUENCE (IF NOT EXISTS)? sequenceName
       (START WITH INTEGER_LITERAL)?
@@ -778,6 +858,12 @@ nonReservedKeyword
     // before, the keyword corpus caught it being taken away, and PostgreSQL does not reserve it
     // either. SELECT TOP 1 Id and a column named Top both parse.
     | TOP | APPLY | LATERAL
+    // The routine keywords, added 2026-08-01. Every one of them was usable as a column name before
+    // it was a token - measured, all thirteen candidates - and taking one away is exactly what
+    // adding TOP did in phase 9b. RETURNS and RETURN are not in the list: they appear only inside
+    // CREATE FUNCTION, where an identifier cannot stand, so admitting them as identifiers elsewhere
+    // costs nothing, and the keyword corpus is what will say if that reasoning is wrong.
+    | FUNCTION | PROCEDURE | CALL | LANGUAGE | RETURNS | RETURN
     // KEY is an ordinary column name in PostgreSQL, SQL Server and SQLite, and it only ever appears
     // after PRIMARY or FOREIGN in this grammar, so it is unambiguous here. Until 2026-07-30
     // `CREATE TABLE T (Key TEXT)` did not parse, and the failure had been recorded against
