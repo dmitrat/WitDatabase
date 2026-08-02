@@ -43,22 +43,49 @@ public sealed class UnbuiltCapabilityCorpusTests : WitSqlEngineTestsBase
 
     #endregion
 
-    #region Absent - the grammar does not admit these at all
+    #region Half-built - the grammar admits these, the engine does not run them yet
 
     /// <summary>
-    /// Each of these is refused by the parser. Refusal is the honest failure for something unbuilt,
-    /// and it is what this test pins: none of them may start silently half-working.
+    /// Routines parse and are not executed. This is the honest state between the grammar step and
+    /// the execution step, and it is pinned so that neither half can move unnoticed.
     /// </summary>
-    [TestCase("CREATE FUNCTION Double(N INT) RETURNS INT AS BEGIN RETURN N * 2; END",
+    /// <remarks>
+    /// <para>
+    /// <b>This test changed on 2026-08-01, because the capability did.</b> It used to assert that
+    /// the parser refused both shapes, and it failed the moment the grammar landed - which is what
+    /// it was written to do. It now pins the next state: the statement is built, so it must
+    /// <b>not</b> be a parse error any more, and execution is not built, so it must still be
+    /// refused. When execution lands this fails again, and that is the signal to retire the fixture
+    /// for these two rows.
+    /// </para>
+    /// <para>
+    /// <b>And the old entry was measuring two things at once.</b> Its function case was
+    /// <c>CREATE FUNCTION Double(…)</c>, and <c>Double</c> is a type keyword that this grammar has
+    /// never admitted as an identifier <i>anywhere</i> - measured 2026-08-01, <c>CREATE TABLE Double
+    /// (Id INT)</c> and <c>SELECT Double FROM T</c> are refused too, on <c>main</c> as much as here.
+    /// So "the parser refuses this" was true for the name as well as for the capability, and a
+    /// single probe could not tell which. That is the dialect oracle's first-corpus mistake exactly.
+    /// Which keywords cannot be identifiers is pinned by <c>KeywordAsIdentifierCorpusTests</c>, where
+    /// it belongs; the name here is now one the grammar admits, so this row measures the capability
+    /// alone.
+    /// </para>
+    /// </remarks>
+    [TestCase("CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END",
         TestName = "user-defined function")]
     [TestCase("CREATE PROCEDURE GetAll AS BEGIN SELECT * FROM T; END", TestName = "stored procedure")]
-    public void CapabilityIsAbsentAndSaysSoTest(string sql)
+    public void RoutineSyntaxParsesAndIsNotYetExecutedTest(string sql)
     {
-        Assert.That(() => m_engine.Execute(sql),
-            Throws.InstanceOf<Parser.Exceptions.WitSqlParsingException>(),
-            "an unbuilt capability must be refused by the parser. If this now throws something else, " +
-            "or succeeds, the capability's status has changed and the phase-9 decision for it needs " +
-            "revisiting");
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => Parser.WitSql.Parse(sql), Throws.Nothing,
+                "the grammar for routines is built - if this is a parse error again, the grammar "
+                + "has regressed");
+
+            Assert.That(() => m_engine.Execute(sql),
+                Throws.InstanceOf<NotSupportedException>(),
+                "execution is not built yet, and an unbuilt capability must be refused rather than "
+                + "half-performed. When this starts working, move the row out of this fixture");
+        });
     }
 
     #endregion

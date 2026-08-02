@@ -92,6 +92,15 @@ public class AstMemoryPackContractTests
         (typeof(WitSqlStatement), 23, "WitSqlStatementSignal"),
         (typeof(WitSqlStatement), 24, "WitSqlStatementTruncate"),
         (typeof(WitSqlStatement), 25, "WitSqlStatementUpdate"),
+
+        // Routines, phase 9d. Appended after 25 and never inserted among the existing numbers: a
+        // stored procedure body deserialises by these, so moving one would make an old file read
+        // back as a different statement type without a word.
+        (typeof(WitSqlStatement), 26, "WitSqlStatementCreateFunction"),
+        (typeof(WitSqlStatement), 27, "WitSqlStatementDropFunction"),
+        (typeof(WitSqlStatement), 28, "WitSqlStatementCreateProcedure"),
+        (typeof(WitSqlStatement), 29, "WitSqlStatementDropProcedure"),
+        (typeof(WitSqlStatement), 30, "WitSqlStatementCall"),
     ];
 
     [Test]

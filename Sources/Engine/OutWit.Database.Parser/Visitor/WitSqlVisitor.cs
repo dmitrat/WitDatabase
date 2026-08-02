@@ -38,6 +38,8 @@ internal sealed partial class WitSqlVisitor : WitSqlParserBaseVisitor<object?>
             return VisitSignalStatement(signal);
         if (context.explainStatement() is { } explain)
             return VisitExplainStatement(explain);
+        if (context.callStatement() is { } call)
+            return VisitCallStatement(call);
         return null;
     }
 
@@ -88,6 +90,14 @@ internal sealed partial class WitSqlVisitor : WitSqlParserBaseVisitor<object?>
             return VisitAlterSequenceStatement(alterSequence);
         if (context.truncateTableStatement() is { } truncate)
             return VisitTruncateTableStatement(truncate);
+        if (context.createFunctionStatement() is { } createFunction)
+            return VisitCreateFunctionStatement(createFunction);
+        if (context.dropFunctionStatement() is { } dropFunction)
+            return VisitDropFunctionStatement(dropFunction);
+        if (context.createProcedureStatement() is { } createProcedure)
+            return VisitCreateProcedureStatement(createProcedure);
+        if (context.dropProcedureStatement() is { } dropProcedure)
+            return VisitDropProcedureStatement(dropProcedure);
         return null;
     }
 

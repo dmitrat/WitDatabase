@@ -79,6 +79,26 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
     public string VisitStatementDropTrigger(WitSqlStatementDropTrigger node) =>
         throw new NotSupportedException("DROP TRIGGER statement serialization not supported");
 
+    public string VisitStatementCreateFunction(WitSqlStatementCreateFunction node) =>
+        throw new NotSupportedException("CREATE FUNCTION statement serialization not supported");
+
+    public string VisitStatementDropFunction(WitSqlStatementDropFunction node) =>
+        throw new NotSupportedException("DROP FUNCTION statement serialization not supported");
+
+    public string VisitStatementCreateProcedure(WitSqlStatementCreateProcedure node) =>
+        throw new NotSupportedException("CREATE PROCEDURE statement serialization not supported");
+
+    public string VisitStatementDropProcedure(WitSqlStatementDropProcedure node) =>
+        throw new NotSupportedException("DROP PROCEDURE statement serialization not supported");
+
+    /// <remarks>
+    /// A statement, like its neighbours here, so it refuses for the same reason they do. The
+    /// rendering that matters lives in <c>WitSqlStatementSerializer</c>, which is what
+    /// <c>SchemaText</c> actually calls to write a procedure body out.
+    /// </remarks>
+    public string VisitStatementCall(WitSqlStatementCall node) =>
+        throw new NotSupportedException("CALL statement serialization belongs to WitSqlStatementSerializer");
+
     public string VisitStatementCreateSequence(WitSqlStatementCreateSequence node) =>
         throw new NotSupportedException("CREATE SEQUENCE statement serialization not supported");
 

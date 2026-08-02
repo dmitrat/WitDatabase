@@ -25,8 +25,27 @@ public static class WitSqlStatementSerializer
             WitSqlStatementInsert insert => SerializeInsert(insert),
             WitSqlStatementUpdate update => SerializeUpdate(update),
             WitSqlStatementDelete delete => SerializeDelete(delete),
+            WitSqlStatementCall call => SerializeCall(call),
             _ => throw new NotSupportedException($"Statement serialization not supported: {statement.GetType().Name}")
         };
+    }
+
+    /// <summary>
+    /// <c>CALL name(args)</c>.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than left to the "not supported" arm because a procedure body may contain a call,
+    /// and this serializer is what <c>INFORMATION_SCHEMA.ROUTINES.ROUTINE_DEFINITION</c> renders a
+    /// body with. Without it, one <c>CALL</c> anywhere in a body makes the <b>whole body</b> report
+    /// as null - the renderer refusing to lie, correctly, about something it could have said.
+    /// </remarks>
+    private static string SerializeCall(WitSqlStatementCall call)
+    {
+        var arguments = call.Arguments is null
+            ? string.Empty
+            : string.Join(", ", call.Arguments.Select(WitSqlExpressionSerializer.Serialize));
+
+        return $"CALL {call.ProcedureName}({arguments})";
     }
 
     #endregion

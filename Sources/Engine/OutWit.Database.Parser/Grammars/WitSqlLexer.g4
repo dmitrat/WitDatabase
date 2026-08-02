@@ -93,6 +93,18 @@ VIEW: V I E W;
 TRIGGER: T R I G G E R;
 SEQUENCE: S E Q U E N C E;
 
+// Routines. Every one of these is also listed in the parser's nonReservedKeyword, because every
+// one of them worked as a column name before it was a token and must keep working: measured
+// 2026-08-01, all thirteen candidate names parsed as columns. Adding TOP took Top away in phase 9b
+// and the keyword corpus is what said so - it asks the question of the whole lexer vocabulary, so
+// it will say so again here.
+FUNCTION: F U N C T I O N;
+PROCEDURE: P R O C E D U R E;
+RETURNS: R E T U R N S;
+RETURN: R E T U R N;
+CALL: C A L L;
+LANGUAGE: L A N G U A G E;
+
 // Transactions
 BEGIN: B E G I N;
 COMMIT: C O M M I T;

@@ -423,7 +423,11 @@ Dependencies, not value — the same rule phases 5–10 used.
    union tag and nothing has to discriminate. Both views answer from the definitions, and
    `IS_DETERMINISTIC` from the tree rather than from the rendering. The reopen tests were proved red
    by disabling the load, and the tree comparison was proved able to say no.
-3. **Grammar + AST + union tags 26–30**, with the keyword corpus as the net.
+3. ~~**Grammar + AST + union tags 26–30**, with the keyword corpus as the net.~~ **Done.** Six new
+   tokens, all six in `nonReservedKeyword`, and the keyword corpus stayed green — none of them took
+   a name away. The contract test caught the five new union tags on its first run, which is what it
+   is for. `UnbuiltCapabilityCorpusTests` failed as designed and now pins the honest half-built
+   state: the syntax parses, execution is still refused.
 4. **Scalar functions** — declaration, determinism at declaration, evaluator substitution, dependency
    refusal on `DROP`.
 5. **Procedures** — statement-list body, the refusal set of § 3, `CALL`, depth-counted.
