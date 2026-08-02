@@ -512,12 +512,31 @@ single-run comparison had shown 2.096 against 2.954 and would have read as a 40%
 a loaded machine, and this is the second time this session that one run of a timing test said
 something three runs did not.
 
-### What the audit could not do
+### The oracle, run against the real servers
 
-**The dialect oracle did not run: Docker Desktop is not started on this machine.** So the routine
-spellings are still measured against the corpus entries that were recorded when PostgreSQL 17 and
-SQL Server 2022 were last asked, rather than against the servers today. That is a gap in this audit
-and not a finding — it is stated so nobody reads the section as covering it.
+Docker was started and `DialectCoverageOracle` ran against PostgreSQL 17 and SQL Server 2022 through
+Testcontainers. **The report is identical to the one recorded in `PHASE9-UNBUILT-CAPABILITY-PLAN.md`
+§ 2** — no drift in what the drop-in targets accept, including `user-defined-function` and
+`stored-procedure` as `yes` on both.
+
+### And running it found a column nobody had ever executed
+
+`DialectCorpus.Entry` has carried a **`WitDatabase` spelling** since the oracle was built, documented
+as *"how WitDatabase would spell it if it had it"* — ten sentences that **nothing ran**. A record
+about the engine rather than a measurement of it, which is the class this project has found false ten
+times.
+
+It could not have been run before: every one of those shapes was genuinely absent when the corpus was
+written. Phases 9a–9d built them, so the claim became checkable, and `WitDatabaseCorpusTests` now
+checks it — **all ten pass**. That closes the loop the oracle only half draws: the oracle says the
+targets accept a capability, and this says WitDatabase accepts it **in the same words the corpus
+wrote down**.
+
+It asserts where the oracle reports, and the difference is deliberate: the oracle measures servers
+this repository does not control and can only describe them, while a capability the corpus claims and
+the engine refuses is a defect in one of the two. It carries its own emptiness guard, because a loop
+over an empty corpus passes for the wrong reason — which happened once already this session, to the
+function-name corpus, and was caught by exactly such a guard.
 
 The audit's estimate for the pair was **1 week** for functions and **2–3 weeks** for procedures; the
 scope here is narrower than the one it priced (no `OUT` parameters, no multiple result sets), and
