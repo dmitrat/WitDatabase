@@ -510,3 +510,64 @@ swept on current `main` at all, which matters because the one write-side finding
 project's memory - LSM being non-linear in N - lives precisely there and is still quoted from
 January. `InsertBenchmarks` can now verify its own writes, so that sweep is worth taking and is the
 obvious next measurement.
+
+---
+
+## 10. The engine modes, and the last recorded claim to fall
+
+`InsertBenchmarks` across all five modes at 100, 1,000 and 5,000 rows, **twice**, with the write
+verification of § 9.1 active on every iteration.
+
+### 10.1 The verification never fired, which is a result in itself
+
+Across both passes, every mode, every size, the scan count matched the engine's claim every time.
+**No mode lost a write** - including `Lsm` and `LsmParallelAuto`, the combination that lost
+acknowledged writes on default settings before 6.0.0. That fix holds, and it is now checked by an
+instrument rather than believed.
+
+### 10.2 LSM is uniformly slow on writes, and it is *not* non-linear in N
+
+`INSERT` in a transaction, microseconds per row, both passes:
+
+| mode | 100 rows | 1,000 rows | 5,000 rows | per-row change, 1,000 → 5,000 |
+|---|---|---|---|---|
+| Default | 30.7 / 30.1 | 8.3 / 8.4 | 7.7 / 8.0 | x0.93 / x0.95 |
+| BTree | 28.2 / 27.8 | 6.3 / — | 5.0 / 5.1 | x0.80 / — |
+| **Lsm** | **269 / 277** | **111 / 116** | **98.7 / 99.5** | **x0.89 / x0.86** |
+| BTreeParallelAuto | 27.3 / 27.3 | 6.7 / 6.2 | 27.8 / 5.1 | x4.13 / x0.83 |
+| LsmParallelAuto | 336 / 339 | 117 / 121 | 100 / 103 | x0.86 / x0.86 |
+
+**The memory and the plan both carry "LSM is non-linear in N (12 ms at 100 inserts, 53 ms at 500 - a
+defect signature)". It does not reproduce.** On current `main` LSM's per-row cost *falls* as the
+table grows - x0.89 and x0.86 from 1,000 to 5,000 rows, in both passes. That is sublinear, which is
+the normal and healthy shape.
+
+What is true, and is a different statement, is that **LSM is uniformly 12-20x slower than B+Tree per
+row at every size measured**, and `LsmParallelAuto` is slightly worse than plain `Lsm` rather than
+better. Autocommit is where it is worst: 100 rows without a transaction cost 1,911-1,926 ms on LSM
+against 194-205 ms on B+Tree, a flat 9.4x.
+
+So the finding changes shape entirely - from "there is a scaling defect in the LSM write path" to
+"the LSM write path has a large constant factor". Those need different work, and only one of them
+was on the books.
+
+### 10.3 Two anomalies appeared in pass one and were killed by pass two
+
+This is the phase's own rule earning itself for the third time, and it is worth recording exactly
+because the first pass looked like a finding:
+
+- `BTreeParallelAuto` at 5,000 rows read **27.8 µs/row against 6.7 at 1,000** - a 4.13x per-row
+  regression while every other mode improved. It was the only non-linearity in the sweep and it was
+  tempting. Pass two: **5.1 µs/row, x0.83.** Noise.
+- `BTree` at 1,000 rows read **153.2 µs/row** in pass two against 6.3 in pass one - a 24x outlier in
+  the other direction, on the mode with the *best* numbers everywhere else.
+
+Neither survived. Had the modes sweep been run once, as every previous performance claim in this
+repository was, one of them would have been written up.
+
+### 10.4 A recorded claim that *does* hold
+
+Phase 4 recorded that making autocommit durable cost **~1.5x** on the write path. Measured here at
+5,000 rows in a transaction: `Default` (MVCC on, durable) at 7.7-8.0 µs/row against `BTree`
+(`MVCC=false`) at 5.0-5.1 - **~1.55x**, in both passes. The price of the D in ACID is what it was
+said to be.
