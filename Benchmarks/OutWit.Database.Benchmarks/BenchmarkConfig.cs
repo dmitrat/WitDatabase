@@ -36,6 +36,16 @@ public enum WitDbEngineMode
     Default,
 
     /// <summary>
+    /// Everything in memory: <c>Mode=Memory</c>, no file behind it.
+    /// </summary>
+    /// <remarks>
+    /// Not a configuration anyone deploys - it exists to split a measurement. When a cost is fixed
+    /// per operation and independent of table size, running the same shape with no file underneath
+    /// says whether the cost lives in the storage layer or above it.
+    /// </remarks>
+    Memory,
+
+    /// <summary>
     /// BTree storage engine without parallel writes.
     /// Best for read-heavy workloads.
     /// </summary>
@@ -132,6 +142,10 @@ public static class WitDbConnectionHelper
             // this measures.
             WitDbEngineMode.Default =>
                 $"Data Source={path}",
+
+            // No Data Source at all: the builder requires one unless the mode is Memory.
+            WitDbEngineMode.Memory =>
+                "Mode=Memory",
 
             WitDbEngineMode.BTree =>
                 $"Data Source={path};Store=btree;Transactions=true;MVCC=false",
