@@ -417,7 +417,12 @@ Dependencies, not value — the same rule phases 5–10 used.
 1. ~~**The nesting depth cap.**~~ **Done** — see § 9. The async path was checked rather than
    assumed: the engine has no separate async execution path at all, so there was nothing for the
    limit to miss.
-2. **Catalog + `INFORMATION_SCHEMA.ROUTINES`/`PARAMETERS`**, with nothing to put in them yet.
+2. ~~**Catalog + `INFORMATION_SCHEMA.ROUTINES`/`PARAMETERS`**, with nothing to put in them yet.~~
+   **Done.** `DefinitionFunction` holds an expression body, `DefinitionProcedure` a statement list,
+   `DefinitionRoutineParameter` is shared; two store records rather than one, so neither needs a
+   union tag and nothing has to discriminate. Both views answer from the definitions, and
+   `IS_DETERMINISTIC` from the tree rather than from the rendering. The reopen tests were proved red
+   by disabling the load, and the tree comparison was proved able to say no.
 3. **Grammar + AST + union tags 26–30**, with the keyword corpus as the net.
 4. **Scalar functions** — declaration, determinism at declaration, evaluator substitution, dependency
    refusal on `DROP`.

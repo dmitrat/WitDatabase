@@ -66,6 +66,9 @@ public sealed partial class SchemaCatalog
         // Load sequences
         LoadSequences();
 
+        // Load functions and procedures
+        LoadRoutines();
+
         // Load global row version counter
         LoadRowVersion();
     }
@@ -96,6 +99,8 @@ public sealed partial class SchemaCatalog
             m_views.Clear();
             m_triggers.Clear();
             m_sequences.Clear();
+            m_functions.Clear();
+            m_procedures.Clear();
             m_tableRowIds.Clear();
             m_tableRowCounts.Clear();
 
