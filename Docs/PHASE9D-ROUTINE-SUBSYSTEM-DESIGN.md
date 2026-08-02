@@ -454,6 +454,71 @@ Dependencies, not value — the same rule phases 5–10 used.
 control flow in a body, `OUT` parameters, multiple result sets, transaction control in a body, and
 external code of any kind.
 
+---
+
+## 11. The audit before release, 2026-08-01
+
+Taken at Dmitry's instruction after the six steps, and by execution rather than by reading — the same
+rule that made the phase-8 audit worth more than the work it checked.
+
+### It found two defects, both mine, both the same class
+
+**1. `RETURNS` was decorative.** A function declared `RETURNS INT` whose body returned
+`'not a number'` handed the text straight through, and one declared `RETURNS VARCHAR(3)` returned
+twenty-two characters — while `INFORMATION_SCHEMA.ROUTINES` reported the type as `INTEGER`. The
+catalog described something the engine was not doing, which is exactly the class phase 7 spent
+itself closing, and **a declared type nothing checks is worse than no declared type**, because a
+consumer reads the catalog and builds against it. The value is now put through the same converter a
+column write uses, so a function and a column agree about what a declared type means. `NULL` stays
+`NULL` rather than becoming a typed zero.
+
+**2. `DROP FUNCTION` did not see views.** The refusal walked tables, indexes and other functions —
+every object kind that was on the list. A view's body is a query rather than a stored row expression,
+so a view could be left selecting a function that no longer exists, which is the exact state the
+refusal exists to prevent. Views and procedure bodies are now walked too.
+
+### What it confirmed rather than changed
+
+Probed by execution: a function in `GROUP BY`, `HAVING`, `ORDER BY`, `WHERE`, `UPDATE … SET`,
+`DELETE … WHERE`, `INSERT … VALUES` and over a scalar subquery; a `NULL` argument yielding `NULL`; a
+function called from a trigger body; a procedure calling a function; DDL in a procedure body rolled
+back by a later failure in the same call; `INFORMATION_SCHEMA` for routines created through SQL; and
+two sessions sharing one catalog seeing each other's routines. A cycle of functions **cannot form** —
+the drop is refused while a caller exists and the name cannot be redeclared — which was claimed when
+recursion was refused at declaration and is now measured.
+
+### The whole corpus, no category filter
+
+```
+Engine 2262 / 4    Core 2289 / 0    Parser 797 / 0    AdoNet 798 / 0    EntityFramework 554 / 0
+```
+
+**All four Engine failures are threshold assertions in `Category=Performance`, which CI excludes.**
+Three of them fail identically at the pre-9d baseline `c23b983`, so they are pre-existing. The fourth
+— the index scaling ratio — passes on both when the machine is not saturated: 8.15–8.80× against a
+limit of 12, where the single loaded run had said 13.30.
+
+**The write path was measured, not reasoned about.** Interleaved over three rounds, baseline against
+branch:
+
+```
+base    2.138   2.157   2.315 ms/row
+branch  2.205   2.347   2.176 ms/row
+```
+
+Under 2% apart with overlapping ranges and the branch faster in the third round — no measurable cost
+from the nesting counter, the ambient-transaction lookup or the routine dispatch. The first
+single-run comparison had shown 2.096 against 2.954 and would have read as a 40% regression; it was
+a loaded machine, and this is the second time this session that one run of a timing test said
+something three runs did not.
+
+### What the audit could not do
+
+**The dialect oracle did not run: Docker Desktop is not started on this machine.** So the routine
+spellings are still measured against the corpus entries that were recorded when PostgreSQL 17 and
+SQL Server 2022 were last asked, rather than against the servers today. That is a gap in this audit
+and not a finding — it is stated so nobody reads the section as covering it.
+
 The audit's estimate for the pair was **1 week** for functions and **2–3 weeks** for procedures; the
 scope here is narrower than the one it priced (no `OUT` parameters, no multiple result sets), and
 three of its prerequisites were paid by phase 8.

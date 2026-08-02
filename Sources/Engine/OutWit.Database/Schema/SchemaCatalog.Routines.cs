@@ -174,6 +174,38 @@ public sealed partial class SchemaCatalog
                     + $"'{function.Name}' calls it.");
             }
         }
+
+        // Views, found missing by the pre-release audit. A view's body is a query rather than a
+        // stored row expression, so it is not among the definitions above - and without this a view
+        // could be left selecting a function that no longer exists, which is the exact state this
+        // whole refusal was written to prevent. It failed to prevent it for the one object kind that
+        // was not on the list, which is what auditing by execution is for.
+        foreach (var view in m_views.Values)
+        {
+            if (WitSqlNodes.SelfAndDescendants(view.ResolveQuery())
+                .OfType<WitSqlExpressionFunctionCall>()
+                .Any(call => string.Equals(call.FunctionName, functionName, StringComparison.OrdinalIgnoreCase)))
+            {
+                throw new InvalidOperationException(
+                    $"Function '{functionName}' cannot be dropped because view '{view.Name}' "
+                    + "selects it.");
+            }
+        }
+
+        foreach (var procedure in m_procedures.Values)
+        {
+            foreach (var statement in procedure.Statements)
+            {
+                if (WitSqlNodes.SelfAndDescendants(statement)
+                    .OfType<WitSqlExpressionFunctionCall>()
+                    .Any(call => string.Equals(call.FunctionName, functionName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new InvalidOperationException(
+                        $"Function '{functionName}' cannot be dropped because procedure "
+                        + $"'{procedure.Name}' uses it.");
+                }
+            }
+        }
     }
 
     private static IEnumerable<(WitSqlExpression Expression, string Where)> StoredExpressionsOf(
