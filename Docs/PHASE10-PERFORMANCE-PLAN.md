@@ -406,3 +406,107 @@ discovered later.
 estimates cross `MIN_ROWS_FOR_INDEX` differently) and therefore needs the full suite behind it. It is
 a `Sources/` behaviour change and deserves its own decision and its own PR, with this benchmark as
 the before-and-after.
+
+---
+
+## 9. Closing the information gaps
+
+Three holes were named in § 7 and § 5: the control was blind to writes, everything was measured at
+20,000 rows or fewer, and only `Default` had been swept. Two are closed here. The third is not.
+
+### 9.1 The write benchmarks are now verifiable, in both halves
+
+The write benchmarks returned `void`, so an engine that wrote nothing benchmarked as fast. The
+obvious repair - return the affected-row count - is **not sufficient here, and this project knows
+exactly why**: the worst defect ever found in it was `Store=lsm` with a parallel mode losing
+acknowledged writes, where ten `INSERT`s all reported success and 0-1 rows were present. Affected
+rows is the acknowledgement that lied.
+
+So the claim and the data are checked separately. Each write benchmark returns what the engine
+claimed, and `IterationCleanup` - outside the timed region, before the databases are deleted -
+counts what a scan can actually see and throws if they disagree. It never asks `COUNT(*)`: § 1.5
+measured that to be a cached counter, which is separate state from the rows.
+
+Both directions verified. Green: all three engines claim and show 100 rows. Red: making WitDatabase
+claim one row more than it wrote produces
+
+> `WitDb claimed 101 row(s) written but a scan sees 100. The benchmark timed a write that did not
+> happen as reported.`
+
+and the check exits 1.
+
+### 9.2 The sweep selector was wrong, and using it is what found that
+
+`BenchmarkSweep` threw when the requested narrowing matched none of a class's declared values, on
+the principle that an empty selection silently measures nothing. The principle is right and the
+implementation was wrong: **BenchmarkDotNet evaluates every class's `[ParamsSource]` before it
+applies `--filter`**, so asking for 100,000 rows while filtering to `QueryBenchmarks` killed the run
+on `JoinBenchmarks`, which declares 100 and 500 and was never going to be measured. It now keeps the
+class's own values and says so loudly on stderr. Nothing is measured silently and a narrowing aimed
+at one class no longer breaks the others.
+
+### 9.3 At scale, the read picture is better than the small-table one
+
+`QueryBenchmarks`, `Default`, 1,000 to 100,000 rows:
+
+| operation | 1,000 | 10,000 | 50,000 | 100,000 | vs LiteDB at 100k |
+|---|---|---|---|---|---|
+| Point query by PK x100 | 0.221 ms | 0.237 | 0.251 | 0.262 | **0.17x** (flat in N) |
+| `SELECT … LIMIT 100` | 0.077 ms | 0.077 | 0.077 | 0.079 | **0.59x** (flat in N) |
+| `SELECT *` full scan | 0.747 ms | 10.57 | 63.02 | 128.98 | 0.96x |
+| `SELECT Id, Name` | 0.760 ms | 10.71 | 65.98 | 131.12 | 0.95x |
+| `SELECT … ORDER BY Name` | 1.654 ms | 44.59 | 286.96 | 599.16 | 2.16x |
+| `SELECT … WHERE Age > 30` | 1.484 ms | 11.99 | 169.92 | 405.14 | **3.53x** |
+
+Two things worth having:
+
+- **Scans converge to parity with LiteDB as the table grows** (0.56x at 1,000 → 0.96x at 100,000)
+  and hold ~8x behind SQLite, with allocation steady at ~2.4 KB per row returned.
+- **The two flat operations stay flat to 100,000 rows.** `LIMIT` short-circuits and the primary-key
+  path does not degrade at all.
+
+### 9.4 A correction to § 6, from having more points on the curve
+
+§ 6 named `ORDER BY` as a second target on the strength of *"31x for 10x the rows - superlinear"*.
+That reading came from a single interval, 1,000 → 10,000, and **more points refute it**: 10,000 →
+50,000 is 6.4x for 5x, and 50,000 → 100,000 is **2.09x for 2x**. Beyond 10,000 rows the curve is
+linear and the ratio against LiteDB is steady at 2.10x / 2.13x / 2.16x.
+
+So sorting is not a runaway; it is a **stable ~2.1x behind LiteDB and ~25x behind SQLite**, and the
+1,000 → 10,000 jump is a threshold effect worth a look but not a defect signature. The GC hypothesis
+in the plan - that the superlinearity was allocation-driven - is **not supported**, because there is
+no superlinearity to explain. Demoting it from "second target" is the honest move.
+
+### 9.5 A hypothesis raised and refuted in the same pass
+
+`SELECT * FROM Users WHERE Age > 30` costs 405 ms at 100,000 rows while an unfiltered `SELECT *`
+over the same table costs 129 ms. Reading 74% of the rows is three times more expensive than reading
+all of them. `Age` is indexed, which suggested an obvious cause: with no statistics the planner has
+no selectivity estimate, so an index it *can* use is an index it *will* use, and fetching 74% of a
+table one index entry at a time need not be cheaper than reading it in order.
+
+Tested directly - the same range, ~75% selectivity, on an indexed column and an unindexed one in the
+same table:
+
+| | 20,000 | 100,000 |
+|---|---|---|
+| Range 75% on **indexed** column | 30.14 ms | 172.80 ms |
+| Range 75% on **unindexed** column | 30.51 ms | 149.79 ms |
+
+**They are the same.** At 20,000 rows the indexed one is marginally *faster*; at 100,000 it is 15%
+slower, which is nothing next to the 3x that needed explaining. The hypothesis is refuted: a
+non-selective range over an index is not what makes that query expensive.
+
+**So the `WHERE Age > 30` cost at scale is unexplained and stays open.** The next thing to vary is
+the one property the refutation did not hold constant: `IX_Users_Age` is over a column with roughly
+sixty distinct values, so it is a **highly non-unique** index with many rows per key, while the
+`AltInt` index used above is unique. A low-cardinality non-unique index range is the next experiment,
+not a conclusion.
+
+### 9.6 Still not measured, and it is the last real gap
+
+**Every number in this phase is `EngineMode=Default`.** The LSM and parallel modes have not been
+swept on current `main` at all, which matters because the one write-side finding carried in the
+project's memory - LSM being non-linear in N - lives precisely there and is still quoted from
+January. `InsertBenchmarks` can now verify its own writes, so that sweep is worth taking and is the
+obvious next measurement.
