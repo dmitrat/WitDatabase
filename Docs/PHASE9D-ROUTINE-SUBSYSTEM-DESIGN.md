@@ -434,7 +434,12 @@ Dependencies, not value — the same rule phases 5–10 used.
    it calls; a self-call, an unbound name, a foreign `LANGUAGE` and a duplicate parameter are all
    refused at declaration; and `DROP FUNCTION` is `RESTRICT` over the stored expressions rather than
    over a dependency list, because a list is a second copy of a fact.
-5. **Procedures** — statement-list body, the refusal set of § 3, `CALL`, depth-counted.
+5. ~~**Procedures** — statement-list body, the refusal set of § 3, `CALL`, depth-counted.~~ **Done.**
+   Arguments bind through the evaluator's existing named-parameter fallback, so a body statement
+   needs no new resolution path. The last statement's result is the call's result. Recursion is
+   allowed and bounded at 32 - the opposite of a function, and for the reason that matters: every
+   body statement passes `Execute`, which counts, while a function is evaluated inside an expression
+   and never does. Two defects were found by the fixture's own tests, both recorded in the commit.
 6. **`CommandType.StoredProcedure`** on the ADO surface.
 7. **Corpus inversion** — `UnbuiltCapabilityCorpusTests` and the oracle report both move these two
    from absent to built.

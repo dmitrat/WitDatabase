@@ -2,6 +2,7 @@ using OutWit.Common.MemoryPack;
 using OutWit.Database.Definitions;
 using OutWit.Database.Parser.Analysis;
 using OutWit.Database.Parser.Expressions;
+using OutWit.Database.Parser.Statements;
 
 namespace OutWit.Database.Schema;
 
@@ -265,20 +266,56 @@ public sealed partial class SchemaCatalog
     /// <summary>
     /// Drops a procedure. Returns false when there was none of that name.
     /// </summary>
+    /// <exception cref="InvalidOperationException">Another procedure still calls it.</exception>
     public bool DropProcedure(string name)
     {
         m_lock.EnterWriteLock();
         try
         {
-            if (!m_procedures.Remove(name))
+            if (!m_procedures.ContainsKey(name))
                 return false;
 
+            RefuseDropWhileCalled(name);
+
+            m_procedures.Remove(name);
             SaveProcedures();
             return true;
         }
         finally
         {
             m_lock.ExitWriteLock();
+        }
+    }
+
+    /// <summary>
+    /// Refuses to drop a procedure another procedure's body calls.
+    /// </summary>
+    /// <remarks>
+    /// The same <c>RESTRICT</c> rule as for functions and for the same reason: a body left calling
+    /// something that does not exist is a routine that fails when it is run rather than when it was
+    /// broken. Unlike a function, a procedure cannot be reached from a table's stored expressions -
+    /// only another procedure can name one - so this search is over the procedures alone.
+    /// </remarks>
+    private void RefuseDropWhileCalled(string procedureName)
+    {
+        foreach (var procedure in m_procedures.Values)
+        {
+            if (string.Equals(procedure.Name, procedureName, StringComparison.OrdinalIgnoreCase))
+                continue;
+
+            foreach (var statement in procedure.Statements)
+            {
+                if (WitSqlNodes.SelfAndDescendants(statement)
+                    .OfType<WitSqlStatementCall>()
+                    .Any(call => string.Equals(call.ProcedureName, procedureName, StringComparison.OrdinalIgnoreCase))
+                    || (statement is WitSqlStatementCall direct
+                        && string.Equals(direct.ProcedureName, procedureName, StringComparison.OrdinalIgnoreCase)))
+                {
+                    throw new InvalidOperationException(
+                        $"Procedure '{procedureName}' cannot be dropped because procedure "
+                        + $"'{procedure.Name}' calls it.");
+                }
+            }
         }
     }
 

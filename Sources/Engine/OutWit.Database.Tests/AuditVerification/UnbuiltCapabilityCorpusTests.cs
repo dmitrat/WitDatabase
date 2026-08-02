@@ -70,21 +70,15 @@ public sealed class UnbuiltCapabilityCorpusTests : WitSqlEngineTestsBase
     /// alone.
     /// </para>
     /// </remarks>
-    [TestCase("CREATE PROCEDURE GetAll AS BEGIN SELECT * FROM T; END", TestName = "stored procedure")]
-    public void RoutineSyntaxParsesAndIsNotYetExecutedTest(string sql)
-    {
-        Assert.Multiple(() =>
-        {
-            Assert.That(() => Parser.WitSql.Parse(sql), Throws.Nothing,
-                "the grammar for routines is built - if this is a parse error again, the grammar "
-                + "has regressed");
-
-            Assert.That(() => m_engine.Execute(sql),
-                Throws.InstanceOf<NotSupportedException>(),
-                "execution is not built yet, and an unbuilt capability must be refused rather than "
-                + "half-performed. When this starts working, move the row out of this fixture");
-        });
-    }
+    // Empty on 2026-08-01, and the emptiness is the record.
+    //
+    // Both routine rows passed through here on their way out. Each began as "refused by the parser";
+    // when the grammar landed that assertion failed, and the row became "parses, execution refused";
+    // when execution landed it failed again, with a message telling whoever read it to move the row
+    // out. Neither move was something anybody remembered to make - both were test failures.
+    //
+    // The section is left in place because the next capability to be half-built belongs here, and
+    // because an empty section with this note is a better instruction than a paragraph in a plan.
 
     #endregion
 
@@ -121,6 +115,24 @@ public sealed class UnbuiltCapabilityCorpusTests : WitSqlEngineTestsBase
                 Is.EqualTo(new[] { 20L, 40L }),
                 "and it is evaluated per row when its argument is a column");
         });
+    }
+
+    /// <summary>
+    /// Stored procedures work end to end.
+    /// </summary>
+    /// <remarks>
+    /// The last of the phase-9 list to move. Full behaviour is covered by <c>ProcedureTests</c>;
+    /// what this asserts is the status of the item - that both halves of the drop-in shape are
+    /// there, a body that runs and a call that hands its result back.
+    /// </remarks>
+    [Test]
+    public void StoredProceduresWorkEndToEndTest()
+    {
+        m_engine.Execute("CREATE PROCEDURE GetAll AS BEGIN SELECT Id FROM T ORDER BY Id; END");
+
+        Assert.That(m_engine.Query("CALL GetAll()").Select(row => row[0].AsInt64()).ToArray(),
+            Is.EqualTo(new[] { 1L, 2L }),
+            "a procedure runs its body and its last statement's result is the call's result");
     }
 
     #endregion

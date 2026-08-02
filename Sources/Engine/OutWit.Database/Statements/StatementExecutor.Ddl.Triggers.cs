@@ -121,6 +121,16 @@ public sealed partial class StatementExecutor
                 continue;
             }
 
+            if (statement is WitSqlStatementCall)
+            {
+                throw new NotSupportedException(
+                    $"Trigger '{createTrigger.TriggerName}' contains a CALL. A procedure body may "
+                    + "contain DDL precisely because CALL at the top level is a statement and not a "
+                    + "loop over rows; reaching one from a trigger would put the row loop back "
+                    + "underneath it, where DROP TABLE against the table being written reports "
+                    + "success and destroys it.");
+            }
+
             throw new NotSupportedException(
                 $"A trigger body may contain only SELECT, INSERT, UPDATE, DELETE and MERGE. " +
                 $"Trigger '{createTrigger.TriggerName}' contains " +
@@ -139,6 +149,14 @@ public sealed partial class StatementExecutor
         WitSqlStatementBeginTransaction => "BEGIN TRANSACTION",
         WitSqlStatementCommit => "COMMIT",
         WitSqlStatementRollback => "ROLLBACK",
+        WitSqlStatementSavepoint => "SAVEPOINT",
+        WitSqlStatementReleaseSavepoint => "RELEASE SAVEPOINT",
+        WitSqlStatementSetTransaction => "SET TRANSACTION",
+        WitSqlStatementCall => "CALL",
+        WitSqlStatementCreateFunction => "CREATE FUNCTION",
+        WitSqlStatementDropFunction => "DROP FUNCTION",
+        WitSqlStatementCreateProcedure => "CREATE PROCEDURE",
+        WitSqlStatementDropProcedure => "DROP PROCEDURE",
         _ => statement.GetType().Name
     };
 

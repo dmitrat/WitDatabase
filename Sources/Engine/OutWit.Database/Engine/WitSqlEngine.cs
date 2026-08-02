@@ -373,11 +373,19 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
         return result;
     }
 
+    /// <remarks>
+    /// <c>CALL</c> is here because a procedure body is a list of statements and any of them may
+    /// write. Left out, each body statement opened and committed its own transaction, so a body that
+    /// failed on its third statement kept the first two - measured, and exactly the class
+    /// <see cref="ExecuteAtomically"/> exists to close. A call is one statement to the caller, so it
+    /// has to be one unit of work.
+    /// </remarks>
     private static bool ModifiesData(Parser.Statements.WitSqlStatement statement) =>
         statement is Parser.Statements.WitSqlStatementInsert
             or Parser.Statements.WitSqlStatementUpdate
             or Parser.Statements.WitSqlStatementDelete
-            or Parser.Statements.WitSqlStatementMerge;
+            or Parser.Statements.WitSqlStatementMerge
+            or Parser.Statements.WitSqlStatementCall;
 
     #endregion
 
