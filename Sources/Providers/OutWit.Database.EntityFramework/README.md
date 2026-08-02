@@ -283,7 +283,7 @@ All connection string options from `OutWit.Database.AdoNet` are supported:
 
 ## Requirements
 
-- .NET 9.0 or .NET 10.0
+- .NET 10.0
 - Microsoft.EntityFrameworkCore.Relational 9.0+ or 10.0+
 - OutWit.Database.AdoNet
 
@@ -315,5 +315,4 @@ You may not:
 
 ## See Also
 
-- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
-- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap
+- [ROADMAP.md](ROADMAP.md) - Planned features

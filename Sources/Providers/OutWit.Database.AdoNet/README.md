@@ -9,6 +9,7 @@ This package provides a full ADO.NET implementation for WitDatabase, allowing yo
 ## Features
 
 - Full ADO.NET 2.0 compatible implementation
+- `CommandType.Text` and `CommandType.StoredProcedure`
 - Support for in-memory and file-based databases
 - Connection pooling
 - Transaction support with multiple isolation levels
@@ -16,7 +17,7 @@ This package provides a full ADO.NET implementation for WitDatabase, allowing yo
 - Encryption support (AES-GCM, ChaCha20-Poly1305)
 - Multiple storage engines (B-Tree, LSM-Tree)
 - Async/await support throughout
-- Cross-platform (.NET 9+)
+- Cross-platform (.NET 10)
 
 ## Installation
 
@@ -63,6 +64,40 @@ using var connection = new WitDbConnection("Data Source=:memory:");
 connection.Open();
 // Database exists only for the lifetime of the connection
 ```
+
+### Stored Procedures
+
+```csharp
+using var connection = new WitDbConnection("Data Source=mydb.witdb");
+connection.Open();
+
+using (var create = connection.CreateCommand())
+{
+    create.CommandText = @"
+        CREATE PROCEDURE ArchiveOrder(OrderId INT) AS BEGIN
+            INSERT INTO OrdersArchive SELECT * FROM Orders WHERE Id = OrderId;
+            DELETE FROM Orders WHERE Id = OrderId;
+        END";
+    create.ExecuteNonQuery();
+}
+
+using var call = connection.CreateCommand();
+call.CommandType = CommandType.StoredProcedure;
+call.CommandText = "ArchiveOrder";
+
+var parameter = call.CreateParameter();
+parameter.ParameterName = "OrderId";
+parameter.Value = 42;
+call.Parameters.Add(parameter);
+
+call.ExecuteNonQuery();
+```
+
+The command text is the routine name and the parameter collection is the argument list, **passed in
+the order the parameters were added**. Arguments are bound, never interpolated into SQL.
+
+A body ending in a `SELECT` returns rows, so `ExecuteReader` works on the call. One result set only —
+`NextResult` is not supported. There are no `OUT` parameters.
 
 ### With Transactions
 
@@ -309,7 +344,7 @@ catch (WitDbException ex)
 
 ## Compatibility
 
-- .NET 9.0 or later
+- .NET 10.0
 - .NET 10.0 or later
 - Cross-platform (Windows, Linux, macOS)
 
@@ -341,5 +376,4 @@ You may not:
 
 ## See Also
 
-- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
-- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap
+- [ROADMAP.md](ROADMAP.md) - Planned features

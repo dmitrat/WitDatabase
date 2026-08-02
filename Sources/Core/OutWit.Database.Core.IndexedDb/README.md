@@ -9,7 +9,7 @@ This package allows WitDatabase to run entirely in the browser with data persist
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="1.0.0" />
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="11.0.0" />
 ```
 
 Add the JavaScript files to your `index.html`:
@@ -377,8 +377,7 @@ catch (JSException ex) when (ex.Message.Contains("quota"))
 - [OutWit.Database.Core.BouncyCastle](../OutWit.Database.Core.BouncyCastle/) - ChaCha20 encryption
 - [MDN: IndexedDB](https://developer.mozilla.org/en-US/docs/Web/API/IndexedDB_API)
 - [Blazor JS Interop](https://learn.microsoft.com/en-us/aspnet/core/blazor/javascript-interoperability/)
-- [ROADMAP.md](ROADMAP.md) - Version 2.0 planned features
-- [ROADMAP.md](../../../ROADMAP.md) - Main project roadmap
+- [ROADMAP.md](ROADMAP.md) - Planned features
 
 ## License
 
