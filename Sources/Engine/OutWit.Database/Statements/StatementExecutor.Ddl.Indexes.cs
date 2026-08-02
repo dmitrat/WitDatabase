@@ -99,9 +99,15 @@ public sealed partial class StatementExecutor
     /// phase 9d needs before a user-defined function may appear in an index expression.
     /// </para>
     /// </remarks>
-    private static void RefuseNonDeterministicKey(string indexName, WitSqlExpression? expression)
+    private void RefuseNonDeterministicKey(string indexName, WitSqlExpression? expression)
     {
-        var reason = ExpressionDeterminism.ReasonItIsNotDeterministic(expression);
+        var reason = ExpressionDeterminism.ReasonItIsNotDeterministic(
+            expression,
+
+            // A user-defined function is judged by the answer stored on its definition, which was
+            // decided from its body when it was declared. This is the rule the design note named as
+            // the precondition for letting a function into an index key at all.
+            name => m_context.Database.GetFunction(name) is { IsDeterministic: false });
 
         if (reason == null)
             return;

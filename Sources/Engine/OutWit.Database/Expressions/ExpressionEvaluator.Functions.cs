@@ -209,8 +209,58 @@ public sealed partial class ExpressionEvaluator
             "JSON_ARRAY" => EvaluateJsonArray(args),
             "JSON_OBJECT" => EvaluateJsonObject(args),
 
-            _ => throw new NotSupportedException($"Function not supported: {funcName}")
+            _ => EvaluateUserDefined(func, args)
         };
+    }
+
+    /// <summary>
+    /// A user-defined function: substitute the arguments and evaluate the stored body.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the whole of function invocation, and it is deliberately not an execution.</b> The
+    /// body is one expression, so calling a function means evaluating that expression against a row
+    /// built from its parameters - no re-entry into <c>StatementExecutor</c>, no statement, no
+    /// transaction, and nothing added to the nesting count. Measured before the design was chosen: a
+    /// parsed expression evaluates against a synthetic parameter row, and that row shadows the
+    /// caller's outer row rather than leaking into it.
+    /// </para>
+    /// <para>
+    /// The arguments arrive already evaluated - the router above evaluates them once, in the
+    /// caller's scope, before dispatch. So a parameter used twice in a body costs one evaluation of
+    /// the argument, not two, and an argument referring to a column resolves against the caller's
+    /// row, which is the only row it could mean.
+    /// </para>
+    /// <para>
+    /// Recursion cannot arrive here: a function that calls itself is refused when it is declared,
+    /// and a function that does not exist yet cannot be called, so the call graph is acyclic by
+    /// construction. That matters because this path is not counted by the statement nesting limit
+    /// and a cycle would end the process rather than raise.
+    /// </para>
+    /// </remarks>
+    private WitSqlValue EvaluateUserDefined(WitSqlExpressionFunctionCall func, WitSqlValue[] args)
+    {
+        var function = m_context.Database.GetFunction(func.FunctionName)
+            ?? throw new NotSupportedException($"Function not supported: {func.FunctionName.ToUpperInvariant()}");
+
+        var parameters = function.Parameters ?? [];
+
+        if (parameters.Count != args.Length)
+        {
+            throw new InvalidOperationException(
+                $"Function {function.Name} takes {parameters.Count} argument(s) but was given "
+                + $"{args.Length}.");
+        }
+
+        // The parameter row IS the scope. Nothing of the caller's row is put into it, so a body can
+        // only ever see what it was passed - which is what makes a function safe to reach from a
+        // CHECK or an index expression, where the caller's row is mid-write.
+        var names = new string[parameters.Count];
+
+        for (var i = 0; i < parameters.Count; i++)
+            names[i] = parameters[i].Name;
+
+        return Evaluate(function.Body, new WitSqlRow(args, names));
     }
 
     #endregion

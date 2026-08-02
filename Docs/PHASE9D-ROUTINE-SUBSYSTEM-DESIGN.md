@@ -428,8 +428,12 @@ Dependencies, not value — the same rule phases 5–10 used.
    a name away. The contract test caught the five new union tags on its first run, which is what it
    is for. `UnbuiltCapabilityCorpusTests` failed as designed and now pins the honest half-built
    state: the syntax parses, execution is still refused.
-4. **Scalar functions** — declaration, determinism at declaration, evaluator substitution, dependency
-   refusal on `DROP`.
+4. ~~**Scalar functions** — declaration, determinism at declaration, evaluator substitution,
+   dependency refusal on `DROP`.~~ **Done.** Invocation is substitution against a parameter row,
+   which shadows the caller's row; determinism is decided from the body and folds in the functions
+   it calls; a self-call, an unbound name, a foreign `LANGUAGE` and a duplicate parameter are all
+   refused at declaration; and `DROP FUNCTION` is `RESTRICT` over the stored expressions rather than
+   over a dependency list, because a list is a second copy of a fact.
 5. **Procedures** — statement-list body, the refusal set of § 3, `CALL`, depth-counted.
 6. **`CommandType.StoredProcedure`** on the ADO surface.
 7. **Corpus inversion** — `UnbuiltCapabilityCorpusTests` and the oracle report both move these two

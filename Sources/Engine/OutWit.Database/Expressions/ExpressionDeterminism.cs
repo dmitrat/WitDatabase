@@ -64,10 +64,25 @@ internal static class ExpressionDeterminism
     /// A reason rather than a bool, so the refusal can say which part of the expression is the
     /// problem. A caller told only "not allowed" about a long <c>CASE</c> has to guess.
     /// </remarks>
-    public static string? ReasonItIsNotDeterministic(WitSqlExpression? expression)
+    /// <param name="expression">The expression to judge.</param>
+    /// <param name="isNonDeterministicFunction">
+    /// Asked about a function call the built-in list does not cover - a user-defined one, whose
+    /// answer was decided from its own body when it was declared and stored on its definition. A
+    /// caller with no database in hand passes null and gets the built-ins only.
+    /// </param>
+    public static string? ReasonItIsNotDeterministic(
+        WitSqlExpression? expression,
+        Func<string, bool>? isNonDeterministicFunction = null)
     {
         foreach (var node in WitSqlNodes.SelfAndDescendants(expression))
         {
+            if (node is WitSqlExpressionFunctionCall udf
+                && isNonDeterministicFunction is not null
+                && isNonDeterministicFunction(udf.FunctionName))
+            {
+                return $"{udf.FunctionName}() is a function declared as not deterministic";
+            }
+
             // Every shape a subquery takes, not only the scalar one. The walk stops inside a nested
             // statement, but it yields the node that holds it, which is what is being refused.
             switch (node)

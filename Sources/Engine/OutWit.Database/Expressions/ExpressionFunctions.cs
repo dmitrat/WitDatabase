@@ -104,12 +104,26 @@ internal static class ExpressionFunctions
     /// which keeps a subquery's own functions out of the answer.
     /// </para>
     /// </remarks>
-    public static string? FirstUnknownFunction(WitSqlNode? node)
+    /// <param name="node">The tree to search.</param>
+    /// <param name="isDefined">
+    /// Asked about a name the built-in set does not have - a user-defined function the catalog
+    /// holds. Null means "nothing is defined", which is the right answer for a caller with no
+    /// database in hand.
+    /// </param>
+    public static string? FirstUnknownFunction(WitSqlNode? node, Func<string, bool>? isDefined = null)
     {
         foreach (var descendant in WitSqlNodes.SelfAndDescendants(node))
         {
-            if (descendant is WitSqlExpressionFunctionCall call && !IsKnown(call.FunctionName))
-                return call.FunctionName;
+            if (descendant is not WitSqlExpressionFunctionCall call)
+                continue;
+
+            if (IsKnown(call.FunctionName))
+                continue;
+
+            if (isDefined is not null && isDefined(call.FunctionName))
+                continue;
+
+            return call.FunctionName;
         }
 
         return null;
