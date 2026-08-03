@@ -236,9 +236,10 @@ public class ConfigurationMismatchTests
         if (transactional.Contains(creator.Label) && mvccPlain.Contains(opener.Label))
             return "the transaction model changes the on-disk layout and nothing says so";
 
-        // Every creator, not just the plain ones: the page-size check fires in one direction only.
-        if (opener.Label == "pagesize" && creator.Label != "pagesize")
-            return "a larger PageSize reinitialises the header instead of reporting the mismatch";
+        // FIXED, and this comment is the record: `PageSize=16384` over a 4,096-byte database used to
+        // open, show nothing and reinitialise the header, after which the configuration that wrote the
+        // file could not open it either. StorageFile refuses a file too short to hold one page of the
+        // size being asked for, so this pair is an ordinary RefusedAtOpen now.
 
         return null;
     }
@@ -248,14 +249,14 @@ public class ConfigurationMismatchTests
     /// in this process - correctly or otherwise.
     /// </summary>
     /// <remarks>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. Mistype the password and the database is locked out for the
-    /// life of the process; the message a consumer then gets names the wrong problem entirely ("the
-    /// process cannot access the file"). Same shape as the two handle leaks this phase already fixed -
-    /// something is constructed, the build then fails, and nothing disposes what was built. Invert this
-    /// to <c>Is.True</c> when a failed <c>Open</c> releases what it opened.
+    /// This pinned a defect and now asserts the fix: a mistyped password used to lock the database out
+    /// for the life of the process, under a message that named the wrong problem entirely ("the process
+    /// cannot access the file"). The storage is opened lazily and disposed when the store that was going
+    /// to own it throws, so a refused open now leaves nothing behind - which is the same shape as the
+    /// two handle leaks fixed earlier in this phase.
     /// </remarks>
     [Test]
-    public void ProbeARefusedOpenLeavesTheFileOpenTest()
+    public void ARefusedOpenLeavesNothingOpenTest()
     {
         var plain = SETUPS.Single(s => s.Label == "default");
         var encrypted = SETUPS.Single(s => s.Label == "aes");
@@ -267,12 +268,9 @@ public class ConfigurationMismatchTests
         Assert.That(verdict.Outcome, Is.EqualTo(Outcome.RefusedAtOpen),
             "the wrong password was not refused at open - this probe is measuring something else now");
 
-        Assert.That(verdict.SurvivesTheOriginal, Is.False,
-            "a refused open no longer leaves the file open - invert this pin, the defect is fixed");
-
-        Assert.That(verdict.SurvivalReason, Does.Contain("cannot access the file"),
-            "the database is unreadable after a refused open, but not for the reason this pins - " +
-            $"re-measure: {verdict.SurvivalReason}");
+        Assert.That(verdict.SurvivesTheOriginal, Is.True,
+            "after a refused open the database is not readable by the configuration that wrote it: " +
+            $"{verdict.SurvivalReason}");
     }
 
     #endregion

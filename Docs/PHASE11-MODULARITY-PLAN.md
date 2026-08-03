@@ -349,8 +349,17 @@ destruction. **Three defects, none of them previously known:**
    process, under a message that names the wrong problem. Same shape as the two handle leaks § 4a fixed -
    something is constructed, the build then fails, nothing disposes what was built.
 
-All three are **pinned as observations with the inversion written into them**, so the suite is green and
-goes red when they are fixed. None is fixed yet.
+**Two of the three are fixed, and the pins went red first - which is the proof.** `StorageFile` refuses
+a file too short to hold one page of the size being asked for, so § 6a.2 is now an ordinary refusal at
+open; and the storage the store was going to own is disposed when that store's construction throws, so
+§ 6a.3 leaves nothing behind. Both pins are inverted and assert the fixed behaviour.
+
+**§ 6a.1 is not fixed and is handed forward.** The header already records `ProviderFeatures.Mvcc` and
+`Transactions` - the metadata is written on creation and loaded on open - so the fix is a comparison at
+open, refusing when the file was written under a different transaction model. What it needs first is a
+public way to read the stored metadata back off a built store; `StoreBTree` keeps its `PageManager`
+private and only the async factory takes metadata in. That is a small design decision rather than a
+patch, and it should not be made at the end of a session.
 
 ## 6b. Still unexplored
 

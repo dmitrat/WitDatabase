@@ -449,7 +449,24 @@ public sealed class WitDatabaseBuilder
         if (!parameters.Has("providerMetadata"))
             parameters.Set("providerMetadata", metadata);
 
-        var store = ProviderRegistry.Instance.Create<IKeyValueStore>(Options.StoreProviderKey, parameters);
+        IKeyValueStore store;
+
+        try
+        {
+            store = ProviderRegistry.Instance.Create<IKeyValueStore>(Options.StoreProviderKey, parameters);
+        }
+        catch
+        {
+            // The store took ownership of the storage only if it was built. When it throws - a wrong
+            // password, a page size the file was not written with - the storage is already open and
+            // nothing owns it, so the handle was held for the life of the process and the database
+            // could not be opened again AT ALL: the next attempt, with the right password, met "the
+            // process cannot access the file". Measured in ConfigurationMismatchTests.
+            if (storage.IsValueCreated)
+                storage.Value.Dispose();
+
+            throw;
+        }
         
         // Serialise the store if its own implementation does not
         return WrapForConcurrency(store);
