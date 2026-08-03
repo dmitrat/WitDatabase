@@ -707,3 +707,62 @@ an applicable index still always wins a range comparison, and a range selecting 
 low-cardinality index still costs 2.5x the scan it replaced. That needs statistics the engine does
 not keep - distinct-value counts, and some notion of whether index order tracks physical row order.
 It changes *which plan is chosen*, where this fix changed only *what it costs to choose*.
+
+---
+
+## 13. Re-baselined: the fix moved far more than its target
+
+A fix without a re-measure is not finished, so the § 5 sweep was taken again - same classes, same
+`Default` mode, same sizes, same job, two passes.
+
+### Everything with a `WHERE` improved, not just the seek
+
+| operation | before | after | |
+|---|---|---|---|
+| Index seek, unique, x100 | 48.42 ms / 125,332 KB | **0.500 ms / 970 KB** | **97x** |
+| Index seek, non-unique, x20 | 19.01 ms / 42,149 KB | 8.40 ms / 17,277 KB | 2.3x |
+| Composite index query | 9.89 ms / 20,926 KB | 4.52 ms / 8,490 KB | 2.2x |
+| Index range scan (`>`) | 1.571 ms | 0.839 ms | 1.9x |
+| Index range scan (`BETWEEN`) | 1.397 ms | 0.832 ms | 1.7x |
+| `SELECT … WHERE Age > 30` | 1.637 ms | 1.114 ms | 1.5x |
+| Full scan, no index | 7.53 ms | 5.94 ms | 1.27x |
+| aggregates, joins, projections | | | 5-8% |
+| `INSERT`, `UPDATE`, transactions | | | unchanged |
+
+The write paths are untouched, as they should be - the planner is not on them. The full scan gains
+because it still has a `WHERE` over a table that has indexes, so it paid the estimate without ever
+using one.
+
+### Where WitDatabase now stands against LiteDB
+
+Same sweep, `Default`, ratios recomputed per operation:
+
+| operation | before | after |
+|---|---|---|
+| Index seek, unique | 23.4x **slower** | **0.25x — 4x faster** |
+| Index range scan (`BETWEEN`) | 0.28x | 0.18x |
+| Point query by PK | 0.20x | 0.19x |
+| Index seek, non-unique | 2.14x slower | 1.05x — parity |
+| Index range scan (`>`) | 1.87x slower | 1.08x — parity |
+| `SELECT … WHERE Age > 30` | 1.43x slower | 1.02x — parity |
+| Full scan, no index | 1.18x slower | 1.00x — parity |
+| Composite index query | 2.51x slower | 1.25x |
+| `ORDER BY` | 0.95x | 0.91x |
+| `INNER JOIN` over 4 tables | 2.74x slower | 2.73x — unchanged |
+
+**Only two operations remain more than 3x behind LiteDB, and both are inserts** - `INSERT` without a
+transaction at 21.4x and `INSERT … RETURNING` at 3.1x. The first is the durable-autocommit cost phase
+4 chose deliberately, and on that same operation WitDatabase is 3.3x *faster* than SQLite. Before the
+fix the list also held the index seek at 23.4x.
+
+The picture changed shape. Against the stated competitor, WitDatabase went from roughly half the
+operations behind to **ahead or at parity on everything except joins and the deliberate durability
+cost**.
+
+### One apparent regression, and it was noise
+
+Pass one read `Tx Rollback` at 0.604 ms against the pre-fix 0.475 - a 27% regression on a path the
+change does not touch, which is exactly the shape that gets written up as a side effect. Pass two:
+**0.461 ms**. The three readings overlap and the honest finding is no measurable difference. Four
+readings in the sweep moved more than 10% between the two passes and none of them carries a
+conclusion here.
