@@ -55,8 +55,25 @@ jobs:
         run: dotnet restore OutWit.slnx
 
       # Scoped to one project per run: mutating everything at once would take longer than the job
-      # timeout and produce a report nobody reads. Performance tests are excluded for the same
-      # reason CI excludes them - a wall-clock assertion under a mutant is noise, not signal.
+      # timeout and produce a report nobody reads.
+      #
+      # This step carried `--test-case-filter "Category!=Performance"` from the day it was written,
+      # to keep the wall-clock Performance assertions out - a threshold assertion under a mutant is
+      # noise, not signal. Stryker has no such option and never did: `dotnet-stryker --help` at the
+      # pinned 4.16.0 offers `--test-project`, `--disable-bail` and
+      # `--break-on-initial-test-failure`, and nothing that filters test cases. The run failed in 36
+      # seconds with `Unrecognized option '--test-case-filter'`.
+      #
+      # It went unnoticed because the workflow is weekly and had never actually fired: the failure
+      # above is the ONLY run in its history. Mutation testing was recorded as delivered in phase 0
+      # and has never produced a single result.
+      #
+      # The flag is removed rather than replaced, because there is nothing to replace it with. The
+      # Performance tests therefore run here. That is acceptable and is not silent: they carry
+      # wall-clock assertions, so some will fail on the initial run, and Stryker excludes tests that
+      # fail initially from killing mutants. If that turns out to distort the score, the next move is
+      # to move those assertions out of the unit suite - which `Docs/NEXT-SESSION-PLAN.md` already
+      # argues for - not to invent a flag.
       - name: Run Stryker
         run: |
           project="${{ inputs.project || 'OutWit.Database' }}"
@@ -73,7 +90,6 @@ jobs:
             --project "$project.csproj" \
             --solution OutWit.slnx \
             --target-framework net10.0 \
-            --test-case-filter "Category!=Performance" \
             --reporter html --reporter markdown --reporter progress \
             --output "StrykerOutput/$project"
 
