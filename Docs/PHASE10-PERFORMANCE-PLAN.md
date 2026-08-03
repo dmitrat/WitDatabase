@@ -974,3 +974,108 @@ Index stores are constructed with `new LsmOptions()` in
 `WitDatabaseBuilder.CreateLsmIndexFactory`, so a connection string's `SyncWrites` never reaches them
 - every secondary index silently runs on defaults. Whatever is decided for the main store, the
 indexes should follow it rather than doing something else unannounced.
+
+---
+
+## 17. The LSM audit, second pass: two more defects, and why the obvious fix cannot ship yet
+
+Context for this pass, from the author: **LSM is meant to be a supported choice**, not a curiosity -
+WitDatabase is built as a construction kit where a workload picks its configuration, and LSM is the
+one intended for write-heavy work. Measured against that intent, "slower than the B+Tree on writes"
+is not a trade-off to document; it is a defect to find.
+
+### 17.1 The number that pointed at it was already in the data
+
+| | one transaction of 100 rows | 100 transactions of 1 row |
+|---|---|---|
+| `Lsm` | 10.93 / 11.11 ms | 1281.8 / 1097.9 ms → **11.0 / 12.8 ms per transaction** |
+| `BTree` | 2.98 / 2.88 ms | 269.1 / 196.1 ms → 2.69 / 1.96 ms per transaction |
+
+**A transaction costs ~11 ms on LSM whether it contains one row or a hundred.** The rows are nearly
+free; the commit is everything. That is a fixed per-commit price, and it is 4-5x the B+Tree's.
+
+### 17.2 Defect: every commit writes an SSTable
+
+`Transaction.Commit` calls `m_store.Flush()`, and `StoreLsm.Flush()` flushed the MemTable whenever it
+held **anything at all**:
+
+```csharp
+if (m_activeMemTable.Count > 0)
+    FlushMemTableInternal();
+```
+
+So every commit created a file, wrote its blocks, bloom filter and index, fsynced it, and handed the
+compactor more work. That is the exact opposite of what an LSM tree is for: the MemTable exists so
+that many writes accumulate in memory and reach disk **once**, as one large sorted file.
+`MemTableSizeLimit` was unreachable in transactional mode - the flush policy was effectively "one
+SSTable per commit".
+
+**Measured**, by making `Flush()` sync the write-ahead log instead - which is what an LSM log is for,
+and what RocksDB does - and flush the MemTable only when it is actually due:
+
+| | before | after |
+|---|---|---|
+| 50 transactions x 1 row | 14.67 ms/tx | **2.95 ms/tx** |
+| 50 transactions x 10 rows | 10.57 ms/tx | **2.35 ms/tx** |
+| 50 transactions x 100 rows | 13.32 ms/tx | **5.30 ms/tx** |
+
+The cost stops being fixed and starts growing with the rows written, which is the correct shape. A
+scan still returns every row, and the 13 `Category=Crash` tests still pass - durability moves from
+the SSTable to the WAL, and `Open` already replays the WAL.
+
+### 17.3 Defect: `MemTableSize` from the connection string is inert
+
+Trying to ship § 17.2 broke `MemTableSizeParameterWorksTest`, which sets `MemTableSize=1024`, writes
+~10 KB and asserts SSTables exist. **It had been passing for the wrong reason**: every commit flushed,
+so it would have passed with the parameter wired to nothing.
+
+Measured directly, 5 MB of payload in one transaction:
+
+| `MemTableSize` | SSTables produced |
+|---|---|
+| 1,024 bytes | **1** |
+| 4,194,304 bytes (the default) | **1** |
+
+At a 1 KB limit that should be thousands of flushes. The two are identical, so **the connection
+string's value never reaches `LsmOptions.MemTableSizeLimit`** - the store always uses the 4 MB
+default. The size threshold itself works: one SSTable appears once the default is crossed, and none
+appears below it.
+
+`ProviderRegistration` does read `MemTableSize` into the options, and `WitDbConnectionStringBuilder`
+knows the keyword, so the break is between them. Locating it exactly is a bounded next step.
+
+### 17.4 Why § 17.2 is not shipped here
+
+The change is drafted and measured, and it **breaks seven tests**, so it is deliberately not in this
+branch:
+
+- **Six in `Core.Tests`** use `Flush()` as a lever meaning *"write an SSTable now"* - they test
+  compaction and failed-flush handling (`ControlCompactionReallyReplacesTheTables`,
+  `RowsOfAFailedFlushAreStillScannable`, and four more). They are not testing the commit contract,
+  and they pin real defects found in phases 4 and 5, so they must not be rewritten casually. What
+  they need is an explicit force-flush entry point, separate from `Flush()`-means-make-durable.
+- **One in `AdoNet.Tests`** is § 17.3 - a defect the change exposes rather than causes.
+
+And § 17.3 makes § 17.2 load-bearing in a way it should not be yet: with the commit flush gone, the
+size threshold becomes the **only** thing that ever flushes a MemTable, so a connection string asking
+for a small MemTable would be ignored and the MemTable would grow to 4 MB regardless.
+
+**So the order is: fix the parameter, split `Flush()` into "make durable" and "force out", update the
+six tests to say which they mean, and only then remove the per-commit SSTable.** Each of those is
+small; doing them together, at the end of a long session, is how a durability path gets broken
+quietly.
+
+### 17.5 Where this leaves the construction-kit intent
+
+Three defects now separate the LSM store from what it is supposed to be, and they compound:
+
+1. **The WAL bypassed the OS write cache** - fixed, 12-20x down to 1.0-5.6x.
+2. **Every commit wrote an SSTable** - diagnosed and measured, ~5x on the per-commit cost, not yet
+   shipped.
+3. **`MemTableSize` is inert** - so the one remaining flush policy cannot be configured at all.
+
+None of them is a trade-off inherent to log-structured storage. All three are the implementation
+doing more I/O than the design calls for, and the first two are exactly the properties that make an
+LSM tree worth choosing. Until 2 and 3 are fixed, the honest statement is that **LSM is not yet the
+write-heavy option this project intends it to be** - and after them it is worth re-asking, with a
+benchmark aimed at sustained high-volume ingest, which the suite still does not have.
