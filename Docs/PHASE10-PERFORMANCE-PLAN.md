@@ -834,3 +834,82 @@ The measurements say LSM currently loses to B+Tree by 12-20x **on writes** — t
 is chosen for. That is a defect signature rather than a trade-off, and the two costs above are where
 it lives. Whether it is worth fixing is a product decision, but "LSM is the write-optimised option"
 is not true of this engine today, and no configuration guidance should say so until it is.
+
+---
+
+## 15. The LSM constant factor found: the write-ahead log bypasses the OS write cache
+
+The § 14 diagnosis said the cost is two things - a base row write of ~115 µs and secondary index
+maintenance at ~48 µs per row per index - and named the next suspects. Both turn out to be one cause.
+
+### The mechanism
+
+`WriteAheadLogBase` opens its file like this:
+
+```csharp
+m_stream = new FileStream(filePath, mode, FileAccess.ReadWrite, FileShare.Read, 4096,
+                          FileOptions.WriteThrough);
+```
+
+**`FileOptions.WriteThrough` tells the OS not to cache the write** - every append goes to the
+device. `AppendEntry` also calls `SeekToEnd()` first, which sets `Position = Length`; on a
+`FileStream` both reading `Length` and assigning `Position` flush the write buffer, so the 4 KB
+buffer never accumulates anything either.
+
+The result is one device-level write per row **per store**. In LSM mode every secondary index gets
+its **own** `StoreLsm` with its own WAL (`WitDatabaseBuilder.CreateLsmIndexFactory`), so three
+indexes mean four write-through streams per inserted row. That is exactly the shape § 14 measured:
+a large base cost, multiplied by the number of indexes.
+
+### It contradicts its own option
+
+`LsmOptions.SyncWrites` documents itself as:
+
+> *Whether to sync WAL to disk after each write operation. If false, relies on OS buffering (faster
+> but less durable per-write). Default: false (matches SQLite behavior…)*
+
+The default is `false` and the benchmark configuration sets it explicitly. **There is no OS buffering
+to rely on** - the stream is opened in a mode that forbids it. The option promises the fast path and
+the file handle refuses to provide it.
+
+### Measured, by removing it
+
+`FileOptions.WriteThrough` replaced with `FileOptions.None`, nothing else changed, same benchmark,
+1,000 rows in one transaction:
+
+| shape | `Lsm` with WriteThrough | `Lsm` without | |
+|---|---|---|---|
+| Bare table, no key no index | 111.7-118.1 ms | **33.10 ms** | 3.4x |
+| PK only | 115.8-119.4 ms | **36.91 ms** | 3.2x |
+| PK + 1 secondary index | 286.1-502.0 ms | **41.35 ms** | 7-12x |
+| PK + 3 secondary indexes | 534.1-560.0 ms | **44.30 ms** | 12x |
+
+**The index multiplication disappears.** Going from no index to three cost +375% before and +34%
+after. And LSM stops losing to the B+Tree store: at three indexes it measures 44.30 ms against
+B+Tree's 49.27 ms in the same run - faster.
+
+So this one flag is most of the 12-20x reported in § 10, and it is the answer to "is there a defect
+in the LSM implementation": yes, and it is one line.
+
+### Whether removing it is safe - the part that needs a decision
+
+Durability does **not** depend on it. `WriteAheadLogBase.Sync()` calls
+`m_stream.Flush(flushToDisk: true)` - a real fsync - and that is what `SyncWrites=true` invokes per
+write and what `AppendCommitTransaction` invokes on commit. `WriteThrough` is redundant with the
+durable path and defeats the fast one.
+
+What removing it genuinely changes is the *fast* path: with `SyncWrites=false` a write would now sit
+in the OS cache until a sync, which is what the option says it does and what SQLite does. Today it
+reaches the device. **Nobody could have been relying on that deliberately** - it is undocumented and
+contradicts the option's own text - but it is a real reduction in accidental durability and this
+project does not make durability changes quietly. Phase 4 already established that LSM durability is
+partial in a different way: `SyncWrites` syncs the WAL only, and the WAL is truncated the moment the
+memtable is flushed into an SSTable that was never fsynced.
+
+**A second, smaller question found on the way:** index stores are built with `new LsmOptions()` -
+plain defaults - so a connection string's `SyncWrites` never reaches them. Whatever is decided for
+the main store, the indexes should follow it rather than silently doing something else.
+
+**Not changed here.** The measurement above was taken by editing the file and reverting it; nothing
+in this commit alters the engine. The fix is one line, its performance case is measured, and its
+durability case is stated - it wants an explicit decision rather than an assumption.
