@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore.Infrastructure;
+﻿using Microsoft.EntityFrameworkCore.Infrastructure;
 using Microsoft.Extensions.DependencyInjection;
 using OutWit.Database.AdoNet;
 using OutWit.Database.EntityFramework.Extensions;
@@ -13,8 +13,6 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
     #region Fields
 
     private bool m_inMemory;
-    private WitDbParallelMode m_parallelMode = WitDbParallelMode.None;
-    private int? m_maxWriters;
     private DbContextOptionsExtensionInfo? m_info;
 
     #endregion
@@ -37,8 +35,6 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
         : base(copyFrom)
     {
         m_inMemory = copyFrom.m_inMemory;
-        m_parallelMode = copyFrom.m_parallelMode;
-        m_maxWriters = copyFrom.m_maxWriters;
     }
 
     #endregion
@@ -67,58 +63,10 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
         return (WitDbContextOptionsExtension)base.WithConnectionString(connectionString);
     }
 
-    /// <summary>
-    /// Creates a copy of this extension with the specified parallel mode.
-    /// </summary>
-    /// <param name="parallelMode">The parallel mode.</param>
-    /// <returns>A new extension instance.</returns>
-    public WitDbContextOptionsExtension WithParallelMode(WitDbParallelMode parallelMode)
-    {
-        var clone = (WitDbContextOptionsExtension)Clone();
-        clone.m_parallelMode = parallelMode;
-        return clone;
-    }
-
-    /// <summary>
-    /// Creates a copy of this extension with the specified max writers.
-    /// </summary>
-    /// <param name="maxWriters">The maximum number of parallel writers.</param>
-    /// <returns>A new extension instance.</returns>
-    public WitDbContextOptionsExtension WithMaxWriters(int maxWriters)
-    {
-        var clone = (WitDbContextOptionsExtension)Clone();
-        clone.m_maxWriters = maxWriters;
-        return clone;
-    }
-
     /// <inheritdoc/>
     protected override RelationalOptionsExtension Clone()
     {
         return new WitDbContextOptionsExtension(this);
-    }
-
-    /// <summary>
-    /// Gets the effective connection string with parallel mode options applied.
-    /// </summary>
-    public string? GetEffectiveConnectionString()
-    {
-        var connStr = ConnectionString;
-        if (string.IsNullOrEmpty(connStr))
-            return connStr;
-
-        // Only modify if parallel mode is set
-        if (m_parallelMode == WitDbParallelMode.None && !m_maxWriters.HasValue)
-            return connStr;
-
-        var builder = new WitDbConnectionStringBuilder(connStr);
-        
-        if (m_parallelMode != WitDbParallelMode.None)
-            builder.ParallelMode = m_parallelMode;
-        
-        if (m_maxWriters.HasValue)
-            builder.MaxWriters = m_maxWriters.Value;
-
-        return builder.ConnectionString;
     }
 
     #endregion
@@ -155,16 +103,6 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
     /// </summary>
     public bool InMemory => m_inMemory;
 
-    /// <summary>
-    /// Gets the parallel mode.
-    /// </summary>
-    public WitDbParallelMode ParallelMode => m_parallelMode;
-
-    /// <summary>
-    /// Gets the maximum number of parallel writers.
-    /// </summary>
-    public int? MaxWriters => m_maxWriters;
-
     #endregion
 
     #region Nested Types
@@ -198,8 +136,6 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
                 var hashCode = new HashCode();
                 hashCode.Add(base.GetServiceProviderHashCode());
                 hashCode.Add(Extension.InMemory);
-                hashCode.Add(Extension.ParallelMode);
-                hashCode.Add(Extension.MaxWriters);
                 m_serviceProviderHash = hashCode.ToHashCode();
             }
 
@@ -241,17 +177,13 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
             return other is ExtensionInfo otherInfo
                 && base.ShouldUseSameServiceProvider(other)
                 && Extension.InMemory == otherInfo.Extension.InMemory
-                && Extension.ParallelMode == otherInfo.Extension.ParallelMode
-                && Extension.MaxWriters == otherInfo.Extension.MaxWriters;
+                ;
         }
 
         public override void PopulateDebugInfo(IDictionary<string, string> debugInfo)
         {
             debugInfo["WitDb:ConnectionString"] = Redact(Extension.ConnectionString) ?? "(null)";
             debugInfo["WitDb:InMemory"] = Extension.InMemory.ToString();
-            debugInfo["WitDb:ParallelMode"] = Extension.ParallelMode.ToString();
-            if (Extension.MaxWriters.HasValue)
-                debugInfo["WitDb:MaxWriters"] = Extension.MaxWriters.Value.ToString();
         }
 
         #endregion
@@ -280,14 +212,6 @@ public sealed class WitDbContextOptionsExtension : RelationalOptionsExtension
                     else if (Extension.Connection != null)
                     {
                         builder.Append("(existing connection)");
-                    }
-
-                    if (Extension.ParallelMode != WitDbParallelMode.None)
-                    {
-                        builder.Append($" [Parallel: {Extension.ParallelMode}");
-                        if (Extension.MaxWriters.HasValue)
-                            builder.Append($", MaxWriters: {Extension.MaxWriters}");
-                        builder.Append("]");
                     }
 
                     m_logFragment = builder.ToString();

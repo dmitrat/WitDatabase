@@ -9,11 +9,12 @@ public sealed class ScenarioContext
 {
     #region Constructors
 
-    public ScenarioContext(string path, int rows, string table)
+    public ScenarioContext(string path, int rows, string table, string settings = "")
     {
         Path = path;
         Rows = rows;
         Table = table;
+        Settings = settings;
     }
 
     #endregion
@@ -96,6 +97,18 @@ public sealed class ScenarioContext
 
     /// <summary>Name of the table it writes them to.</summary>
     public string Table { get; }
+
+    /// <summary>
+    /// Connection-string settings appended after <c>Data Source=</c>, empty for the default
+    /// configuration.
+    /// </summary>
+    /// <remarks>
+    /// Durability had only ever been crashed in one configuration - the default - and durability is
+    /// precisely the property a configuration changes: the transaction model decides what a commit
+    /// writes, <c>Synchronous Commit</c> decides whether it waits, and the LSM store keeps its own
+    /// write-ahead log. This is what lets a scenario be run under each of them.
+    /// </remarks>
+    public string Settings { get; }
 
     #endregion
 }

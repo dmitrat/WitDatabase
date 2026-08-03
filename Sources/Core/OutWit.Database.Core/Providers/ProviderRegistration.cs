@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Encryption;
 using OutWit.Database.Core.Interfaces;
@@ -86,7 +86,14 @@ internal static class ProviderRegistration
             var cacheSize = p.Get("cacheSize", DatabaseConstants.DEFAULT_CACHE_SIZE);
             var ownsStorage = p.Get("ownsStorage", true);
             var metadata = p.Get<ProviderMetadata?>("providerMetadata", null);
-            return new StoreBTree(storage, cacheSize, ownsStorage, metadata);
+
+            // A caller that chose a cache provider gets it. Without this the store built its own
+            // PageCacheShardedClock and the Cache keyword selected nothing.
+            var cache = p.Get<IPageCache?>("cache", null);
+
+            return cache != null
+                ? new StoreBTree(storage, cache, ownsStorage, metadata)
+                : new StoreBTree(storage, cacheSize, ownsStorage, metadata);
         });
 
         // LSM store
@@ -105,101 +112,6 @@ internal static class ProviderRegistration
         {
             return new StoreInMemory();
         });
-    }
-
-    /// <summary>
-    /// Builds LsmOptions from individual parameters (e.g., from connection string).
-    /// </summary>
-    private static LSM.LsmOptions BuildLsmOptionsFromParameters(ProviderParameters p)
-    {
-        var options = new LSM.LsmOptions();
-        
-        // Map connection string parameters to LsmOptions
-        // Support both camelCase and PascalCase parameter names
-        
-        if (p.Has("SyncWrites") || p.Has("syncWrites"))
-            options.SyncWrites = GetBoolParameter(p, "SyncWrites") ?? GetBoolParameter(p, "syncWrites") ?? options.SyncWrites;
-        
-        if (p.Has("EnableWal") || p.Has("enableWal"))
-            options.EnableWal = GetBoolParameter(p, "EnableWal") ?? GetBoolParameter(p, "enableWal") ?? options.EnableWal;
-        
-        if (p.Has("MemTableSize") || p.Has("memTableSize") || p.Has("MemTableSizeLimit"))
-            options.MemTableSizeLimit = GetLongParameter(p, "MemTableSize") 
-                ?? GetLongParameter(p, "memTableSize") 
-                ?? GetLongParameter(p, "MemTableSizeLimit") 
-                ?? options.MemTableSizeLimit;
-        
-        if (p.Has("BlockSize") || p.Has("blockSize"))
-            options.BlockSize = GetIntParameter(p, "BlockSize") ?? GetIntParameter(p, "blockSize") ?? options.BlockSize;
-        
-        if (p.Has("CompactionTrigger") || p.Has("compactionTrigger") || p.Has("Level0CompactionTrigger"))
-            options.Level0CompactionTrigger = GetIntParameter(p, "CompactionTrigger") 
-                ?? GetIntParameter(p, "compactionTrigger") 
-                ?? GetIntParameter(p, "Level0CompactionTrigger") 
-                ?? options.Level0CompactionTrigger;
-        
-        if (p.Has("EnableBlockCache") || p.Has("enableBlockCache"))
-            options.EnableBlockCache = GetBoolParameter(p, "EnableBlockCache") ?? GetBoolParameter(p, "enableBlockCache") ?? options.EnableBlockCache;
-        
-        if (p.Has("BlockCacheSize") || p.Has("blockCacheSize") || p.Has("BlockCacheSizeBytes"))
-            options.BlockCacheSizeBytes = GetLongParameter(p, "BlockCacheSize") 
-                ?? GetLongParameter(p, "blockCacheSize") 
-                ?? GetLongParameter(p, "BlockCacheSizeBytes") 
-                ?? options.BlockCacheSizeBytes;
-        
-        if (p.Has("BackgroundCompaction") || p.Has("backgroundCompaction"))
-            options.BackgroundCompaction = GetBoolParameter(p, "BackgroundCompaction") ?? GetBoolParameter(p, "backgroundCompaction") ?? options.BackgroundCompaction;
-        
-        return options;
-    }
-    
-    private static bool? GetBoolParameter(ProviderParameters p, string name)
-    {
-        if (!p.Has(name)) return null;
-        
-        var value = p.Get<object?>(name, null);
-        if (value == null) return null;
-        
-        if (value is bool b) return b;
-        if (value is string s)
-        {
-            return s.ToLowerInvariant() switch
-            {
-                "true" or "yes" or "1" or "on" => true,
-                "false" or "no" or "0" or "off" => false,
-                _ => bool.TryParse(s, out var result) ? result : null
-            };
-        }
-        
-        return null;
-    }
-    
-    private static int? GetIntParameter(ProviderParameters p, string name)
-    {
-        if (!p.Has(name)) return null;
-        
-        var value = p.Get<object?>(name, null);
-        if (value == null) return null;
-        
-        if (value is int i) return i;
-        if (value is long l) return (int)l;
-        if (value is string s && int.TryParse(s, out var result)) return result;
-        
-        return null;
-    }
-    
-    private static long? GetLongParameter(ProviderParameters p, string name)
-    {
-        if (!p.Has(name)) return null;
-        
-        var value = p.Get<object?>(name, null);
-        if (value == null) return null;
-        
-        if (value is long l) return l;
-        if (value is int i) return i;
-        if (value is string s && long.TryParse(s, out var result)) return result;
-        
-        return null;
     }
 
     private static void RegisterCryptoProviders()

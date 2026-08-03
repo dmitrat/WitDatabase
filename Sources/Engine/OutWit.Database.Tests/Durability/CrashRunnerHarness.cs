@@ -34,7 +34,12 @@ public static class CrashRunnerHarness
     /// <summary>
     /// Starts a scenario and returns once it has announced <see cref="CrashProtocol.READY"/>.
     /// </summary>
-    public static CrashRun Start(string scenario, string databasePath, int rows = 20, string table = "T")
+    public static CrashRun Start(
+        string scenario,
+        string databasePath,
+        int rows = 20,
+        string table = "T",
+        string settings = "")
     {
         var runner = ResolveRunnerAssembly();
 
@@ -57,6 +62,12 @@ public static class CrashRunnerHarness
         startInfo.ArgumentList.Add("--table");
         startInfo.ArgumentList.Add(table);
 
+        if (!string.IsNullOrEmpty(settings))
+        {
+            startInfo.ArgumentList.Add("--settings");
+            startInfo.ArgumentList.Add(settings);
+        }
+
         var process = Process.Start(startInfo)
             ?? throw new CrashHarnessException($"could not start 'dotnet exec {runner}'");
 
@@ -73,9 +84,10 @@ public static class CrashRunnerHarness
         string scenario,
         string databasePath,
         int rows = 20,
-        string table = "T")
+        string table = "T",
+        string settings = "")
     {
-        using var run = Start(scenario, databasePath, rows, table);
+        using var run = Start(scenario, databasePath, rows, table, settings);
 
         var facts = run.WaitFor(CrashProtocol.DONE);
         var exitCode = run.WaitForExit();

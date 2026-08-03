@@ -1,4 +1,130 @@
-# Changelog
+﻿# Changelog
+
+## 12.0.0
+
+A **major**, and the reason is the last section: `Parallel Mode` and `Max Writers` are gone from the
+connection string, from `WitDbConnectionStringBuilder`, and from Entity Framework's
+`UseParallelWrites` / `MaxWriters`. A connection string that still carries one is refused at `Open`.
+
+
+Phase 11, the modular structure: **the combinations this construction kit offers have been enumerated,
+built and run for the first time.** Five instruments - a reflection census that asks whether a
+connection-string keyword reaches the engine at all; a 153-case matrix that runs the same workload
+through every legal combination and compares the answers; an 8x8 grid that creates a database with one
+configuration and opens it with another; the same combinations with two connections open at once; and
+durability crossed with configuration, one process kill each.
+
+The second reason it is a major is the transaction-model check below: an application that opened an
+MVCC database with `MVCC=false` used to get an empty-looking database and now gets an error.
+
+**Reassuring, and worth stating:** no combination opens, accepts every statement and answers something
+different. Every defect found is in construction or in close.
+
+### Fixed
+
+- **`Store` decided whether any other keyword arrived.** The ADO.NET layer forwarded the entire
+  pass-through parameter set only when `Store=` appeared in the connection string, so
+  `Data Source=db;PageSize=16384` silently used the default page size while
+  `Data Source=db;Store=btree;PageSize=16384` - which asks for the same engine, `btree` being the
+  default - honoured it. Measured both ways.
+
+- **Numeric and boolean keywords fell back to their defaults in silence.** Every value from a connection
+  string arrives as text, and `ProviderParameters.Get<T>` tested the type without converting, so
+  `Get<int>("16384")` returned the default. It converts now, and a present value that cannot be read as
+  the requested type is an error at `Open` rather than a silent default.
+
+- **`Store=inmemory` with a file `Data Source` held the file open.** The builder opened storage for every
+  store and handed it to the factory; the in-memory store ignores it, nothing owned it, and the database
+  could not be opened a second time in the same process. Storage is deferred now and never opens for a
+  store that does not ask for it.
+
+- **`Journal=wal` held the journal file open.** The journal was constructed before the builder chose
+  between the MVCC store, which takes no journal, and the lock-based one, which does - so with the
+  default `MVCC=true` a write-ahead log was built, dropped, and its handle held for the life of the
+  process.
+
+- **`Store=lsm` with `Transactions=false` and a parallel mode lost the last row written.** The parallel
+  writer's `Dispose` completed its buffer channel - draining only what was already queued - and then
+  discarded the thread-local buffers, which is where every entry below the size threshold sits. Seven
+  rows survived a clean close and reopen; the eighth did not. With MVCC the commit path's `FlushAllAsync`
+  hid it. The writer now hands over the buffers that are still filling before it closes the queue.
+
+- **Switching `MVCC` or `Transactions` made an existing database look empty.** A database created with
+  the default `MVCC=true` opened without complaint under `MVCC=false` or `Transactions=false` and then
+  reported every table as missing - and the other way round. The rows were never lost: the
+  configuration that wrote them read them back afterwards. The danger was the next step, because a
+  consumer meeting an apparently empty database creates the schema, over one that was intact. The
+  database header has always recorded which transaction model wrote it; that record is now compared at
+  `Open` and a mismatch is refused with a message naming the setting. `MVCC=false` and
+  `Transactions=false` write the same layout as each other and still open each other's databases.
+
+- **A larger `PageSize` reinitialised the header of an existing database.** `StorageFile` counted
+  pages as `length / pageSize`, so a 4,096-byte database opened with `PageSize=16384` counted zero
+  pages, the page manager took that for a new database and overwrote the header - after which the
+  configuration that created the file could not open it either. A non-empty file too short to hold one
+  page is refused now.
+
+- **A refused open held the data file for the life of the process.** A wrong password or a wrong page
+  size left the storage that had already been built undisposed, so the next attempt - with the right
+  password - met "the process cannot access the file", a message naming the wrong problem entirely.
+  Anything that fails between building the store and handing it over now disposes it.
+
+- **The B+Tree store was left unserialised when no parallel mode was asked for.** Secondary index
+  stores have been wrapped unconditionally since 6.0.0, because a second connection is enough to walk
+  into a leaf split someone else is halfway through; the main store was left conditional on
+  `Parallel Mode`. With `Transactions=false` and no mode there was nothing at all between two writers
+  and one split: measured, a writer threw and a row was lost in **five runs out of five**. With
+  transactions the layer above happens to serialise it, which is a property of that layer rather than a
+  guarantee the store may lean on. The B+Tree store is now serialised whenever it is built, which costs
+  a single thread nothing - median **1.001x** over five interleaved passes of 20,000 operations.
+
+### Changed
+
+- **`Cache=clock|lru` selects a cache.** `StoreBTree` takes an `IPageCache`, and the builder constructs
+  the one the configuration chose, for the main store and for each secondary index store.
+  `WithCache(IPageCache)` - which was read by nothing - now reaches the main store. Before this the
+  chosen key was written into the database header while a `PageCacheShardedClock` was built regardless,
+  so a file could claim a cache it had never had.
+
+- **`Journal=…` with `MVCC=true` or with transactions off is refused at `Open`**, with a message naming
+  the way out. Nothing would have used it.
+
+- **`IProviderMetadataSource`, a new interface**, lets a store hand back the provider metadata the
+  database it opened was created with. `StoreBTree` implements it and `BTreeConcurrentStore` delegates;
+  stores with no header to answer from - the LSM and in-memory ones - simply do not implement it. This
+  is what the transaction-model check reads.
+
+- **`Docs/WitSQL.md` para 14.10** now also states what may and may not be changed on an existing
+  database, and carries a measured durability table: a committed transaction survives a process kill
+  under every transaction model, both stores, both journals and encryption - and is lost, along with
+  the whole database, under `Synchronous Commit=false` and `Transactions=false`, both of which
+  document that they trade it.
+
+- **`Docs/WitSQL.md` para 14.10** states which combinations are supported, which are refused and why -
+  including that `Auto`, `Buffered`, `Latched` and `Optimistic` are four spellings of "make this store
+  thread-safe", because the concurrency mechanism is decided by the store and not by the keyword.
+
+### Removed
+
+- **`Parallel Mode` and `Max Writers`.** They chose a concurrency wrapper, and concurrency is not a
+  choice: the B+Tree store has no locking of its own and is serialised whenever it is built, while the
+  LSM and in-memory stores lock internally. What the setting still selected was the LSM store's write
+  buffer, and that was **measured before it was removed**:
+
+  | | ratio, buffered / direct |
+  |---|---|
+  | Straight into the store, one writer | 1.00 (noise, 0.77-1.02 across passes) |
+  | Straight into the store, four contending writers | **0.80** |
+  | Through a database, four writers, autocommit | **1.14** |
+  | Through a database, four writers, batches of 1,000 in a transaction | **1.04** |
+
+  The win needs four threads inside the store at once, and a transaction layer serialises writers
+  before that can happen - so through the engine the buffer only costs. `LsmParallelStore` remains
+  public for a caller who drives a store directly, which is where the win is real.
+
+  Removed with them: `ParallelMode`, `ParallelModeOptions`, `KeyValueStoreFactory`,
+  `WithParallelWrites`, `WithoutParallelWrites`, `WithMaxWriters`, `WitDbParallelMode`, and EF's
+  `UseParallelWrites` and `MaxWriters`.
 
 ## 11.2.0
 

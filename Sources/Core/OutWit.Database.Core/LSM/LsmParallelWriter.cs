@@ -1,4 +1,4 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.LSM;
@@ -635,6 +635,27 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     public void Dispose()
     {
         if (m_disposed) return;
+
+        // Hand over the buffers that are still filling BEFORE closing the queue. Completing the channel
+        // drains what was already queued and nothing else, so until 12.0.0 the entries below the size
+        // threshold - which is to say the tail of every workload - were thrown away by the
+        // m_threadLocalSlot disposal below. With MVCC the commit path calls FlushAllAsync and hid it;
+        // with Transactions=false nothing does, and `Store=lsm` with a parallel mode LOST THE LAST ROW
+        // WRITTEN across a clean close and reopen while the rows before it survived. Measured in
+        // CombinationMatrixTests. A store that accepted a write does not get to discard it at close.
+        try
+        {
+            FlushAllAsync().GetAwaiter().GetResult();
+        }
+        finally
+        {
+            DisposeCore();
+        }
+    }
+
+    private void DisposeCore()
+    {
+        if (m_disposed) return;
         m_disposed = true;
 
         // Stop accepting new buffers, then let the merge loop drain the queue and
@@ -667,6 +688,22 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
     #region IAsyncDisposable
 
     public async ValueTask DisposeAsync()
+    {
+        if (m_disposed) return;
+
+        // Same reason as the synchronous Dispose: the buffers still filling are handed over before the
+        // queue is closed, or their entries are discarded with the thread-local slots below.
+        try
+        {
+            await FlushAllAsync().ConfigureAwait(false);
+        }
+        finally
+        {
+            await DisposeCoreAsync().ConfigureAwait(false);
+        }
+    }
+
+    private async ValueTask DisposeCoreAsync()
     {
         if (m_disposed) return;
         m_disposed = true;

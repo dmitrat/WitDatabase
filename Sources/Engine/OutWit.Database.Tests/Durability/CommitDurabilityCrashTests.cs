@@ -1,4 +1,5 @@
 using OutWit.Database.Core.Builder;
+using OutWit.Database.Core.Stores;
 using OutWit.Database.CrashRunner;
 using OutWit.Database.Engine;
 
@@ -249,11 +250,24 @@ public sealed class CommitDurabilityCrashTests
 
     #region Tools
 
+    /// <summary>
+    /// Every record on the media, read at the storage layer - underneath the MVCC key encoding, the
+    /// transaction layer and the engine.
+    /// </summary>
+    /// <remarks>
+    /// This used to go through <c>WitDatabaseBuilder</c> with no transaction model configured, which
+    /// 12.0.0 refuses: a database created with MVCC and opened without it answers "table not found",
+    /// and that refusal is the point of the check. The probe wants the layer below all of that anyway,
+    /// so it now opens the B+Tree store itself, which is what "underneath the MVCC layer" always meant.
+    /// The store is opened read-only in the sense that matters here - nothing writes through it - and
+    /// the reference side of the comparison keeps this honest: a probe that could not see records
+    /// would report zero for both databases and prove nothing.
+    /// </remarks>
     private static int RawRecordCount(string path)
     {
-        using var database = new WitDatabaseBuilder().WithFilePath(path).Build();
+        using var store = new StoreBTree(path);
 
-        return database.Scan().Count();
+        return store.Scan(null, null).Count();
     }
 
     /// <summary>

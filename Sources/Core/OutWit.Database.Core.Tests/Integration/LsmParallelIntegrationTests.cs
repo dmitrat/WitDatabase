@@ -1,5 +1,6 @@
-using OutWit.Database.Core.Builder;
+﻿using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Interfaces;
+using OutWit.Database.Core.LSM;
 using OutWit.Database.Core.Stores;
 using TextEncoding = System.Text.Encoding;
 
@@ -44,45 +45,6 @@ public class LsmParallelIntegrationTests : IDisposable
 
     #endregion
 
-    #region Factory Tests
-
-    [Test]
-    public void FactoryCreatesRegularStoreWithNoneModeTest()
-    {
-        var dir = Path.Combine(m_testDir, "regular");
-        var options = new ParallelModeOptions { Mode = ParallelMode.None };
-
-        using var store = KeyValueStoreFactory.CreateLsmStore(dir, options);
-
-        Assert.That(store, Is.TypeOf<StoreLsm>());
-        Assert.That(store.ProviderKey, Is.EqualTo("lsm"));
-    }
-
-    [Test]
-    public void FactoryCreatesParallelStoreWithBufferedModeTest()
-    {
-        var dir = Path.Combine(m_testDir, "buffered");
-        var options = new ParallelModeOptions { Mode = ParallelMode.Buffered };
-
-        using var store = KeyValueStoreFactory.CreateLsmStore(dir, options);
-
-        Assert.That(store, Is.TypeOf<LsmParallelStore>());
-        Assert.That(store.ProviderKey, Is.EqualTo("lsm-parallel"));
-    }
-
-    [Test]
-    public void FactoryCreatesParallelStoreWithAutoModeTest()
-    {
-        var dir = Path.Combine(m_testDir, "auto");
-        var options = new ParallelModeOptions { Mode = ParallelMode.Auto };
-
-        using var store = KeyValueStoreFactory.CreateLsmStore(dir, options);
-
-        Assert.That(store, Is.TypeOf<LsmParallelStore>());
-    }
-
-    #endregion
-
     #region Functional Equivalence Tests
 
     [Test]
@@ -91,10 +53,8 @@ public class LsmParallelIntegrationTests : IDisposable
         var regularDir = Path.Combine(m_testDir, "eq_regular");
         var parallelDir = Path.Combine(m_testDir, "eq_parallel");
 
-        using var regularStore = KeyValueStoreFactory.CreateLsmStore(regularDir, 
-            new ParallelModeOptions { Mode = ParallelMode.None });
-        using var parallelStore = KeyValueStoreFactory.CreateLsmStore(parallelDir, 
-            new ParallelModeOptions { Mode = ParallelMode.Buffered });
+        using var regularStore = new StoreLsm(regularDir, new LsmOptions());
+        using var parallelStore = new LsmParallelStore(new StoreLsm(parallelDir, new LsmOptions()), new LsmParallelStoreOptions(), ownsStore: true);
 
         // Insert same data into both stores
         for (int i = 0; i < 100; i++)
@@ -126,9 +86,9 @@ public class LsmParallelIntegrationTests : IDisposable
     public void ParallelStoreHandlesDeleteCorrectlyTest()
     {
         var dir = Path.Combine(m_testDir, "delete_test");
-        var options = new ParallelModeOptions { Mode = ParallelMode.Buffered };
+        var options = new LsmParallelStoreOptions();
 
-        using var store = KeyValueStoreFactory.CreateLsmStore(dir, options);
+        using var store = new LsmParallelStore(new StoreLsm(dir, new LsmOptions()), options, ownsStore: true);
 
         // Insert
         store.Put(ToBytes("key1"), ToBytes("value1"));
@@ -152,9 +112,9 @@ public class LsmParallelIntegrationTests : IDisposable
     public void ParallelStoreScanWorksCorrectlyTest()
     {
         var dir = Path.Combine(m_testDir, "scan_test");
-        var options = new ParallelModeOptions { Mode = ParallelMode.Buffered };
+        var options = new LsmParallelStoreOptions();
 
-        using var store = KeyValueStoreFactory.CreateLsmStore(dir, options);
+        using var store = new LsmParallelStore(new StoreLsm(dir, new LsmOptions()), options, ownsStore: true);
 
         // Insert ordered keys
         for (int i = 0; i < 50; i++)
@@ -179,9 +139,9 @@ public class LsmParallelIntegrationTests : IDisposable
     public void ParallelStoreSupportsConcurrentWritesTest()
     {
         var dir = Path.Combine(m_testDir, "concurrent_write");
-        var options = new ParallelModeOptions { Mode = ParallelMode.Buffered };
+        var options = new LsmParallelStoreOptions();
 
-        using var store = KeyValueStoreFactory.CreateLsmStore(dir, options);
+        using var store = new LsmParallelStore(new StoreLsm(dir, new LsmOptions()), options, ownsStore: true);
 
         const int threads = 4;
         const int entriesPerThread = 200;
@@ -218,9 +178,9 @@ public class LsmParallelIntegrationTests : IDisposable
     public void ParallelStoreSupportsConcurrentReadsTest()
     {
         var dir = Path.Combine(m_testDir, "concurrent_read");
-        var options = new ParallelModeOptions { Mode = ParallelMode.Buffered };
+        var options = new LsmParallelStoreOptions();
 
-        using var store = KeyValueStoreFactory.CreateLsmStore(dir, options);
+        using var store = new LsmParallelStore(new StoreLsm(dir, new LsmOptions()), options, ownsStore: true);
 
         // Prepopulate
         const int totalEntries = 500;
@@ -266,9 +226,9 @@ public class LsmParallelIntegrationTests : IDisposable
     public void ParallelStoreSupportsMixedReadWriteTest()
     {
         var dir = Path.Combine(m_testDir, "mixed_rw");
-        var options = new ParallelModeOptions { Mode = ParallelMode.Buffered };
+        var options = new LsmParallelStoreOptions();
 
-        using var store = KeyValueStoreFactory.CreateLsmStore(dir, options);
+        using var store = new LsmParallelStore(new StoreLsm(dir, new LsmOptions()), options, ownsStore: true);
 
         // Prepopulate
         for (int i = 0; i < 100; i++)
@@ -333,8 +293,7 @@ public class LsmParallelIntegrationTests : IDisposable
         // Regular store
         var regularDir = Path.Combine(m_testDir, "perf_regular");
         long regularMs;
-        using (var store = KeyValueStoreFactory.CreateLsmStore(regularDir, 
-            new ParallelModeOptions { Mode = ParallelMode.None }))
+        using (var store = new StoreLsm(regularDir, new LsmOptions()))
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < entries; i++)
@@ -349,8 +308,7 @@ public class LsmParallelIntegrationTests : IDisposable
         // Parallel store (single-threaded usage)
         var parallelDir = Path.Combine(m_testDir, "perf_parallel");
         long parallelMs;
-        using (var store = KeyValueStoreFactory.CreateLsmStore(parallelDir, 
-            new ParallelModeOptions { Mode = ParallelMode.Buffered }))
+        using (var store = new LsmParallelStore(new StoreLsm(parallelDir, new LsmOptions()), new LsmParallelStoreOptions(), ownsStore: true))
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             for (int i = 0; i < entries; i++)
@@ -403,8 +361,7 @@ public class LsmParallelIntegrationTests : IDisposable
         var parallelDir = Path.Combine(m_testDir, "perf_mt_parallel");
         long parallelMs;
         long entriesMerged;
-        using (var store = (LsmParallelStore)KeyValueStoreFactory.CreateLsmStore(parallelDir, 
-            new ParallelModeOptions { Mode = ParallelMode.Buffered }))
+        using (var store = (LsmParallelStore)new LsmParallelStore(new StoreLsm(parallelDir, new LsmOptions()), new LsmParallelStoreOptions(), ownsStore: true))
         {
             var sw = System.Diagnostics.Stopwatch.StartNew();
             var tasks = Enumerable.Range(0, threads).Select(threadId => Task.Run(() =>
@@ -441,13 +398,9 @@ public class LsmParallelIntegrationTests : IDisposable
     public void ParallelStoreTracksStatisticsTest()
     {
         var dir = Path.Combine(m_testDir, "stats");
-        var options = new ParallelModeOptions 
-        { 
-            Mode = ParallelMode.Buffered,
-            TrackStatistics = true 
-        };
+        var options = new LsmParallelStoreOptions { TrackStatistics = true };
 
-        using var store = (LsmParallelStore)KeyValueStoreFactory.CreateLsmStore(dir, options);
+        using var store = new LsmParallelStore(new StoreLsm(dir, new LsmOptions()), options, ownsStore: true);
 
         Assert.That(store.BuffersSubmitted, Is.EqualTo(0));
         Assert.That(store.EntriesMerged, Is.EqualTo(0));

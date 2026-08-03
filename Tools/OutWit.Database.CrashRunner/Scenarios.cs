@@ -84,6 +84,26 @@ public static class Scenarios
     /// </remarks>
     public const string LOCK_HELD_KILL = "lock-held-kill";
 
+    /// <summary>
+    /// The ADO.NET provider under whatever <c>--settings</c> says, closed cleanly. The control for the
+    /// scenario below, and it has to be run per configuration: a configuration that cannot store rows
+    /// when nothing goes wrong says nothing about durability.
+    /// </summary>
+    public const string CONFIGURED_CONTROL_CLEAN = "configured-control-clean";
+
+    /// <summary>
+    /// The ADO.NET provider under whatever <c>--settings</c> says: write the rows the best way that
+    /// configuration allows, then die with no close and no dispose.
+    /// </summary>
+    /// <remarks>
+    /// Durability had only ever been crashed in the default configuration, and durability is exactly
+    /// what a configuration decides. The scenario reports <c>mode=transaction</c> or
+    /// <c>mode=autocommit</c> so the test knows which promise it is holding the configuration to -
+    /// <c>Transactions=false</c> has no commit to make durable, and a test that quietly measured
+    /// autocommit while believing it measured a commit would be reporting on the wrong subject.
+    /// </remarks>
+    public const string CONFIGURED_COMMIT_KILL = "configured-commit-kill";
+
     #endregion
 
     #region Functions
@@ -102,6 +122,8 @@ public static class Scenarios
         ADONET_COMMIT_KILL => AdoNetCommitKill(context),
         MVCC_ENGINE_COMMIT_KILL => MvccEngineCommitKill(context),
         LOCK_HELD_KILL => LockHeldKill(context),
+        CONFIGURED_CONTROL_CLEAN => ConfiguredControlClean(context),
+        CONFIGURED_COMMIT_KILL => ConfiguredCommitKill(context),
         _ => null
     };
 
@@ -115,7 +137,9 @@ public static class Scenarios
         ADONET_CONTROL_CLEAN,
         ADONET_COMMIT_KILL,
         MVCC_ENGINE_COMMIT_KILL,
-        LOCK_HELD_KILL
+        LOCK_HELD_KILL,
+        CONFIGURED_CONTROL_CLEAN,
+        CONFIGURED_COMMIT_KILL
     };
 
     #endregion
@@ -261,6 +285,68 @@ public static class Scenarios
         return context.Park(("rows", context.Rows));
     }
 
+    private static int ConfiguredControlClean(ScenarioContext context)
+    {
+        using var connection = new WitDbConnection(ConnectionString(context));
+        connection.Open();
+        context.Ready();
+
+        Command(connection, $"CREATE TABLE {context.Table} (Id BIGINT PRIMARY KEY AUTOINCREMENT, V INT)");
+
+        var mode = WriteRows(connection, context);
+
+        connection.Close();
+
+        context.Done(("rows", context.Rows), ("mode", mode));
+        return CrashProtocol.EXIT_OK;
+    }
+
+    private static int ConfiguredCommitKill(ScenarioContext context)
+    {
+        var connection = new WitDbConnection(ConnectionString(context));
+        connection.Open();
+        context.Ready();
+
+        Command(connection, $"CREATE TABLE {context.Table} (Id BIGINT PRIMARY KEY AUTOINCREMENT, V INT)");
+
+        var mode = WriteRows(connection, context);
+
+        // Killed here: whatever this configuration calls "written" has been said to have happened, and
+        // nothing has been closed, flushed or disposed since.
+        return context.Park(("rows", context.Rows), ("mode", mode));
+    }
+
+    /// <summary>
+    /// Writes the rows the strongest way this configuration allows, and says which way that was.
+    /// </summary>
+    /// <remarks>
+    /// <c>Transactions=false</c> has no commit to make durable, so it writes with autocommit - and the
+    /// difference is reported rather than hidden, because "20 rows survived a kill" means two different
+    /// things depending on which promise was being held.
+    /// </remarks>
+    private static string WriteRows(DbConnection connection, ScenarioContext context)
+    {
+        DbTransaction transaction;
+
+        try
+        {
+            transaction = connection.BeginTransaction();
+        }
+        catch (Exception)
+        {
+            InsertRows(connection, context, transaction: null);
+            return "autocommit";
+        }
+
+        using (transaction)
+        {
+            InsertRows(connection, context, transaction);
+            transaction.Commit();
+        }
+
+        return "transaction";
+    }
+
     private static int MvccEngineCommitKill(ScenarioContext context)
     {
         var database = new WitDatabaseBuilder()
@@ -286,7 +372,10 @@ public static class Scenarios
 
     #region Tools
 
-    private static string ConnectionString(ScenarioContext context) => $"Data Source={context.Path}";
+    private static string ConnectionString(ScenarioContext context) =>
+        string.IsNullOrEmpty(context.Settings)
+            ? $"Data Source={context.Path}"
+            : $"Data Source={context.Path};{context.Settings}";
 
     // Deliberately through the ADO.NET base types rather than the Wit ones: a drop-in provider is
     // used through DbConnection and DbTransaction, and this suite has already been bitten once by a

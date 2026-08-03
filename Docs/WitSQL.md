@@ -1,4 +1,4 @@
-# WitSQL Language Specification
+﻿# WitSQL Language Specification
 
 **Version:** 1.0  
 **Status:** Draft  
@@ -1260,6 +1260,125 @@ LSM is still several times behind), and for any table with several indexes.
 
 Both engines are durable and both honour `SyncWrites`, `MemTableSize` and the rest of the
 connection-string settings; the choice is about the shape of the workload, not about safety.
+
+## 14.10 Configuration: which combinations are supported
+
+WitDatabase is a construction kit: a workload chooses a store, a transaction model, a parallel mode,
+encryption, a journal and a cache. Every combination below has been **built and run** - the matrix is
+`CombinationMatrixTests`, 153 cases, and every one of them opens a database, runs the same workload and
+compares the answers. Every combination is run a second time with **two connections open over it at
+once** - the shape an ASP.NET Core host produces - and all of them work. What is written here is
+measured, not intended.
+
+**The rule this table exists to make true:** a setting is either honoured or refused at `Open` with an
+explanation. Nothing is accepted and ignored.
+
+### Stores
+
+| `Store` | Persistent | Notes |
+|---|---|---|
+| `btree` (default) | yes | Page-oriented. Honours `PageSize`, `CacheSize`, `Cache`. |
+| `lsm` | yes | Directory-based. Honours the LSM settings below. See 14.9 for when to choose it. |
+| `inmemory` | **no** | Keeps nothing after the last connection closes, whatever `Data Source` says. |
+
+### Transaction model
+
+| Setting | Effect |
+|---|---|
+| `Transactions=true;MVCC=true` (default) | Multi-version store. Concurrent transactions across connections. |
+| `Transactions=true;MVCC=false` | Lock-based transactional store. A journal may be configured. Concurrent transactions across connections are **not** supported in this mode - a second session's `BEGIN` fails. |
+| `Transactions=false` | No transaction layer. `BeginTransaction` throws; statements are autocommitted. |
+
+### Journal
+
+`Journal=wal` and `Journal=rollback` require `MVCC=false`. **With MVCC, or with transactions off, the
+connection is refused at `Open`** - the MVCC store keeps its own versions and takes no journal, so
+accepting the setting would mean ignoring it.
+
+### Cache
+
+`Cache=clock` (default) and `Cache=lru` select the page cache for the B+Tree store and for its secondary
+index stores. `CacheSize` is the number of pages. Neither applies to `Store=lsm`, which has no page
+cache; use `EnableBlockCache` and `BlockCacheSize` there.
+
+### Concurrency: there is nothing to configure
+
+**`Parallel Mode` and `Max Writers` were removed in 12.0.0, and a connection string that still carries
+one is refused at `Open`** with a message naming the reason. Thread safety is a property of each store
+rather than a choice a caller makes:
+
+| store | what it does about concurrent access |
+|---|---|
+| `btree` | Serialised whenever it is built - main store and every secondary index store. It has no locking of its own. |
+| `lsm` | Locks internally. |
+| `inmemory` | Locks internally. |
+
+The reasoning is measured, not asserted. With no wrapper and no transaction layer, two writers meeting
+inside one leaf split of the B+Tree store threw and lost a row in **five runs out of five**; serialising
+costs a single thread nothing (median **1.001x** over five interleaved passes of 20,000 operations). The
+one thing the setting still selected - the LSM store's write buffer - was measured through a database
+and is **slower** there (**1.04x** with batched transactions, **1.14x** with autocommit), because a
+transaction layer serialises writers before they can contend for it. Its 0.80x win needs four threads
+inside the store at once, which no configuration with transactions produces.
+
+A caller driving a store directly, without the engine, can still wrap it: `LsmParallelStore` is public.
+
+### LSM settings
+
+`MemTableSize`, `SyncWrites`, `EnableWal`, `BlockSize`, `CompactionTrigger`, `EnableBlockCache`,
+`BlockCacheSize` and `BackgroundCompaction` reach both the main store and every secondary index store.
+They are ignored by the other stores.
+
+### Changing the configuration of a database that already exists
+
+**A database records the transaction model it was created with, and opening it under another one is
+refused at `Open`.** The MVCC store keeps every value under a versioned key and no other configuration
+does, so a database written with `MVCC=true` - the default - and opened with `MVCC=false` or
+`Transactions=false` used to open without a word of complaint and then report every table as missing.
+The rows were never lost; they were invisible, and the natural next step - creating the schema on what
+looks like an empty database - wrote over one that was intact. Both directions are refused now, with a
+message naming the setting.
+
+`MVCC=false` and `Transactions=false` write the same layout as each other, so either can open the
+other's database.
+
+A `PageSize` that the file was not created with is refused the same way, in both directions. `Cache`,
+`CacheSize`, `Synchronous Commit`, `FileLocking` and `Isolation Level` may be changed freely between
+sessions - they select behaviour rather than layout.
+
+### Durability by configuration
+
+Measured, one process kill per configuration, 20 rows committed and the process killed with no close
+and no dispose (`DurabilityByConfigurationTests`):
+
+| configuration | a committed transaction after a process kill |
+|---|---|
+| default (`MVCC=true`, `Synchronous Commit=true`) | **survives** |
+| `MVCC=false`, with or without `Journal=wal` / `Journal=rollback` | **survives** |
+| `Store=lsm`, with either transaction model | **survives** |
+| encrypted (`Encryption=aes-gcm`) | **survives** |
+| `Synchronous Commit=false` | **lost** - documented, this is what the setting trades |
+| `Transactions=false` | **lost** - there is no commit to make durable |
+
+The last two lose everything written since the database was opened, including the table: the reopened
+database reports it as not found. `Transactions=false` is the one worth reading twice - autocommit is
+durable *because* each statement runs in an implicit transaction, and with the transaction layer
+switched off there is none.
+
+### Settings that are read but not enforced
+
+`Isolation Level` is recorded and reported, and the engine does not yet vary its behaviour by it. It is
+listed here rather than removed because ADO.NET consumers set it as a matter of course.
+
+### A note on spelling
+
+Every keyword above works whether or not `Store` is also named. Before 12.0.0 it did not: the whole
+pass-through parameter set was discarded unless `Store=` appeared in the connection string, so
+`Data Source=db;PageSize=16384` silently used the default page size while
+`Data Source=db;Store=btree;PageSize=16384` - the same engine - honoured it.
+
+A value that cannot be read as the setting's type is now an error at `Open` rather than a silent
+default: `PageSize=large` is refused.
 
 ## 15. Concurrency Control
 

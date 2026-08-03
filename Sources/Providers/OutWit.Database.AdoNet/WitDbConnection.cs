@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Data.Common;
 using Transaction = System.Transactions.Transaction;
 using OutWit.Database.AdoNet.Engines;
@@ -490,9 +490,6 @@ public sealed class WitDbConnection : DbConnection
         // Configure file locking
         ConfigureFileLocking(builder, providerParams);
 
-        // Configure parallel mode
-        ConfigureParallelMode(builder, options);
-
         return builder.Build();
     }
 
@@ -546,13 +543,20 @@ public sealed class WitDbConnection : DbConnection
     private static void ConfigureStore(WitDatabaseBuilder builder, WitDbConnectionStringBuilder options, ProviderParameters providerParams)
     {
         var storeKey = options.Store?.ToLowerInvariant();
-        
-        // No store specified - use default (btree)
+
+        // Settings reach the store whether or not the store was named. Until 12.0.0 this method returned
+        // here when Store was absent, taking the ENTIRE parameter bag with it: `Data Source=x;PageSize=16384`
+        // built a database with the default page size, and `Data Source=x;Store=btree;PageSize=16384` -
+        // which asks for the same engine, btree being the default - honoured it. What decided whether a
+        // setting arrived was a different setting. Measured both ways in ConfigurationCensusTests.
         if (string.IsNullOrEmpty(storeKey))
+        {
+            builder.WithStoreParameters(providerParams);
             return;
+        }
 
         // Pass data source path to provider
-        if (!string.IsNullOrEmpty(options.DataSource) && 
+        if (!string.IsNullOrEmpty(options.DataSource) &&
             !string.Equals(options.DataSource, ":memory:", StringComparison.OrdinalIgnoreCase))
         {
             providerParams.Set("path", options.DataSource);
@@ -684,28 +688,6 @@ public sealed class WitDbConnection : DbConnection
             builder.WithoutFileLocking();
         }
         // else use default (with file locking)
-    }
-
-    private static void ConfigureParallelMode(WitDatabaseBuilder builder, WitDbConnectionStringBuilder options)
-    {
-        if (options.ParallelMode == WitDbParallelMode.None)
-            return;
-
-        var coreMode = options.ParallelMode switch
-        {
-            WitDbParallelMode.Auto => ParallelMode.Auto,
-            WitDbParallelMode.Buffered => ParallelMode.Buffered,
-            WitDbParallelMode.Latched => ParallelMode.Latched,
-            WitDbParallelMode.Optimistic => ParallelMode.Optimistic,
-            _ => ParallelMode.None
-        };
-
-        builder.WithParallelWrites(coreMode);
-
-        if (options.MaxWriters != Environment.ProcessorCount)
-        {
-            builder.WithMaxWriters(options.MaxWriters);
-        }
     }
 
     #endregion

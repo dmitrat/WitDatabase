@@ -1,4 +1,4 @@
-using OutWit.Database.Core.Cache;
+﻿using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Concurrency;
 using OutWit.Database.Core.Encryption;
 using OutWit.Database.Core.Exceptions;
@@ -57,10 +57,12 @@ public sealed class WitDatabaseBuilder
         // DatabaseAlreadyOpenException rather than with whichever raw IOException a share-mode
         // collision happens to produce first. Released by WitDatabase.Dispose.
         var databaseLock = AcquireExclusiveLock();
+        IKeyValueStore? store = null;
 
         try
         {
-            var store = BuildStoreInternal();
+            store = BuildStoreInternal();
+            ValidateStoredConfiguration(store);
             OnStoreBuilt?.Invoke(store);
 
             var indexManager = BuildIndexManagerInternal();
@@ -77,6 +79,13 @@ public sealed class WitDatabaseBuilder
         {
             // A Build that fails half way must not leave the database locked - nothing would ever
             // release it. ProbeRefusedOpenLeavesNothingBehindTest is the test for this shape.
+            //
+            // And the store goes with it. Everything from here on can throw - the stored-configuration
+            // check below does so deliberately - and the store is already holding the data file open by
+            // then, so leaving it would lock the database out of its own process. That is the third
+            // shape of handle leak this phase has found, so the disposal is unconditional rather than
+            // attached to any one failure.
+            store?.Dispose();
             databaseLock?.Dispose();
             throw;
         }
@@ -90,10 +99,12 @@ public sealed class WitDatabaseBuilder
         ValidateConfiguration();
 
         var databaseLock = AcquireExclusiveLock();
+        IKeyValueStore? store = null;
 
         try
         {
-            var store = await BuildStoreInternalAsync(cancellationToken).ConfigureAwait(false);
+            store = await BuildStoreInternalAsync(cancellationToken).ConfigureAwait(false);
+            ValidateStoredConfiguration(store);
             OnStoreBuilt?.Invoke(store);
 
             var indexManager = BuildIndexManagerInternal();
@@ -112,6 +123,7 @@ public sealed class WitDatabaseBuilder
         }
         catch
         {
+            store?.Dispose();
             databaseLock?.Dispose();
             throw;
         }
@@ -219,6 +231,7 @@ public sealed class WitDatabaseBuilder
         ValidateStorageConfigured();
         ValidatePageSize();
         ValidateEncryptionSalt();
+        ValidateJournalIsReachable();
 
         OnValidating?.Invoke(Options);
     }
@@ -344,6 +357,100 @@ public sealed class WitDatabaseBuilder
         }
     }
 
+    /// <summary>
+    /// Refuses a transaction journal that nothing in this configuration can use.
+    /// </summary>
+    /// <remarks>
+    /// <c>TransactionalStore</c> is the only consumer of an <see cref="ITransactionJournal"/>: the MVCC
+    /// store keeps its own versions, and with transactions off there is no transactional store at all.
+    /// Until 12.0.0 the journal was built anyway and dropped - and a write-ahead journal opens its file
+    /// in its constructor, so `Journal=wal` with the default `MVCC=true` leaked the handle and the
+    /// database could not be opened a second time in the process. Refusing at open is the decision:
+    /// a setting that cannot be honoured is an error, not a silence.
+    /// </remarks>
+    private void ValidateJournalIsReachable()
+    {
+        var hasJournal = Options.CustomJournal != null || !string.IsNullOrEmpty(Options.JournalProviderKey);
+
+        if (!hasJournal)
+            return;
+
+        if (!Options.EnableTransactions)
+        {
+            throw new InvalidOperationException(
+                "A transaction journal was configured and transactions are disabled, so nothing would " +
+                "use it. Enable transactions, or drop the journal setting.");
+        }
+
+        if (Options.EnableMvcc)
+        {
+            throw new InvalidOperationException(
+                "A transaction journal cannot be combined with MVCC: the MVCC store keeps its own " +
+                "versions and takes no journal, so the setting would be accepted and ignored. Use " +
+                "MVCC=false to get a journalled transactional store, or drop the journal setting.");
+        }
+    }
+
+    /// <summary>
+    /// Refuses a database that was written under a different transaction model from the one now asking
+    /// to open it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>MVCC changes the key layout, and until 12.0.0 nothing said so.</b> A database created with the
+    /// default configuration and opened with <c>MVCC=false</c> or <c>Transactions=false</c> opened
+    /// without a word of complaint and then answered <c>Table 'X' not found</c> - in both directions.
+    /// The rows were still there: the configuration that wrote them read them back afterwards. So it was
+    /// invisibility rather than loss, right up to the moment the consumer did the obvious thing with an
+    /// apparently empty database and created the schema on top of one that was intact. Measured across
+    /// the 8x8 grid in <c>ConfigurationMismatchTests</c>.
+    /// </para>
+    /// <para>
+    /// The header has recorded <see cref="ProviderFeatures.Mvcc"/> and
+    /// <see cref="ProviderFeatures.Transactions"/> since the metadata section existed, so this needs no
+    /// format change - only a comparison, and a way to read the metadata back off a built store, which
+    /// is <see cref="IProviderMetadataSource"/>.
+    /// </para>
+    /// <para>
+    /// <b>What is compared is the layout, not the keywords.</b> The MVCC store writes every value under
+    /// a versioned key and nothing else does, so the question is whether the MVCC layer is there at all:
+    /// transactions enabled <i>and</i> MVCC enabled. <c>MVCC=false</c> and <c>Transactions=false</c>
+    /// produce the same layout as each other and read each other's databases correctly - measured, and
+    /// the grid pins it - so refusing that pair would be refusing something that works.
+    /// </para>
+    /// <para>
+    /// A file whose metadata section was never written carries an empty store provider key. That is
+    /// indistinguishable from "created by a version that did not record it", so it is left alone: this
+    /// check exists to stop a silent wrong answer, not to make old databases unopenable.
+    /// </para>
+    /// </remarks>
+    private void ValidateStoredConfiguration(IKeyValueStore store)
+    {
+        if (store is not IProviderMetadataSource source || source.StoredMetadata is not { } stored)
+            return;
+
+        if (string.IsNullOrEmpty(stored.StoreProviderKey))
+            return;
+
+        var storedHasMvcc = stored.HasTransactions && stored.HasMvcc;
+        var currentHasMvcc = Options.EnableTransactions && Options.EnableMvcc;
+
+        if (storedHasMvcc == currentHasMvcc)
+            return;
+
+        var mismatch = storedHasMvcc
+            ? "The database was created with MVCC and this configuration opens it without. The MVCC "
+              + "store keeps every value under a versioned key, so a store opened without it finds none "
+              + "of them and reports every table as missing - the data is intact and invisible. Open it "
+              + "with MVCC=true, or create a new database."
+            : "The database was created without MVCC and this configuration opens it with MVCC. The MVCC "
+              + "store looks for values under versioned keys, so it finds none of the ones already "
+              + "written and reports every table as missing - the data is intact and invisible. Open it "
+              + "with MVCC=false, or create a new database.";
+
+        throw new ConfigurationMismatchException(BuildProviderMetadata(), stored, [mismatch]);
+    }
+
     private void ValidateSyncBuildAllowed()
     {
         if (Options.CustomStorage is IAsyncOnlyStorage asyncOnly && asyncOnly.RequiresAsyncOperations)
@@ -380,12 +487,18 @@ public sealed class WitDatabaseBuilder
     private IKeyValueStore BuildStoreFromRegistry()
     {
         var cryptoProvider = BuildCryptoProvider();
-        var storage = BuildStorage(cryptoProvider);
         var metadata = BuildProviderMetadata();
+
+        // Deferred, so that a store which does not want storage never opens a file. StoreInMemory's
+        // factory ignores every parameter, and this used to hand it a StorageFile that was already open:
+        // nothing owned it, nothing disposed it, and Store=inmemory with a file Data Source left the
+        // handle held until finalization - so the database could not be opened a second time in the same
+        // process. ProviderParameters unwraps a Lazy on read, so the factories are unchanged.
+        var storage = new Lazy<IStorage>(() => BuildStorage(cryptoProvider));
 
         // Prepare parameters
         var parameters = new ProviderParameters();
-        
+
         // Copy user parameters
         foreach (var (key, value) in Options.StoreParameters.GetAll())
         {
@@ -395,6 +508,12 @@ public sealed class WitDatabaseBuilder
         // Set defaults if not provided
         if (!parameters.Has("storage"))
             parameters.Set("storage", storage);
+
+        // Only when one was actually chosen, so the default path builds exactly what it built before.
+        // Deferred like the storage: a store that wants neither opens nothing.
+        if (!parameters.Has("cache") && (Options.CustomCache != null || !string.IsNullOrEmpty(Options.CacheProviderKey)))
+            parameters.Set("cache", new Lazy<IPageCache>(() => BuildPageCache(storage.Value)!));
+
         if (!parameters.Has("cacheSize"))
             parameters.Set("cacheSize", Options.CacheSize);
         if (!parameters.Has("ownsStorage"))
@@ -402,10 +521,27 @@ public sealed class WitDatabaseBuilder
         if (!parameters.Has("providerMetadata"))
             parameters.Set("providerMetadata", metadata);
 
-        var store = ProviderRegistry.Instance.Create<IKeyValueStore>(Options.StoreProviderKey, parameters);
+        IKeyValueStore store;
+
+        try
+        {
+            store = ProviderRegistry.Instance.Create<IKeyValueStore>(Options.StoreProviderKey, parameters);
+        }
+        catch
+        {
+            // The store took ownership of the storage only if it was built. When it throws - a wrong
+            // password, a page size the file was not written with - the storage is already open and
+            // nothing owns it, so the handle was held for the life of the process and the database
+            // could not be opened again AT ALL: the next attempt, with the right password, met "the
+            // process cannot access the file". Measured in ConfigurationMismatchTests.
+            if (storage.IsValueCreated)
+                storage.Value.Dispose();
+
+            throw;
+        }
         
-        // Wrap with parallel store if enabled
-        return WrapWithParallelIfNeeded(store);
+        // Serialise the store if its own implementation does not
+        return WrapForConcurrency(store);
     }
 
     private IKeyValueStore BuildLsmStore()
@@ -425,50 +561,40 @@ public sealed class WitDatabaseBuilder
 
         var store = new StoreLsm(directory, lsmOptions);
         
-        // Wrap with parallel store if enabled
-        return WrapWithParallelIfNeeded(store);
+        // Serialise the store if its own implementation does not
+        return WrapForConcurrency(store);
     }
 
-    private IKeyValueStore WrapWithParallelIfNeeded(IKeyValueStore store)
+    /// <summary>
+    /// Applies the concurrency wrapper each store needs, and the write buffering the caller asked for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Serialising the B+Tree store is not a mode.</b> <see cref="StoreBTree"/> has no locking of any
+    /// kind, and secondary index stores have been wrapped unconditionally since 6.0.0 because a second
+    /// <i>connection</i> is enough to walk into a leaf split someone else is halfway through. The main
+    /// store was left conditional on a parallel mode, and phase 11 measured what that left open: with
+    /// <c>Transactions=false</c> and no mode, two writers inside one split threw and lost an entry in
+    /// <b>five runs out of five</b>. With transactions the layer above happens to serialise it - which
+    /// is a property of that layer, not a guarantee this one may lean on.
+    /// </para>
+    /// <para>
+    /// Wrapping unconditionally costs a single thread nothing: five interleaved passes of 20,000
+    /// put+get gave a median ratio of <b>1.001</b> wrapped against bare. Both measurements are in
+    /// <c>MainStoreConcurrencyProbeTests</c>.
+    /// </para>
+    /// <para>
+    /// So what is left of <c>Parallel Mode</c> is the LSM store's write buffering, which is a throughput
+    /// choice rather than a safety one - <see cref="StoreLsm"/> locks internally and is safe without it.
+    /// </para>
+    /// </remarks>
+    private IKeyValueStore WrapForConcurrency(IKeyValueStore store)
     {
-        var parallelMode = Options.StoreParameters.Get("parallelMode", ParallelMode.None);
-        
-        if (parallelMode == ParallelMode.None)
-            return store;
-
-        var parallelOptions = Options.StoreParameters.Get<ParallelModeOptions>("parallelOptions");
-        if (parallelOptions == null)
-        {
-            parallelOptions = new ParallelModeOptions { Mode = parallelMode };
-            
-            // Apply maxWriters if set
-            var maxWriters = Options.StoreParameters.Get<int?>("maxWriters");
-            if (maxWriters.HasValue)
-                parallelOptions.MaxWriters = maxWriters.Value;
-        }
-
-        // Use factory to create appropriate parallel store
-        if (store is StoreLsm lsmStore)
-        {
-            var lsmOptions = new LsmParallelStoreOptions
-            {
-                MaxWriters = parallelOptions.MaxWriters,
-                BufferSizeThreshold = parallelOptions.BufferSizeThreshold,
-                TrackStatistics = parallelOptions.TrackStatistics
-            };
-            return new LsmParallelStore(lsmStore, lsmOptions, ownsStore: true);
-        }
-
         if (store is StoreBTree btreeStore)
-        {
-            var concurrencyOptions = new Tree.BTreeConcurrencyOptions
-            {
-                TrackStatistics = parallelOptions.TrackStatistics
-            };
-            return new Tree.BTreeConcurrentStore(btreeStore, concurrencyOptions, ownsStore: true);
-        }
+            return new Tree.BTreeConcurrentStore(btreeStore, options: null, ownsStore: true);
 
-        // For other stores, return as-is (no parallel wrapper available)
+        // Every other store this builder can produce locks internally - StoreInMemory and StoreLsm both
+        // do - so there is nothing to add and nothing to choose.
         return store;
     }
 
@@ -495,8 +621,8 @@ public sealed class WitDatabaseBuilder
         var store = await StoreBTree.CreateAsync(storage, Options.CacheSize, ownsStorage: true, metadata, cancellationToken)
             .ConfigureAwait(false);
         
-        // Wrap with parallel store if enabled
-        return WrapWithParallelIfNeeded(store);
+        // Serialise the store if its own implementation does not
+        return WrapForConcurrency(store);
     }
 
     private IStorage BuildStorage(ICryptoProvider? cryptoProvider = null)
@@ -572,6 +698,34 @@ public sealed class WitDatabaseBuilder
             return new StorageFile(Options.FilePath, pageSize);
 
         throw new InvalidOperationException("Storage not configured.");
+    }
+
+    /// <summary>
+    /// Builds the page cache this configuration asked for, or null to leave the store its default.
+    /// </summary>
+    /// <remarks>
+    /// A page cache is bound to one storage, so <c>WithCache(IPageCache)</c> - a single instance - can
+    /// only serve the main store; an index store asks for its own instance of the same provider.
+    /// </remarks>
+    private IPageCache? BuildPageCache(IStorage storage, bool allowCustomInstance = true, int? capacity = null)
+    {
+        if (allowCustomInstance && Options.CustomCache != null)
+            return Options.CustomCache;
+
+        if (string.IsNullOrEmpty(Options.CacheProviderKey))
+            return null;
+
+        var parameters = new ProviderParameters();
+
+        foreach (var (key, value) in Options.CacheParameters.GetAll())
+            parameters.Set(key, value);
+
+        parameters.Set("storage", storage);
+
+        if (capacity.HasValue || !parameters.Has("capacity"))
+            parameters.Set("capacity", capacity ?? Options.CacheSize);
+
+        return ProviderRegistry.Instance.Create<IPageCache>(Options.CacheProviderKey, parameters);
     }
 
     private ICryptoProvider? BuildCryptoProvider()
@@ -680,10 +834,14 @@ public sealed class WitDatabaseBuilder
         // the cross-process guard the name was always describing.
         var lockManager = new LockManager(Options.LockTimeout);
 
-        var journal = BuildJournal();
-
         if (Options.EnableMvcc)
         {
+            // No journal is built here, and that is deliberate rather than an omission: the MVCC store
+            // keeps its own versions and takes no ITransactionJournal. BuildJournal used to run on this
+            // path too, so `Journal=wal` with the default MVCC=true CONSTRUCTED a write-ahead log - which
+            // opens its file in its constructor - and then dropped it: never referenced, never disposed,
+            // the handle held for the life of the process, and reopening the database refused. The
+            // keyword reaching nothing is a separate question, answered in WitSQL.md.
             return new MvccTransactionalStore(
                 store,
                 lockManager,
@@ -696,7 +854,7 @@ public sealed class WitDatabaseBuilder
 
         return new TransactionalStore(
             store,
-            journal,
+            BuildJournal(),
             lockManager,
             ownsStore: true);
     }
@@ -818,7 +976,13 @@ public sealed class WitDatabaseBuilder
                     storage = new StorageFile(indexPath, storagePageSize);
                 }
 
-                var indexStore = new StoreBTree(storage, cacheSize / 4, ownsStorage: true);
+                // The indexes follow the database's own configuration here too - a cache provider chosen
+                // for the database is the cache provider its indexes get, each with its own instance.
+                var indexCache = BuildPageCache(storage, allowCustomInstance: false, capacity: cacheSize / 4);
+
+                var indexStore = indexCache != null
+                    ? new StoreBTree(storage, indexCache, ownsStorage: true, providerMetadata: null)
+                    : new StoreBTree(storage, cacheSize / 4, ownsStorage: true);
 
                 // Serialised, and unconditionally. One index store is shared by every connection to
                 // the database and by every thread inside a connection, and StoreBTree is the only

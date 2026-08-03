@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Managers;
@@ -11,7 +11,7 @@ namespace OutWit.Database.Core.Stores;
 /// Key-value store implementation backed by B+Tree.
 /// Implements IKeyValueStore for unified storage engine interface.
 /// </summary>
-public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyncDisposable
+public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IAsyncDisposable
 {
     #region Constants
 
@@ -68,14 +68,33 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyn
     /// <param name="ownsStorage">If true, disposes the storage when this store is disposed.</param>
     /// <param name="providerMetadata">Provider metadata for new databases.</param>
     public StoreBTree(IStorage storage, int cacheSize, bool ownsStorage, ProviderMetadata? providerMetadata)
+        : this(storage, new PageCacheShardedClock(storage, cacheSize), ownsStorage, providerMetadata)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new BTreeStore over a caller-supplied page cache.
+    /// </summary>
+    /// <remarks>
+    /// The overload that makes the <c>Cache</c> provider key mean something. Until 12.0.0 every B+Tree
+    /// store constructed <see cref="PageCacheShardedClock"/> itself, so <c>Cache=lru</c> selected a
+    /// registered provider that nothing ever built - and the chosen key was still written into the
+    /// database header, so the file claimed a cache it had never had.
+    /// </remarks>
+    /// <param name="storage">Storage implementation.</param>
+    /// <param name="cache">The page cache this store reads and writes through.</param>
+    /// <param name="ownsStorage">If true, disposes the storage when this store is disposed.</param>
+    /// <param name="providerMetadata">Provider metadata for new databases.</param>
+    public StoreBTree(IStorage storage, IPageCache cache, bool ownsStorage, ProviderMetadata? providerMetadata)
     {
         m_storage = storage ?? throw new ArgumentNullException(nameof(storage));
+        ArgumentNullException.ThrowIfNull(cache);
+
         m_ownsStorage = ownsStorage;
         m_ownsPageManager = true;
-        
-        var cache = new PageCacheShardedClock(storage, cacheSize);
+
         m_pageManager = new PageManager(m_storage, cache, providerMetadata);
-        
+
         // Use schema root page as B+Tree root, or create new tree
         var header = m_pageManager.GetHeader();
         uint rootPage = header.SchemaRootPage;
@@ -470,6 +489,25 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyn
 
     /// <inheritdoc/>
     public string ProviderKey => PROVIDER_KEY;
+
+    /// <summary>
+    /// The provider metadata recorded in this database's header.
+    /// </summary>
+    /// <remarks>
+    /// The page manager is private on purpose - nothing outside this store should be reaching into the
+    /// pages - so this property is the one thing it lets out: the record of the configuration the
+    /// database was <b>created</b> with. The builder compares it against the configuration now asking
+    /// to open, because a database written with MVCC and opened without it used to open without
+    /// complaint and report every table missing.
+    /// </remarks>
+    public ProviderMetadata? StoredMetadata
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return m_pageManager.GetProviderMetadata();
+        }
+    }
 
     /// <summary>
     /// Gets the approximate size of the store in bytes.

@@ -1,4 +1,4 @@
-using OutWit.Database.Core.Encryption;
+﻿using OutWit.Database.Core.Encryption;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.LSM;
 using OutWit.Database.Core.Providers;
@@ -176,6 +176,27 @@ public static class WitDatabaseBuilderExtensions
             builder.Options.StoreParameters.Set(key, value);
         }
         
+        return builder;
+    }
+
+    /// <summary>
+    /// Adds store parameters without choosing a store, leaving the provider key as it stands.
+    /// </summary>
+    /// <remarks>
+    /// For a caller that has settings to pass on and no opinion about which store receives them - a
+    /// connection string that names <c>PageSize</c> and not <c>Store</c>. Before 12.0.0 there was no way
+    /// to say that, so the ADO.NET layer forwarded the whole parameter bag only when <c>Store</c> was
+    /// written out, and every pass-through keyword was silently dropped otherwise.
+    /// </remarks>
+    public static WitDatabaseBuilder WithStoreParameters(this WitDatabaseBuilder builder, ProviderParameters parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters, nameof(parameters));
+
+        foreach (var (key, value) in parameters.GetAll())
+        {
+            builder.Options.StoreParameters.Set(key, value);
+        }
+
         return builder;
     }
 
@@ -776,72 +797,5 @@ public static class WitDatabaseBuilderExtensions
 
     #endregion
 
-    #region Parallel Mode
 
-    /// <summary>
-    /// Enable parallel write mode with automatic selection.
-    /// </summary>
-    public static WitDatabaseBuilder WithParallelWrites(this WitDatabaseBuilder builder)
-    {
-        builder.Options.StoreParameters.Set("parallelMode", ParallelMode.Auto);
-        return builder;
-    }
-
-    /// <summary>
-    /// Enable parallel write mode with the specified mode.
-    /// </summary>
-    public static WitDatabaseBuilder WithParallelWrites(this WitDatabaseBuilder builder, ParallelMode mode)
-    {
-        builder.Options.StoreParameters.Set("parallelMode", mode);
-        return builder;
-    }
-
-    /// <summary>
-    /// Enable parallel write mode with custom options.
-    /// </summary>
-    public static WitDatabaseBuilder WithParallelWrites(this WitDatabaseBuilder builder, ParallelModeOptions options)
-    {
-        ArgumentNullException.ThrowIfNull(options);
-        builder.Options.StoreParameters.Set("parallelMode", options.Mode);
-        builder.Options.StoreParameters.Set("parallelOptions", options);
-        return builder;
-    }
-
-    /// <summary>
-    /// Enable parallel write mode with custom configuration.
-    /// </summary>
-    public static WitDatabaseBuilder WithParallelWrites(this WitDatabaseBuilder builder, Action<ParallelModeOptions> configure)
-    {
-        ArgumentNullException.ThrowIfNull(configure);
-        var options = new ParallelModeOptions();
-        configure(options);
-        builder.Options.StoreParameters.Set("parallelMode", options.Mode);
-        builder.Options.StoreParameters.Set("parallelOptions", options);
-        return builder;
-    }
-
-    /// <summary>
-    /// Set the maximum number of parallel writers.
-    /// Only applicable when parallel mode is enabled.
-    /// </summary>
-    public static WitDatabaseBuilder WithMaxWriters(this WitDatabaseBuilder builder, int maxWriters)
-    {
-        if (maxWriters < 1)
-            throw new ArgumentOutOfRangeException(nameof(maxWriters), "Max writers must be at least 1");
-        
-        builder.Options.StoreParameters.Set("maxWriters", maxWriters);
-        return builder;
-    }
-
-    /// <summary>
-    /// Disable parallel writes (use single-threaded mode).
-    /// </summary>
-    public static WitDatabaseBuilder WithoutParallelWrites(this WitDatabaseBuilder builder)
-    {
-        builder.Options.StoreParameters.Set("parallelMode", ParallelMode.None);
-        builder.Options.StoreParameters.Remove("parallelOptions");
-        return builder;
-    }
-
-    #endregion
 }

@@ -64,6 +64,23 @@ namespace OutWit.Database.Core.Storage
                 bufferSize: pageSize,
                 FileOptions.RandomAccess);
 
+            // A file too short to hold one page of THIS size, but not empty, was written with a
+            // different one. Refuse before anything reads it: the page count would come out zero, the
+            // page manager would call that a new database, and it would REINITIALISE THE HEADER - after
+            // which the configuration that wrote the file cannot open it either. Measured in
+            // ConfigurationMismatchTests: `PageSize=16384` over a 4,096-byte database destroyed it,
+            // while the same mismatch the other way round has always been reported properly.
+            if (m_stream.Length > 0 && m_stream.Length < m_pageSize)
+            {
+                var length = m_stream.Length;
+                m_stream.Dispose();
+
+                throw new InvalidDataException(
+                    $"Page size mismatch: '{path}' is {length} bytes, which is less than the {m_pageSize} " +
+                    "byte page size this connection asks for, so it was written with a smaller one. Open " +
+                    "it with the page size it was created with.");
+            }
+
             // Cache initial page count
             m_cachedPageCount = m_stream.Length / m_pageSize;
 

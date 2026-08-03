@@ -14,6 +14,7 @@ namespace OutWit.Database.CrashRunner;
 ///
 /// Usage:
 ///   OutWit.Database.CrashRunner --scenario &lt;name&gt; --path &lt;database&gt; [--rows N] [--table T]
+///     [--settings "MVCC=false;Journal=wal"]
 /// </remarks>
 public static class Program
 {
@@ -32,6 +33,7 @@ public static class Program
         string? path = null;
         var rows = DEFAULT_ROWS;
         var table = DEFAULT_TABLE;
+        var settings = "";
 
         for (int i = 0; i < args.Length - 1; i += 2)
         {
@@ -40,6 +42,7 @@ public static class Program
                 case "--scenario": scenario = args[i + 1]; break;
                 case "--path": path = args[i + 1]; break;
                 case "--table": table = args[i + 1]; break;
+                case "--settings": settings = args[i + 1]; break;
                 case "--rows":
                     if (!int.TryParse(args[i + 1], out rows) || rows <= 0)
                         return Usage($"--rows must be a positive integer, got '{args[i + 1]}'");
@@ -57,7 +60,7 @@ public static class Program
 
         try
         {
-            var exitCode = Scenarios.Run(scenario, new ScenarioContext(path, rows, table));
+            var exitCode = Scenarios.Run(scenario, new ScenarioContext(path, rows, table, settings));
 
             if (exitCode == null)
                 return Usage($"unknown scenario '{scenario}'");
@@ -85,7 +88,8 @@ public static class Program
         Console.Error.WriteLine($"{CrashProtocol.FAILED} {problem}");
         Console.Error.WriteLine();
         Console.Error.WriteLine(
-            "usage: OutWit.Database.CrashRunner --scenario <name> --path <database> [--rows N] [--table T]");
+            "usage: OutWit.Database.CrashRunner --scenario <name> --path <database> [--rows N] "
+            + "[--table T] [--settings \"MVCC=false;Journal=wal\"]");
         Console.Error.WriteLine($"scenarios: {string.Join(", ", Scenarios.Names)}");
         Console.Error.Flush();
 

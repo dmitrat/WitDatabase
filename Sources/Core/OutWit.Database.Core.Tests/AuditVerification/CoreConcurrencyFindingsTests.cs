@@ -1,4 +1,4 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using NUnit.Framework;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Concurrency;
@@ -526,7 +526,6 @@ public class CoreConcurrencyFindingsTests
         {
             using (var database = new WitDatabaseBuilder()
                        .WithLsmTree(directory)
-                       .WithParallelWrites(ParallelMode.Buffered)
                        .WithTransactions()
                        .WithMvcc()
                        .Build())
@@ -541,7 +540,6 @@ public class CoreConcurrencyFindingsTests
 
             using var reopened = new WitDatabaseBuilder()
                 .WithLsmTree(directory)
-                .WithParallelWrites(ParallelMode.Buffered)
                 .WithTransactions()
                 .WithMvcc()
                 .Build();
