@@ -766,3 +766,71 @@ change does not touch, which is exactly the shape that gets written up as a side
 **0.461 ms**. The three readings overlap and the honest finding is no measurable difference. Four
 readings in the sweep moved more than 10% between the two passes and none of them carries a
 conclusion here.
+
+---
+
+## 14. The LSM write path, first diagnosis
+
+`LsmWriteAnatomyBenchmarks`: 1,000 rows inserted in one transaction, four shapes differing by exactly
+one property, five modes, two passes. Every shape reports what the engine claimed and
+`IterationCleanup` checks it against a scan; nothing disagreed in either pass.
+
+### What is stable, and it is inside the LSM column
+
+| shape, 1,000 rows | `Lsm` pass 1 | `Lsm` pass 2 |
+|---|---|---|
+| Bare table — no key, no index | 118.1 ms | 111.7 ms |
+| PK only | 119.4 ms | 115.8 ms |
+| PK + 1 secondary index | 286.1 ms | 502.0 ms |
+| PK + 3 secondary indexes | 534.1 ms | 560.0 ms |
+
+Two findings survive both passes:
+
+- **The primary key is free.** Bare and PK-only are indistinguishable (118.1/111.7 against
+  119.4/115.8). Whatever LSM is paying, it is not the generated key or a uniqueness check on it.
+- **Secondary index maintenance dominates.** No index costs ~115 ms per 1,000 rows; three indexes
+  cost ~547 ms. That is **~430 ms of index maintenance per 1,000 rows — roughly 48 µs per row per
+  index** — where B+Tree pays close to nothing for the same indexes.
+
+So the LSM constant factor is two separate costs, not one:
+
+1. **The base row write is already expensive** — ~115 µs per row into a bare LSM table with nothing
+   else to maintain. For a structure whose whole purpose is that a write is an append to a memtable,
+   that is the number that should not be there.
+2. **Each secondary index multiplies it** — and this is what makes the LSM total 12-20x B+Tree rather
+   than 5x.
+
+### What is *not* established, and why
+
+**The B+Tree column was too unstable to quote per-shape ratios.** It read 22.7 ms and 6.0 ms for the
+same bare insert in two passes — a 3.6x swing — and `PK + 1 index` moved 286 → 502 ms on LSM. With
+`IterationSetup` recreating the database every iteration, BenchmarkDotNet is forced to
+`InvocationCount=1`, so a ShortRun measurement is three single insert batches and the variance is
+large.
+
+The `Lsm/BTree` ratio per shape is therefore **not reported here** — it would be a number computed
+from a denominator that moved by 3.6x. The stable cross-engine figure remains the one from § 10,
+taken with many more samples: LSM is 12-20x B+Tree per row overall.
+
+**This instrument needs more iterations before its per-shape ratios can be believed** — a limitation
+found by using it, and stated rather than worked around. The within-LSM comparisons above are quoted
+because they repeated; nothing else from this sweep is.
+
+### Where to look next
+
+The base cost points away from the memtable and at what happens around each write: `SyncWrites=false`
+in this mode, so it is not fsync, which leaves a per-row write-ahead-log append and memtable rotation
+as the candidates. `StoreLsm` truncates its WAL the moment a memtable is flushed, so flush frequency
+is directly observable and is the cheapest next measurement.
+
+The index cost is the larger share and has a specific suspect worth testing first: whether index
+maintenance performs a **read** per inserted row. A read on an LSM store must consult the memtable
+and every SSTable, which is exactly the operation LSM is worst at, and it would explain why the same
+indexes cost nearly nothing on a B+Tree.
+
+### On the product question
+
+The measurements say LSM currently loses to B+Tree by 12-20x **on writes** — the workload an LSM tree
+is chosen for. That is a defect signature rather than a trade-off, and the two costs above are where
+it lives. Whether it is worth fixing is a product decision, but "LSM is the write-optimised option"
+is not true of this engine today, and no configuration guidance should say so until it is.
