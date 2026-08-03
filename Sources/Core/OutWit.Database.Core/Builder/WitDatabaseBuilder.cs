@@ -219,6 +219,7 @@ public sealed class WitDatabaseBuilder
         ValidateStorageConfigured();
         ValidatePageSize();
         ValidateEncryptionSalt();
+        ValidateJournalIsReachable();
 
         OnValidating?.Invoke(Options);
     }
@@ -344,6 +345,40 @@ public sealed class WitDatabaseBuilder
         }
     }
 
+    /// <summary>
+    /// Refuses a transaction journal that nothing in this configuration can use.
+    /// </summary>
+    /// <remarks>
+    /// <c>TransactionalStore</c> is the only consumer of an <see cref="ITransactionJournal"/>: the MVCC
+    /// store keeps its own versions, and with transactions off there is no transactional store at all.
+    /// Until 11.3.0 the journal was built anyway and dropped - and a write-ahead journal opens its file
+    /// in its constructor, so `Journal=wal` with the default `MVCC=true` leaked the handle and the
+    /// database could not be opened a second time in the process. Refusing at open is the decision:
+    /// a setting that cannot be honoured is an error, not a silence.
+    /// </remarks>
+    private void ValidateJournalIsReachable()
+    {
+        var hasJournal = Options.CustomJournal != null || !string.IsNullOrEmpty(Options.JournalProviderKey);
+
+        if (!hasJournal)
+            return;
+
+        if (!Options.EnableTransactions)
+        {
+            throw new InvalidOperationException(
+                "A transaction journal was configured and transactions are disabled, so nothing would " +
+                "use it. Enable transactions, or drop the journal setting.");
+        }
+
+        if (Options.EnableMvcc)
+        {
+            throw new InvalidOperationException(
+                "A transaction journal cannot be combined with MVCC: the MVCC store keeps its own " +
+                "versions and takes no journal, so the setting would be accepted and ignored. Use " +
+                "MVCC=false to get a journalled transactional store, or drop the journal setting.");
+        }
+    }
+
     private void ValidateSyncBuildAllowed()
     {
         if (Options.CustomStorage is IAsyncOnlyStorage asyncOnly && asyncOnly.RequiresAsyncOperations)
@@ -380,12 +415,18 @@ public sealed class WitDatabaseBuilder
     private IKeyValueStore BuildStoreFromRegistry()
     {
         var cryptoProvider = BuildCryptoProvider();
-        var storage = BuildStorage(cryptoProvider);
         var metadata = BuildProviderMetadata();
+
+        // Deferred, so that a store which does not want storage never opens a file. StoreInMemory's
+        // factory ignores every parameter, and this used to hand it a StorageFile that was already open:
+        // nothing owned it, nothing disposed it, and Store=inmemory with a file Data Source left the
+        // handle held until finalization - so the database could not be opened a second time in the same
+        // process. ProviderParameters unwraps a Lazy on read, so the factories are unchanged.
+        var storage = new Lazy<IStorage>(() => BuildStorage(cryptoProvider));
 
         // Prepare parameters
         var parameters = new ProviderParameters();
-        
+
         // Copy user parameters
         foreach (var (key, value) in Options.StoreParameters.GetAll())
         {
@@ -395,6 +436,12 @@ public sealed class WitDatabaseBuilder
         // Set defaults if not provided
         if (!parameters.Has("storage"))
             parameters.Set("storage", storage);
+
+        // Only when one was actually chosen, so the default path builds exactly what it built before.
+        // Deferred like the storage: a store that wants neither opens nothing.
+        if (!parameters.Has("cache") && (Options.CustomCache != null || !string.IsNullOrEmpty(Options.CacheProviderKey)))
+            parameters.Set("cache", new Lazy<IPageCache>(() => BuildPageCache(storage.Value)!));
+
         if (!parameters.Has("cacheSize"))
             parameters.Set("cacheSize", Options.CacheSize);
         if (!parameters.Has("ownsStorage"))
@@ -574,6 +621,34 @@ public sealed class WitDatabaseBuilder
         throw new InvalidOperationException("Storage not configured.");
     }
 
+    /// <summary>
+    /// Builds the page cache this configuration asked for, or null to leave the store its default.
+    /// </summary>
+    /// <remarks>
+    /// A page cache is bound to one storage, so <c>WithCache(IPageCache)</c> - a single instance - can
+    /// only serve the main store; an index store asks for its own instance of the same provider.
+    /// </remarks>
+    private IPageCache? BuildPageCache(IStorage storage, bool allowCustomInstance = true, int? capacity = null)
+    {
+        if (allowCustomInstance && Options.CustomCache != null)
+            return Options.CustomCache;
+
+        if (string.IsNullOrEmpty(Options.CacheProviderKey))
+            return null;
+
+        var parameters = new ProviderParameters();
+
+        foreach (var (key, value) in Options.CacheParameters.GetAll())
+            parameters.Set(key, value);
+
+        parameters.Set("storage", storage);
+
+        if (capacity.HasValue || !parameters.Has("capacity"))
+            parameters.Set("capacity", capacity ?? Options.CacheSize);
+
+        return ProviderRegistry.Instance.Create<IPageCache>(Options.CacheProviderKey, parameters);
+    }
+
     private ICryptoProvider? BuildCryptoProvider()
     {
         // Use custom provider
@@ -680,10 +755,14 @@ public sealed class WitDatabaseBuilder
         // the cross-process guard the name was always describing.
         var lockManager = new LockManager(Options.LockTimeout);
 
-        var journal = BuildJournal();
-
         if (Options.EnableMvcc)
         {
+            // No journal is built here, and that is deliberate rather than an omission: the MVCC store
+            // keeps its own versions and takes no ITransactionJournal. BuildJournal used to run on this
+            // path too, so `Journal=wal` with the default MVCC=true CONSTRUCTED a write-ahead log - which
+            // opens its file in its constructor - and then dropped it: never referenced, never disposed,
+            // the handle held for the life of the process, and reopening the database refused. The
+            // keyword reaching nothing is a separate question, answered in WitSQL.md.
             return new MvccTransactionalStore(
                 store,
                 lockManager,
@@ -696,7 +775,7 @@ public sealed class WitDatabaseBuilder
 
         return new TransactionalStore(
             store,
-            journal,
+            BuildJournal(),
             lockManager,
             ownsStore: true);
     }
@@ -818,7 +897,13 @@ public sealed class WitDatabaseBuilder
                     storage = new StorageFile(indexPath, storagePageSize);
                 }
 
-                var indexStore = new StoreBTree(storage, cacheSize / 4, ownsStorage: true);
+                // The indexes follow the database's own configuration here too - a cache provider chosen
+                // for the database is the cache provider its indexes get, each with its own instance.
+                var indexCache = BuildPageCache(storage, allowCustomInstance: false, capacity: cacheSize / 4);
+
+                var indexStore = indexCache != null
+                    ? new StoreBTree(storage, indexCache, ownsStorage: true, providerMetadata: null)
+                    : new StoreBTree(storage, cacheSize / 4, ownsStorage: true);
 
                 // Serialised, and unconditionally. One index store is shared by every connection to
                 // the database and by every thread inside a connection, and StoreBTree is the only

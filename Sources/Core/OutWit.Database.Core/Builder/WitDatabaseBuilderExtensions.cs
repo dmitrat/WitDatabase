@@ -180,6 +180,27 @@ public static class WitDatabaseBuilderExtensions
     }
 
     /// <summary>
+    /// Adds store parameters without choosing a store, leaving the provider key as it stands.
+    /// </summary>
+    /// <remarks>
+    /// For a caller that has settings to pass on and no opinion about which store receives them - a
+    /// connection string that names <c>PageSize</c> and not <c>Store</c>. Before 11.3.0 there was no way
+    /// to say that, so the ADO.NET layer forwarded the whole parameter bag only when <c>Store</c> was
+    /// written out, and every pass-through keyword was silently dropped otherwise.
+    /// </remarks>
+    public static WitDatabaseBuilder WithStoreParameters(this WitDatabaseBuilder builder, ProviderParameters parameters)
+    {
+        ArgumentNullException.ThrowIfNull(parameters, nameof(parameters));
+
+        foreach (var (key, value) in parameters.GetAll())
+        {
+            builder.Options.StoreParameters.Set(key, value);
+        }
+
+        return builder;
+    }
+
+    /// <summary>
     /// Use a key-value store created via ProviderRegistry with the specified provider key and parameter configuration.
     /// </summary>
     public static WitDatabaseBuilder WithStoreKey(this WitDatabaseBuilder builder, string providerKey, Action<ProviderParameters> configure)

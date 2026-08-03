@@ -1,4 +1,61 @@
-# Changelog
+﻿# Changelog
+
+## 11.3.0
+
+Phase 11, the modular structure: **the combinations this construction kit offers have been enumerated,
+built and run for the first time.** Two instruments - a reflection census that asks whether a
+connection-string keyword reaches the engine at all, and a 153-case matrix that runs the same workload
+through every legal combination and compares the answers.
+
+A minor rather than a major because no answer and no file format changed. It is not a patch because a
+configuration that used to be accepted and ignored is now either honoured or refused.
+
+**Reassuring, and worth stating:** no combination opens, accepts every statement and answers something
+different. Every defect found is in construction or in close.
+
+### Fixed
+
+- **`Store` decided whether any other keyword arrived.** The ADO.NET layer forwarded the entire
+  pass-through parameter set only when `Store=` appeared in the connection string, so
+  `Data Source=db;PageSize=16384` silently used the default page size while
+  `Data Source=db;Store=btree;PageSize=16384` - which asks for the same engine, `btree` being the
+  default - honoured it. Measured both ways.
+
+- **Numeric and boolean keywords fell back to their defaults in silence.** Every value from a connection
+  string arrives as text, and `ProviderParameters.Get<T>` tested the type without converting, so
+  `Get<int>("16384")` returned the default. It converts now, and a present value that cannot be read as
+  the requested type is an error at `Open` rather than a silent default.
+
+- **`Store=inmemory` with a file `Data Source` held the file open.** The builder opened storage for every
+  store and handed it to the factory; the in-memory store ignores it, nothing owned it, and the database
+  could not be opened a second time in the same process. Storage is deferred now and never opens for a
+  store that does not ask for it.
+
+- **`Journal=wal` held the journal file open.** The journal was constructed before the builder chose
+  between the MVCC store, which takes no journal, and the lock-based one, which does - so with the
+  default `MVCC=true` a write-ahead log was built, dropped, and its handle held for the life of the
+  process.
+
+- **`Store=lsm` with `Transactions=false` and a parallel mode lost the last row written.** The parallel
+  writer's `Dispose` completed its buffer channel - draining only what was already queued - and then
+  discarded the thread-local buffers, which is where every entry below the size threshold sits. Seven
+  rows survived a clean close and reopen; the eighth did not. With MVCC the commit path's `FlushAllAsync`
+  hid it. The writer now hands over the buffers that are still filling before it closes the queue.
+
+### Changed
+
+- **`Cache=clock|lru` selects a cache.** `StoreBTree` takes an `IPageCache`, and the builder constructs
+  the one the configuration chose, for the main store and for each secondary index store.
+  `WithCache(IPageCache)` - which was read by nothing - now reaches the main store. Before this the
+  chosen key was written into the database header while a `PageCacheShardedClock` was built regardless,
+  so a file could claim a cache it had never had.
+
+- **`Journal=…` with `MVCC=true` or with transactions off is refused at `Open`**, with a message naming
+  the way out. Nothing would have used it.
+
+- **`Docs/WitSQL.md` para 14.10** states which combinations are supported, which are refused and why -
+  including that `Auto`, `Buffered`, `Latched` and `Optimistic` are four spellings of "make this store
+  thread-safe", because the concurrency mechanism is decided by the store and not by the keyword.
 
 ## 11.2.0
 

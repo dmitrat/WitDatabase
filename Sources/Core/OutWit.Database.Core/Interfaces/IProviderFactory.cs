@@ -86,13 +86,24 @@ public sealed class ProviderParameters
     /// <summary>
     /// Gets a parameter value, or default if not found.
     /// </summary>
+    /// <exception cref="ArgumentException">
+    /// Thrown when the parameter is present and cannot be read as <typeparamref name="T"/>. A missing
+    /// parameter takes the default; a present one that nobody can use is a configuration error, and
+    /// returning the default for it is how every numeric connection-string keyword became inert.
+    /// </exception>
     public T? Get<T>(string name, T? defaultValue = default)
     {
-        if (m_values.TryGetValue(name, out var value) && value is T typed)
+        if (!m_values.TryGetValue(name, out var value))
+            return defaultValue;
+
+        if (!TryCoerce<T>(value, out var typed))
         {
-            return typed;
+            throw new ArgumentException(
+                $"Parameter '{name}' has wrong type. Expected {typeof(T).Name}, got " +
+                $"{value?.GetType().Name ?? "null"} ('{value}').", name);
         }
-        return defaultValue;
+
+        return typed;
     }
 
     /// <summary>
@@ -106,14 +117,108 @@ public sealed class ProviderParameters
             throw new ArgumentException($"Required parameter '{name}' is missing", name);
         }
 
-        if (value is not T typed)
+        if (!TryCoerce<T>(value, out var typed) || typed == null)
         {
             throw new ArgumentException(
-                $"Parameter '{name}' has wrong type. Expected {typeof(T).Name}, got {value?.GetType().Name ?? "null"}", 
+                $"Parameter '{name}' has wrong type. Expected {typeof(T).Name}, got {value?.GetType().Name ?? "null"}",
                 name);
         }
 
         return typed;
+    }
+
+    /// <summary>
+    /// Reads a stored value as <typeparamref name="T"/>, converting the two representations that reach
+    /// this bag by a route that cannot type them.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Text.</b> Every value from a connection string arrives as a <c>string</c>: an ADO.NET
+    /// connection string has no types. Before 11.3.0 <c>Get&lt;int&gt;("PageSize")</c> on the string
+    /// <c>"16384"</c> failed a plain <c>is T</c> test and returned the default without a word, so
+    /// <c>PageSize</c> and <c>CacheSize</c> were inert from a connection string and worked from the
+    /// fluent builder, which sets the same keys as <c>int</c>. Phase 10 found the same shape in the LSM
+    /// options and closed it one parameter set at a time; this closes the class.
+    /// </para>
+    /// <para>
+    /// <b>Deferred values.</b> A <see cref="Lazy{T}"/> is unwrapped on read, so a caller can offer a
+    /// resource - a file, a connection - that is only created if some provider actually asks for it.
+    /// </para>
+    /// </remarks>
+    private static bool TryCoerce<T>(object? value, out T? result)
+    {
+        result = default;
+
+        switch (value)
+        {
+            case null:
+                return !typeof(T).IsValueType || Nullable.GetUnderlyingType(typeof(T)) != null;
+
+            case T typed:
+                result = typed;
+                return true;
+
+            case Lazy<T> deferred:
+                result = deferred.Value;
+                return true;
+        }
+
+        var target = Nullable.GetUnderlyingType(typeof(T)) ?? typeof(T);
+
+        if (value is not string text)
+            return false;
+
+        try
+        {
+            if (target == typeof(string))
+            {
+                result = (T)(object)text;
+                return true;
+            }
+
+            if (target.IsEnum)
+            {
+                result = (T)Enum.Parse(target, text, ignoreCase: true);
+                return true;
+            }
+
+            if (target == typeof(bool))
+            {
+                result = (T)(object)ParseBoolean(text);
+                return true;
+            }
+
+            if (target == typeof(TimeSpan))
+            {
+                result = (T)(object)TimeSpan.Parse(text, System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+
+            if (target.IsPrimitive || target == typeof(decimal))
+            {
+                result = (T)Convert.ChangeType(text, target, System.Globalization.CultureInfo.InvariantCulture);
+                return true;
+            }
+        }
+        catch (Exception e) when (e is FormatException or OverflowException or ArgumentException or InvalidCastException)
+        {
+            return false;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The spellings a connection string uses for a flag, which are not the ones <c>bool.Parse</c> knows.
+    /// </summary>
+    private static bool ParseBoolean(string text)
+    {
+        return text.Trim().ToLowerInvariant() switch
+        {
+            "true" or "yes" or "1" or "on" => true,
+            "false" or "no" or "0" or "off" => false,
+            _ => bool.Parse(text)
+        };
     }
 
     /// <summary>

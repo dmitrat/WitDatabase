@@ -1,4 +1,4 @@
-# WitSQL Language Specification
+﻿# WitSQL Language Specification
 
 **Version:** 1.0  
 **Status:** Draft  
@@ -1260,6 +1260,75 @@ LSM is still several times behind), and for any table with several indexes.
 
 Both engines are durable and both honour `SyncWrites`, `MemTableSize` and the rest of the
 connection-string settings; the choice is about the shape of the workload, not about safety.
+
+## 14.10 Configuration: which combinations are supported
+
+WitDatabase is a construction kit: a workload chooses a store, a transaction model, a parallel mode,
+encryption, a journal and a cache. Every combination below has been **built and run** - the matrix is
+`CombinationMatrixTests`, 153 cases, and every one of them opens a database, runs the same workload and
+compares the answers. What is written here is measured, not intended.
+
+**The rule this table exists to make true:** a setting is either honoured or refused at `Open` with an
+explanation. Nothing is accepted and ignored.
+
+### Stores
+
+| `Store` | Persistent | Notes |
+|---|---|---|
+| `btree` (default) | yes | Page-oriented. Honours `PageSize`, `CacheSize`, `Cache`. |
+| `lsm` | yes | Directory-based. Honours the LSM settings below. See 14.9 for when to choose it. |
+| `inmemory` | **no** | Keeps nothing after the last connection closes, whatever `Data Source` says. |
+
+### Transaction model
+
+| Setting | Effect |
+|---|---|
+| `Transactions=true;MVCC=true` (default) | Multi-version store. Concurrent transactions across connections. |
+| `Transactions=true;MVCC=false` | Lock-based transactional store. A journal may be configured. Concurrent transactions across connections are **not** supported in this mode - a second session's `BEGIN` fails. |
+| `Transactions=false` | No transaction layer. `BeginTransaction` throws; statements are autocommitted. |
+
+### Journal
+
+`Journal=wal` and `Journal=rollback` require `MVCC=false`. **With MVCC, or with transactions off, the
+connection is refused at `Open`** - the MVCC store keeps its own versions and takes no journal, so
+accepting the setting would mean ignoring it.
+
+### Cache
+
+`Cache=clock` (default) and `Cache=lru` select the page cache for the B+Tree store and for its secondary
+index stores. `CacheSize` is the number of pages. Neither applies to `Store=lsm`, which has no page
+cache; use `EnableBlockCache` and `BlockCacheSize` there.
+
+### Parallel mode
+
+`Parallel Mode=None` (default) builds the store without a concurrency wrapper. Any other value wraps it:
+the LSM store gets thread-local write buffers with a background merge, the B+Tree store gets a
+reader-writer lock. **Which of the two you get is decided by the store, not by the keyword** -
+`Auto`, `Buffered`, `Latched` and `Optimistic` all produce the same engine on a given store, and are
+kept as spellings of "make this store thread-safe". `Max Writers` applies to the LSM store only.
+
+Secondary index stores are always serialised regardless of this setting; that is not optional.
+
+### LSM settings
+
+`MemTableSize`, `SyncWrites`, `EnableWal`, `BlockSize`, `CompactionTrigger`, `EnableBlockCache`,
+`BlockCacheSize` and `BackgroundCompaction` reach both the main store and every secondary index store.
+They are ignored by the other stores.
+
+### Settings that are read but not enforced
+
+`Isolation Level` is recorded and reported, and the engine does not yet vary its behaviour by it. It is
+listed here rather than removed because ADO.NET consumers set it as a matter of course.
+
+### A note on spelling
+
+Every keyword above works whether or not `Store` is also named. Before 11.3.0 it did not: the whole
+pass-through parameter set was discarded unless `Store=` appeared in the connection string, so
+`Data Source=db;PageSize=16384` silently used the default page size while
+`Data Source=db;Store=btree;PageSize=16384` - the same engine - honoured it.
+
+A value that cannot be read as the setting's type is now an error at `Open` rather than a silent
+default: `PageSize=large` is refused.
 
 ## 15. Concurrency Control
 

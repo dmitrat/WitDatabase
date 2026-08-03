@@ -546,13 +546,20 @@ public sealed class WitDbConnection : DbConnection
     private static void ConfigureStore(WitDatabaseBuilder builder, WitDbConnectionStringBuilder options, ProviderParameters providerParams)
     {
         var storeKey = options.Store?.ToLowerInvariant();
-        
-        // No store specified - use default (btree)
+
+        // Settings reach the store whether or not the store was named. Until 11.3.0 this method returned
+        // here when Store was absent, taking the ENTIRE parameter bag with it: `Data Source=x;PageSize=16384`
+        // built a database with the default page size, and `Data Source=x;Store=btree;PageSize=16384` -
+        // which asks for the same engine, btree being the default - honoured it. What decided whether a
+        // setting arrived was a different setting. Measured both ways in ConfigurationCensusTests.
         if (string.IsNullOrEmpty(storeKey))
+        {
+            builder.WithStoreParameters(providerParams);
             return;
+        }
 
         // Pass data source path to provider
-        if (!string.IsNullOrEmpty(options.DataSource) && 
+        if (!string.IsNullOrEmpty(options.DataSource) &&
             !string.Equals(options.DataSource, ":memory:", StringComparison.OrdinalIgnoreCase))
         {
             providerParams.Set("path", options.DataSource);

@@ -68,14 +68,33 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyn
     /// <param name="ownsStorage">If true, disposes the storage when this store is disposed.</param>
     /// <param name="providerMetadata">Provider metadata for new databases.</param>
     public StoreBTree(IStorage storage, int cacheSize, bool ownsStorage, ProviderMetadata? providerMetadata)
+        : this(storage, new PageCacheShardedClock(storage, cacheSize), ownsStorage, providerMetadata)
+    {
+    }
+
+    /// <summary>
+    /// Creates a new BTreeStore over a caller-supplied page cache.
+    /// </summary>
+    /// <remarks>
+    /// The overload that makes the <c>Cache</c> provider key mean something. Until 11.3.0 every B+Tree
+    /// store constructed <see cref="PageCacheShardedClock"/> itself, so <c>Cache=lru</c> selected a
+    /// registered provider that nothing ever built - and the chosen key was still written into the
+    /// database header, so the file claimed a cache it had never had.
+    /// </remarks>
+    /// <param name="storage">Storage implementation.</param>
+    /// <param name="cache">The page cache this store reads and writes through.</param>
+    /// <param name="ownsStorage">If true, disposes the storage when this store is disposed.</param>
+    /// <param name="providerMetadata">Provider metadata for new databases.</param>
+    public StoreBTree(IStorage storage, IPageCache cache, bool ownsStorage, ProviderMetadata? providerMetadata)
     {
         m_storage = storage ?? throw new ArgumentNullException(nameof(storage));
+        ArgumentNullException.ThrowIfNull(cache);
+
         m_ownsStorage = ownsStorage;
         m_ownsPageManager = true;
-        
-        var cache = new PageCacheShardedClock(storage, cacheSize);
+
         m_pageManager = new PageManager(m_storage, cache, providerMetadata);
-        
+
         // Use schema root page as B+Tree root, or create new tree
         var header = m_pageManager.GetHeader();
         uint rootPage = header.SchemaRootPage;
