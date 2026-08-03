@@ -635,3 +635,75 @@ Both are "the planner has no statistics", and the `TODO` in `EstimateTableRowCou
 that. They are worth separating because their fixes differ sharply in size and risk: the first is a
 small, near-zero-risk substitution measured in § 8; the second changes which plan is chosen and needs
 statistics that do not exist yet.
+
+---
+
+## 12. Fix one: the planner reads the counter instead of scanning
+
+`QueryPlanner.EstimateTableRowCount` now calls `IDatabase.GetTableRowCount`, which the catalog
+already answers in O(1) - the same counter that makes `SELECT COUNT(*)` flat in table size (§ 1.5).
+The interface member already existed; nothing new had to be plumbed.
+
+The whole change is one function. It replaces a table scan of up to 1,000 rows **per query
+execution** with a dictionary lookup.
+
+### Why the risk was low, established before the change rather than after
+
+The estimate feeds a cost model that is **homogeneous in it**: a table scan is costed at `N x 1.0`,
+an index range at `N x 0.2 x 0.5`, an equality seek at `5.0 + N x 0.01`. `N` cancels out of the
+comparison, so the same plan is chosen almost regardless of what the estimate says. The old code also
+returned `count * 10` whenever it hit its cap, meaning **every table of 1,000 rows or more was
+reported as exactly 10,000** whatever its real size - so the value being replaced was not accurate
+either.
+
+The one behaviour that had to be preserved deliberately: `GetRowCount` answers `-1` for a table the
+catalog does not know, and `FindBestIndex` refuses any estimate at or below zero. Passing `-1`
+straight through would have silently switched off every index on that path. It falls back to the old
+default of 100 instead.
+
+### Measured
+
+`IndexSeekAnatomyBenchmarks`, `Default`, per 100 lookups, same machine and job as § 8:
+
+| shape | before | after | |
+|---|---|---|---|
+| **UNIQUE index, string key** | 52.00 ms / 131,710 KB | **0.459 ms / 1,009 KB** | **113x faster, 131x less allocated** |
+| UNIQUE index, int key | 50.24 ms | 0.443 ms | |
+| Non-unique index, string key | 51.11 ms | 0.477 ms | |
+| UNIQUE index, narrow projection | 50.48 ms | 0.444 ms | |
+| No index, forced scan (5,000 rows) | 291.8 ms / 662,489 KB | 214.6 ms / 580,802 KB | 26% faster |
+| PK equality | 0.258 ms | 0.266 ms | unchanged, as predicted |
+
+The primary-key path is untouched because it never reached this code - which is what made it the
+control in the first place.
+
+**The gap that opened the phase is closed and inverted.** The unique-index seek was **23x slower than
+LiteDB** (52.0 ms against 2.07 ms). It is now **4.5x faster** (0.459 ms against 2.07 ms). Against the
+primary-key path in the same engine it went from ~200x to 1.7x.
+
+The forced scan improving by 26% is the same tax being removed from a query that never used an index
+at all: it has a `WHERE` and the table has indexes, so it paid the 1,000-row estimate too.
+
+### Suite
+
+Green across every project, `Category!=Performance`:
+
+| project | passed | failed |
+|---|---|---|
+| `OutWit.Database.Tests` | 2,216 | 0 |
+| `OutWit.Database.Core.Tests` | 2,278 | 0 |
+| `OutWit.Database.AdoNet.Tests` | 798 | 0 |
+| `OutWit.Database.Parser.Tests` | 797 | 0 |
+| `OutWit.Database.EntityFramework.Tests` | 554 | 0 |
+| **total** | **6,643** | **0** |
+
+`WitSqlEngineSelectWhereRowCountTests`, which exists specifically to pin the interaction between the
+planner's `MIN_ROWS_FOR_INDEX` threshold and this estimate, passes unchanged.
+
+### What this fix does *not* address
+
+The second planner defect from § 11 is untouched: `RANGE_SELECTIVITY` is still the constant 0.2, so
+an applicable index still always wins a range comparison, and a range selecting 75% of a
+low-cardinality index still costs 2.5x the scan it replaced. That needs statistics the engine does
+not keep - distinct-value counts, and some notion of whether index order tracks physical row order.
+It changes *which plan is chosen*, where this fix changed only *what it costs to choose*.

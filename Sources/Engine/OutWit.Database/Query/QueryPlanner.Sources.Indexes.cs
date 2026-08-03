@@ -122,42 +122,39 @@ public sealed partial class QueryPlanner
     }
 
     /// <summary>
-    /// Estimates the row count for a table.
-    /// Without statistics, we use a simple heuristic.
+    /// Estimates the row count for a table, from the catalog's own counter.
     /// </summary>
+    /// <remarks>
+    /// This used to open a table scan and read up to 1,000 rows **on every query execution**, to
+    /// produce an estimate that decides whether an index is worth using. Measured in phase 10, that
+    /// cost 1,317 KB and ~0.49 ms per query against any table carrying an index - about 200x the
+    /// lookup it was choosing. The cost grew linearly below 1,000 rows and was flat above them,
+    /// landing on the old sample limit to three significant figures.
+    ///
+    /// It bought nothing. The cost model in <c>OptimizerQuery</c> is homogeneous in this value - a
+    /// table scan is costed at <c>N x 1.0</c> and an index range at <c>N x 0.2 x 0.5</c>, so
+    /// <c>N</c> cancels out of the comparison and the same plan is chosen whatever the estimate
+    /// says. The old code also returned <c>count * 10</c> whenever it hit the cap, so every table
+    /// with 1,000 rows or more was reported as exactly 10,000 regardless of its real size.
+    ///
+    /// The catalog already maintains a per-table row count and answers in O(1) - it is what makes
+    /// <c>SELECT COUNT(*)</c> flat in table size. That is a better estimate than the old one and
+    /// costs nothing.
+    ///
+    /// **The caveat, stated here rather than discovered later:** this counter is separate state from
+    /// the rows and the two can disagree after a crash. That disqualifies it from answering a user's
+    /// <c>COUNT(*)</c>, and is irrelevant for choosing a plan - a wrong estimate picks a slower plan,
+    /// it never returns a wrong answer.
+    /// </remarks>
     private long EstimateTableRowCount(string tableName)
     {
-        // TODO: Implement proper statistics collection
-        // For now, do a quick scan to count rows (expensive but accurate)
-        // In a real implementation, we would maintain statistics
-        
-        try
-        {
-            using var iterator = m_context.Database.CreateTableScan(tableName);
-            iterator.Open();
-            
-            long count = 0;
-            const long sampleLimit = 1000; // Sample up to 1000 rows
-            
-            while (iterator.MoveNext() && count < sampleLimit)
-            {
-                count++;
-            }
-            
-            // If we hit the limit, estimate based on sample
-            if (count >= sampleLimit)
-            {
-                // Assume table is larger, return a higher estimate
-                return count * 10;
-            }
-            
-            return count;
-        }
-        catch
-        {
-            // If counting fails, return a default estimate
-            return 100;
-        }
+        var count = m_context.Database.GetTableRowCount(tableName);
+
+        // The catalog answers -1 for a table it does not know. Keep the old fallback rather than
+        // returning something that would switch index use off: FindBestIndex refuses any estimate
+        // at or below zero, so passing -1 through would silently disable every index on a path that
+        // used to use them.
+        return count >= 0 ? count : 100;
     }
 
     #endregion
