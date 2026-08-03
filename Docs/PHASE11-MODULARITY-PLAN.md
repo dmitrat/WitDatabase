@@ -318,6 +318,55 @@ same two-routes-disagree shape again, in the third place this phase has found it
 not reach it - `WitDbConnection.OpenAsync` runs the synchronous `Open` - so it is a builder-API defect,
 recorded here rather than fixed in the same pass.
 
+## 6a. Instrument C - a database created by one configuration, opened by another
+
+`ConfigurationMismatchTests`, 8 configurations x 8 = 64 pairs plus controls. The matrix reopens with the
+**same** connection string; this asks what a consumer meets when a config file drifts. Controls both
+ways: every configuration must read its own database back, and an encrypted one must **not** be readable
+without its password.
+
+The first classification was too generous and had to be sharpened - it counted any exception as a
+legitimate refusal, and `Table 'X' not found` is not a refusal, it is an open that answers wrong. The
+outcomes are now **Correct / RefusedAtOpen / OpensAndDataIsGone / Wrong**, and each case additionally
+asks whether the **creator** can still read the file afterwards, which separates invisibility from
+destruction. **Three defects, none of them previously known:**
+
+1. **The transaction model changes the on-disk layout and nothing says so.** A database written with
+   MVCC opens without complaint under `MVCC=false` or `Transactions=false` - and reports
+   `Table 'X' not found`. Both directions. The rows are intact: the creator reads them back afterwards.
+   So a consumer who flips one keyword sees an empty database, and the obvious next step - create the
+   schema - writes over one that was fine.
+
+2. **A larger `PageSize` reinitialises the header instead of reporting the mismatch.**
+   `pagesize -> default` refuses cleanly with `Page size mismatch: file has 16384 bytes, storage expects
+   4096`. The other direction opens, shows nothing, and **afterwards the original configuration gets that
+   same error** - the file now claims a page size it never had. Destruction, not invisibility, and the
+   most serious thing in this phase.
+
+3. **A refused open leaves the data file open.** Attribution, not assumption: after a wrong password is
+   refused, the creator's own configuration gets `The process cannot access the file ... because it is
+   being used by another process`. So a mistyped password locks the database out for the life of the
+   process, under a message that names the wrong problem. Same shape as the two handle leaks § 4a fixed -
+   something is constructed, the build then fails, nothing disposes what was built.
+
+All three are **pinned as observations with the inversion written into them**, so the suite is green and
+goes red when they are fixed. None is fixed yet.
+
+## 6b. Still unexplored
+
+- **`Core.BouncyCastle` and `Core.IndexedDb` have not been touched at all** - their provider
+  registrations appear in no census and no matrix.
+- **Extensibility itself**: nothing registers a third-party `IStorage`/`IKeyValueStore`/`ICryptoProvider`
+  and drives a database through it, which is the construction kit's central claim.
+- **The matrix is single-connection.** The ASP.NET shape - many connections over one engine - has never
+  been crossed with the combinations.
+- **Durability has never been crossed with configuration.** The 13 `Category=Crash` tests run the default
+  and nothing else.
+- **"Works" means "works on eight rows"** - no combination in the matrix reaches a compaction, a page
+  split or an overflow page.
+- The five ADO-level keywords the census cannot see structurally: `Enlist`, `Connection Timeout`,
+  `Pooling`, `Min`/`Max Pool Size`, `Default Timeout`.
+
 ## 7. Ledger
 
 47 suppressed entries (33 `[Ignore(…)]` + 14 `Ignore =`) plus 2 `[Explicit]`, counted with the commands
