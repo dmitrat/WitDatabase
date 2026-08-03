@@ -571,3 +571,198 @@ Phase 4 recorded that making autocommit durable cost **~1.5x** on the write path
 5,000 rows in a transaction: `Default` (MVCC on, durable) at 7.7-8.0 µs/row against `BTree`
 (`MVCC=false`) at 5.0-5.1 - **~1.55x**, in both passes. The price of the D in ACID is what it was
 said to be.
+
+---
+
+## 11. The refutation in § 9.5 was wrong, and the corrected experiment names a second planner defect
+
+§ 9.5 reported that the obvious explanation for `WHERE Age > 30` costing 405 ms at 100,000 rows -
+the planner taking an index for a range that selects most of the table - had been **tested and
+refuted**, because the same range on an indexed and an unindexed column cost the same.
+
+**That experiment did not refute the hypothesis. It failed to test it.** The "indexed" column it used
+was `AltInt`, seeded as `i` and inserted in order, so the index key order was *perfectly correlated
+with physical row order*. Walking that index visits rows in exactly the order a table scan would.
+The control did not vary the thing it was believed to vary - which is the failure this project has a
+rule about, applied here to my own instrument.
+
+The corrected experiment adds `Bucket`, an integer with **60 distinct values** and a non-unique
+index - the shape of `Users.Age`, the column that produced the unexplained number. Same table, same
+~75% selectivity, three ways of reaching the rows:
+
+| range selecting ~75% | 20,000 rows | 100,000 rows |
+|---|---|---|
+| no index (forced scan) | 31.8 ms | 199.5 ms |
+| **unique** index, correlated with row order | 33.1 ms | 229.2 ms |
+| **low-cardinality** non-unique index | 34.9 ms | **499.5 ms** |
+
+**It reproduces.** At 100,000 rows the low-cardinality index costs 2.5x the scan it replaced, and
+2.2x the correlated index. Allocation is unchanged across all three (282 / 280 / 305 MB), so this is
+time, not materialisation - the rows cost more to *reach*, not more to build.
+
+**SQLite does the same thing, which identifies the mechanism rather than excusing it.** Its
+low-cardinality range costs 228.6 ms against 16.7 ms for the correlated index and 19.5 ms for the
+plain scan - a 13.7x jump on the same shape. Visiting rows in index-key order when the key is
+uncorrelated with physical order is random access into the table, and both engines pay for it.
+WitDatabase pays 2.2x what SQLite pays, which is its own read-path cost on top, not a separate
+defect.
+
+### Why the planner cannot avoid this today
+
+The cost model in `OptimizerQuery` is:
+
+```
+table scan      = N x 1.0
+equality seek   = 5.0 + max(1, N x 0.01) x 1.0
+index range     = max(1, N x 0.2) x 0.5   =  N x 0.1
+```
+
+`RANGE_SELECTIVITY` is the constant **0.2**, applied to every range predicate regardless of what it
+actually selects. So an index range is costed at `0.1N` against a scan's `1.0N`: **an applicable
+index always wins, for any table size, whatever the predicate really selects.** Both sides are linear
+in `N`, so the estimate cancels - which is why § 8's 1,000-row scan buys a number that cannot change
+the decision.
+
+That is two distinct defects in the same place, and they are opposite in shape:
+
+- **§ 8 - the planner pays for a number that does not matter.** A 1,000-row scan per query execution
+  to estimate a row count that cancels out of every comparison.
+- **§ 11 - the planner lacks the number that does matter.** No selectivity and no notion of
+  correlation between index order and row order, so it takes an index for a predicate matching 75% of
+  the table and turns a sequential scan into random access.
+
+Both are "the planner has no statistics", and the `TODO` in `EstimateTableRowCount` asks for exactly
+that. They are worth separating because their fixes differ sharply in size and risk: the first is a
+small, near-zero-risk substitution measured in § 8; the second changes which plan is chosen and needs
+statistics that do not exist yet.
+
+---
+
+## 12. Fix one: the planner reads the counter instead of scanning
+
+`QueryPlanner.EstimateTableRowCount` now calls `IDatabase.GetTableRowCount`, which the catalog
+already answers in O(1) - the same counter that makes `SELECT COUNT(*)` flat in table size (§ 1.5).
+The interface member already existed; nothing new had to be plumbed.
+
+The whole change is one function. It replaces a table scan of up to 1,000 rows **per query
+execution** with a dictionary lookup.
+
+### Why the risk was low, established before the change rather than after
+
+The estimate feeds a cost model that is **homogeneous in it**: a table scan is costed at `N x 1.0`,
+an index range at `N x 0.2 x 0.5`, an equality seek at `5.0 + N x 0.01`. `N` cancels out of the
+comparison, so the same plan is chosen almost regardless of what the estimate says. The old code also
+returned `count * 10` whenever it hit its cap, meaning **every table of 1,000 rows or more was
+reported as exactly 10,000** whatever its real size - so the value being replaced was not accurate
+either.
+
+The one behaviour that had to be preserved deliberately: `GetRowCount` answers `-1` for a table the
+catalog does not know, and `FindBestIndex` refuses any estimate at or below zero. Passing `-1`
+straight through would have silently switched off every index on that path. It falls back to the old
+default of 100 instead.
+
+### Measured
+
+`IndexSeekAnatomyBenchmarks`, `Default`, per 100 lookups, same machine and job as § 8:
+
+| shape | before | after | |
+|---|---|---|---|
+| **UNIQUE index, string key** | 52.00 ms / 131,710 KB | **0.459 ms / 1,009 KB** | **113x faster, 131x less allocated** |
+| UNIQUE index, int key | 50.24 ms | 0.443 ms | |
+| Non-unique index, string key | 51.11 ms | 0.477 ms | |
+| UNIQUE index, narrow projection | 50.48 ms | 0.444 ms | |
+| No index, forced scan (5,000 rows) | 291.8 ms / 662,489 KB | 214.6 ms / 580,802 KB | 26% faster |
+| PK equality | 0.258 ms | 0.266 ms | unchanged, as predicted |
+
+The primary-key path is untouched because it never reached this code - which is what made it the
+control in the first place.
+
+**The gap that opened the phase is closed and inverted.** The unique-index seek was **23x slower than
+LiteDB** (52.0 ms against 2.07 ms). It is now **4.5x faster** (0.459 ms against 2.07 ms). Against the
+primary-key path in the same engine it went from ~200x to 1.7x.
+
+The forced scan improving by 26% is the same tax being removed from a query that never used an index
+at all: it has a `WHERE` and the table has indexes, so it paid the 1,000-row estimate too.
+
+### Suite
+
+Green across every project, `Category!=Performance`:
+
+| project | passed | failed |
+|---|---|---|
+| `OutWit.Database.Tests` | 2,216 | 0 |
+| `OutWit.Database.Core.Tests` | 2,278 | 0 |
+| `OutWit.Database.AdoNet.Tests` | 798 | 0 |
+| `OutWit.Database.Parser.Tests` | 797 | 0 |
+| `OutWit.Database.EntityFramework.Tests` | 554 | 0 |
+| **total** | **6,643** | **0** |
+
+`WitSqlEngineSelectWhereRowCountTests`, which exists specifically to pin the interaction between the
+planner's `MIN_ROWS_FOR_INDEX` threshold and this estimate, passes unchanged.
+
+### What this fix does *not* address
+
+The second planner defect from § 11 is untouched: `RANGE_SELECTIVITY` is still the constant 0.2, so
+an applicable index still always wins a range comparison, and a range selecting 75% of a
+low-cardinality index still costs 2.5x the scan it replaced. That needs statistics the engine does
+not keep - distinct-value counts, and some notion of whether index order tracks physical row order.
+It changes *which plan is chosen*, where this fix changed only *what it costs to choose*.
+
+---
+
+## 13. Re-baselined: the fix moved far more than its target
+
+A fix without a re-measure is not finished, so the § 5 sweep was taken again - same classes, same
+`Default` mode, same sizes, same job, two passes.
+
+### Everything with a `WHERE` improved, not just the seek
+
+| operation | before | after | |
+|---|---|---|---|
+| Index seek, unique, x100 | 48.42 ms / 125,332 KB | **0.500 ms / 970 KB** | **97x** |
+| Index seek, non-unique, x20 | 19.01 ms / 42,149 KB | 8.40 ms / 17,277 KB | 2.3x |
+| Composite index query | 9.89 ms / 20,926 KB | 4.52 ms / 8,490 KB | 2.2x |
+| Index range scan (`>`) | 1.571 ms | 0.839 ms | 1.9x |
+| Index range scan (`BETWEEN`) | 1.397 ms | 0.832 ms | 1.7x |
+| `SELECT … WHERE Age > 30` | 1.637 ms | 1.114 ms | 1.5x |
+| Full scan, no index | 7.53 ms | 5.94 ms | 1.27x |
+| aggregates, joins, projections | | | 5-8% |
+| `INSERT`, `UPDATE`, transactions | | | unchanged |
+
+The write paths are untouched, as they should be - the planner is not on them. The full scan gains
+because it still has a `WHERE` over a table that has indexes, so it paid the estimate without ever
+using one.
+
+### Where WitDatabase now stands against LiteDB
+
+Same sweep, `Default`, ratios recomputed per operation:
+
+| operation | before | after |
+|---|---|---|
+| Index seek, unique | 23.4x **slower** | **0.25x — 4x faster** |
+| Index range scan (`BETWEEN`) | 0.28x | 0.18x |
+| Point query by PK | 0.20x | 0.19x |
+| Index seek, non-unique | 2.14x slower | 1.05x — parity |
+| Index range scan (`>`) | 1.87x slower | 1.08x — parity |
+| `SELECT … WHERE Age > 30` | 1.43x slower | 1.02x — parity |
+| Full scan, no index | 1.18x slower | 1.00x — parity |
+| Composite index query | 2.51x slower | 1.25x |
+| `ORDER BY` | 0.95x | 0.91x |
+| `INNER JOIN` over 4 tables | 2.74x slower | 2.73x — unchanged |
+
+**Only two operations remain more than 3x behind LiteDB, and both are inserts** - `INSERT` without a
+transaction at 21.4x and `INSERT … RETURNING` at 3.1x. The first is the durable-autocommit cost phase
+4 chose deliberately, and on that same operation WitDatabase is 3.3x *faster* than SQLite. Before the
+fix the list also held the index seek at 23.4x.
+
+The picture changed shape. Against the stated competitor, WitDatabase went from roughly half the
+operations behind to **ahead or at parity on everything except joins and the deliberate durability
+cost**.
+
+### One apparent regression, and it was noise
+
+Pass one read `Tx Rollback` at 0.604 ms against the pre-fix 0.475 - a 27% regression on a path the
+change does not touch, which is exactly the shape that gets written up as a side effect. Pass two:
+**0.461 ms**. The three readings overlap and the honest finding is no measurable difference. Four
+readings in the sweep moved more than 10% between the two passes and none of them carries a
+conclusion here.

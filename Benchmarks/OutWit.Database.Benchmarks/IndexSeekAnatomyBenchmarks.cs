@@ -42,6 +42,13 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
 {
     private const int Lookups = 100;
 
+    /// <summary>
+    /// Distinct values in the Bucket column. Chosen to match the shape of Users.Age, the column
+    /// behind the unexplained 405 ms at 100,000 rows: an indexed integer with a few dozen distinct
+    /// values, so its index is heavily non-unique.
+    /// </summary>
+    private const int BucketCount = 60;
+
     #region Fields
 
     private WitDbConnection? m_witConn;
@@ -105,7 +112,8 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
                     AltStr VARCHAR(50) NOT NULL,
                     Name VARCHAR(200),
                     Price DOUBLE,
-                    CategoryId INT
+                    CategoryId INT,
+                    Bucket INT NOT NULL
                 )";
             c.ExecuteNonQuery();
 
@@ -117,6 +125,12 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
             // constant so the only thing that varies is the index's uniqueness.
             c.CommandText = "CREATE INDEX IX_Anat_AltStr ON Products(AltStr)";
             c.ExecuteNonQuery();
+            // Low cardinality on purpose - about 60 distinct values, so many rows share a key.
+            // This is the one property the refuted range experiment did not hold constant:
+            // Users.Age, the column that produced the unexplained 405 ms, is shaped like this,
+            // while AltInt above is unique.
+            c.CommandText = "CREATE INDEX IX_Anat_Bucket ON Products(Bucket)";
+            c.ExecuteNonQuery();
             // Name is deliberately left unindexed - it is the forced-scan shape.
         }
 
@@ -124,8 +138,8 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
         using (var c = m_witConn.CreateCommand())
         {
             c.Transaction = tx;
-            c.CommandText = @"INSERT INTO Products (SKU, AltInt, AltStr, Name, Price, CategoryId)
-                              VALUES (@sku, @alti, @alts, @name, @price, @cat)";
+            c.CommandText = @"INSERT INTO Products (SKU, AltInt, AltStr, Name, Price, CategoryId, Bucket)
+                              VALUES (@sku, @alti, @alts, @name, @price, @cat, @bucket)";
 
             var pSku = Add(c, "@sku");
             var pAltI = Add(c, "@alti");
@@ -133,6 +147,7 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
             var pName = Add(c, "@name");
             var pPrice = Add(c, "@price");
             var pCat = Add(c, "@cat");
+            var pBucket = Add(c, "@bucket");
 
             var rnd = new Random(42);
             for (int i = 0; i < TableSize; i++)
@@ -143,6 +158,7 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
                 pName.Value = $"Product {i}";
                 pPrice.Value = Math.Round(rnd.NextDouble() * 1000, 2);
                 pCat.Value = rnd.Next(1, 21);
+                pBucket.Value = i % BucketCount;
                 c.ExecuteNonQuery();
             }
         }
@@ -173,7 +189,8 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
                     AltStr TEXT NOT NULL,
                     Name TEXT,
                     Price REAL,
-                    CategoryId INTEGER
+                    CategoryId INTEGER,
+                    Bucket INTEGER NOT NULL
                 )";
             c.ExecuteNonQuery();
             c.CommandText = "CREATE UNIQUE INDEX IX_Anat_SKU ON Products(SKU)";
@@ -182,14 +199,16 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
             c.ExecuteNonQuery();
             c.CommandText = "CREATE INDEX IX_Anat_AltStr ON Products(AltStr)";
             c.ExecuteNonQuery();
+            c.CommandText = "CREATE INDEX IX_Anat_Bucket ON Products(Bucket)";
+            c.ExecuteNonQuery();
         }
 
         var tx = m_sqliteConn.BeginTransaction();
         using (var c = m_sqliteConn.CreateCommand())
         {
             c.Transaction = tx;
-            c.CommandText = @"INSERT INTO Products (SKU, AltInt, AltStr, Name, Price, CategoryId)
-                              VALUES (@sku, @alti, @alts, @name, @price, @cat)";
+            c.CommandText = @"INSERT INTO Products (SKU, AltInt, AltStr, Name, Price, CategoryId, Bucket)
+                              VALUES (@sku, @alti, @alts, @name, @price, @cat, @bucket)";
 
             var pSku = Add(c, "@sku");
             var pAltI = Add(c, "@alti");
@@ -197,6 +216,7 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
             var pName = Add(c, "@name");
             var pPrice = Add(c, "@price");
             var pCat = Add(c, "@cat");
+            var pBucket = Add(c, "@bucket");
 
             var rnd = new Random(42);
             for (int i = 0; i < TableSize; i++)
@@ -207,6 +227,7 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
                 pName.Value = $"Product {i}";
                 pPrice.Value = Math.Round(rnd.NextDouble() * 1000, 2);
                 pCat.Value = rnd.Next(1, 21);
+                pBucket.Value = i % BucketCount;
                 c.ExecuteNonQuery();
             }
         }
@@ -357,6 +378,14 @@ public class IndexSeekAnatomyBenchmarks : IDisposable
     [Benchmark(Description = "Range 75% on INDEXED column - SQLite")]
     public int RangeIndexedSqlite() =>
         Range(m_sqliteConn!, "SELECT * FROM Products WHERE AltInt > @key", TableSize / 4);
+
+    [Benchmark(Description = "Range 75% on LOW-CARDINALITY index - WitDb")]
+    public int RangeLowCardinalityWitDb() =>
+        Range(m_witConn!, "SELECT * FROM Products WHERE Bucket > @key", BucketCount / 4);
+
+    [Benchmark(Description = "Range 75% on LOW-CARDINALITY index - SQLite")]
+    public int RangeLowCardinalitySqlite() =>
+        Range(m_sqliteConn!, "SELECT * FROM Products WHERE Bucket > @key", BucketCount / 4);
 
     [Benchmark(Description = "Range 75% on UNINDEXED column - WitDb")]
     public int RangeUnindexedWitDb() =>
