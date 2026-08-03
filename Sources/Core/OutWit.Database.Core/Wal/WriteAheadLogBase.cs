@@ -80,7 +80,29 @@ public abstract class WriteAheadLogBase : IDisposable
         }
 
         var mode = createNew ? FileMode.Create : FileMode.OpenOrCreate;
-        m_stream = new FileStream(filePath, mode, FileAccess.ReadWrite, FileShare.Read, 4096, FileOptions.WriteThrough);
+
+        // Deliberately NOT FileOptions.WriteThrough, which is what this opened with until phase 10.
+        //
+        // WriteThrough tells the OS not to cache the write, so every append reached the device.
+        // Combined with the SeekToEnd() that AppendEntry does first - on a FileStream, both reading
+        // Length and assigning Position flush the write buffer - the 4 KB buffer never accumulated
+        // anything, and each appended entry cost one device-level write. In LSM mode every secondary
+        // index has its own store and therefore its own log, so three indexes meant four
+        // write-through streams per inserted row.
+        //
+        // Measured, 1,000 rows in one transaction on Store=lsm: 118 ms with it and 33 ms without on
+        // a bare table, 534 ms and 44 ms with three secondary indexes. It was most of the 12-20x
+        // that separated the LSM store from the B+Tree one on writes.
+        //
+        // It also contradicted the option it was supposed to serve. LsmOptions.SyncWrites documents
+        // itself as "if false, relies on OS buffering (faster but less durable per-write)" and
+        // defaults to false - while the handle made OS buffering impossible.
+        //
+        // Durability never depended on it and does not now. It comes from Sync(), which calls
+        // Flush(flushToDisk: true): StoreLsm calls it per write when SyncWrites is on and the LSM
+        // log calls it on commit, and TransactionalStore calls it through the journal on commit.
+        // WriteThrough was redundant wherever a sync already happened and pure cost everywhere else.
+        m_stream = new FileStream(filePath, mode, FileAccess.ReadWrite, FileShare.Read, 4096, FileOptions.None);
         m_writer = new BinaryWriter(m_stream);
 
         if (createNew || m_stream.Length == 0)
