@@ -1,4 +1,4 @@
-namespace OutWit.Database.Core.Interfaces;
+﻿namespace OutWit.Database.Core.Interfaces;
 
 /// <summary>
 /// Factory interface for creating provider instances by key.
@@ -134,7 +134,7 @@ public sealed class ProviderParameters
     /// <remarks>
     /// <para>
     /// <b>Text.</b> Every value from a connection string arrives as a <c>string</c>: an ADO.NET
-    /// connection string has no types. Before 11.3.0 <c>Get&lt;int&gt;("PageSize")</c> on the string
+    /// connection string has no types. Before 12.0.0 <c>Get&lt;int&gt;("PageSize")</c> on the string
     /// <c>"16384"</c> failed a plain <c>is T</c> test and returned the default without a word, so
     /// <c>PageSize</c> and <c>CacheSize</c> were inert from a connection string and worked from the
     /// fluent builder, which sets the same keys as <c>int</c>. Phase 10 found the same shape in the LSM

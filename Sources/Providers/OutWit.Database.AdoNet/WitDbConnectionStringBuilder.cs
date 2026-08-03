@@ -1,4 +1,4 @@
-using System.Data.Common;
+﻿using System.Data.Common;
 
 namespace OutWit.Database.AdoNet;
 
@@ -24,8 +24,6 @@ namespace OutWit.Database.AdoNet;
 /// <item><term>Isolation Level</term><description>Default transaction isolation level</description></item>
 /// <item><term>MVCC</term><description>Enable Multi-Version Concurrency Control</description></item>
 /// <item><term>Transactions</term><description>Enable transaction support</description></item>
-/// <item><term>Parallel Mode</term><description>Parallel access mode (None, Auto, Buffered, Latched, Optimistic)</description></item>
-/// <item><term>Max Writers</term><description>Maximum number of parallel writers</description></item>
 /// </list>
 /// <para>All other parameters are passed through to provider factories via ProviderParameters.</para>
 /// </remarks>
@@ -41,7 +39,7 @@ namespace OutWit.Database.AdoNet;
 /// var cs = "Data Source=./data;Store=lsm;MemTableSize=67108864";
 /// 
 /// // Full configuration with parallel writes
-/// var cs = "Data Source=app.witdb;Store=btree;Encryption=aes-gcm;Password=pass;Parallel Mode=Auto";
+/// var cs = "Data Source=app.witdb;Store=btree;Encryption=aes-gcm;Password=pass";
 /// </code>
 /// </example>
 public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
@@ -69,10 +67,26 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
     private const string KEY_TRANSACTIONS = "Transactions";
     private const string KEY_SYNCHRONOUS_COMMIT = "Synchronous Commit";
     
-    // Parallel mode settings
-    private const string KEY_PARALLEL_MODE = "Parallel Mode";
-    private const string KEY_MAX_WRITERS = "Max Writers";
-    
+    /// <summary>
+    /// Keywords this provider used to accept, and what to do instead.
+    /// </summary>
+    /// <remarks>
+    /// <c>Parallel Mode</c> and <c>Max Writers</c> selected a concurrency wrapper. Serialising the
+    /// B+Tree store is unconditional now - it has no locking of its own, so that is a correctness
+    /// property and not a choice - and the LSM store locks internally. What the setting still selected
+    /// was the LSM write buffer, which was measured through a database and is <b>slower</b> there:
+    /// the transaction layer serialises writers before they can contend for it.
+    /// </remarks>
+    private static readonly (string Key, string Advice)[] REMOVED_KEYS =
+    [
+        ("Parallel Mode",
+            "The B+Tree store is always serialised and the LSM store locks internally, so there is " +
+            "nothing left to choose. Remove the keyword."),
+        ("Max Writers",
+            "It sized the LSM write buffer, which is no longer selectable from a connection string. " +
+            "Remove the keyword.")
+    ];
+
     // Pooling settings (ADO.NET level)
     private const string KEY_POOLING = "Pooling";
     private const string KEY_MIN_POOL_SIZE = "Min Pool Size";
@@ -178,10 +192,13 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
             errors.Add("Data Source is required unless Mode is Memory.");
         }
 
-        // Validate max writers
-        if (MaxWriters < 1)
+        // Refused rather than ignored. These were removed in 12.0.0, and a connection string that still
+        // carries one is asking for something this engine no longer has: silently accepting it would be
+        // the exact failure - a setting taken and not honoured - that removing it was meant to end.
+        foreach (var removed in REMOVED_KEYS)
         {
-            errors.Add("Max Writers must be at least 1.");
+            if (ContainsKey(removed.Key))
+                errors.Add($"'{removed.Key}' was removed in 12.0.0. {removed.Advice}");
         }
 
         return errors;
@@ -211,7 +228,6 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
             KEY_DATA_SOURCE, KEY_MODE, KEY_READ_ONLY, KEY_ENLIST, KEY_CONNECTION_TIMEOUT,
             KEY_STORE, KEY_ENCRYPTION, KEY_PASSWORD, KEY_USER, KEY_CACHE, KEY_JOURNAL,
             KEY_ISOLATION_LEVEL, KEY_MVCC, KEY_TRANSACTIONS, KEY_SYNCHRONOUS_COMMIT,
-            KEY_PARALLEL_MODE, KEY_MAX_WRITERS,
             KEY_POOLING, KEY_MIN_POOL_SIZE, KEY_MAX_POOL_SIZE, KEY_DEFAULT_TIMEOUT
         };
 
@@ -396,31 +412,6 @@ public sealed class WitDbConnectionStringBuilder : DbConnectionStringBuilder
 
     #endregion
 
-    #region Parallel Mode Properties
-
-    /// <summary>
-    /// Gets or sets the parallel access mode.
-    /// Default is None (single-threaded behavior).
-    /// </summary>
-    public WitDbParallelMode ParallelMode
-    {
-        get => GetValue(KEY_PARALLEL_MODE, WitDbParallelMode.None);
-        set => SetValue(KEY_PARALLEL_MODE, value);
-    }
-
-    /// <summary>
-    /// Gets or sets the maximum number of parallel writers.
-    /// Only applicable when ParallelMode is not None.
-    /// Default is number of processors.
-    /// </summary>
-    public int MaxWriters
-    {
-        get => GetValue(KEY_MAX_WRITERS, Environment.ProcessorCount);
-        set => SetValue(KEY_MAX_WRITERS, value);
-    }
-
-    #endregion
-
     #region Pooling Properties
 
     /// <summary>
@@ -521,35 +512,4 @@ public enum WitDbIsolationLevel
     /// Snapshot isolation using MVCC.
     /// </summary>
     Snapshot
-}
-
-/// <summary>
-/// Specifies the parallel access mode for WitDatabase connections.
-/// </summary>
-public enum WitDbParallelMode
-{
-    /// <summary>
-    /// No parallelism. Single global lock for all operations.
-    /// </summary>
-    None,
-
-    /// <summary>
-    /// Automatic mode selection based on store type.
-    /// </summary>
-    Auto,
-
-    /// <summary>
-    /// Thread-local write buffers with background merge.
-    /// </summary>
-    Buffered,
-
-    /// <summary>
-    /// Page-level latching for fine-grained concurrency.
-    /// </summary>
-    Latched,
-
-    /// <summary>
-    /// Optimistic concurrency with minimal locking.
-    /// </summary>
-    Optimistic
 }

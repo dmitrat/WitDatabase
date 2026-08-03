@@ -1,4 +1,4 @@
-using System.Reflection;
+﻿using System.Reflection;
 using System.Security.Cryptography;
 using System.Text;
 
@@ -215,7 +215,7 @@ public class ConfigurationCensusTests
         // ---- provider selection ---------------------------------------------------------------
         new("Store=inmemory", "", "Store=btree", "Store=inmemory"),
         new("Cache", "", "Cache=clock", "Cache=lru"),
-        // Refused since 11.3.0: with MVCC nothing would use it. The census keeps the case so the refusal
+        // Refused since 12.0.0: with MVCC nothing would use it. The census keeps the case so the refusal
         // is measured rather than assumed.
         new("Journal (MVCC on)", "", "Journal=rollback", "Journal=wal"),
         new("Journal (MVCC off)", "MVCC=false", "Journal=rollback", "Journal=wal"),
@@ -230,19 +230,13 @@ public class ConfigurationCensusTests
         new("Isolation Level (MVCC off)", "MVCC=false", "Isolation Level=ReadCommitted", "Isolation Level=Serializable"),
         new("Synchronous Commit", "", "Synchronous Commit=true", "Synchronous Commit=false"),
 
-        // ---- parallelism ----------------------------------------------------------------------
-        new("Parallel Mode on or off (LSM)", "Store=lsm", "Parallel Mode=None", "Parallel Mode=Auto"),
-
-        // INERT on purpose since 11.3.0: the B+Tree store is serialised whether or not a mode is asked
-        // for, because StoreBTree has no locking of its own and that is a correctness property rather
-        // than a tuning choice. Kept in the census so the day it starts reaching something is visible.
-        new("Parallel Mode on or off (BTree)", "", "Parallel Mode=None", "Parallel Mode=Auto"),
-        new("Parallel Mode Auto vs Buffered", "", "Parallel Mode=Auto", "Parallel Mode=Buffered"),
-        new("Parallel Mode Auto vs Latched", "", "Parallel Mode=Auto", "Parallel Mode=Latched"),
-        new("Parallel Mode Auto vs Optimistic", "", "Parallel Mode=Auto", "Parallel Mode=Optimistic"),
-        new("Parallel Mode (LSM) Auto vs Buffered", "Store=lsm", "Parallel Mode=Auto", "Parallel Mode=Buffered"),
-        new("Max Writers (BTree)", "Parallel Mode=Buffered", "Max Writers=2", "Max Writers=7"),
-        new("Max Writers (LSM)", "Store=lsm;Parallel Mode=Buffered", "Max Writers=2", "Max Writers=7"),
+        // ---- removed settings -------------------------------------------------------------------
+        // Parallel Mode and Max Writers were removed in 12.0.0. Serialising the B+Tree store is
+        // unconditional (it has no locking of its own) and the LSM store locks internally, so nothing
+        // was left to choose; the LSM write buffer the setting also selected was measured through a
+        // database and is slower there. They are REFUSED rather than ignored.
+        new("Parallel Mode (removed)", "", "", "Parallel Mode=Auto"),
+        new("Max Writers (removed)", "", "", "Max Writers=7"),
 
         // ---- storage --------------------------------------------------------------------------
         new("PageSize", "", "PageSize=4096", "PageSize=16384"),

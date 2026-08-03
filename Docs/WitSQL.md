@@ -1299,20 +1299,27 @@ accepting the setting would mean ignoring it.
 index stores. `CacheSize` is the number of pages. Neither applies to `Store=lsm`, which has no page
 cache; use `EnableBlockCache` and `BlockCacheSize` there.
 
-### Parallel mode
+### Concurrency: there is nothing to configure
 
-**Thread safety is not a setting here, and this keyword does not control it.** The B+Tree store has no
-locking of its own, so it is serialised whenever it is built - main store and secondary index stores
-alike - whatever `Parallel Mode` says. That is measured rather than assumed: with no wrapper and no
-transaction layer, two writers meeting inside one leaf split threw and lost a row in five runs out of
-five, and serialising costs a single thread nothing (median 1.001x over five interleaved passes of
-20,000 operations). The LSM and in-memory stores lock internally and need no wrapper at all.
+**`Parallel Mode` and `Max Writers` were removed in 12.0.0, and a connection string that still carries
+one is refused at `Open`** with a message naming the reason. Thread safety is a property of each store
+rather than a choice a caller makes:
 
-What is left for the keyword is the **LSM store's write buffering**, which is a throughput choice:
-`Parallel Mode=None` (default) writes straight through, any other value gives thread-local write
-buffers with a background merge, and `Max Writers` sizes them. `Auto`, `Buffered`, `Latched` and
-`Optimistic` are four spellings of the same thing - the mechanism is the store's, not the keyword's -
-and on the B+Tree and in-memory stores the setting does nothing at all.
+| store | what it does about concurrent access |
+|---|---|
+| `btree` | Serialised whenever it is built - main store and every secondary index store. It has no locking of its own. |
+| `lsm` | Locks internally. |
+| `inmemory` | Locks internally. |
+
+The reasoning is measured, not asserted. With no wrapper and no transaction layer, two writers meeting
+inside one leaf split of the B+Tree store threw and lost a row in **five runs out of five**; serialising
+costs a single thread nothing (median **1.001x** over five interleaved passes of 20,000 operations). The
+one thing the setting still selected - the LSM store's write buffer - was measured through a database
+and is **slower** there (**1.04x** with batched transactions, **1.14x** with autocommit), because a
+transaction layer serialises writers before they can contend for it. Its 0.80x win needs four threads
+inside the store at once, which no configuration with transactions produces.
+
+A caller driving a store directly, without the engine, can still wrap it: `LsmParallelStore` is public.
 
 ### LSM settings
 
@@ -1327,7 +1334,7 @@ listed here rather than removed because ADO.NET consumers set it as a matter of 
 
 ### A note on spelling
 
-Every keyword above works whether or not `Store` is also named. Before 11.3.0 it did not: the whole
+Every keyword above works whether or not `Store` is also named. Before 12.0.0 it did not: the whole
 pass-through parameter set was discarded unless `Store=` appeared in the connection string, so
 `Data Source=db;PageSize=16384` silently used the default page size while
 `Data Source=db;Store=btree;PageSize=16384` - the same engine - honoured it.

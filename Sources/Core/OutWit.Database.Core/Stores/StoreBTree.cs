@@ -1,4 +1,4 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Managers;
@@ -76,7 +76,7 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyn
     /// Creates a new BTreeStore over a caller-supplied page cache.
     /// </summary>
     /// <remarks>
-    /// The overload that makes the <c>Cache</c> provider key mean something. Until 11.3.0 every B+Tree
+    /// The overload that makes the <c>Cache</c> provider key mean something. Until 12.0.0 every B+Tree
     /// store constructed <see cref="PageCacheShardedClock"/> itself, so <c>Cache=lru</c> selected a
     /// registered provider that nothing ever built - and the chosen key was still written into the
     /// database header, so the file claimed a cache it had never had.

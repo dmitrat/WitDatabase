@@ -1,4 +1,4 @@
-using OutWit.Database.AdoNet;
+﻿using OutWit.Database.AdoNet;
 using OutWit.Database.Core.Builder;
 using TextEncoding = System.Text.Encoding;
 
@@ -43,13 +43,13 @@ public class WitDbConnectionParallelAccessTests : IDisposable
 
     #endregion
 
-    #region Connection String Parallel Mode Tests
+    #region Concurrent access over a default connection
 
     [Test]
-    public void ConnectionStringWithParallelModeAutoTest()
+    public void DefaultConnectionSupportsConcurrentAccessTest()
     {
         var dbPath = Path.Combine(m_testDir, "parallel_auto.witdb");
-        var cs = $"Data Source={dbPath};Parallel Mode=Auto;Transactions=false";
+        var cs = $"Data Source={dbPath};Transactions=false";
 
         using var conn = new WitDbConnection(cs);
         conn.Open();
@@ -88,10 +88,10 @@ public class WitDbConnectionParallelAccessTests : IDisposable
     /// the marker is closed rather than reworded. See <c>Docs/PHASE5-CONCURRENCY-PLAN.md</c> § 5.
     /// </remarks>
     [Test]
-    public void ConnectionStringWithMaxWritersTest()
+    public void DefaultConnectionSupportsFourWritersTest()
     {
         var dbPath = Path.Combine(m_testDir, "max_writers.witdb");
-        var cs = $"Data Source={dbPath};Parallel Mode=Buffered;Max Writers=4;Transactions=false";
+        var cs = $"Data Source={dbPath};Transactions=false";
 
         using var conn = new WitDbConnection(cs);
         conn.Open();
@@ -131,7 +131,7 @@ public class WitDbConnectionParallelAccessTests : IDisposable
     public void MultipleConnectionsReadTest()
     {
         var dbPath = Path.Combine(m_testDir, "multi_read.witdb");
-        var cs = $"Data Source={dbPath};Parallel Mode=Auto;Transactions=false";
+        var cs = $"Data Source={dbPath};Transactions=false";
 
         // Setup: Create table and insert data
         using (var conn = new WitDbConnection(cs))
@@ -195,7 +195,7 @@ public class WitDbConnectionParallelAccessTests : IDisposable
     public void MultipleConnectionsWriteTest()
     {
         var dbPath = Path.Combine(m_testDir, "multi_write.witdb");
-        var cs = $"Data Source={dbPath};Parallel Mode=Latched;Transactions=false";
+        var cs = $"Data Source={dbPath};Transactions=false";
 
         // Setup
         using (var conn = new WitDbConnection(cs))
@@ -261,7 +261,7 @@ public class WitDbConnectionParallelAccessTests : IDisposable
     public void ConcurrentReadWriteTest()
     {
         var dbPath = Path.Combine(m_testDir, "concurrent_rw.witdb");
-        var cs = $"Data Source={dbPath};Parallel Mode=Auto;Transactions=false";
+        var cs = $"Data Source={dbPath};Transactions=false";
 
         // Setup
         using (var conn = new WitDbConnection(cs))
@@ -360,7 +360,7 @@ public class WitDbConnectionParallelAccessTests : IDisposable
 public void HighConcurrencyStressTest()
     {
         var dbPath = Path.Combine(m_testDir, "stress.witdb");
-        var cs = $"Data Source={dbPath};Parallel Mode=Auto;Transactions=false";
+        var cs = $"Data Source={dbPath};Transactions=false";
 
         // Setup
         using (var conn = new WitDbConnection(cs))

@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Reflection;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Indexes;
@@ -251,22 +251,18 @@ public class SecondaryIndexConcurrencyProbeTests
     /// because the alternative is inferring the wiring from a race.
     /// </remarks>
     [Test]
-    [TestCase("file-backed, no parallel mode", false)]
-    [TestCase("file-backed, parallel mode on", true)]
-    public void ProbeWhatTheBuilderHandsASecondaryIndexTest(string label, bool parallelMode)
+    public void ProbeWhatTheBuilderHandsASecondaryIndexTest()
     {
-        var path = Path.Combine(m_testDir, $"index_wiring_{(parallelMode ? "par" : "seq")}.witdb");
+        var path = Path.Combine(m_testDir, "index_wiring.witdb");
 
         var builder = new WitDatabaseBuilder().WithFilePath(path).WithBTree().WithTransactions();
-        if (parallelMode)
-            builder = builder.WithParallelWrites(ParallelMode.Auto);
 
         using var database = builder.Build();
 
         var index = database.CreateIndex("ix_probe", isUnique: false);
         var store = StoreBehind(index);
 
-        Report($"the store behind a secondary index <{label}>", "provider", store.ProviderKey);
+        Report("the store behind a secondary index", "provider", store.ProviderKey);
 
         // INVERTED BY THE FIX, and the inversion is the proof it landed. This used to read
         // StoreBTree.PROVIDER_KEY and pass: the builder wrapped the MAIN store for concurrent access

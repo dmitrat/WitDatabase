@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Data.Common;
 using System.Text;
 using OutWit.Database.AdoNet.Pool;
@@ -545,7 +545,7 @@ public class ConcurrencyModelProbeTests
     public void ProbeParallelModeOverAFileTest(string mode)
     {
         var path = Path.Combine(m_testDir, $"parallel_{mode}.witdb");
-        var cs = $"Data Source={path};Parallel Mode={mode};Max Writers=4;Transactions=false";
+        var cs = $"Data Source={path};Transactions=false";
 
         using var conn = new WitDbConnection(cs);
 
@@ -588,7 +588,7 @@ public class ConcurrencyModelProbeTests
     public void ProbeBufferedParallelModeExactlyAsTheMarkerDescribesTest()
     {
         var path = Path.Combine(m_testDir, "max_writers.witdb");
-        var cs = $"Data Source={path};Parallel Mode=Buffered;Max Writers=4;Transactions=false";
+        var cs = $"Data Source={path};Transactions=false";
 
         using var conn = new WitDbConnection(cs);
         conn.Open();
@@ -687,7 +687,7 @@ public class ConcurrencyModelProbeTests
     public void ProbeLsmParallelModeSeesItsOwnCommittedRowsTest(bool synchronousCommit)
     {
         var directory = Path.Combine(m_testDir, $"lsm_parallel_{synchronousCommit}");
-        var cs = $"Data Source={directory};Store=lsm;Parallel Mode=Buffered;Max Writers=4;" +
+        var cs = $"Data Source={directory};Store=lsm;" +
                  $"Synchronous Commit={synchronousCommit}";
 
         using var conn = new WitDbConnection(cs);

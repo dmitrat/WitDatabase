@@ -1,4 +1,4 @@
-using System.Text;
+﻿using System.Text;
 
 namespace OutWit.Database.AdoNet.Tests.Modularity;
 
@@ -108,13 +108,6 @@ public class CombinationMatrixTests
         ("tx=off", "Transactions=false")
     ];
 
-    private static readonly (string Label, string Settings)[] PARALLEL =
-    [
-        ("par=none", "Parallel Mode=None"),
-        ("par=auto", "Parallel Mode=Auto"),
-        ("par=buffered", "Parallel Mode=Buffered")
-    ];
-
     private static readonly (string Label, string Settings)[] ENCRYPTION =
     [
         ("plain", ""),
@@ -142,18 +135,20 @@ public class CombinationMatrixTests
         ("locking=off", "FileLocking=false", Expectation.Works, null),
         ("isolation=serializable", "Isolation Level=Serializable", Expectation.Works, null),
         ("isolation=snapshot", "Isolation Level=Snapshot", Expectation.Works, null),
-        ("maxwriters=2", "Parallel Mode=Buffered;Max Writers=2", Expectation.Works, null)
+        // Removed in 12.0.0 and refused rather than ignored - the phase's own rule applied to
+        // the phase's own removal.
+        ("parallel-mode-removed", "Parallel Mode=Auto", Expectation.Refused, "was removed in 12.0.0"),
+        ("max-writers-removed", "Max Writers=2", Expectation.Refused, "was removed in 12.0.0")
     ];
 
     private static IEnumerable<Combination> Matrix()
     {
         foreach (var store in STORES)
         foreach (var (transactionLabel, transactionSettings) in TRANSACTIONS)
-        foreach (var (parallelLabel, parallelSettings) in PARALLEL)
         foreach (var (encryptionLabel, encryptionSettings) in ENCRYPTION)
         {
-            var settings = Join($"Store={store}", transactionSettings, parallelSettings, encryptionSettings);
-            var label = $"{store} {transactionLabel} {parallelLabel} {encryptionLabel}";
+            var settings = Join($"Store={store}", transactionSettings, encryptionSettings);
+            var label = $"{store} {transactionLabel} {encryptionLabel}";
 
             yield return new Combination(label, settings, Expect(store));
         }

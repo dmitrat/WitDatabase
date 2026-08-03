@@ -1,4 +1,4 @@
-using System.Threading.Channels;
+﻿using System.Threading.Channels;
 using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.LSM;
@@ -637,7 +637,7 @@ public sealed class LsmParallelWriter : IDisposable, IAsyncDisposable
         if (m_disposed) return;
 
         // Hand over the buffers that are still filling BEFORE closing the queue. Completing the channel
-        // drains what was already queued and nothing else, so until 11.3.0 the entries below the size
+        // drains what was already queued and nothing else, so until 12.0.0 the entries below the size
         // threshold - which is to say the tail of every workload - were thrown away by the
         // m_threadLocalSlot disposal below. With MVCC the commit path calls FlushAllAsync and hid it;
         // with Transactions=false nothing does, and `Store=lsm` with a parallel mode LOST THE LAST ROW

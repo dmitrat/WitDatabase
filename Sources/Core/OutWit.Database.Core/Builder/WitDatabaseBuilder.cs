@@ -1,4 +1,4 @@
-using OutWit.Database.Core.Cache;
+﻿using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Concurrency;
 using OutWit.Database.Core.Encryption;
 using OutWit.Database.Core.Exceptions;
@@ -351,7 +351,7 @@ public sealed class WitDatabaseBuilder
     /// <remarks>
     /// <c>TransactionalStore</c> is the only consumer of an <see cref="ITransactionJournal"/>: the MVCC
     /// store keeps its own versions, and with transactions off there is no transactional store at all.
-    /// Until 11.3.0 the journal was built anyway and dropped - and a write-ahead journal opens its file
+    /// Until 12.0.0 the journal was built anyway and dropped - and a write-ahead journal opens its file
     /// in its constructor, so `Journal=wal` with the default `MVCC=true` leaked the handle and the
     /// database could not be opened a second time in the process. Refusing at open is the decision:
     /// a setting that cannot be honoured is an error, not a silence.
@@ -451,8 +451,8 @@ public sealed class WitDatabaseBuilder
 
         var store = ProviderRegistry.Instance.Create<IKeyValueStore>(Options.StoreProviderKey, parameters);
         
-        // Wrap with parallel store if enabled
-        return WrapWithParallelIfNeeded(store);
+        // Serialise the store if its own implementation does not
+        return WrapForConcurrency(store);
     }
 
     private IKeyValueStore BuildLsmStore()
@@ -472,8 +472,8 @@ public sealed class WitDatabaseBuilder
 
         var store = new StoreLsm(directory, lsmOptions);
         
-        // Wrap with parallel store if enabled
-        return WrapWithParallelIfNeeded(store);
+        // Serialise the store if its own implementation does not
+        return WrapForConcurrency(store);
     }
 
     /// <summary>
@@ -499,47 +499,13 @@ public sealed class WitDatabaseBuilder
     /// choice rather than a safety one - <see cref="StoreLsm"/> locks internally and is safe without it.
     /// </para>
     /// </remarks>
-    private IKeyValueStore WrapWithParallelIfNeeded(IKeyValueStore store)
+    private IKeyValueStore WrapForConcurrency(IKeyValueStore store)
     {
-        var parallelMode = Options.StoreParameters.Get("parallelMode", ParallelMode.None);
-
-        var parallelOptions = Options.StoreParameters.Get<ParallelModeOptions>("parallelOptions");
-        if (parallelOptions == null)
-        {
-            parallelOptions = new ParallelModeOptions { Mode = parallelMode };
-
-            // Apply maxWriters if set
-            var maxWriters = Options.StoreParameters.Get<int?>("maxWriters");
-            if (maxWriters.HasValue)
-                parallelOptions.MaxWriters = maxWriters.Value;
-        }
-
-        // Unconditional - see the remarks. The mode does not reach this decision.
         if (store is StoreBTree btreeStore)
-        {
-            var concurrencyOptions = new Tree.BTreeConcurrencyOptions
-            {
-                TrackStatistics = parallelOptions.TrackStatistics
-            };
-            return new Tree.BTreeConcurrentStore(btreeStore, concurrencyOptions, ownsStore: true);
-        }
+            return new Tree.BTreeConcurrentStore(btreeStore, options: null, ownsStore: true);
 
-        if (parallelMode == ParallelMode.None)
-            return store;
-
-        if (store is StoreLsm lsmStore)
-        {
-            var lsmOptions = new LsmParallelStoreOptions
-            {
-                MaxWriters = parallelOptions.MaxWriters,
-                BufferSizeThreshold = parallelOptions.BufferSizeThreshold,
-                TrackStatistics = parallelOptions.TrackStatistics
-            };
-            return new LsmParallelStore(lsmStore, lsmOptions, ownsStore: true);
-        }
-
-        // Every other store locks internally - StoreInMemory does, and so does StoreLsm; the wrapper
-        // above it is a buffer, not a lock.
+        // Every other store this builder can produce locks internally - StoreInMemory and StoreLsm both
+        // do - so there is nothing to add and nothing to choose.
         return store;
     }
 
@@ -566,8 +532,8 @@ public sealed class WitDatabaseBuilder
         var store = await StoreBTree.CreateAsync(storage, Options.CacheSize, ownsStorage: true, metadata, cancellationToken)
             .ConfigureAwait(false);
         
-        // Wrap with parallel store if enabled
-        return WrapWithParallelIfNeeded(store);
+        // Serialise the store if its own implementation does not
+        return WrapForConcurrency(store);
     }
 
     private IStorage BuildStorage(ICryptoProvider? cryptoProvider = null)

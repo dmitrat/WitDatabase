@@ -1,4 +1,4 @@
-using System.Buffers.Binary;
+﻿using System.Buffers.Binary;
 using System.Diagnostics;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Interfaces;
@@ -60,7 +60,7 @@ public class MainStoreConcurrencyProbeTests
         /// <summary>No database at all - the positive control, known damaged since phase 5.</summary>
         BareStore,
 
-        /// <summary>The wrapper the main store gets when a parallel mode is asked for.</summary>
+        /// <summary>The wrapper the B+Tree store now always gets.</summary>
         SerialisedStore,
 
         /// <summary>A database built the default way: transactions, MVCC, no parallel mode.</summary>
@@ -72,8 +72,6 @@ public class MainStoreConcurrencyProbeTests
         /// <summary>The same with no transaction layer at all.</summary>
         DatabaseNoTransactionsNoParallelMode,
 
-        /// <summary>The default plus a parallel mode - what the keyword is supposed to buy.</summary>
-        DatabaseMvccParallelMode
     }
 
     private sealed record Outcome(
@@ -160,7 +158,6 @@ public class MainStoreConcurrencyProbeTests
     [TestCase(Subject.DatabaseMvccNoParallelMode)]
     [TestCase(Subject.DatabaseLocksNoParallelMode)]
     [TestCase(Subject.DatabaseNoTransactionsNoParallelMode)]
-    [TestCase(Subject.DatabaseMvccParallelMode)]
     public void ProbeTwoWritersIntoTheMainStoreTest(Subject subject)
     {
         var outcome = Run(subject, withSecondWriter: true);
@@ -366,7 +363,6 @@ public class MainStoreConcurrencyProbeTests
                     Subject.DatabaseMvccNoParallelMode => builder.WithMvcc(),
                     Subject.DatabaseLocksNoParallelMode => builder.WithTransactions(),
                     Subject.DatabaseNoTransactionsNoParallelMode => builder.WithoutTransactions(),
-                    Subject.DatabaseMvccParallelMode => builder.WithMvcc().WithParallelWrites(ParallelMode.Auto),
                     _ => throw new ArgumentOutOfRangeException(nameof(subject))
                 };
 

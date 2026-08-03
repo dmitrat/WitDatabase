@@ -1,4 +1,4 @@
-using BenchmarkDotNet.Columns;
+﻿using BenchmarkDotNet.Columns;
 using BenchmarkDotNet.Configs;
 using BenchmarkDotNet.Reports;
 
@@ -171,10 +171,10 @@ public static class WitDbConnectionHelper
                 $"Data Source={path};Store=lsm;Transactions=true;MVCC=false;SyncWrites=false",
             
             WitDbEngineMode.BTreeParallelAuto => 
-                $"Data Source={path};Store=btree;Transactions=true;MVCC=false;Parallel Mode=Auto",
+                $"Data Source={path};Store=btree;Transactions=true;MVCC=false",
             
             WitDbEngineMode.LsmParallelAuto => 
-                $"Data Source={path};Store=lsm;Transactions=true;MVCC=false;SyncWrites=false;Parallel Mode=Auto",
+                $"Data Source={path};Store=lsm;Transactions=true;MVCC=false;SyncWrites=false",
             
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };

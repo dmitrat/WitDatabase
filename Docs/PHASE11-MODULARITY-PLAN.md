@@ -245,6 +245,35 @@ pinned the old shape were inverted with the reason written into them.
 internally and is safe without it. That is what `WitSQL.md` § 14.10 now says. The four names remain four
 spellings; building distinct mechanisms would be a phase, and nothing now depends on it for safety.
 
+### 6.3b The setting is removed, 2026-08-03 - and the third measurement is why the mechanism stays
+
+Dmitry's decision once § 6.3a landed: remove `Parallel Mode`, delete the public API rather than
+deprecate it, and **measure the LSM write buffer before deciding whether the mechanism goes with it**.
+
+`LsmWriteBufferingCostProbeTests`, three rounds per shape, interleaved, with the store's own counters
+asserted so that a round which buffered nothing cannot pass as a null result:
+
+| | ratio, buffered / direct |
+|---|---|
+| Straight into the store, one writer | 1.00 - noise, 0.77-1.02 across passes |
+| Straight into the store, four contending writers | **0.80** (0.810 / 0.803 / 0.774) |
+| Through a database, four writers, autocommit | **1.14** (1.177, 1.136) |
+| Through a database, four writers, batches of 1,000 in a transaction | **1.04** |
+
+**The win needs four threads inside the store at once, and a transaction layer will not let that
+happen** - § 6.3a measured exactly that, from the other side. So through the engine the buffer only
+costs, and a knob that selects it is a knob that makes things worse.
+
+**What was removed:** the `Parallel Mode` and `Max Writers` keywords (refused at `Open`, not ignored),
+`WitDbParallelMode`, the ADO.NET properties, EF's `UseParallelWrites`/`MaxWriters`, `ParallelMode`,
+`ParallelModeOptions`, `KeyValueStoreFactory`, and the three builder extensions. **What stays:**
+`LsmParallelStore`, public, for a caller who drives a store directly - which is the one place the 0.80
+is real.
+
+Also recorded on the way past, not chased: through the engine, four writers doing batches of 1,000 in a
+transaction took **181 s** against autocommit's **61 s** for the same 100,000 rows. Concurrent MVCC
+transactions contend badly, and that is a bigger number than anything this phase set out to find.
+
 ### 6.3 The four parallel modes - the reasoning, before the measurements above
 
 Measured, not argued: **which concurrency mechanism you get is decided by the store, not by the keyword.**

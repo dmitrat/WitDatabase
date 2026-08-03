@@ -1,6 +1,11 @@
 ﻿# Changelog
 
-## 11.3.0
+## 12.0.0
+
+A **major**, and the reason is the last section: `Parallel Mode` and `Max Writers` are gone from the
+connection string, from `WitDbConnectionStringBuilder`, and from Entity Framework's
+`UseParallelWrites` / `MaxWriters`. A connection string that still carries one is refused at `Open`.
+
 
 Phase 11, the modular structure: **the combinations this construction kit offers have been enumerated,
 built and run for the first time.** Two instruments - a reflection census that asks whether a
@@ -65,6 +70,28 @@ different. Every defect found is in construction or in close.
 - **`Docs/WitSQL.md` para 14.10** states which combinations are supported, which are refused and why -
   including that `Auto`, `Buffered`, `Latched` and `Optimistic` are four spellings of "make this store
   thread-safe", because the concurrency mechanism is decided by the store and not by the keyword.
+
+### Removed
+
+- **`Parallel Mode` and `Max Writers`.** They chose a concurrency wrapper, and concurrency is not a
+  choice: the B+Tree store has no locking of its own and is serialised whenever it is built, while the
+  LSM and in-memory stores lock internally. What the setting still selected was the LSM store's write
+  buffer, and that was **measured before it was removed**:
+
+  | | ratio, buffered / direct |
+  |---|---|
+  | Straight into the store, one writer | 1.00 (noise, 0.77-1.02 across passes) |
+  | Straight into the store, four contending writers | **0.80** |
+  | Through a database, four writers, autocommit | **1.14** |
+  | Through a database, four writers, batches of 1,000 in a transaction | **1.04** |
+
+  The win needs four threads inside the store at once, and a transaction layer serialises writers
+  before that can happen - so through the engine the buffer only costs. `LsmParallelStore` remains
+  public for a caller who drives a store directly, which is where the win is real.
+
+  Removed with them: `ParallelMode`, `ParallelModeOptions`, `KeyValueStoreFactory`,
+  `WithParallelWrites`, `WithoutParallelWrites`, `WithMaxWriters`, `WitDbParallelMode`, and EF's
+  `UseParallelWrites` and `MaxWriters`.
 
 ## 11.2.0
 
