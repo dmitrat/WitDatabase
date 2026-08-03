@@ -21,6 +21,15 @@ executed rather than asserted.
 - **`StoreBTree.CreateAsync(IStorage, IPageCache, bool, ProviderMetadata?, CancellationToken)`** - the
   asynchronous twin of the constructor that made the `Cache` provider key mean something in 12.0.0.
 
+### Verified
+
+- **The configurations now run at a size that reaches the structures.** Every combination the matrix
+  covers had only ever been run on eight rows, which fit in one leaf. 2,000 rows through five
+  configurations, with a 4,000-character payload against a 960-byte inline limit, produce measured page
+  splits (116 pages against 2 for eight rows), overflow chains and LSM compactions (SSTables written and
+  merged away) - and every answer, including the large value and a secondary index lookup, is correct
+  after a reopen. No defect at volume.
+
 ### Documentation
 
 - **A provider from another package needs its assembly loaded before a connection string can name it.**

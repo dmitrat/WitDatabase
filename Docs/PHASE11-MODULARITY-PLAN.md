@@ -461,8 +461,8 @@ there is nothing to make durable.
   and drives a database through it, which is the construction kit's central claim.
 - ~~**The matrix is single-connection.**~~ **Done, § 6c.**
 - ~~**Durability has never been crossed with configuration.**~~ **Done, § 6d.**
-- **"Works" means "works on eight rows"** - no combination in the matrix reaches a compaction, a page
-  split or an overflow page. Instrument D writes nine and instrument E twenty, so this is unchanged.
+- ~~**"Works" means "works on eight rows"**~~ **Done, § 7a.5** - 2,000 rows through five configurations,
+  with the page splits, overflow chains and compactions measured off the files rather than assumed.
 - The five ADO-level keywords the census cannot see structurally: `Enlist`, `Connection Timeout`,
   `Pooling`, `Min`/`Max Pool Size`, `Default Timeout`.
 
@@ -549,6 +549,31 @@ database in a `finally`, so the exception from the close replaced the exception 
 the run reported the *statement* failing where the truth was the *close*. Re-measured with the throwing
 cleanup removed, the boundary is exactly where it is stated above. **A cleanup that can throw hides what
 the test came to measure.**
+
+### 7a.5 "Works" no longer means "works on eight rows"
+
+`ScaleMatrixTests`. Five configurations, 2,000 rows in one transaction, a secondary index, and every
+hundredth row carrying a 4,000-character payload - against an inline limit measured at **960 bytes**, so
+those values cannot be anywhere but an overflow chain.
+
+**The workload is not the assertion; the evidence is**, read off the files after the database is closed:
+
+| configuration | 2,000 rows | 8 rows (control) |
+|---|---|---|
+| `btree` | **116 pages** | 2 |
+| `btree` encrypted | 116 pages | 2 |
+| `btree`, `MVCC=false` | 78 pages | 2 |
+| `lsm` | 6 SSTables, highest id **14** | 1, id 0 |
+| `lsm`, `MVCC=false` | 2 SSTables, highest id **3** | 1, id 0 |
+
+A highest file id above the number of files means SSTables were written and then merged away, which is
+what a compaction looks like from outside the store. The eight-row control is what makes those numbers
+mean something: without it, "the file has many pages" is a statement about the engine's appetite rather
+than about the workload.
+
+**Everything answered correctly** - every row back after a reopen, the 4,000-character value byte for
+byte, and a secondary index lookup at 2,000 rows. No defect at volume, which is worth stating plainly
+after a phase in which every instrument found one.
 
 ## 7. Ledger
 
