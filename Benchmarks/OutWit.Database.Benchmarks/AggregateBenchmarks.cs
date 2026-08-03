@@ -46,7 +46,7 @@ public class AggregateBenchmarks : IDisposable
     [ParamsSource(nameof(TableSizeValues))]
     public int TableSize { get; set; }
 
-    public IEnumerable<int> TableSizeValues => BenchmarkSweep.Sizes(1000, 10000);
+    public IEnumerable<int> TableSizeValues => BenchmarkSweep.Sizes(1000, 10000, 100000);
 
     [ParamsSource(nameof(EngineModeValues))]
     public WitDbEngineMode EngineMode { get; set; }

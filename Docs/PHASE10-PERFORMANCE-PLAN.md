@@ -320,3 +320,254 @@ entire argument for the rule this phase opened with.
 - **`--inProcess` was used** to make two passes affordable (~8 s per case against ~34 s). Both passes
   used it, so the spread and the engine-to-engine comparisons are sound, but these numbers are not
   directly comparable to the out-of-process January ones.
+
+---
+
+## 8. The unique-index seek, diagnosed
+
+The decision in § 6 was to localise the fixed per-seek cost before changing anything.
+`IndexSeekAnatomyBenchmarks` does that: eight shapes, each fetching exactly one row out of the same
+table 100 times from the same seeded key sequence, so the shapes differ only in the one property
+each is named for. Every shape returns 100 and the equivalence check confirms it, so none of them is
+quietly measuring a lookup that found nothing.
+
+### The cost is invariant to everything it could plausibly depend on
+
+Default mode, 5,000 rows, allocated per 100 lookups, two passes agreeing within 10%:
+
+| shape | mean | allocated |
+|---|---|---|
+| PK equality | 0.258 ms | 569 KB |
+| PK equality, narrow projection | 0.227 ms | 463 KB |
+| UNIQUE index, **string** key | 52.0 ms | 131,710 KB |
+| UNIQUE index, **int** key | 50.2 ms | 131,706 KB |
+| **Non-unique** index, string key | 51.1 ms | 131,782 KB |
+| UNIQUE index, **narrow projection** | 50.5 ms | 131,676 KB |
+| UNIQUE index, **PK-only projection** | 53.0 ms | 131,676 KB |
+| No index, forced scan | 291.8 ms | 662,489 KB |
+
+Every secondary-index shape costs the same to within 0.1%. So the cost is **not** the string key
+(the int key costs the same), **not** uniqueness (the non-unique index costs the same), **not**
+materialising the row (asking for one column, or only the key the index already holds, costs the
+same), and **not** the table size. It is also **not the storage layer**: run with `Mode=Memory` and
+no file underneath, the same shapes allocate 131,696 KB — indistinguishable.
+
+The index is genuinely being used: the forced scan costs 292 ms against the seek's 51 ms. The engine
+is paying 51 ms to avoid 292 ms, while the primary-key path does the identical logical work for
+0.26 ms.
+
+### The mechanism, and the prediction that proved it
+
+`QueryPlanner.EstimateTableRowCount`
+([QueryPlanner.Sources.Indexes.cs:128](../Sources/Engine/OutWit.Database/Query/QueryPlanner.Sources.Indexes.cs#L128))
+**opens a table scan and reads up to 1,000 rows, on every query execution**, to estimate a row count
+so that `CreateOptimizedTableIterator` can decide whether an index is worth using. Its own comment
+says *"do a quick scan to count rows (expensive but accurate) … TODO: Implement proper statistics
+collection"*.
+
+Reading that is not evidence in this repository, so it was turned into a falsifiable prediction: if
+the cost is a scan capped at 1,000 rows, it must grow **linearly below 1,000 rows and be flat above
+them**. Measured:
+
+| rows in table | 250 | 500 | **1,000** | 2,000 | 5,000 | 20,000 |
+|---|---|---|---|---|---|---|
+| KB per lookup | 335 | 660 | **1,314** | 1,317 | 1,317 | 1,317 |
+| ms per 100 lookups | 13.3 | 25.9 | 51.7 | 50.6 | 52.3 | 51.8 |
+
+250 → 500 is 1.97x, 500 → 1,000 is 1.99x, and 1,000 → 2,000 is 1.002x. The measurement lands on the
+`sampleLimit = 1000` constant to three significant figures, and the plateau is 1,000 rows times the
+~1.32 KB this engine allocates per row scanned. The primary-key path is 568 KB at every size, so it
+does not reach this code at all.
+
+**The diagnosis: every `SELECT` carrying a `WHERE` clause against a table that has any index scans up
+to 1,000 rows of that table before deciding whether to use an index. Deciding to use the index costs
+about 200x the lookup it saves.**
+
+### What this explains beyond the seek
+
+This is not one benchmark's problem. It is a fixed tax on every indexed-predicate query, and it is
+the plausible cause of most of the "behind LiteDB" column in § 5 — `UPDATE` by indexed column
+(3.9x), composite index query (2.6x), non-unique index seek (2.4x). Those all run the same planner
+on tables that all have indexes.
+
+### The fix, and why it is small
+
+The engine **already maintains an O(1) per-table row counter** — that is exactly what § 1.5 measured
+when `COUNT(*)` came back flat at 0.0006 ms for both 1,000 and 10,000 rows. A planner estimate is
+precisely the consumer that counter is good enough for: it is an estimate, the code asks for one, and
+the `TODO` asks for statistics rather than a scan.
+
+**The one caveat to carry into the fix**, from this project's own record: the counter is separate
+state from the rows and the two can disagree after a crash. That is disqualifying for answering a
+user's `COUNT(*)` and irrelevant for choosing a plan — but it must be stated in the change, not
+discovered later.
+
+**Not done here.** The change alters plan selection (an exact count where a capped sample stood, so
+estimates cross `MIN_ROWS_FOR_INDEX` differently) and therefore needs the full suite behind it. It is
+a `Sources/` behaviour change and deserves its own decision and its own PR, with this benchmark as
+the before-and-after.
+
+---
+
+## 9. Closing the information gaps
+
+Three holes were named in § 7 and § 5: the control was blind to writes, everything was measured at
+20,000 rows or fewer, and only `Default` had been swept. Two are closed here. The third is not.
+
+### 9.1 The write benchmarks are now verifiable, in both halves
+
+The write benchmarks returned `void`, so an engine that wrote nothing benchmarked as fast. The
+obvious repair - return the affected-row count - is **not sufficient here, and this project knows
+exactly why**: the worst defect ever found in it was `Store=lsm` with a parallel mode losing
+acknowledged writes, where ten `INSERT`s all reported success and 0-1 rows were present. Affected
+rows is the acknowledgement that lied.
+
+So the claim and the data are checked separately. Each write benchmark returns what the engine
+claimed, and `IterationCleanup` - outside the timed region, before the databases are deleted -
+counts what a scan can actually see and throws if they disagree. It never asks `COUNT(*)`: § 1.5
+measured that to be a cached counter, which is separate state from the rows.
+
+Both directions verified. Green: all three engines claim and show 100 rows. Red: making WitDatabase
+claim one row more than it wrote produces
+
+> `WitDb claimed 101 row(s) written but a scan sees 100. The benchmark timed a write that did not
+> happen as reported.`
+
+and the check exits 1.
+
+### 9.2 The sweep selector was wrong, and using it is what found that
+
+`BenchmarkSweep` threw when the requested narrowing matched none of a class's declared values, on
+the principle that an empty selection silently measures nothing. The principle is right and the
+implementation was wrong: **BenchmarkDotNet evaluates every class's `[ParamsSource]` before it
+applies `--filter`**, so asking for 100,000 rows while filtering to `QueryBenchmarks` killed the run
+on `JoinBenchmarks`, which declares 100 and 500 and was never going to be measured. It now keeps the
+class's own values and says so loudly on stderr. Nothing is measured silently and a narrowing aimed
+at one class no longer breaks the others.
+
+### 9.3 At scale, the read picture is better than the small-table one
+
+`QueryBenchmarks`, `Default`, 1,000 to 100,000 rows:
+
+| operation | 1,000 | 10,000 | 50,000 | 100,000 | vs LiteDB at 100k |
+|---|---|---|---|---|---|
+| Point query by PK x100 | 0.221 ms | 0.237 | 0.251 | 0.262 | **0.17x** (flat in N) |
+| `SELECT … LIMIT 100` | 0.077 ms | 0.077 | 0.077 | 0.079 | **0.59x** (flat in N) |
+| `SELECT *` full scan | 0.747 ms | 10.57 | 63.02 | 128.98 | 0.96x |
+| `SELECT Id, Name` | 0.760 ms | 10.71 | 65.98 | 131.12 | 0.95x |
+| `SELECT … ORDER BY Name` | 1.654 ms | 44.59 | 286.96 | 599.16 | 2.16x |
+| `SELECT … WHERE Age > 30` | 1.484 ms | 11.99 | 169.92 | 405.14 | **3.53x** |
+
+Two things worth having:
+
+- **Scans converge to parity with LiteDB as the table grows** (0.56x at 1,000 → 0.96x at 100,000)
+  and hold ~8x behind SQLite, with allocation steady at ~2.4 KB per row returned.
+- **The two flat operations stay flat to 100,000 rows.** `LIMIT` short-circuits and the primary-key
+  path does not degrade at all.
+
+### 9.4 A correction to § 6, from having more points on the curve
+
+§ 6 named `ORDER BY` as a second target on the strength of *"31x for 10x the rows - superlinear"*.
+That reading came from a single interval, 1,000 → 10,000, and **more points refute it**: 10,000 →
+50,000 is 6.4x for 5x, and 50,000 → 100,000 is **2.09x for 2x**. Beyond 10,000 rows the curve is
+linear and the ratio against LiteDB is steady at 2.10x / 2.13x / 2.16x.
+
+So sorting is not a runaway; it is a **stable ~2.1x behind LiteDB and ~25x behind SQLite**, and the
+1,000 → 10,000 jump is a threshold effect worth a look but not a defect signature. The GC hypothesis
+in the plan - that the superlinearity was allocation-driven - is **not supported**, because there is
+no superlinearity to explain. Demoting it from "second target" is the honest move.
+
+### 9.5 A hypothesis raised and refuted in the same pass
+
+`SELECT * FROM Users WHERE Age > 30` costs 405 ms at 100,000 rows while an unfiltered `SELECT *`
+over the same table costs 129 ms. Reading 74% of the rows is three times more expensive than reading
+all of them. `Age` is indexed, which suggested an obvious cause: with no statistics the planner has
+no selectivity estimate, so an index it *can* use is an index it *will* use, and fetching 74% of a
+table one index entry at a time need not be cheaper than reading it in order.
+
+Tested directly - the same range, ~75% selectivity, on an indexed column and an unindexed one in the
+same table:
+
+| | 20,000 | 100,000 |
+|---|---|---|
+| Range 75% on **indexed** column | 30.14 ms | 172.80 ms |
+| Range 75% on **unindexed** column | 30.51 ms | 149.79 ms |
+
+**They are the same.** At 20,000 rows the indexed one is marginally *faster*; at 100,000 it is 15%
+slower, which is nothing next to the 3x that needed explaining. The hypothesis is refuted: a
+non-selective range over an index is not what makes that query expensive.
+
+**So the `WHERE Age > 30` cost at scale is unexplained and stays open.** The next thing to vary is
+the one property the refutation did not hold constant: `IX_Users_Age` is over a column with roughly
+sixty distinct values, so it is a **highly non-unique** index with many rows per key, while the
+`AltInt` index used above is unique. A low-cardinality non-unique index range is the next experiment,
+not a conclusion.
+
+### 9.6 Still not measured, and it is the last real gap
+
+**Every number in this phase is `EngineMode=Default`.** The LSM and parallel modes have not been
+swept on current `main` at all, which matters because the one write-side finding carried in the
+project's memory - LSM being non-linear in N - lives precisely there and is still quoted from
+January. `InsertBenchmarks` can now verify its own writes, so that sweep is worth taking and is the
+obvious next measurement.
+
+---
+
+## 10. The engine modes, and the last recorded claim to fall
+
+`InsertBenchmarks` across all five modes at 100, 1,000 and 5,000 rows, **twice**, with the write
+verification of § 9.1 active on every iteration.
+
+### 10.1 The verification never fired, which is a result in itself
+
+Across both passes, every mode, every size, the scan count matched the engine's claim every time.
+**No mode lost a write** - including `Lsm` and `LsmParallelAuto`, the combination that lost
+acknowledged writes on default settings before 6.0.0. That fix holds, and it is now checked by an
+instrument rather than believed.
+
+### 10.2 LSM is uniformly slow on writes, and it is *not* non-linear in N
+
+`INSERT` in a transaction, microseconds per row, both passes:
+
+| mode | 100 rows | 1,000 rows | 5,000 rows | per-row change, 1,000 → 5,000 |
+|---|---|---|---|---|
+| Default | 30.7 / 30.1 | 8.3 / 8.4 | 7.7 / 8.0 | x0.93 / x0.95 |
+| BTree | 28.2 / 27.8 | 6.3 / — | 5.0 / 5.1 | x0.80 / — |
+| **Lsm** | **269 / 277** | **111 / 116** | **98.7 / 99.5** | **x0.89 / x0.86** |
+| BTreeParallelAuto | 27.3 / 27.3 | 6.7 / 6.2 | 27.8 / 5.1 | x4.13 / x0.83 |
+| LsmParallelAuto | 336 / 339 | 117 / 121 | 100 / 103 | x0.86 / x0.86 |
+
+**The memory and the plan both carry "LSM is non-linear in N (12 ms at 100 inserts, 53 ms at 500 - a
+defect signature)". It does not reproduce.** On current `main` LSM's per-row cost *falls* as the
+table grows - x0.89 and x0.86 from 1,000 to 5,000 rows, in both passes. That is sublinear, which is
+the normal and healthy shape.
+
+What is true, and is a different statement, is that **LSM is uniformly 12-20x slower than B+Tree per
+row at every size measured**, and `LsmParallelAuto` is slightly worse than plain `Lsm` rather than
+better. Autocommit is where it is worst: 100 rows without a transaction cost 1,911-1,926 ms on LSM
+against 194-205 ms on B+Tree, a flat 9.4x.
+
+So the finding changes shape entirely - from "there is a scaling defect in the LSM write path" to
+"the LSM write path has a large constant factor". Those need different work, and only one of them
+was on the books.
+
+### 10.3 Two anomalies appeared in pass one and were killed by pass two
+
+This is the phase's own rule earning itself for the third time, and it is worth recording exactly
+because the first pass looked like a finding:
+
+- `BTreeParallelAuto` at 5,000 rows read **27.8 µs/row against 6.7 at 1,000** - a 4.13x per-row
+  regression while every other mode improved. It was the only non-linearity in the sweep and it was
+  tempting. Pass two: **5.1 µs/row, x0.83.** Noise.
+- `BTree` at 1,000 rows read **153.2 µs/row** in pass two against 6.3 in pass one - a 24x outlier in
+  the other direction, on the mode with the *best* numbers everywhere else.
+
+Neither survived. Had the modes sweep been run once, as every previous performance claim in this
+repository was, one of them would have been written up.
+
+### 10.4 A recorded claim that *does* hold
+
+Phase 4 recorded that making autocommit durable cost **~1.5x** on the write path. Measured here at
+5,000 rows in a transaction: `Default` (MVCC on, durable) at 7.7-8.0 µs/row against `BTree`
+(`MVCC=false`) at 5.0-5.1 - **~1.55x**, in both passes. The price of the D in ACID is what it was
+said to be.

@@ -36,6 +36,16 @@ public enum WitDbEngineMode
     Default,
 
     /// <summary>
+    /// Everything in memory: <c>Mode=Memory</c>, no file behind it.
+    /// </summary>
+    /// <remarks>
+    /// Not a configuration anyone deploys - it exists to split a measurement. When a cost is fixed
+    /// per operation and independent of table size, running the same shape with no file underneath
+    /// says whether the cost lives in the storage layer or above it.
+    /// </remarks>
+    Memory,
+
+    /// <summary>
     /// BTree storage engine without parallel writes.
     /// Best for read-heavy workloads.
     /// </summary>
@@ -84,13 +94,9 @@ public static class BenchmarkSweep
         var names = requested.Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var selected = all.Where(m => names.Contains(m.ToString(), StringComparer.OrdinalIgnoreCase)).ToArray();
 
-        // An empty selection would silently measure nothing at all, which is the failure mode this
-        // whole exercise exists to avoid. Refuse instead.
-        if (selected.Length == 0)
-            throw new InvalidOperationException(
-                $"WITDB_BENCH_MODES='{requested}' selected none of: {string.Join(", ", all)}");
-
-        return selected;
+        return selected.Length > 0
+            ? selected
+            : NoIntersection("WITDB_BENCH_MODES", requested, all);
     }
 
     public static IEnumerable<int> Sizes(params int[] all)
@@ -111,11 +117,32 @@ public static class BenchmarkSweep
             .ToArray();
 
         var selected = all.Where(wanted.Contains).ToArray();
-        if (selected.Length == 0)
-            throw new InvalidOperationException(
-                $"WITDB_BENCH_SIZES='{requested}' selected none of: {string.Join(", ", all)}");
 
-        return selected;
+        return selected.Length > 0
+            ? selected
+            : NoIntersection("WITDB_BENCH_SIZES", requested, all);
+    }
+
+    /// <summary>
+    /// What to do when the requested narrowing does not apply to this class at all.
+    /// </summary>
+    /// <remarks>
+    /// This threw at first, on the principle that an empty selection silently measures nothing.
+    /// The principle is right and the implementation was wrong: BenchmarkDotNet evaluates every
+    /// class's <c>[ParamsSource]</c> before it applies <c>--filter</c>, so asking for 100,000 rows
+    /// while filtering to one class killed the whole run on a class that was never going to be
+    /// measured. Found by using it, which is the only way this kind of thing is found.
+    ///
+    /// So: keep the class's own values, and say so loudly. Nothing is measured silently, and a
+    /// narrowing aimed at one class no longer breaks the others.
+    /// </remarks>
+    private static T[] NoIntersection<T>(string variable, string requested, T[] all)
+    {
+        Console.Error.WriteLine(
+            $"[sweep] {variable}='{requested}' matches none of [{string.Join(", ", all)}] " +
+            "- this class keeps its own values. Filter it out if you did not mean to run it.");
+
+        return all;
     }
 }
 
@@ -133,6 +160,10 @@ public static class WitDbConnectionHelper
             WitDbEngineMode.Default =>
                 $"Data Source={path}",
 
+            // No Data Source at all: the builder requires one unless the mode is Memory.
+            WitDbEngineMode.Memory =>
+                "Mode=Memory",
+
             WitDbEngineMode.BTree =>
                 $"Data Source={path};Store=btree;Transactions=true;MVCC=false",
             
@@ -147,6 +178,53 @@ public static class WitDbConnectionHelper
             
             _ => throw new ArgumentOutOfRangeException(nameof(mode))
         };
+    }
+}
+
+/// <summary>
+/// Checks that a write benchmark actually wrote, outside the timed region.
+/// </summary>
+/// <remarks>
+/// The write benchmarks returned <c>void</c>, so the equivalence check could say nothing about them:
+/// an engine that silently wrote nothing benchmarked as fast. The obvious repair - return the
+/// affected-row count - is not enough on its own, and this project knows exactly why. The worst
+/// defect ever found here was <c>Store=lsm</c> with a parallel mode **losing acknowledged writes**:
+/// ten <c>INSERT</c>s all reported success and 0-1 rows were present afterwards. Affected rows is
+/// the acknowledgement that lied.
+///
+/// So the claim and the data are checked separately. Each write benchmark returns what the engine
+/// claimed, and <see cref="Verify"/> counts what a scan can actually see. It never asks
+/// <c>COUNT(*)</c>: on this engine that is answered from a cached per-table counter, which is
+/// separate state and has disagreed with the rows after a crash.
+/// </remarks>
+public static class WriteVerification
+{
+    /// <summary>
+    /// Counts the rows a scan actually yields. Deliberately not <c>COUNT(*)</c>.
+    /// </summary>
+    public static int CountRowsByScan(System.Data.Common.DbConnection connection, string table)
+    {
+        using var c = connection.CreateCommand();
+        c.CommandText = $"SELECT Id FROM {table}";
+
+        using var r = c.ExecuteReader();
+
+        var count = 0;
+        while (r.Read())
+            count++;
+
+        return count;
+    }
+
+    /// <summary>
+    /// Throws if the rows a scan can see do not match what the engine said it wrote.
+    /// </summary>
+    public static void Verify(string engine, int claimed, int scanned)
+    {
+        if (claimed != scanned)
+            throw new InvalidOperationException(
+                $"{engine} claimed {claimed} row(s) written but a scan sees {scanned}. " +
+                "The benchmark timed a write that did not happen as reported.");
     }
 }
 
