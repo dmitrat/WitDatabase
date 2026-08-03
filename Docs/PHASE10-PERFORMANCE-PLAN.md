@@ -1248,3 +1248,74 @@ that were found but not chased could each be worth more than that margin:
 The honest position for a construction kit: **LSM is now a defensible option rather than a broken
 one, but there is still no measured workload where choosing it beats the default.** Finding one, if
 it exists, means measuring the three items above - not re-running this benchmark.
+
+---
+
+## 20. There is a workload where LSM wins - and § 19 measured the wrong volume
+
+§ 19 concluded "LSM still does not win", 12% behind the B+Tree store on batched ingest. **That
+conclusion was drawn from a benchmark that never reached the volume where an LSM does its work**, and
+the store's own statistics say so.
+
+### The instrument was blind, and its own counters proved it
+
+Driving the stores directly, with no SQL, and reading `StoreLsm.Statistics` - which nothing in this
+project had ever looked at:
+
+| rows | flushes | compactions | SSTables |
+|---|---|---|---|
+| 50,000 | **0** | **0** | **0** |
+| 200,000 | 3 | 0 | 3 |
+| 500,000 | 9 | 2 | 3 |
+| 1,000,000 | 19 | 5-6 | 3-7 |
+
+At 50,000 rows the payload is ~3 MB, below the 4 MB `MemTableSizeLimit`, so **nothing was ever
+flushed**. The LSM store was running as an in-memory map with a write-ahead log: paying the log's
+cost and getting none of the sequential-write benefit that is the entire point. § 19's headline
+number was measured there.
+
+Compaction does not appear until 500,000 rows. So "what does compaction cost" had no answer because
+no benchmark in the suite ever caused one.
+
+### At real volume, LSM is faster
+
+Microseconds per row, five rounds each, ingest in batches of 1,000 through `TransactionalStore`:
+
+| | B+Tree | LSM |
+|---|---|---|
+| **500,000 rows** | 11.05 / 13.30 / 12.58 / 9.86 / 10.69 | 10.93 / 9.86 / 9.81 / 10.63 / 9.99 |
+| median | 11.05 | **9.99 - ~10% faster** |
+| **1,000,000 rows** | 12.36 / 12.95 / 13.06 / 12.61 / 12.29 | 11.03 / 12.50 / 12.81 / 10.55 / 10.39 |
+| median | 12.61 | **11.03 - ~13% faster** |
+
+LSM is ahead at both, its spread is tighter (9.81-10.93 against B+Tree's 9.86-13.30 at 500,000), and
+it is ahead **while doing 19 flushes and 5 compactions** - the work is happening, not being deferred
+out of the measurement.
+
+Both engines get slower per row as the table grows, which is expected: a B+Tree deepens and its
+writes randomise, an LSM writes more SSTables and compacts more. The B+Tree degrades faster
+(11.05 → 12.61, +14%) than the LSM (9.99 → 11.03, +10%), which is the direction the structures
+predict.
+
+### So the answer to the question this phase kept asking
+
+**Yes - sustained high-volume ingest, above roughly half a million rows, is a workload where
+`Store=lsm` beats the default.** That is exactly what the design intent said it should be, and it is
+true for the first time only because the four defects in § 16 and § 18 are fixed. Before them LSM was
+12-20x behind and no volume would have rescued it.
+
+The construction-kit position is now defensible and can be stated to a consumer: **choose LSM for
+sustained write-heavy ingest at scale; keep the B+Tree default for everything else**, including
+anything read-heavy or transactional at small batch sizes, where LSM is still behind.
+
+### What this result does not cover, stated so it is not over-read
+
+- **No secondary indexes.** This drives the store directly, and index maintenance was the multiplier
+  that made LSM 12-20x worse before the fixes. Each index still gets its own `StoreLsm` with its own
+  log, MemTable and compaction schedule. A real table with three indexes may not show this advantage
+  at all - that is the next thing to measure, and § 18 did not remove the design, only the flag.
+- **End-to-end it is still behind at small volume.** § 19's 50,000-row figure stands for what it
+  measured: through SQL, at a volume where nothing flushes, LSM costs more. Both statements are true
+  and they are about different things.
+- **Compaction cost is now observable but not attributed.** 5 compactions in a 1,000,000-row ingest
+  is measured; how much of the wall clock they take is not.
