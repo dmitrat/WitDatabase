@@ -1319,3 +1319,65 @@ anything read-heavy or transactional at small batch sizes, where LSM is still be
   and they are about different things.
 - **Compaction cost is now observable but not attributed.** 5 compactions in a 1,000,000-row ingest
   is measured; how much of the wall clock they take is not.
+
+---
+
+## 21. The LSM advantage does not survive secondary indexes
+
+§ 20 measured LSM 10-13% faster than the B+Tree store on sustained ingest - with **no indexes at
+all**, driving the stores directly. The guidance that would follow, *"choose LSM for write-heavy
+ingest"*, is worthless if it does not hold for a table that has indexes, which every real one does.
+So it was measured, through SQL, which is how a consumer meets it.
+
+500,000 rows, batches of 1,000, microseconds per row, three rounds:
+
+| | B+Tree | LSM |
+|---|---|---|
+| **no indexes** | 15.10 / 13.56 / 17.04 | 18.92 / 15.36 / 14.89 |
+| median | 15.10 | 15.36 — **parity** |
+| **3 secondary indexes** | 23.16 / 21.82 / 24.06 | 36.86 / 35.37 / 40.24 |
+| median | 23.16 | **36.86 — 1.59x slower** |
+
+The ranges do not overlap: 21.8-24.1 against 35.4-40.2. Nothing here is noise.
+
+### The cost per index
+
+| | added by 3 indexes | per index |
+|---|---|---|
+| B+Tree | +8.06 µs/row | 2.7 µs/row |
+| LSM | +21.5 µs/row | **7.2 µs/row** |
+
+**Index maintenance costs 2.7x more on LSM than on the B+Tree**, and `SSTables 8` against `2`
+confirms why: each index store flushes on its own.
+
+### The mechanism was named from the code and is now measured
+
+`WitDatabaseBuilder.CreateLsmIndexFactory` gives **every secondary index its own `StoreLsm`** - its
+own write-ahead log, its own MemTable with its own 4 MB budget, its own compaction schedule. Three
+indexes are four independent LSM stores per table. That is not how an LSM database is built: RocksDB
+puts many logical key spaces in **column families sharing one write-ahead log and one MemTable
+budget**, precisely so that a write is one sequential append rather than N.
+
+§ 18 removed the flag that made this catastrophic. It did not change the design, and the design is
+what is left.
+
+### What the guidance has to say, and it is narrower than § 20 implied
+
+- **`Store=lsm` beats the default on sustained high-volume ingest into a table with few or no
+  secondary indexes** - above roughly half a million rows, where the MemTable flushes repeatedly.
+- **With three secondary indexes it is 1.6x worse**, and the penalty grows with the number of
+  indexes.
+- Everything else - reads, small transactions, autocommit - the B+Tree default is better.
+
+Writing only the first line would have been the mistake this measurement exists to prevent.
+
+### So the investigation closes here, with the next target chosen by measurement
+
+The per-index `StoreLsm` is now the concrete next piece of work, and it has what this project
+requires before any optimisation: a measured cost (7.2 against 2.7 µs per row per index), a named
+mechanism (N+1 independent logs, MemTables and compactors), and a known shape of fix (one shared log
+across index key spaces, as RocksDB does). It is a design change rather than a defect fix, and it
+should be its own phase with its own before-and-after.
+
+Also still open, unchanged: LSM autocommit ~5x the B+Tree and undiagnosed; compaction observable but
+its share of wall clock unattributed; and the second planner defect from § 11.
