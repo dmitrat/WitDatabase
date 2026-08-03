@@ -1180,3 +1180,71 @@ Three defects closed in this pass, on top of § 16's:
 wins. It is now plausible for the first time - the structure finally does what an LSM tree does - but
 plausible is not measured, and the suite still has no sustained high-volume ingest benchmark to
 measure it with. That is the next experiment.
+
+---
+
+## 19. The ingest benchmark, and the answer to "does LSM ever win?"
+
+`IngestBenchmarks` is the workload the suite never had: tens to hundreds of thousands of rows written
+in steady batches of 1,000, which is what an event pipeline does. At this volume the MemTable fills
+repeatedly, SSTables are genuinely produced and the compactor has real work - so the structure is
+finally asked the question it is chosen to answer. Every existing write benchmark stopped at 5,000
+rows in transactions of 100, where a B+Tree's update-in-place is at its best and an LSM has nothing
+to amortise over.
+
+Each shape returns what the engine claimed and `IterationCleanup` checks it against a scan. Nothing
+disagreed.
+
+### The measurement, two passes
+
+Medians, because the means carry outliers at the larger size:
+
+| | pass 1 | pass 2 |
+|---|---|---|
+| **50,000 rows** | | |
+| LiteDB | 275.9 ms | 262.7 ms |
+| SQLite | 398.4 ms | 397.1 ms |
+| WitDatabase, B+Tree | 486.7 ms | 491.8 ms |
+| WitDatabase, **LSM** | 549.3 ms | 552.5 ms |
+| **200,000 rows** | | |
+| LiteDB | 1,068.3 ms | 1,057.8 ms |
+| SQLite | 2,420.0 ms | 1,601.7 ms |
+| WitDatabase, LSM | 2,585.4 ms | 3,361.0 ms |
+| WitDatabase, B+Tree | 2,066.9 ms | 5,033.9 ms |
+
+**Only the 50,000-row block is quoted as a result.** At 200,000 the WitDatabase readings move by up
+to 2.4x between identical passes (B+Tree 2,067 → 5,034) and SQLite by 1.5x. Allocation is ~1.8 GB per
+operation there, so the run is measuring the garbage collector and the disk as much as the engine.
+Two passes are not enough at that size; saying so is the finding, not a number.
+
+### The answer
+
+**No. On the workload an LSM tree exists for, LSM still does not win** - it is **~12% behind the
+B+Tree store** at 50,000 rows, and the gap repeated across both passes (549/553 against 487/492).
+
+That is a very different sentence from the one this phase started with. Before the four fixes, LSM
+was **12-20x** behind on writes. It is now within about a tenth. But "nearly as good as the
+alternative on its own home ground" is not a reason to choose it, and no configuration guidance
+should suggest otherwise.
+
+Against the other engines on this workload, WitDatabase is 1.85x LiteDB and 1.24x SQLite - and the
+allocation claim that § 5 had to withdraw **does hold here**: ~450 MB against LiteDB's 609-649 MB per
+50,000 rows, about 30% less, on the workload where allocation matters most. SQLite's 31 MB is what a
+native engine with no managed object graph costs, and is not the target.
+
+### What would have to be true for LSM to win
+
+The remaining ~12% is not obviously a defect - it may simply be what this LSM costs. Three things
+that were found but not chased could each be worth more than that margin:
+
+- **Each secondary index still gets its own `StoreLsm`** - its own WAL, MemTable and compaction
+  schedule. RocksDB shares one WAL across column families for exactly this reason. This benchmark
+  has no secondary indexes, so it does not even exercise the cost.
+- **Autocommit is still ~5x the B+Tree**, undiagnosed. Group commit - several transactions sharing
+  one log sync, as PostgreSQL and MySQL do - is the standard answer and would help both stores.
+- **Compaction is not measured at all.** Nothing here reports how much of the time is compaction, or
+  what read amplification the resulting SSTable count costs. Both are the levers an LSM is tuned on.
+
+The honest position for a construction kit: **LSM is now a defensible option rather than a broken
+one, but there is still no measured workload where choosing it beats the default.** Finding one, if
+it exists, means measuring the three items above - not re-running this benchmark.
