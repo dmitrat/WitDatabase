@@ -1,5 +1,40 @@
 ﻿# Changelog
 
+## Unreleased
+
+Phase 11's follow-ups: the two build routes now agree, and the construction kit's central claim is
+executed rather than asserted.
+
+### Fixed
+
+- **`BuildAsync` ignored the store and the cache the configuration chose.** It built a `StoreBTree` for
+  every configuration that was not LSM, so on that route `Store=inmemory` opened the data file it exists
+  in order not to touch, a third-party store registered in the provider registry was ignored outright,
+  and `Cache=lru` selected a cache that was never constructed. Everything but the built-in B+Tree store
+  is now built where the synchronous route builds it - in the provider registry - and the B+Tree store,
+  which keeps a route of its own because its page manager reads the header while it is constructed, reads
+  its parameters from the same bag the registry factory reads. Measured by building each configuration
+  both ways and comparing the object graphs.
+
+### Added
+
+- **`StoreBTree.CreateAsync(IStorage, IPageCache, bool, ProviderMetadata?, CancellationToken)`** - the
+  asynchronous twin of the constructor that made the `Cache` provider key mean something in 12.0.0.
+
+### Documentation
+
+- **A provider from another package needs its assembly loaded before a connection string can name it.**
+  `Encryption=chacha20-poly1305` is refused unless something has touched a type in
+  `OutWit.Database.Core.BouncyCastle`, because the registration hangs off a module initializer and the
+  runtime loads an assembly lazily. `WitSQL.md` para 14.10 now says to call
+  `BouncyCastleProviderRegistration.EnsureRegistered()` at startup; the fluent route was never affected.
+
+- **A storage with no synchronous operations can host a database that cannot be written to.** Measured
+  with a stand-in for `OutWit.Database.Core.IndexedDb`: the build is asynchronous throughout,
+  `CREATE TABLE` succeeds because it writes nothing, and the first `INSERT` throws - the commit's flush
+  writes the header through the synchronous `IStorage.WritePage`, and so does every close. Documented in
+  `WitSQL.md` para 14.10 as unfinished rather than supported.
+
 ## 12.0.0
 
 A **major**, and the reason is the last section: `Parallel Mode` and `Max Writers` are gone from the

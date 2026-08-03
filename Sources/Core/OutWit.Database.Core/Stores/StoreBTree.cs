@@ -185,16 +185,44 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
     /// <param name="providerMetadata">Provider metadata for new databases.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An initialized BTreeStore.</returns>
-    public static async ValueTask<StoreBTree> CreateAsync(
-        IStorage storage, 
-        int cacheSize, 
-        bool ownsStorage, 
+    public static ValueTask<StoreBTree> CreateAsync(
+        IStorage storage,
+        int cacheSize,
+        bool ownsStorage,
         ProviderMetadata? providerMetadata,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(storage);
-        
-        var cache = new PageCacheShardedClock(storage, cacheSize);
+
+        return CreateAsync(storage, new PageCacheShardedClock(storage, cacheSize), ownsStorage,
+            providerMetadata, cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates a new BTreeStore over a caller-supplied page cache asynchronously.
+    /// </summary>
+    /// <remarks>
+    /// The asynchronous twin of the constructor that made the <c>Cache</c> provider key mean something.
+    /// Without it the asynchronous build route constructed a <see cref="PageCacheShardedClock"/>
+    /// whatever the configuration asked for, which is the same defect the synchronous route had until
+    /// 12.0.0 - one route honouring a setting and the other ignoring it.
+    /// </remarks>
+    /// <param name="storage">Storage implementation.</param>
+    /// <param name="cache">The page cache this store reads and writes through.</param>
+    /// <param name="ownsStorage">If true, disposes the storage when this store is disposed.</param>
+    /// <param name="providerMetadata">Provider metadata for new databases.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An initialized BTreeStore.</returns>
+    public static async ValueTask<StoreBTree> CreateAsync(
+        IStorage storage,
+        IPageCache cache,
+        bool ownsStorage,
+        ProviderMetadata? providerMetadata,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(storage);
+        ArgumentNullException.ThrowIfNull(cache);
+
         var pageManager = await PageManager.CreateAsync(storage, cache, providerMetadata, cancellationToken)
             .ConfigureAwait(false);
         

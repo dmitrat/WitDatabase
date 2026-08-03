@@ -466,6 +466,90 @@ there is nothing to make durable.
 - The five ADO-level keywords the census cannot see structurally: `Enlist`, `Connection Timeout`,
   `Pooling`, `Min`/`Max Pool Size`, `Default Timeout`.
 
+## 7a. After 12.0.0 - the follow-ups, 2026-08-03
+
+The release went out with three items open in § 6.5 and § 6b. Two are now closed and the third turned
+into two findings that are handed forward with measurements rather than guesses.
+
+### 7a.1 § 6.5 - the two build routes now agree, and the defect was wider than recorded
+
+`SyncAndAsyncBuildAgreeTests` builds the same configuration with `Build()` and with `BuildAsync()` and
+compares a **structural signature** - the runtime types of every store, page cache and storage reachable
+in the built graph. Controls both ways: the signature must tell a B+Tree database from an in-memory one,
+and one route must agree with itself across two builds.
+
+**Three of seven configurations disagreed**, not the one the plan recorded:
+
+| configuration | `Build()` | `BuildAsync()` |
+|---|---|---|
+| `Store=inmemory`, file data source | `StoreInMemory` | `StoreBTree` over `StorageFile` - **and it opens the file** |
+| a third-party registered store | the registered store | `StoreBTree` |
+| `Cache=lru` | `PageCacheLru` | `PageCacheShardedClock` |
+
+So the asynchronous route ignored the **cache** as well as the store - the same defect `Cache=lru` had
+on the synchronous route until 12.0.0, one method along.
+
+**The fix:** everything that is not the built-in B+Tree store is built where the synchronous route
+builds it, in the provider registry. The B+Tree store keeps a route of its own for one reason - its page
+manager reads the header while it is constructed, which a storage that can only work asynchronously
+cannot serve - and it now reads its parameters from the same bag the registry factory reads.
+`StoreBTree.CreateAsync` gained the overload that takes an `IPageCache`, the asynchronous twin of the
+constructor 12.0.0 added. Nine of nine agree; Core's 2,251 tests are unchanged.
+
+### 7a.2 § 6b - extensibility, executed
+
+`ThirdPartyProviderTests`. A third-party `IKeyValueStore`, `IPageCache` and `ICryptoProvider`, each
+registered in the provider registry and named in a **connection string**, plus a third-party `IStorage`
+handed to the builder - each driving a real database through SQL.
+
+**The control is inside every probe and it is a counter.** Each provider counts the calls it receives
+and every test asserts the count is not zero, because "registered and then ignored" is the failure this
+phase kept finding and a test that only checked the rows would pass through it. Measured: store 74
+writes, cache 447 page requests, crypto 11 encryptions with `row1` absent from the file, storage 11 page
+writes. And in the other direction, a provider key registered nowhere is refused at `Open`.
+
+### 7a.3 `Core.BouncyCastle` - the package works, and a connection string alone cannot reach it
+
+`Encryption=chacha20-poly1305` is refused with *"provider is not registered. Available: aes-gcm"* when
+the only thing pointing at the package is a reference. The registration hangs off a `[ModuleInitializer]`,
+and the CLR runs one when the assembly is **loaded** - which it is not, until something touches a type
+in it. The package's own README documents `WithBouncyCastleEncryption(...)`, an extension method on a
+type in the assembly, so the documented route loads it as a side effect and works; a consumer who writes
+connection strings has no such side effect.
+
+The refusal is legible, so the phase's rule holds. What was wrong is the documentation, and it now says
+to call `BouncyCastleProviderRegistration.EnsureRegistered()` once at startup. With that,
+ChaCha20-Poly1305 passes everything AES does: the workload, a reopen, no plaintext in the file, and a
+refusal on the wrong password and on none.
+
+### 7a.4 `Core.IndexedDb` - the browser story is one statement wide, and it is pinned
+
+The package cannot run on a build machine - `StorageIndexedDb` talks to JavaScript. What it **rests on**
+can: a stand-in `IAsyncOnlyStorage` whose every synchronous member throws. Measured, and stable over
+three whole-fixture runs:
+
+- the build is asynchronous throughout - the storage is initialised and written asynchronously;
+- `CREATE TABLE` survives, and it survives because it writes **nothing**: the storage's write count is
+  1 before it and 1 after;
+- the **first `INSERT` throws**. Its implicit per-statement transaction commits, the commit flushes, and
+  `PageManager.Flush` writes the header through the synchronous `IStorage.WritePage` before calling the
+  synchronous `IStorage.Flush`;
+- every close ends in the same place, and there is no asynchronous way round it.
+
+**The chain has five missing links, which is why this is handed forward rather than patched:**
+`PageManager` has `FlushAsync` and no `DisposeAsync`, and its flush writes the header synchronously;
+`StoreBTree.DisposeAsync` calls that synchronous `Dispose`, under a comment claiming it is safe;
+`BTreeConcurrentStore` - which since 12.0.0 wraps **every** B+Tree store - implements no
+`IAsyncDisposable`, so an asynchronous disposal degrades at that link; nor does `MvccTransactionalStore`,
+the default transaction model; and `WitSqlEngine` is `IDisposable` only, so a consumer has no
+asynchronous close to call.
+
+**The instrument was wrong first, for the ninth time in this project.** Its first version closed the
+database in a `finally`, so the exception from the close replaced the exception from the workload and
+the run reported the *statement* failing where the truth was the *close*. Re-measured with the throwing
+cleanup removed, the boundary is exactly where it is stated above. **A cleanup that can throw hides what
+the test came to measure.**
+
 ## 7. Ledger
 
 47 suppressed entries (33 `[Ignore(…)]` + 14 `Ignore =`) plus 2 `[Explicit]`, counted with the commands
