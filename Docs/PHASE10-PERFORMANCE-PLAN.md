@@ -1381,3 +1381,76 @@ should be its own phase with its own before-and-after.
 
 Also still open, unchanged: LSM autocommit ~5x the B+Tree and undiagnosed; compaction observable but
 its share of wall clock unattributed; and the second planner defect from § 11.
+
+---
+
+## 22. Phase 10, closed
+
+Opened on a baseline that did not exist and a suite nobody had read. Closed with five defects fixed,
+one release out, and consumer-facing guidance that rests on measurement.
+
+### What was fixed
+
+| | where | released |
+|---|---|---|
+| Planner scanned 1,000 rows per query execution to estimate a row count | § 8, § 12 | **11.1.0** |
+| LSM write-ahead log bypassed the OS write cache | § 16 | pending |
+| Every LSM connection-string parameter was inert | § 18.1 | pending |
+| `Flush()` conflated "make durable" with "reorganise" | § 18.2 | pending |
+| Every LSM commit wrote an SSTable | § 18.3 | pending |
+
+The first took the unique-index seek from **23x slower than LiteDB to 4x faster** - 97x on the
+operation itself - and improved every query carrying a `WHERE`. The other four took the LSM store
+from **12-20x behind the B+Tree on writes to parity**, and to a genuine 10-13% advantage at the
+storage layer on high-volume ingest.
+
+### What the instrument needed first, and it needed a lot
+
+The suite had **no assertion of any kind in 113 benchmark methods**: nothing had ever checked that
+WitDatabase, SQLite and LiteDB compute the same answer. It does now, and it is green. A LiteDB
+benchmark had been throwing and reporting `NA` since January. Six classes of seven measured a
+configuration no consumer runs. The `Ratio` column compared unlike operations. Write benchmarks
+returned `void`, so an engine that wrote nothing benchmarked as fast.
+
+Mutation testing, recorded as delivered in phase 0, had **never produced a single result** - the
+weekly workflow failed in 36 seconds on an option Stryker does not have.
+
+### Claims that measurement destroyed
+
+Five, each of which had been quoted as fact:
+
+- "78 benchmarks have never been run" - they had, and there are 99 of them.
+- Three benchmark projects "never tracked by git" - tracked, deleted, recoverable.
+- "LSM is non-linear in N, a defect signature" - its per-row cost *falls* as the table grows.
+- "WitDatabase allocates ~30% less than LiteDB" - true of one workload, false in the default
+  configuration, and it allocates 33x more on the unique-index seek.
+- `LIMIT` not short-circuiting - the strongest lead in the stale reports, already fixed.
+
+Two more were mine, corrected in the same session: `ORDER BY` called superlinear on a single
+interval, and a refutation built on a control that did not vary what it was believed to vary.
+
+### The rule that earned itself four times
+
+**One timing run lies.** In the mode sweep, pass one showed `BTreeParallelAuto` with a 4.13x per-row
+regression - the only non-linearity in the sweep, exactly the kind of thing that gets written up.
+Pass two: x0.83. A second anomaly died the same way, an apparent `Tx Rollback` regression after the
+planner fix turned out to be noise, and the store-level LSM runs threw a 12.8-second outlier into an
+otherwise 1.6-second set.
+
+And once, the counters caught what the timings could not: § 19 concluded "LSM does not win" from a
+benchmark where `StoreLsm.Statistics` reports **0 flushes and 0 compactions**. The measurement was of
+an LSM that had never done anything an LSM does. **Check that the mechanism under test actually ran.**
+
+### Handed forward, each with a measured reason
+
+- **One shared write-ahead log across index key spaces.** Every secondary index has its own
+  `StoreLsm` today. Cost measured: 7.2 µs per row per index against the B+Tree's 2.7, and it is what
+  removes LSM's advantage on any realistic schema. A design change, not a defect fix - its own phase.
+- **LSM autocommit, ~5x the B+Tree**, undiagnosed. Group commit is the standard answer and would
+  help both stores.
+- **The second planner defect** (§ 11): `RANGE_SELECTIVITY` is a constant, so an applicable index
+  always wins a range comparison. A 75% range over a low-cardinality index costs 2.5x the scan it
+  replaced. Needs distinct-value statistics the engine does not keep.
+- **Compaction's share of wall clock** - now observable, not yet attributed.
+- **Mutation testing** - the invalid flag is gone, but that the workflow completes is unproven.
+- **`[BenchmarkCategory]` on 113 methods**, which is what would let the `Ratio` column return.

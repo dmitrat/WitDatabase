@@ -289,7 +289,8 @@ Data Source=:memory:
 // With encryption
 Data Source=secure.witdb;Password=secret
 
-// LSM-Tree storage (write-optimized)
+// LSM-Tree storage - for sustained high-volume ingest into tables with few
+// or no secondary indexes. See WitSQL.md 14.9; the default suits most work.
 Data Source=./data;Store=lsm
 
 // With parallel writes

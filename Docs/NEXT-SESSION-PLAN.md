@@ -1194,6 +1194,20 @@ Verified in
 
 ## C. Performance investigation
 
+> **CLOSED by phase 10, 2026-08-03. Three claims below were measured false — read
+> `Docs/PHASE10-PERFORMANCE-PLAN.md` rather than this section.**
+>
+> - **"78 benchmarks have never been run"** — they had. Full reports sat on disk from 2026-01-04,
+>   unread because `BenchmarkDotNet.Artifacts/` is gitignored. There are also **99**, not 78.
+> - **The three "never tracked by git" benchmark projects** were tracked and deleted in `5b8fff9`
+>   (2026-01-02), and are recoverable. The LiteDB/SQLite comparison never lived in them.
+> - **"LSM is non-linear in N — a defect signature"** does not reproduce: per-row cost *falls* as the
+>   table grows. LSM's real problem was four defects, all now fixed, and it is not a scaling one.
+>
+> What replaced them: a baseline that can be trusted, the planner fix released as 11.1.0, four LSM
+> defects fixed, and store-selection guidance in `WitSQL.md` § 14.9.
+
+
 Unlike A and B this is an **investigation**, not a fix list. The goal is to find out where the time
 and the allocations actually go, and only then decide what to change. There are concrete leads
 already, all measured during the audit session.

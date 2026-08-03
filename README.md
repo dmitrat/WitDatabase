@@ -9,7 +9,8 @@ A high-performance embedded key-value database for .NET with support for multipl
 
 - **Two Storage Engines**
   - **B-Tree** - Optimized for read-heavy workloads with excellent random access
-  - **LSM-Tree** - Optimized for write-heavy workloads with sequential write performance
+  - **LSM-Tree** - For sustained high-volume ingest into tables with few or no secondary
+    indexes; see `Docs/WitSQL.md` § 14.9 for where it wins and where it does not
 
 - **Encryption**
   - AES-256-GCM with hardware acceleration
@@ -238,39 +239,77 @@ await ((StorageIndexedDb)db.Store).InitializeAsync();
 
 ## Performance
 
-Measured with `Benchmarks/OutWit.Database.Benchmarks` (BenchmarkDotNet, ShortRun) on a Ryzen 9 5950X
-under .NET 10, against SQLite (`Microsoft.Data.Sqlite`) and LiteDB. **Default configuration** means
-a bare `Data Source=…` connection string: MVCC on, durable commit — what an ADO.NET or EF Core
-consumer actually gets.
+Measured with `Benchmarks/OutWit.Database.Benchmarks` (BenchmarkDotNet, ShortRun, in-process) on a
+Ryzen 9 5950X under .NET 10, against SQLite (`Microsoft.Data.Sqlite`) and LiteDB. **Every figure is
+the median of at least two full passes**, and anything that moved more than 10% between identical
+passes is excluded rather than quoted. **Default configuration** means a bare `Data Source=…`
+connection string - MVCC on, durable commit, B+Tree - which is what an ADO.NET or EF Core consumer
+gets.
 
-Single transaction, N inserts:
+### Reads and lookups, default configuration
 
-| Configuration | N | WitDatabase | SQLite | LiteDB |
-|---|---|---|---|---|
-| Default (MVCC, durable) | 100 | 3.17 ms — **2.5x faster** | 7.74 ms | 0.80 ms |
-| Default (MVCC, durable) | 500 | 5.30 ms — **1.3x faster** | 6.95 ms | 2.21 ms |
-| `MVCC=false`, B+Tree | 100 | 2.43 ms — **2.8x faster** | 6.79 ms | 0.81 ms |
-| `MVCC=false`, B+Tree | 500 | 4.41 ms — **1.6x faster** | 7.12 ms | 1.94 ms |
-| `MVCC=false`, LSM | 100 | 12.28 ms — 1.8x **slower** | 6.73 ms | 0.73 ms |
-| `MVCC=false`, LSM | 500 | 55.81 ms — 7.9x **slower** | 7.07 ms | 1.90 ms |
+| Operation | WitDatabase | LiteDB | SQLite |
+|---|---|---|---|
+| Point query by primary key, x100 | **0.24 ms** | 1.23 ms | 4.83 ms |
+| Seek on a UNIQUE index, x100 | **0.50 ms** | 2.00 ms | 5.01 ms |
+| Sequential reads, x100 | **0.31 ms** | 8.77 ms | 5.18 ms |
+| Index range scan (`BETWEEN`) | **0.83 ms** | 4.63 ms | 0.20 ms |
+| `SELECT … LIMIT 100` | **0.08 ms** | 0.15 ms | 0.07 ms |
+| Full scan, 1,000 rows | 0.77 ms | 1.34 ms | **0.17 ms** |
+| `ORDER BY`, 1,000 rows | 1.62 ms | 1.78 ms | **0.23 ms** |
 
-Read that honestly: on transactional inserts WitDatabase is meaningfully faster than SQLite on the
-B+Tree engine, **slower** than SQLite on the LSM engine, and slower than LiteDB throughout. It also
-allocates 17-25x more than SQLite. Pick the B+Tree engine for this workload.
+### Writes, default configuration
+
+| Operation | WitDatabase | LiteDB | SQLite |
+|---|---|---|---|
+| 100 inserts in one transaction | 2.99 ms | **1.17 ms** | 7.38 ms |
+| Transaction rollback | **0.46 ms** | 7.15 ms | 1.36 ms |
+| Bulk `UPDATE` | **3.10 ms** | 9.62 ms | 7.19 ms |
+| 100 inserts **without** a transaction | 203 ms | **9.5 ms** | 688 ms |
+
+### Sustained ingest, 500,000 rows in batches of 1,000
+
+| | B+Tree | LSM |
+|---|---|---|
+| No secondary indexes | 15.10 µs/row | 15.36 µs/row |
+| Three secondary indexes | **23.16 µs/row** | 36.86 µs/row |
+
+Read all of it honestly:
+
+- **Lookups and indexed access are the strong side** - several times faster than LiteDB and, on
+  small operations, than SQLite. Part of the SQLite margin is the P/Invoke crossing its managed
+  wrapper pays per call; that is not an engine result, but it *is* what a .NET consumer experiences,
+  because there is no other way to reach SQLite from managed code.
+- **Scans and sorts are the weak side** - SQLite is 4-8x faster there, and the gap is allocation: a
+  scan costs roughly 2.4 KB per row returned. LiteDB, also managed, pays about the same, so this
+  does not move the comparison against it.
+- **Autocommit is expensive by choice.** Every statement outside a transaction is durable, which is
+  what makes 203 ms against LiteDB's 9.5 - and 3.3x *faster* than SQLite doing the same thing.
+  Batch writes in a transaction when throughput matters.
+- **`Store=lsm` is not simply "write-optimised".** It reaches parity at high volume without
+  secondary indexes and is 1.6x slower with three of them. See `Docs/WitSQL.md` § 14.9 before
+  choosing it.
 
 Reproduce with:
 
 ```bash
-dotnet run -c Release --project Benchmarks/OutWit.Database.Benchmarks \
-  -- --filter "*TransactionBenchmarks*"
+dotnet run -c Release --project Benchmarks/OutWit.Database.Benchmarks -- --filter "*"
+dotnet run -c Release --project Benchmarks/OutWit.Database.Benchmarks -- verify
 ```
 
-> **Earlier figures withdrawn.** Previous releases advertised "4-20x faster" transactions plus
-> INSERT/UPDATE/DELETE/SELECT ratios. Those came from a `Comparison.Benchmarks` project that is not
-> in this repository and cannot be reproduced from it, and every configuration they measured passed
-> `MVCC=false` — which is not the provider default. The numbers above replace the transaction row;
-> the other operations will be re-published once there is a committed benchmark that measures them.
-> See [Docs/AUDIT-2026-07.md](Docs/AUDIT-2026-07.md).
+The second command is the equivalence check: it runs every benchmark body once and compares what
+WitDatabase, SQLite and LiteDB actually return. A timing comparison between engines that do not
+compute the same thing is not a measurement, so that check is meant to be green before any figure
+above is believed.
+
+> **Earlier figures withdrawn twice, and the second time is worth recording.** Releases before
+> 11.1.0 advertised transaction ratios measured on the least discriminating workload in the suite,
+> and before that "4-20x faster" numbers from a benchmark project no longer in the repository. The
+> tables above replace both. What changed in between is documented in
+> [Docs/PHASE10-PERFORMANCE-PLAN.md](Docs/PHASE10-PERFORMANCE-PLAN.md): the benchmark suite had no
+> assertion of any kind in 113 methods, so nothing had ever checked that the three engines compute
+> the same answer, and several published claims turned out to describe an engine that no longer
+> existed.
 
 ## Requirements
 
