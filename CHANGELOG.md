@@ -42,6 +42,15 @@ different. Every defect found is in construction or in close.
   rows survived a clean close and reopen; the eighth did not. With MVCC the commit path's `FlushAllAsync`
   hid it. The writer now hands over the buffers that are still filling before it closes the queue.
 
+- **The B+Tree store was left unserialised when no parallel mode was asked for.** Secondary index
+  stores have been wrapped unconditionally since 6.0.0, because a second connection is enough to walk
+  into a leaf split someone else is halfway through; the main store was left conditional on
+  `Parallel Mode`. With `Transactions=false` and no mode there was nothing at all between two writers
+  and one split: measured, a writer threw and a row was lost in **five runs out of five**. With
+  transactions the layer above happens to serialise it, which is a property of that layer rather than a
+  guarantee the store may lean on. The B+Tree store is now serialised whenever it is built, which costs
+  a single thread nothing - median **1.001x** over five interleaved passes of 20,000 operations.
+
 ### Changed
 
 - **`Cache=clock|lru` selects a cache.** `StoreBTree` takes an `IPageCache`, and the builder constructs

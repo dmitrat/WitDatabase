@@ -261,7 +261,11 @@ public class WitDatabaseBuilderEventsTests : IDisposable
             .Build();
         
         Assert.That(receivedStore, Is.Not.Null);
-        Assert.That(receivedStore!.ProviderKey, Is.EqualTo("btree"));
+
+        // "btree" until 11.3.0. The B+Tree store is serialised unconditionally now - see
+        // MainStoreConcurrencyProbeTests for why - so what the event hands over is the wrapper, which
+        // is also what the database will use.
+        Assert.That(receivedStore!.ProviderKey, Is.EqualTo("btree-concurrent"));
     }
 
     [Test]
@@ -467,7 +471,10 @@ public class WitDatabaseBuilderEventsTests : IDisposable
             .Build();
         
         Assert.That(logMessages.Count, Is.EqualTo(1));
-        Assert.That(logMessages[0], Is.EqualTo("Store created: btree"));
+
+        // "btree" until 11.3.0 - the B+Tree store is serialised unconditionally now, so the store the
+        // event reports is the wrapper.
+        Assert.That(logMessages[0], Is.EqualTo("Store created: btree-concurrent"));
     }
 
     #endregion

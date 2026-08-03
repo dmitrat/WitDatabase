@@ -208,7 +208,44 @@ A journal is only reachable through the lock-based `TransactionalStore`. `Journa
 the default - or with transactions off is now refused at `Open` with a message naming the way out. That
 is the phase's rule applied to itself: a setting that cannot be honoured is an error, not a silence.
 
-### 6.3 The four parallel modes - still open, and the question was reframed
+### 6.3a Both measurements taken, 2026-08-03 - and they decide it
+
+`MainStoreConcurrencyProbeTests` reuses phase 5's parking seam against a database built the ordinary
+way: one writer parked inside a leaf split of the **main** store, a second let in, released, count what
+survived. Controls in both directions in every pass - a bare store must be damaged (or the harness is
+blind) and parking alone must destroy nothing.
+
+**Measurement 1 - is `Parallel Mode=None` safe?** Five runs, completely stable:
+
+| configuration | outcome |
+|---|---|
+| bare `StoreBTree` (positive control) | **damaged** 5/5 - 2-9 entries gone, usually with **no exception at all** |
+| `BTreeConcurrentStore` (control) | clean 5/5 |
+| database, MVCC, no parallel mode | clean 5/5 |
+| database, lock-based transactions, no parallel mode | clean 5/5 |
+| **database, `Transactions=false`, no parallel mode** | **damaged 5/5** - threw *and* lost a row |
+| database, MVCC, parallel mode | clean 5/5 |
+
+So the transaction layer - either one - does serialise the main store, and `Parallel Mode=None` is safe
+**as long as transactions are on**. With `Transactions=false` there is nothing between two writers and
+one leaf split, and the store is exposed exactly as a secondary index store was before 6.0.0. **A new
+defect, and the keyword was load-bearing precisely where it should not have had to be.**
+
+**Measurement 2 - what does serialising cost a single thread?** Five interleaved passes of 20,000
+put+get, wrapped against bare, ratios `1.001, 1.070, 1.009, 0.996, 1.000` - **median 1.001**, four of
+five within 1%. The 1.070 is the outlier and the same shape as phase 10's "4.13x regression" that a
+second pass measured at 0.83.
+
+**Decided: the B+Tree store is serialised unconditionally**, main store and index stores alike, exactly
+as 6.0.0 already decided for index stores. It closes the `Transactions=false` hole, it costs nothing,
+and it takes correctness off the list of things a connection string can switch off. Three tests that
+pinned the old shape were inverted with the reason written into them.
+
+**What is left of `Parallel Mode` is LSM write buffering** - a throughput choice, since `StoreLsm` locks
+internally and is safe without it. That is what `WitSQL.md` § 14.10 now says. The four names remain four
+spellings; building distinct mechanisms would be a phase, and nothing now depends on it for safety.
+
+### 6.3 The four parallel modes - the reasoning, before the measurements above
 
 Measured, not argued: **which concurrency mechanism you get is decided by the store, not by the keyword.**
 

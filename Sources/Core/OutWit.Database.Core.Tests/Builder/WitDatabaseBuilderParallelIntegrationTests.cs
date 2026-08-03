@@ -129,9 +129,14 @@ public class WitDatabaseBuilderParallelIntegrationTests : IDisposable
             .WithoutTransactions()
             .Build();
 
-        // Should be regular StoreBTree, not wrapped
+        // INVERTED BY A FIX, 11.3.0, and the inversion is the point: this used to assert a bare
+        // StoreBTree and it was pinning an exposure. StoreBTree has no locking of any kind, and this
+        // configuration - no parallel mode AND no transaction layer - put nothing at all between two
+        // writers and one leaf split. Measured in MainStoreConcurrencyProbeTests: a writer threw and an
+        // entry was lost in five runs out of five. Serialising the B+Tree store is not a mode now, and
+        // it costs a single thread nothing (median ratio 1.001 over five interleaved passes).
         var store = db.Store;
-        Assert.That(store, Is.TypeOf<StoreBTree>());
+        Assert.That(store, Is.TypeOf<BTreeConcurrentStore>());
     }
 
     #endregion

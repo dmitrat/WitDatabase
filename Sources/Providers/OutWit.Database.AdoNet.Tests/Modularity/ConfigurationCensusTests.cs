@@ -231,7 +231,12 @@ public class ConfigurationCensusTests
         new("Synchronous Commit", "", "Synchronous Commit=true", "Synchronous Commit=false"),
 
         // ---- parallelism ----------------------------------------------------------------------
-        new("Parallel Mode on or off", "", "Parallel Mode=None", "Parallel Mode=Auto"),
+        new("Parallel Mode on or off (LSM)", "Store=lsm", "Parallel Mode=None", "Parallel Mode=Auto"),
+
+        // INERT on purpose since 11.3.0: the B+Tree store is serialised whether or not a mode is asked
+        // for, because StoreBTree has no locking of its own and that is a correctness property rather
+        // than a tuning choice. Kept in the census so the day it starts reaching something is visible.
+        new("Parallel Mode on or off (BTree)", "", "Parallel Mode=None", "Parallel Mode=Auto"),
         new("Parallel Mode Auto vs Buffered", "", "Parallel Mode=Auto", "Parallel Mode=Buffered"),
         new("Parallel Mode Auto vs Latched", "", "Parallel Mode=Auto", "Parallel Mode=Latched"),
         new("Parallel Mode Auto vs Optimistic", "", "Parallel Mode=Auto", "Parallel Mode=Optimistic"),

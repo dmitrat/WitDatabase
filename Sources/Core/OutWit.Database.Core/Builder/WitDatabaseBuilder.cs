@@ -476,25 +476,57 @@ public sealed class WitDatabaseBuilder
         return WrapWithParallelIfNeeded(store);
     }
 
+    /// <summary>
+    /// Applies the concurrency wrapper each store needs, and the write buffering the caller asked for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Serialising the B+Tree store is not a mode.</b> <see cref="StoreBTree"/> has no locking of any
+    /// kind, and secondary index stores have been wrapped unconditionally since 6.0.0 because a second
+    /// <i>connection</i> is enough to walk into a leaf split someone else is halfway through. The main
+    /// store was left conditional on a parallel mode, and phase 11 measured what that left open: with
+    /// <c>Transactions=false</c> and no mode, two writers inside one split threw and lost an entry in
+    /// <b>five runs out of five</b>. With transactions the layer above happens to serialise it - which
+    /// is a property of that layer, not a guarantee this one may lean on.
+    /// </para>
+    /// <para>
+    /// Wrapping unconditionally costs a single thread nothing: five interleaved passes of 20,000
+    /// put+get gave a median ratio of <b>1.001</b> wrapped against bare. Both measurements are in
+    /// <c>MainStoreConcurrencyProbeTests</c>.
+    /// </para>
+    /// <para>
+    /// So what is left of <c>Parallel Mode</c> is the LSM store's write buffering, which is a throughput
+    /// choice rather than a safety one - <see cref="StoreLsm"/> locks internally and is safe without it.
+    /// </para>
+    /// </remarks>
     private IKeyValueStore WrapWithParallelIfNeeded(IKeyValueStore store)
     {
         var parallelMode = Options.StoreParameters.Get("parallelMode", ParallelMode.None);
-        
-        if (parallelMode == ParallelMode.None)
-            return store;
 
         var parallelOptions = Options.StoreParameters.Get<ParallelModeOptions>("parallelOptions");
         if (parallelOptions == null)
         {
             parallelOptions = new ParallelModeOptions { Mode = parallelMode };
-            
+
             // Apply maxWriters if set
             var maxWriters = Options.StoreParameters.Get<int?>("maxWriters");
             if (maxWriters.HasValue)
                 parallelOptions.MaxWriters = maxWriters.Value;
         }
 
-        // Use factory to create appropriate parallel store
+        // Unconditional - see the remarks. The mode does not reach this decision.
+        if (store is StoreBTree btreeStore)
+        {
+            var concurrencyOptions = new Tree.BTreeConcurrencyOptions
+            {
+                TrackStatistics = parallelOptions.TrackStatistics
+            };
+            return new Tree.BTreeConcurrentStore(btreeStore, concurrencyOptions, ownsStore: true);
+        }
+
+        if (parallelMode == ParallelMode.None)
+            return store;
+
         if (store is StoreLsm lsmStore)
         {
             var lsmOptions = new LsmParallelStoreOptions
@@ -506,16 +538,8 @@ public sealed class WitDatabaseBuilder
             return new LsmParallelStore(lsmStore, lsmOptions, ownsStore: true);
         }
 
-        if (store is StoreBTree btreeStore)
-        {
-            var concurrencyOptions = new Tree.BTreeConcurrencyOptions
-            {
-                TrackStatistics = parallelOptions.TrackStatistics
-            };
-            return new Tree.BTreeConcurrentStore(btreeStore, concurrencyOptions, ownsStore: true);
-        }
-
-        // For other stores, return as-is (no parallel wrapper available)
+        // Every other store locks internally - StoreInMemory does, and so does StoreLsm; the wrapper
+        // above it is a buffer, not a lock.
         return store;
     }
 

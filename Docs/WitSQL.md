@@ -1301,13 +1301,18 @@ cache; use `EnableBlockCache` and `BlockCacheSize` there.
 
 ### Parallel mode
 
-`Parallel Mode=None` (default) builds the store without a concurrency wrapper. Any other value wraps it:
-the LSM store gets thread-local write buffers with a background merge, the B+Tree store gets a
-reader-writer lock. **Which of the two you get is decided by the store, not by the keyword** -
-`Auto`, `Buffered`, `Latched` and `Optimistic` all produce the same engine on a given store, and are
-kept as spellings of "make this store thread-safe". `Max Writers` applies to the LSM store only.
+**Thread safety is not a setting here, and this keyword does not control it.** The B+Tree store has no
+locking of its own, so it is serialised whenever it is built - main store and secondary index stores
+alike - whatever `Parallel Mode` says. That is measured rather than assumed: with no wrapper and no
+transaction layer, two writers meeting inside one leaf split threw and lost a row in five runs out of
+five, and serialising costs a single thread nothing (median 1.001x over five interleaved passes of
+20,000 operations). The LSM and in-memory stores lock internally and need no wrapper at all.
 
-Secondary index stores are always serialised regardless of this setting; that is not optional.
+What is left for the keyword is the **LSM store's write buffering**, which is a throughput choice:
+`Parallel Mode=None` (default) writes straight through, any other value gives thread-local write
+buffers with a background merge, and `Max Writers` sizes them. `Auto`, `Buffered`, `Latched` and
+`Optimistic` are four spellings of the same thing - the mechanism is the store's, not the keyword's -
+and on the B+Tree and in-memory stores the setting does nothing at all.
 
 ### LSM settings
 
