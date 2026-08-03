@@ -1079,3 +1079,104 @@ doing more I/O than the design calls for, and the first two are exactly the prop
 LSM tree worth choosing. Until 2 and 3 are fixed, the honest statement is that **LSM is not yet the
 write-heavy option this project intends it to be** - and after them it is worth re-asking, with a
 benchmark aimed at sustained high-volume ingest, which the suite still does not have.
+
+---
+
+## 18. Fixes three, four and five: the LSM store now behaves like one
+
+The order § 17.4 laid out, carried out in that order because each step depends on the one before.
+
+### 18.1 Every LSM connection-string parameter was inert
+
+Not just `MemTableSize`. `WitDatabaseBuilder.BuildLsmStore` constructed `StoreLsm` directly and asked
+only for a **ready-made** options object:
+
+```csharp
+var lsmOptions = Options.StoreParameters.Get<LsmOptions>("options") ?? new LsmOptions();
+```
+
+The mapping that turns connection-string keys into `LsmOptions` lived in `ProviderRegistration` and
+was reachable only through the provider registry, which this path does not use. So `MemTableSize`,
+`SyncWrites`, `EnableWal`, `BlockSize`, `CompactionTrigger`, the block cache settings - **every knob
+the connection-string builder documents** - were dropped for the main store. The per-index stores did
+the same with their own `new LsmOptions()`.
+
+The mapping moved onto `LsmOptions.FromParameters`, where the registry, the main store and the index
+stores can all reach it. Measured, 5 MB written in one transaction:
+
+| `MemTableSize` | SSTables before | after |
+|---|---|---|
+| 1,024 bytes | 1 | **5,556** |
+| 4,194,304 (default) | 1 | **2** |
+
+Before, the two were indistinguishable. Now the knob turns, and it turns by a factor of 2,778.
+
+**Why it hid for so long:** the defaults are reasonable, and the one test that claimed to cover it -
+`MemTableSizeParameterWorksTest` - passed for a different reason. Every commit flushed the MemTable
+regardless of its size, so SSTables appeared whatever the limit said. The test would have passed with
+the parameter wired to nothing, which is exactly what it was.
+
+### 18.2 `Flush()` and `Checkpoint()` are now different operations
+
+`IKeyValueStore.Flush()` means **make durable** and is what a commit calls.
+`IKeyValueStore.Checkpoint()` means **force the accumulated state out now** and is what a size
+threshold, maintenance, or a caller wanting an on-disk sorted file calls. `Checkpoint` defaults to
+`Flush`, so only stores with an in-memory staging area differ - nothing else had to change.
+
+This is the split every database makes and this engine had collapsed: PostgreSQL commits by syncing
+the WAL and moves buffers on `CHECKPOINT`; SQLite has `PRAGMA synchronous` and
+`PRAGMA wal_checkpoint`; RocksDB has `SyncWAL()` and `Flush()`. **Durability is an operation on the
+log; reorganising the data structure is a separate decision.**
+
+The 61 call sites in the LSM tests that meant *"write an SSTable now"* say `Checkpoint()`, which is
+what they always meant and what they always did - the transformation preserves their behaviour
+exactly rather than relaxing them to fit a fix.
+
+### 18.3 The per-commit SSTable is gone
+
+`StoreLsm.Flush()` now syncs the write-ahead log and flushes the MemTable **only when it is due**.
+`Recover` already replays the WAL on open, so a crash after commit restores the MemTable. With
+`EnableWal` off there is nothing to recover from, so the old behaviour is kept - the MemTable is then
+the only record of those writes.
+
+Measured, 50 transactions, three rounds each:
+
+| rows per transaction | before | after |
+|---|---|---|
+| 1 | 14.67 ms/tx | **3.00 / 2.17 / 2.11 ms/tx** |
+| 10 | 10.57 ms/tx | **2.32 / 2.33 / 2.38 ms/tx** |
+| 100 | 13.32 ms/tx | **4.54 / 5.03 / 4.47 ms/tx** |
+
+Roughly **5-7x on a small commit**, and - the part that matters more - **the cost now grows with the
+rows written**. Before, a transaction cost the same whether it held one row or a hundred, which is
+the signature of paying for something other than the work.
+
+### 18.4 The tests caught a real defect in the fix
+
+Forwarding `Checkpoint()` through `LsmParallelStore` straight to the wrapped store skipped the
+buffer drain that `Flush()` does, so three parallel-store tests read **0 rows where they expected 800
+and 1,000** - writes still sitting in `LsmWriteBuffer`. That is the same read-your-own-writes hazard
+that once made this store lose acknowledged writes, and it appeared within an hour of touching the
+path. `Checkpoint()` drains first now.
+
+Worth recording plainly: the fix was wrong, the existing suite said so immediately, and that is what
+those tests were built for in phases 4 and 5.
+
+### 18.5 State
+
+Green: **6,643 tests** across all five projects, and the **13 `Category=Crash` tests** - phase 4's
+out-of-process kill tests - unchanged.
+
+Three defects closed in this pass, on top of § 16's:
+
+| | |
+|---|---|
+| WAL bypassed the OS write cache | § 16, PR #109 |
+| Every LSM connection-string parameter inert | § 18.1 |
+| `Flush()` conflated durability with reorganisation | § 18.2 |
+| Every commit wrote an SSTable | § 18.3 |
+
+**What is not yet answered** is the question that started this: whether there is a workload where LSM
+wins. It is now plausible for the first time - the structure finally does what an LSM tree does - but
+plausible is not measured, and the suite still has no sustained high-volume ingest benchmark to
+measure it with. That is the next experiment.

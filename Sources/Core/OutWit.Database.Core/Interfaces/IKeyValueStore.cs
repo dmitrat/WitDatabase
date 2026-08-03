@@ -91,6 +91,27 @@
         /// </summary>
         void Flush();
 
+    /// <summary>
+    /// Moves whatever the store holds in memory into its main on-disk structure.
+    /// </summary>
+    /// <remarks>
+    /// This is deliberately NOT the same operation as <see cref="Flush"/>, and conflating the two
+    /// is what made the LSM store behave nothing like an LSM tree. Every database separates them:
+    /// PostgreSQL commits by syncing the write-ahead log and moves dirty buffers on CHECKPOINT,
+    /// SQLite has `PRAGMA synchronous` and `PRAGMA wal_checkpoint`, RocksDB has SyncWAL() and
+    /// Flush(). Durability is an operation on the log; reorganising the data structure is a
+    /// separate decision made when it is cheap, not every time a caller commits.
+    ///
+    /// <see cref="Flush"/> means **make durable** and is what a commit calls.
+    /// <see cref="Checkpoint"/> means **force the accumulated state out now** and is what a size
+    /// threshold, background maintenance, an explicit administrative call, or a test that wants an
+    /// on-disk file calls.
+    ///
+    /// The default is to do whatever <see cref="Flush"/> does, which is correct for a store that
+    /// keeps nothing in memory. Only stores with an in-memory staging area need to differ.
+    /// </remarks>
+    void Checkpoint() => Flush();
+
         /// <summary>
         /// Flushes any pending writes to durable storage asynchronously.
         /// </summary>

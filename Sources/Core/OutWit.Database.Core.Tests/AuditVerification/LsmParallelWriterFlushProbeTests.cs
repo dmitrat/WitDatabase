@@ -119,7 +119,7 @@ public class LsmParallelWriterFlushProbeTests
         }
 
         writer.FlushAllAsync().GetAwaiter().GetResult();
-        store.Flush();
+        store.Checkpoint();
 
         Assert.That(MissingKeys(store, CONTROL_ENTRIES), Is.Empty,
             "a single thread lost entries flushing its own buffer - the probe measures nothing");
@@ -376,7 +376,7 @@ public class LsmParallelWriterFlushProbeTests
         if (flusherError == null)
         {
             writer.FlushAllAsync().GetAwaiter().GetResult();
-            store.Flush();
+            store.Checkpoint();
         }
 
         return new RoundOutcome

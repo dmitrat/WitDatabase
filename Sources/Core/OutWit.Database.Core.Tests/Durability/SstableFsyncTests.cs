@@ -8,7 +8,7 @@ namespace OutWit.Database.Core.Tests.Durability;
 /// </summary>
 /// <remarks>
 /// The audit recorded this as <b>mechanism confirmed, consequence not reproduced</b>: finalisation
-/// ended at <c>m_writer.Flush()</c>, which pushes the <c>BinaryWriter</c>'s buffer into the
+/// ended at <c>m_writer.Checkpoint()</c>, which pushes the <c>BinaryWriter</c>'s buffer into the
 /// <c>FileStream</c> and no further, and there was no <c>flushToDisk</c> anywhere under
 /// <c>Core/LSM/</c>. Showing the loss was said to need a real power cut - a clean process kill is not
 /// enough, because the operating system writes its cache back.
@@ -144,7 +144,7 @@ public sealed class SstableFsyncTests
             for (int i = 0; i < 100; i++)
                 store.Put(Key(i), Value(i));
 
-            store.Flush();
+            store.Checkpoint();
         }
 
         TestContext.Out.WriteLine(

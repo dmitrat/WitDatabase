@@ -186,6 +186,22 @@ public sealed class LsmParallelStore : IKeyValueStore, IKeyValueStoreStatistics,
     }
 
     /// <inheritdoc/>
+    /// <remarks>
+    /// The buffer drain comes first and is not optional. Writes sit in <see cref="m_writer"/> until
+    /// it is flushed, so forwarding straight to the wrapped store checkpoints a store that has not
+    /// been given the writes yet - three parallel-store tests went red on exactly that, reading 0
+    /// rows where they expected 800 and 1,000. It is the same read-your-own-writes hazard that once
+    /// made this store lose acknowledged writes.
+    /// </remarks>
+    public void Checkpoint()
+    {
+        ThrowIfDisposed();
+
+        m_writer.FlushAllAsync().GetAwaiter().GetResult();
+        m_store.Checkpoint();
+    }
+
+    /// <inheritdoc/>
     public async ValueTask FlushAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();

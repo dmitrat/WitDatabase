@@ -465,7 +465,7 @@ public class CoreConcurrencyFindingsTests
             for (var i = 0; i < 10; i++)
             {
                 store.Put(Key($"k{i}"), Value($"v{i}"));
-                store.Flush();
+                store.Checkpoint();
             }
 
             var scanned = store.Scan(null, null).ToList();
@@ -575,7 +575,7 @@ public class CoreConcurrencyFindingsTests
             store.Delete(Key("k"));
             store.Put(Key("k"), Value("second"));
 
-            store.Flush();
+            store.Checkpoint();
 
             Assert.That(store.Get(Key("k")), Is.EqualTo(Value("second")),
                 "the last operation on the key was a Put, so the key must exist with its value");
@@ -844,7 +844,7 @@ public class CoreConcurrencyFindingsTests
             producer.Join(TimeSpan.FromSeconds(20));
 
             writer.FlushAllAsync().GetAwaiter().GetResult();
-            store.Flush();
+            store.Checkpoint();
 
             Assert.That(writerFailure, Is.Null,
                 "the producer thread must not fail because another thread flushed");

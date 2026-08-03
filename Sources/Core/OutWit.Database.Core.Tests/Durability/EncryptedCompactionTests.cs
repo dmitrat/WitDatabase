@@ -69,7 +69,7 @@ public sealed class EncryptedCompactionTests
                 for (int i = 0; i < ROWS / 4; i++)
                     store.Put(Key(batch * (ROWS / 4) + i), Value(batch * (ROWS / 4) + i));
 
-                store.Flush();
+                store.Checkpoint();
             }
 
             store.Compact();
@@ -107,7 +107,7 @@ public sealed class EncryptedCompactionTests
                     store.Put(Key(index), System.Text.Encoding.UTF8.GetBytes($"{marker}-{index:D4}"));
                 }
 
-                store.Flush();
+                store.Checkpoint();
             }
 
             store.Compact();

@@ -107,8 +107,8 @@ public class LsmParallelIntegrationTests : IDisposable
         }
 
         // Flush to ensure all data is written
-        regularStore.Flush();
-        parallelStore.Flush();
+        regularStore.Checkpoint();
+        parallelStore.Checkpoint();
 
         // Verify both stores have same data
         for (int i = 0; i < 100; i++)
@@ -133,7 +133,7 @@ public class LsmParallelIntegrationTests : IDisposable
         // Insert
         store.Put(ToBytes("key1"), ToBytes("value1"));
         store.Put(ToBytes("key2"), ToBytes("value2"));
-        store.Flush();
+        store.Checkpoint();
 
         // Verify
         Assert.That(store.Get(ToBytes("key1")), Is.Not.Null);
@@ -141,7 +141,7 @@ public class LsmParallelIntegrationTests : IDisposable
 
         // Delete
         store.Delete(ToBytes("key1"));
-        store.Flush();
+        store.Checkpoint();
 
         // Verify delete - LSM uses tombstones, so Get should return null
         Assert.That(store.Get(ToBytes("key1")), Is.Null);
@@ -161,7 +161,7 @@ public class LsmParallelIntegrationTests : IDisposable
         {
             store.Put(ToBytes($"key_{i:D3}"), ToBytes($"value_{i}"));
         }
-        store.Flush();
+        store.Checkpoint();
 
         // Scan range
         var results = store.Scan(ToBytes("key_010"), ToBytes("key_020")).ToList();
@@ -205,7 +205,7 @@ public class LsmParallelIntegrationTests : IDisposable
         })).ToArray();
 
         Task.WaitAll(tasks);
-        store.Flush();
+        store.Checkpoint();
 
         Assert.That(errors, Is.Empty, $"Errors: {string.Join(", ", errors.Select(e => e.Message))}");
 
@@ -228,7 +228,7 @@ public class LsmParallelIntegrationTests : IDisposable
         {
             store.Put(ToBytes($"key_{i:D5}"), ToBytes($"value_{i}"));
         }
-        store.Flush();
+        store.Checkpoint();
 
         const int threads = 4;
         const int readsPerThread = 200;
@@ -275,7 +275,7 @@ public class LsmParallelIntegrationTests : IDisposable
         {
             store.Put(ToBytes($"key_{i:D5}"), ToBytes($"value_{i}"));
         }
-        store.Flush();
+        store.Checkpoint();
 
         const int readers = 2;
         const int writers = 2;
@@ -341,7 +341,7 @@ public class LsmParallelIntegrationTests : IDisposable
             {
                 store.Put(ToBytes($"key_{i:D6}"), ToBytes($"value_{i}"));
             }
-            store.Flush();
+            store.Checkpoint();
             sw.Stop();
             regularMs = sw.ElapsedMilliseconds;
         }
@@ -357,7 +357,7 @@ public class LsmParallelIntegrationTests : IDisposable
             {
                 store.Put(ToBytes($"key_{i:D6}"), ToBytes($"value_{i}"));
             }
-            store.Flush();
+            store.Checkpoint();
             sw.Stop();
             parallelMs = sw.ElapsedMilliseconds;
         }
@@ -394,7 +394,7 @@ public class LsmParallelIntegrationTests : IDisposable
                 }
             })).ToArray();
             Task.WaitAll(tasks);
-            store.Flush();
+            store.Checkpoint();
             sw.Stop();
             regularMs = sw.ElapsedMilliseconds;
         }
@@ -415,7 +415,7 @@ public class LsmParallelIntegrationTests : IDisposable
                 }
             })).ToArray();
             Task.WaitAll(tasks);
-            store.Flush();
+            store.Checkpoint();
             sw.Stop();
             parallelMs = sw.ElapsedMilliseconds;
             entriesMerged = store.EntriesMerged;
@@ -457,7 +457,7 @@ public class LsmParallelIntegrationTests : IDisposable
         {
             store.Put(ToBytes($"key_{i:D5}"), ToBytes($"value_{i}_{new string('x', 100)}"));
         }
-        store.Flush();
+        store.Checkpoint();
 
         TestContext.WriteLine($"Buffers submitted: {store.BuffersSubmitted}");
         TestContext.WriteLine($"Entries merged: {store.EntriesMerged}");

@@ -1,4 +1,5 @@
 using OutWit.Database.Core.Interfaces;
+using OutWit.Database.Core.Providers;
 
 namespace OutWit.Database.Core.LSM
 {
@@ -111,6 +112,114 @@ namespace OutWit.Database.Core.LSM
         public ISstableFileFactory? SstableFileFactory { get; set; }
 
         public static LsmOptions Default => new();
+        /// <summary>
+        /// Builds options from connection-string parameters.
+        /// </summary>
+        /// <remarks>
+        /// This mapping existed in ProviderRegistration and was reachable only when a store was
+        /// created through the provider registry. <c>WitDatabaseBuilder.BuildLsmStore</c>
+        /// constructs <c>StoreLsm</c> directly and asked only for a ready-made options object,
+        /// falling back to <c>new LsmOptions()</c> - so **every LSM setting in a connection string
+        /// was silently dropped**: MemTableSize, SyncWrites, EnableWal, BlockSize,
+        /// CompactionTrigger, the block cache, all of it. The secondary index stores did the same.
+        ///
+        /// It was invisible because the defaults are reasonable and because the one test that
+        /// claimed to cover it - MemTableSizeParameterWorksTest - passed for a different reason:
+        /// every commit used to flush the MemTable regardless of its size, so SSTables appeared
+        /// whatever the limit said. Measured: 5 MB written with MemTableSize=1024 and with the 4 MB
+        /// default produced exactly one SSTable each, where a 1 KB limit should produce thousands.
+        ///
+        /// Living on LsmOptions rather than in the registry is what makes it reachable from every
+        /// place that builds a store - the registry, the main store, and the per-index stores.
+        /// </remarks>
+        public static LsmOptions FromParameters(ProviderParameters parameters)
+        {
+            var options = new LsmOptions();
+
+            if (parameters == null)
+                return options;
+
+            // Both camelCase and PascalCase spellings are accepted, because a connection string is
+            // written by hand and the ADO.NET builder does not normalise unknown keys.
+            options.SyncWrites = Bool(parameters, options.SyncWrites, "SyncWrites", "syncWrites");
+            options.EnableWal = Bool(parameters, options.EnableWal, "EnableWal", "enableWal");
+            options.EnableBlockCache = Bool(parameters, options.EnableBlockCache,
+                "EnableBlockCache", "enableBlockCache");
+            options.BackgroundCompaction = Bool(parameters, options.BackgroundCompaction,
+                "BackgroundCompaction", "backgroundCompaction");
+
+            options.MemTableSizeLimit = Long(parameters, options.MemTableSizeLimit,
+                "MemTableSize", "memTableSize", "MemTableSizeLimit");
+            options.BlockCacheSizeBytes = Long(parameters, options.BlockCacheSizeBytes,
+                "BlockCacheSize", "blockCacheSize", "BlockCacheSizeBytes");
+
+            options.BlockSize = Int(parameters, options.BlockSize, "BlockSize", "blockSize");
+            options.Level0CompactionTrigger = Int(parameters, options.Level0CompactionTrigger,
+                "CompactionTrigger", "compactionTrigger", "Level0CompactionTrigger");
+
+            return options;
+        }
+
+        private static bool Bool(ProviderParameters p, bool fallback, params string[] names)
+        {
+            foreach (var value in Values(p, names))
+            {
+                if (value is bool b)
+                    return b;
+
+                if (value is string s)
+                {
+                    switch (s.Trim().ToLowerInvariant())
+                    {
+                        case "true": case "yes": case "1": case "on": return true;
+                        case "false": case "no": case "0": case "off": return false;
+                    }
+
+                    if (bool.TryParse(s, out var parsed))
+                        return parsed;
+                }
+            }
+
+            return fallback;
+        }
+
+        private static long Long(ProviderParameters p, long fallback, params string[] names)
+        {
+            foreach (var value in Values(p, names))
+            {
+                if (value is long l) return l;
+                if (value is int i) return i;
+                if (value is string s && long.TryParse(s, out var parsed)) return parsed;
+            }
+
+            return fallback;
+        }
+
+        private static int Int(ProviderParameters p, int fallback, params string[] names)
+        {
+            foreach (var value in Values(p, names))
+            {
+                if (value is int i) return i;
+                if (value is long l) return (int)l;
+                if (value is string s && int.TryParse(s, out var parsed)) return parsed;
+            }
+
+            return fallback;
+        }
+
+        private static IEnumerable<object> Values(ProviderParameters p, string[] names)
+        {
+            foreach (var name in names)
+            {
+                if (!p.Has(name))
+                    continue;
+
+                var value = p.Get<object?>(name, null);
+                if (value != null)
+                    yield return value;
+            }
+        }
+
     }
 }
 

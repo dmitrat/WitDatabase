@@ -95,7 +95,7 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 store.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i * 10));
             }
-            store.Flush();
+            store.Checkpoint();
             store.WaitForCompaction();
 
             // Read and verify
@@ -134,7 +134,7 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 store.Put(BitConverter.GetBytes(i), new byte[100]);
             }
-            store.Flush();
+            store.Checkpoint();
 
             // Verify
             for (int i = 0; i < count; i += 100) // Sample verification
@@ -190,7 +190,7 @@ namespace OutWit.Database.Core.Tests.LSM
                 .ToArray();
 
             Task.WaitAll(tasks);
-            store.Flush();
+            store.Checkpoint();
             store.WaitForCompaction();
 
             Assert.That(exceptions, Is.Empty, 
@@ -444,7 +444,7 @@ namespace OutWit.Database.Core.Tests.LSM
                 }
             }
 
-            store.Flush();
+            store.Checkpoint();
             store.WaitForCompaction();
 
             // Sample verification
@@ -497,7 +497,7 @@ namespace OutWit.Database.Core.Tests.LSM
                 }
             }
 
-            store.Flush();
+            store.Checkpoint();
             store.WaitForCompaction();
 
             // Final verification - should have latest values
@@ -571,7 +571,7 @@ namespace OutWit.Database.Core.Tests.LSM
                 random.NextBytes(value);
                 
                 store.Put(BitConverter.GetBytes(size), value);
-                store.Flush();
+                store.Checkpoint();
 
                 var result = store.Get(BitConverter.GetBytes(size));
                 Assert.That(result, Is.Not.Null, $"[{configName}] Value size {size} not found");

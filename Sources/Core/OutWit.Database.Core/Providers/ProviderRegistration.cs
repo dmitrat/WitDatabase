@@ -95,7 +95,7 @@ internal static class ProviderRegistration
             var directory = p.GetRequired<string>("directory");
             
             // Get LsmOptions if provided, or create from individual parameters
-            var options = p.Get<LSM.LsmOptions?>("options", null) ?? BuildLsmOptionsFromParameters(p);
+            var options = p.Get<LSM.LsmOptions?>("options", null) ?? LSM.LsmOptions.FromParameters(p);
             
             return new StoreLsm(directory, options);
         });
