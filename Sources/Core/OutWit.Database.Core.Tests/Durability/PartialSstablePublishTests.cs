@@ -203,7 +203,7 @@ public sealed class PartialSstablePublishTests
         for (int i = 0; i < 20; i++)
             store.Put(Key(i), Value(i));
 
-        store.Flush();
+        store.Checkpoint();
     }
 
     private string[] Tables() =>

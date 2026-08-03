@@ -126,7 +126,7 @@ namespace OutWit.Database.Core.Tests.LSM
                 {
                     tree.Put(ToBytes($"key{i:D5}"), ToBytes($"value{i}"));
                 }
-                tree.Flush();
+                tree.Checkpoint();
             
                 Assert.That(tree.SSTableCount, Is.GreaterThan(0));
             }
@@ -154,7 +154,7 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i * 10));
             }
-            tree.Flush();
+            tree.Checkpoint();
         
             // Verify all keys are accessible
             for (int i = 0; i < 100; i++)
@@ -229,7 +229,7 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i * 10));
             }
-            tree.Flush();
+            tree.Checkpoint();
 
             Assert.That(tree.SSTableCount, Is.LessThanOrEqualTo(3));
 
@@ -259,13 +259,13 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i));
             }
-            tree.Flush();
+            tree.Checkpoint();
 
             for (int i = 0; i < 50; i++)
             {
                 tree.Delete(BitConverter.GetBytes(i));
             }
-            tree.Flush();
+            tree.Checkpoint();
 
             tree.Compact();
 
@@ -299,7 +299,7 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i * 10));
             }
-            tree.Flush();
+            tree.Checkpoint();
 
             tree.WaitForCompaction();
             Assert.That(tree.IsCompacting, Is.False);
@@ -326,7 +326,7 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i * 10));
             }
-            tree.Flush();
+            tree.Checkpoint();
 
             const int threadCount = 8;
             const int readsPerThread = 1000;
@@ -439,7 +439,7 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 tree.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i * 10));
             }
-            tree.Flush();
+            tree.Checkpoint();
             
             var initialMisses = tree.BlockCache?.Misses ?? 0;
             for (int i = 0; i < 50; i++)
@@ -597,7 +597,7 @@ namespace OutWit.Database.Core.Tests.LSM
             Assert.That(afterPutSize, Is.GreaterThan(initialSize));
             
             // Flush to SSTable
-            tree.Flush();
+            tree.Checkpoint();
             
             var afterFlushSize = stats.ApproximateSizeInBytes;
             Assert.That(afterFlushSize, Is.GreaterThan(0));
@@ -652,7 +652,7 @@ namespace OutWit.Database.Core.Tests.LSM
             }
             
             // Flush to SSTable
-            tree.Flush();
+            tree.Checkpoint();
             
             // Add more data to MemTable
             for (int i = 10; i < 20; i++)

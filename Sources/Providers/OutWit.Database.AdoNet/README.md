@@ -236,6 +236,11 @@ Data Source=secure.witdb;Encryption=aes-gcm;Password=MyPassword123
 Data Source=./data;Store=lsm
 ```
 
+Suited to sustained high-volume ingest into tables with **few or no secondary indexes**, above
+roughly half a million rows. Measured at 500,000 rows: parity with the default B+Tree without
+indexes, and 1.6x slower with three. The default is the better choice for read-heavy work, small
+transactions and autocommit. See `Docs/WitSQL.md` § 14.9.
+
 ### Full Configuration
 ```
 Data Source=app.witdb;Store=btree;Cache=clock;CacheSize=5000;Encryption=aes-gcm;Password=secret;MVCC=true;Isolation Level=Snapshot

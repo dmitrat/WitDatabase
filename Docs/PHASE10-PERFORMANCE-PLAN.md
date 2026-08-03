@@ -766,3 +766,691 @@ change does not touch, which is exactly the shape that gets written up as a side
 **0.461 ms**. The three readings overlap and the honest finding is no measurable difference. Four
 readings in the sweep moved more than 10% between the two passes and none of them carries a
 conclusion here.
+
+---
+
+## 14. The LSM write path, first diagnosis
+
+`LsmWriteAnatomyBenchmarks`: 1,000 rows inserted in one transaction, four shapes differing by exactly
+one property, five modes, two passes. Every shape reports what the engine claimed and
+`IterationCleanup` checks it against a scan; nothing disagreed in either pass.
+
+### What is stable, and it is inside the LSM column
+
+| shape, 1,000 rows | `Lsm` pass 1 | `Lsm` pass 2 |
+|---|---|---|
+| Bare table — no key, no index | 118.1 ms | 111.7 ms |
+| PK only | 119.4 ms | 115.8 ms |
+| PK + 1 secondary index | 286.1 ms | 502.0 ms |
+| PK + 3 secondary indexes | 534.1 ms | 560.0 ms |
+
+Two findings survive both passes:
+
+- **The primary key is free.** Bare and PK-only are indistinguishable (118.1/111.7 against
+  119.4/115.8). Whatever LSM is paying, it is not the generated key or a uniqueness check on it.
+- **Secondary index maintenance dominates.** No index costs ~115 ms per 1,000 rows; three indexes
+  cost ~547 ms. That is **~430 ms of index maintenance per 1,000 rows — roughly 48 µs per row per
+  index** — where B+Tree pays close to nothing for the same indexes.
+
+So the LSM constant factor is two separate costs, not one:
+
+1. **The base row write is already expensive** — ~115 µs per row into a bare LSM table with nothing
+   else to maintain. For a structure whose whole purpose is that a write is an append to a memtable,
+   that is the number that should not be there.
+2. **Each secondary index multiplies it** — and this is what makes the LSM total 12-20x B+Tree rather
+   than 5x.
+
+### What is *not* established, and why
+
+**The B+Tree column was too unstable to quote per-shape ratios.** It read 22.7 ms and 6.0 ms for the
+same bare insert in two passes — a 3.6x swing — and `PK + 1 index` moved 286 → 502 ms on LSM. With
+`IterationSetup` recreating the database every iteration, BenchmarkDotNet is forced to
+`InvocationCount=1`, so a ShortRun measurement is three single insert batches and the variance is
+large.
+
+The `Lsm/BTree` ratio per shape is therefore **not reported here** — it would be a number computed
+from a denominator that moved by 3.6x. The stable cross-engine figure remains the one from § 10,
+taken with many more samples: LSM is 12-20x B+Tree per row overall.
+
+**This instrument needs more iterations before its per-shape ratios can be believed** — a limitation
+found by using it, and stated rather than worked around. The within-LSM comparisons above are quoted
+because they repeated; nothing else from this sweep is.
+
+### Where to look next
+
+The base cost points away from the memtable and at what happens around each write: `SyncWrites=false`
+in this mode, so it is not fsync, which leaves a per-row write-ahead-log append and memtable rotation
+as the candidates. `StoreLsm` truncates its WAL the moment a memtable is flushed, so flush frequency
+is directly observable and is the cheapest next measurement.
+
+The index cost is the larger share and has a specific suspect worth testing first: whether index
+maintenance performs a **read** per inserted row. A read on an LSM store must consult the memtable
+and every SSTable, which is exactly the operation LSM is worst at, and it would explain why the same
+indexes cost nearly nothing on a B+Tree.
+
+### On the product question
+
+The measurements say LSM currently loses to B+Tree by 12-20x **on writes** — the workload an LSM tree
+is chosen for. That is a defect signature rather than a trade-off, and the two costs above are where
+it lives. Whether it is worth fixing is a product decision, but "LSM is the write-optimised option"
+is not true of this engine today, and no configuration guidance should say so until it is.
+
+---
+
+## 15. The LSM constant factor found: the write-ahead log bypasses the OS write cache
+
+The § 14 diagnosis said the cost is two things - a base row write of ~115 µs and secondary index
+maintenance at ~48 µs per row per index - and named the next suspects. Both turn out to be one cause.
+
+### The mechanism
+
+`WriteAheadLogBase` opens its file like this:
+
+```csharp
+m_stream = new FileStream(filePath, mode, FileAccess.ReadWrite, FileShare.Read, 4096,
+                          FileOptions.WriteThrough);
+```
+
+**`FileOptions.WriteThrough` tells the OS not to cache the write** - every append goes to the
+device. `AppendEntry` also calls `SeekToEnd()` first, which sets `Position = Length`; on a
+`FileStream` both reading `Length` and assigning `Position` flush the write buffer, so the 4 KB
+buffer never accumulates anything either.
+
+The result is one device-level write per row **per store**. In LSM mode every secondary index gets
+its **own** `StoreLsm` with its own WAL (`WitDatabaseBuilder.CreateLsmIndexFactory`), so three
+indexes mean four write-through streams per inserted row. That is exactly the shape § 14 measured:
+a large base cost, multiplied by the number of indexes.
+
+### It contradicts its own option
+
+`LsmOptions.SyncWrites` documents itself as:
+
+> *Whether to sync WAL to disk after each write operation. If false, relies on OS buffering (faster
+> but less durable per-write). Default: false (matches SQLite behavior…)*
+
+The default is `false` and the benchmark configuration sets it explicitly. **There is no OS buffering
+to rely on** - the stream is opened in a mode that forbids it. The option promises the fast path and
+the file handle refuses to provide it.
+
+### Measured, by removing it
+
+`FileOptions.WriteThrough` replaced with `FileOptions.None`, nothing else changed, same benchmark,
+1,000 rows in one transaction:
+
+| shape | `Lsm` with WriteThrough | `Lsm` without | |
+|---|---|---|---|
+| Bare table, no key no index | 111.7-118.1 ms | **33.10 ms** | 3.4x |
+| PK only | 115.8-119.4 ms | **36.91 ms** | 3.2x |
+| PK + 1 secondary index | 286.1-502.0 ms | **41.35 ms** | 7-12x |
+| PK + 3 secondary indexes | 534.1-560.0 ms | **44.30 ms** | 12x |
+
+**The index multiplication disappears.** Going from no index to three cost +375% before and +34%
+after. And LSM stops losing to the B+Tree store: at three indexes it measures 44.30 ms against
+B+Tree's 49.27 ms in the same run - faster.
+
+So this one flag is most of the 12-20x reported in § 10, and it is the answer to "is there a defect
+in the LSM implementation": yes, and it is one line.
+
+### Whether removing it is safe - the part that needs a decision
+
+Durability does **not** depend on it. `WriteAheadLogBase.Sync()` calls
+`m_stream.Flush(flushToDisk: true)` - a real fsync - and that is what `SyncWrites=true` invokes per
+write and what `AppendCommitTransaction` invokes on commit. `WriteThrough` is redundant with the
+durable path and defeats the fast one.
+
+What removing it genuinely changes is the *fast* path: with `SyncWrites=false` a write would now sit
+in the OS cache until a sync, which is what the option says it does and what SQLite does. Today it
+reaches the device. **Nobody could have been relying on that deliberately** - it is undocumented and
+contradicts the option's own text - but it is a real reduction in accidental durability and this
+project does not make durability changes quietly. Phase 4 already established that LSM durability is
+partial in a different way: `SyncWrites` syncs the WAL only, and the WAL is truncated the moment the
+memtable is flushed into an SSTable that was never fsynced.
+
+**A second, smaller question found on the way:** index stores are built with `new LsmOptions()` -
+plain defaults - so a connection string's `SyncWrites` never reaches them. Whatever is decided for
+the main store, the indexes should follow it rather than silently doing something else.
+
+**Not changed here.** The measurement above was taken by editing the file and reverting it; nothing
+in this commit alters the engine. The fix is one line, its performance case is measured, and its
+durability case is stated - it wants an explicit decision rather than an assumption.
+
+---
+
+## 16. Fix two: the write-ahead log no longer bypasses the OS write cache
+
+`FileOptions.WriteThrough` is gone from `WriteAheadLogBase`. Durability never depended on it and does
+not now: it comes from `Sync()`, which calls `Flush(flushToDisk: true)` - `StoreLsm` calls it per
+write when `SyncWrites` is on and the LSM log calls it on commit, and `TransactionalStore` calls it
+through the journal on commit.
+
+**Verified rather than argued.** The full suite is green at **6,643 tests**, and separately the
+**13 `Category=Crash` tests pass** - the out-of-process kill tests phase 4 built to prove a committed
+transaction survives a process being killed. Those are the arbiter for this change, and they are
+unchanged.
+
+### What it bought, two passes
+
+`InsertBenchmarks`, `UpdateBenchmarks`, `TransactionBenchmarks`, 100 rows, `Lsm` against `BTree`:
+
+| operation | Lsm/BTree pass 1 | pass 2 |
+|---|---|---|
+| `INSERT` without a transaction, x100 | 4.76x | 5.60x |
+| `INSERT` in a transaction | 3.67x | 3.86x |
+| Transaction with savepoint | 2.32x | 2.57x |
+| `UPDATE` by PK | 1.81x | 1.80x |
+| `UPDATE … RETURNING` | 1.81x | 1.75x |
+| Single transaction, N `INSERT`s | 1.75x | 1.73x |
+| Bulk `UPDATE` | 1.68x | 1.68x |
+| `UPDATE` by indexed column | 1.69x | 1.55x |
+| Sequential reads x100 | 1.08x | 1.18x |
+| Transaction rollback | 1.04x | 0.98x |
+
+**The LSM penalty went from 12-20x to 1.0-5.6x**, and reads and rollback reached parity.
+
+Two readings are excluded rather than quoted: `INSERT … RETURNING` moved 0.92x → 1.69x because its
+B+Tree denominator halved between passes, and `Mixed Tx` produced a 98x B+Tree outlier in pass two
+(2.90 ms → 284.21 ms). Neither carries a conclusion.
+
+### The remaining penalty is a fixed cost per transaction, not per row
+
+The anatomy at **1,000 rows** measured LSM at 44.30 ms against B+Tree's 49.27 ms with three
+secondary indexes - LSM *faster*. These benchmarks at **100 rows** put it 1.7-3.9x behind. Same
+engine, same fix, opposite verdict, and the difference is batch size: what is left is a fixed cost
+per transaction that amortises as the batch grows.
+
+That is also the answer to *"is there a workload where LSM helps?"* - **on the evidence so far, no,
+and the suite cannot answer it properly.** LSM reaches parity on reads and on large batches and wins
+nowhere. The workload the structure is designed for - large sequential write batches - is not in the
+suite at all: `InsertBenchmarks` stops at 5,000 rows and the anatomy at 1,000. Answering it needs a
+benchmark aimed at that shape, not another reading of the ones that exist.
+
+**Autocommit remains the worst place**: ~12.8 ms per single inserted row on LSM against ~2.7 ms on
+B+Tree, roughly 5x, and the fix barely moved it. It is a separate cost from the one removed here and
+has not been diagnosed.
+
+### Found on the way and not fixed
+
+Index stores are constructed with `new LsmOptions()` in
+`WitDatabaseBuilder.CreateLsmIndexFactory`, so a connection string's `SyncWrites` never reaches them
+- every secondary index silently runs on defaults. Whatever is decided for the main store, the
+indexes should follow it rather than doing something else unannounced.
+
+---
+
+## 17. The LSM audit, second pass: two more defects, and why the obvious fix cannot ship yet
+
+Context for this pass, from the author: **LSM is meant to be a supported choice**, not a curiosity -
+WitDatabase is built as a construction kit where a workload picks its configuration, and LSM is the
+one intended for write-heavy work. Measured against that intent, "slower than the B+Tree on writes"
+is not a trade-off to document; it is a defect to find.
+
+### 17.1 The number that pointed at it was already in the data
+
+| | one transaction of 100 rows | 100 transactions of 1 row |
+|---|---|---|
+| `Lsm` | 10.93 / 11.11 ms | 1281.8 / 1097.9 ms → **11.0 / 12.8 ms per transaction** |
+| `BTree` | 2.98 / 2.88 ms | 269.1 / 196.1 ms → 2.69 / 1.96 ms per transaction |
+
+**A transaction costs ~11 ms on LSM whether it contains one row or a hundred.** The rows are nearly
+free; the commit is everything. That is a fixed per-commit price, and it is 4-5x the B+Tree's.
+
+### 17.2 Defect: every commit writes an SSTable
+
+`Transaction.Commit` calls `m_store.Flush()`, and `StoreLsm.Flush()` flushed the MemTable whenever it
+held **anything at all**:
+
+```csharp
+if (m_activeMemTable.Count > 0)
+    FlushMemTableInternal();
+```
+
+So every commit created a file, wrote its blocks, bloom filter and index, fsynced it, and handed the
+compactor more work. That is the exact opposite of what an LSM tree is for: the MemTable exists so
+that many writes accumulate in memory and reach disk **once**, as one large sorted file.
+`MemTableSizeLimit` was unreachable in transactional mode - the flush policy was effectively "one
+SSTable per commit".
+
+**Measured**, by making `Flush()` sync the write-ahead log instead - which is what an LSM log is for,
+and what RocksDB does - and flush the MemTable only when it is actually due:
+
+| | before | after |
+|---|---|---|
+| 50 transactions x 1 row | 14.67 ms/tx | **2.95 ms/tx** |
+| 50 transactions x 10 rows | 10.57 ms/tx | **2.35 ms/tx** |
+| 50 transactions x 100 rows | 13.32 ms/tx | **5.30 ms/tx** |
+
+The cost stops being fixed and starts growing with the rows written, which is the correct shape. A
+scan still returns every row, and the 13 `Category=Crash` tests still pass - durability moves from
+the SSTable to the WAL, and `Open` already replays the WAL.
+
+### 17.3 Defect: `MemTableSize` from the connection string is inert
+
+Trying to ship § 17.2 broke `MemTableSizeParameterWorksTest`, which sets `MemTableSize=1024`, writes
+~10 KB and asserts SSTables exist. **It had been passing for the wrong reason**: every commit flushed,
+so it would have passed with the parameter wired to nothing.
+
+Measured directly, 5 MB of payload in one transaction:
+
+| `MemTableSize` | SSTables produced |
+|---|---|
+| 1,024 bytes | **1** |
+| 4,194,304 bytes (the default) | **1** |
+
+At a 1 KB limit that should be thousands of flushes. The two are identical, so **the connection
+string's value never reaches `LsmOptions.MemTableSizeLimit`** - the store always uses the 4 MB
+default. The size threshold itself works: one SSTable appears once the default is crossed, and none
+appears below it.
+
+`ProviderRegistration` does read `MemTableSize` into the options, and `WitDbConnectionStringBuilder`
+knows the keyword, so the break is between them. Locating it exactly is a bounded next step.
+
+### 17.4 Why § 17.2 is not shipped here
+
+The change is drafted and measured, and it **breaks seven tests**, so it is deliberately not in this
+branch:
+
+- **Six in `Core.Tests`** use `Flush()` as a lever meaning *"write an SSTable now"* - they test
+  compaction and failed-flush handling (`ControlCompactionReallyReplacesTheTables`,
+  `RowsOfAFailedFlushAreStillScannable`, and four more). They are not testing the commit contract,
+  and they pin real defects found in phases 4 and 5, so they must not be rewritten casually. What
+  they need is an explicit force-flush entry point, separate from `Flush()`-means-make-durable.
+- **One in `AdoNet.Tests`** is § 17.3 - a defect the change exposes rather than causes.
+
+And § 17.3 makes § 17.2 load-bearing in a way it should not be yet: with the commit flush gone, the
+size threshold becomes the **only** thing that ever flushes a MemTable, so a connection string asking
+for a small MemTable would be ignored and the MemTable would grow to 4 MB regardless.
+
+**So the order is: fix the parameter, split `Flush()` into "make durable" and "force out", update the
+six tests to say which they mean, and only then remove the per-commit SSTable.** Each of those is
+small; doing them together, at the end of a long session, is how a durability path gets broken
+quietly.
+
+### 17.5 Where this leaves the construction-kit intent
+
+Three defects now separate the LSM store from what it is supposed to be, and they compound:
+
+1. **The WAL bypassed the OS write cache** - fixed, 12-20x down to 1.0-5.6x.
+2. **Every commit wrote an SSTable** - diagnosed and measured, ~5x on the per-commit cost, not yet
+   shipped.
+3. **`MemTableSize` is inert** - so the one remaining flush policy cannot be configured at all.
+
+None of them is a trade-off inherent to log-structured storage. All three are the implementation
+doing more I/O than the design calls for, and the first two are exactly the properties that make an
+LSM tree worth choosing. Until 2 and 3 are fixed, the honest statement is that **LSM is not yet the
+write-heavy option this project intends it to be** - and after them it is worth re-asking, with a
+benchmark aimed at sustained high-volume ingest, which the suite still does not have.
+
+---
+
+## 18. Fixes three, four and five: the LSM store now behaves like one
+
+The order § 17.4 laid out, carried out in that order because each step depends on the one before.
+
+### 18.1 Every LSM connection-string parameter was inert
+
+Not just `MemTableSize`. `WitDatabaseBuilder.BuildLsmStore` constructed `StoreLsm` directly and asked
+only for a **ready-made** options object:
+
+```csharp
+var lsmOptions = Options.StoreParameters.Get<LsmOptions>("options") ?? new LsmOptions();
+```
+
+The mapping that turns connection-string keys into `LsmOptions` lived in `ProviderRegistration` and
+was reachable only through the provider registry, which this path does not use. So `MemTableSize`,
+`SyncWrites`, `EnableWal`, `BlockSize`, `CompactionTrigger`, the block cache settings - **every knob
+the connection-string builder documents** - were dropped for the main store. The per-index stores did
+the same with their own `new LsmOptions()`.
+
+The mapping moved onto `LsmOptions.FromParameters`, where the registry, the main store and the index
+stores can all reach it. Measured, 5 MB written in one transaction:
+
+| `MemTableSize` | SSTables before | after |
+|---|---|---|
+| 1,024 bytes | 1 | **5,556** |
+| 4,194,304 (default) | 1 | **2** |
+
+Before, the two were indistinguishable. Now the knob turns, and it turns by a factor of 2,778.
+
+**Why it hid for so long:** the defaults are reasonable, and the one test that claimed to cover it -
+`MemTableSizeParameterWorksTest` - passed for a different reason. Every commit flushed the MemTable
+regardless of its size, so SSTables appeared whatever the limit said. The test would have passed with
+the parameter wired to nothing, which is exactly what it was.
+
+### 18.2 `Flush()` and `Checkpoint()` are now different operations
+
+`IKeyValueStore.Flush()` means **make durable** and is what a commit calls.
+`IKeyValueStore.Checkpoint()` means **force the accumulated state out now** and is what a size
+threshold, maintenance, or a caller wanting an on-disk sorted file calls. `Checkpoint` defaults to
+`Flush`, so only stores with an in-memory staging area differ - nothing else had to change.
+
+This is the split every database makes and this engine had collapsed: PostgreSQL commits by syncing
+the WAL and moves buffers on `CHECKPOINT`; SQLite has `PRAGMA synchronous` and
+`PRAGMA wal_checkpoint`; RocksDB has `SyncWAL()` and `Flush()`. **Durability is an operation on the
+log; reorganising the data structure is a separate decision.**
+
+The 61 call sites in the LSM tests that meant *"write an SSTable now"* say `Checkpoint()`, which is
+what they always meant and what they always did - the transformation preserves their behaviour
+exactly rather than relaxing them to fit a fix.
+
+### 18.3 The per-commit SSTable is gone
+
+`StoreLsm.Flush()` now syncs the write-ahead log and flushes the MemTable **only when it is due**.
+`Recover` already replays the WAL on open, so a crash after commit restores the MemTable. With
+`EnableWal` off there is nothing to recover from, so the old behaviour is kept - the MemTable is then
+the only record of those writes.
+
+Measured, 50 transactions, three rounds each:
+
+| rows per transaction | before | after |
+|---|---|---|
+| 1 | 14.67 ms/tx | **3.00 / 2.17 / 2.11 ms/tx** |
+| 10 | 10.57 ms/tx | **2.32 / 2.33 / 2.38 ms/tx** |
+| 100 | 13.32 ms/tx | **4.54 / 5.03 / 4.47 ms/tx** |
+
+Roughly **5-7x on a small commit**, and - the part that matters more - **the cost now grows with the
+rows written**. Before, a transaction cost the same whether it held one row or a hundred, which is
+the signature of paying for something other than the work.
+
+### 18.4 The tests caught a real defect in the fix
+
+Forwarding `Checkpoint()` through `LsmParallelStore` straight to the wrapped store skipped the
+buffer drain that `Flush()` does, so three parallel-store tests read **0 rows where they expected 800
+and 1,000** - writes still sitting in `LsmWriteBuffer`. That is the same read-your-own-writes hazard
+that once made this store lose acknowledged writes, and it appeared within an hour of touching the
+path. `Checkpoint()` drains first now.
+
+Worth recording plainly: the fix was wrong, the existing suite said so immediately, and that is what
+those tests were built for in phases 4 and 5.
+
+### 18.5 State
+
+Green: **6,643 tests** across all five projects, and the **13 `Category=Crash` tests** - phase 4's
+out-of-process kill tests - unchanged.
+
+Three defects closed in this pass, on top of § 16's:
+
+| | |
+|---|---|
+| WAL bypassed the OS write cache | § 16, PR #109 |
+| Every LSM connection-string parameter inert | § 18.1 |
+| `Flush()` conflated durability with reorganisation | § 18.2 |
+| Every commit wrote an SSTable | § 18.3 |
+
+**What is not yet answered** is the question that started this: whether there is a workload where LSM
+wins. It is now plausible for the first time - the structure finally does what an LSM tree does - but
+plausible is not measured, and the suite still has no sustained high-volume ingest benchmark to
+measure it with. That is the next experiment.
+
+---
+
+## 19. The ingest benchmark, and the answer to "does LSM ever win?"
+
+`IngestBenchmarks` is the workload the suite never had: tens to hundreds of thousands of rows written
+in steady batches of 1,000, which is what an event pipeline does. At this volume the MemTable fills
+repeatedly, SSTables are genuinely produced and the compactor has real work - so the structure is
+finally asked the question it is chosen to answer. Every existing write benchmark stopped at 5,000
+rows in transactions of 100, where a B+Tree's update-in-place is at its best and an LSM has nothing
+to amortise over.
+
+Each shape returns what the engine claimed and `IterationCleanup` checks it against a scan. Nothing
+disagreed.
+
+### The measurement, two passes
+
+Medians, because the means carry outliers at the larger size:
+
+| | pass 1 | pass 2 |
+|---|---|---|
+| **50,000 rows** | | |
+| LiteDB | 275.9 ms | 262.7 ms |
+| SQLite | 398.4 ms | 397.1 ms |
+| WitDatabase, B+Tree | 486.7 ms | 491.8 ms |
+| WitDatabase, **LSM** | 549.3 ms | 552.5 ms |
+| **200,000 rows** | | |
+| LiteDB | 1,068.3 ms | 1,057.8 ms |
+| SQLite | 2,420.0 ms | 1,601.7 ms |
+| WitDatabase, LSM | 2,585.4 ms | 3,361.0 ms |
+| WitDatabase, B+Tree | 2,066.9 ms | 5,033.9 ms |
+
+**Only the 50,000-row block is quoted as a result.** At 200,000 the WitDatabase readings move by up
+to 2.4x between identical passes (B+Tree 2,067 → 5,034) and SQLite by 1.5x. Allocation is ~1.8 GB per
+operation there, so the run is measuring the garbage collector and the disk as much as the engine.
+Two passes are not enough at that size; saying so is the finding, not a number.
+
+### The answer
+
+**No. On the workload an LSM tree exists for, LSM still does not win** - it is **~12% behind the
+B+Tree store** at 50,000 rows, and the gap repeated across both passes (549/553 against 487/492).
+
+That is a very different sentence from the one this phase started with. Before the four fixes, LSM
+was **12-20x** behind on writes. It is now within about a tenth. But "nearly as good as the
+alternative on its own home ground" is not a reason to choose it, and no configuration guidance
+should suggest otherwise.
+
+Against the other engines on this workload, WitDatabase is 1.85x LiteDB and 1.24x SQLite - and the
+allocation claim that § 5 had to withdraw **does hold here**: ~450 MB against LiteDB's 609-649 MB per
+50,000 rows, about 30% less, on the workload where allocation matters most. SQLite's 31 MB is what a
+native engine with no managed object graph costs, and is not the target.
+
+### What would have to be true for LSM to win
+
+The remaining ~12% is not obviously a defect - it may simply be what this LSM costs. Three things
+that were found but not chased could each be worth more than that margin:
+
+- **Each secondary index still gets its own `StoreLsm`** - its own WAL, MemTable and compaction
+  schedule. RocksDB shares one WAL across column families for exactly this reason. This benchmark
+  has no secondary indexes, so it does not even exercise the cost.
+- **Autocommit is still ~5x the B+Tree**, undiagnosed. Group commit - several transactions sharing
+  one log sync, as PostgreSQL and MySQL do - is the standard answer and would help both stores.
+- **Compaction is not measured at all.** Nothing here reports how much of the time is compaction, or
+  what read amplification the resulting SSTable count costs. Both are the levers an LSM is tuned on.
+
+The honest position for a construction kit: **LSM is now a defensible option rather than a broken
+one, but there is still no measured workload where choosing it beats the default.** Finding one, if
+it exists, means measuring the three items above - not re-running this benchmark.
+
+---
+
+## 20. There is a workload where LSM wins - and § 19 measured the wrong volume
+
+§ 19 concluded "LSM still does not win", 12% behind the B+Tree store on batched ingest. **That
+conclusion was drawn from a benchmark that never reached the volume where an LSM does its work**, and
+the store's own statistics say so.
+
+### The instrument was blind, and its own counters proved it
+
+Driving the stores directly, with no SQL, and reading `StoreLsm.Statistics` - which nothing in this
+project had ever looked at:
+
+| rows | flushes | compactions | SSTables |
+|---|---|---|---|
+| 50,000 | **0** | **0** | **0** |
+| 200,000 | 3 | 0 | 3 |
+| 500,000 | 9 | 2 | 3 |
+| 1,000,000 | 19 | 5-6 | 3-7 |
+
+At 50,000 rows the payload is ~3 MB, below the 4 MB `MemTableSizeLimit`, so **nothing was ever
+flushed**. The LSM store was running as an in-memory map with a write-ahead log: paying the log's
+cost and getting none of the sequential-write benefit that is the entire point. § 19's headline
+number was measured there.
+
+Compaction does not appear until 500,000 rows. So "what does compaction cost" had no answer because
+no benchmark in the suite ever caused one.
+
+### At real volume, LSM is faster
+
+Microseconds per row, five rounds each, ingest in batches of 1,000 through `TransactionalStore`:
+
+| | B+Tree | LSM |
+|---|---|---|
+| **500,000 rows** | 11.05 / 13.30 / 12.58 / 9.86 / 10.69 | 10.93 / 9.86 / 9.81 / 10.63 / 9.99 |
+| median | 11.05 | **9.99 - ~10% faster** |
+| **1,000,000 rows** | 12.36 / 12.95 / 13.06 / 12.61 / 12.29 | 11.03 / 12.50 / 12.81 / 10.55 / 10.39 |
+| median | 12.61 | **11.03 - ~13% faster** |
+
+LSM is ahead at both, its spread is tighter (9.81-10.93 against B+Tree's 9.86-13.30 at 500,000), and
+it is ahead **while doing 19 flushes and 5 compactions** - the work is happening, not being deferred
+out of the measurement.
+
+Both engines get slower per row as the table grows, which is expected: a B+Tree deepens and its
+writes randomise, an LSM writes more SSTables and compacts more. The B+Tree degrades faster
+(11.05 → 12.61, +14%) than the LSM (9.99 → 11.03, +10%), which is the direction the structures
+predict.
+
+### So the answer to the question this phase kept asking
+
+**Yes - sustained high-volume ingest, above roughly half a million rows, is a workload where
+`Store=lsm` beats the default.** That is exactly what the design intent said it should be, and it is
+true for the first time only because the four defects in § 16 and § 18 are fixed. Before them LSM was
+12-20x behind and no volume would have rescued it.
+
+The construction-kit position is now defensible and can be stated to a consumer: **choose LSM for
+sustained write-heavy ingest at scale; keep the B+Tree default for everything else**, including
+anything read-heavy or transactional at small batch sizes, where LSM is still behind.
+
+### What this result does not cover, stated so it is not over-read
+
+- **No secondary indexes.** This drives the store directly, and index maintenance was the multiplier
+  that made LSM 12-20x worse before the fixes. Each index still gets its own `StoreLsm` with its own
+  log, MemTable and compaction schedule. A real table with three indexes may not show this advantage
+  at all - that is the next thing to measure, and § 18 did not remove the design, only the flag.
+- **End-to-end it is still behind at small volume.** § 19's 50,000-row figure stands for what it
+  measured: through SQL, at a volume where nothing flushes, LSM costs more. Both statements are true
+  and they are about different things.
+- **Compaction cost is now observable but not attributed.** 5 compactions in a 1,000,000-row ingest
+  is measured; how much of the wall clock they take is not.
+
+---
+
+## 21. The LSM advantage does not survive secondary indexes
+
+§ 20 measured LSM 10-13% faster than the B+Tree store on sustained ingest - with **no indexes at
+all**, driving the stores directly. The guidance that would follow, *"choose LSM for write-heavy
+ingest"*, is worthless if it does not hold for a table that has indexes, which every real one does.
+So it was measured, through SQL, which is how a consumer meets it.
+
+500,000 rows, batches of 1,000, microseconds per row, three rounds:
+
+| | B+Tree | LSM |
+|---|---|---|
+| **no indexes** | 15.10 / 13.56 / 17.04 | 18.92 / 15.36 / 14.89 |
+| median | 15.10 | 15.36 — **parity** |
+| **3 secondary indexes** | 23.16 / 21.82 / 24.06 | 36.86 / 35.37 / 40.24 |
+| median | 23.16 | **36.86 — 1.59x slower** |
+
+The ranges do not overlap: 21.8-24.1 against 35.4-40.2. Nothing here is noise.
+
+### The cost per index
+
+| | added by 3 indexes | per index |
+|---|---|---|
+| B+Tree | +8.06 µs/row | 2.7 µs/row |
+| LSM | +21.5 µs/row | **7.2 µs/row** |
+
+**Index maintenance costs 2.7x more on LSM than on the B+Tree**, and `SSTables 8` against `2`
+confirms why: each index store flushes on its own.
+
+### The mechanism was named from the code and is now measured
+
+`WitDatabaseBuilder.CreateLsmIndexFactory` gives **every secondary index its own `StoreLsm`** - its
+own write-ahead log, its own MemTable with its own 4 MB budget, its own compaction schedule. Three
+indexes are four independent LSM stores per table. That is not how an LSM database is built: RocksDB
+puts many logical key spaces in **column families sharing one write-ahead log and one MemTable
+budget**, precisely so that a write is one sequential append rather than N.
+
+§ 18 removed the flag that made this catastrophic. It did not change the design, and the design is
+what is left.
+
+### What the guidance has to say, and it is narrower than § 20 implied
+
+- **`Store=lsm` beats the default on sustained high-volume ingest into a table with few or no
+  secondary indexes** - above roughly half a million rows, where the MemTable flushes repeatedly.
+- **With three secondary indexes it is 1.6x worse**, and the penalty grows with the number of
+  indexes.
+- Everything else - reads, small transactions, autocommit - the B+Tree default is better.
+
+Writing only the first line would have been the mistake this measurement exists to prevent.
+
+### So the investigation closes here, with the next target chosen by measurement
+
+The per-index `StoreLsm` is now the concrete next piece of work, and it has what this project
+requires before any optimisation: a measured cost (7.2 against 2.7 µs per row per index), a named
+mechanism (N+1 independent logs, MemTables and compactors), and a known shape of fix (one shared log
+across index key spaces, as RocksDB does). It is a design change rather than a defect fix, and it
+should be its own phase with its own before-and-after.
+
+Also still open, unchanged: LSM autocommit ~5x the B+Tree and undiagnosed; compaction observable but
+its share of wall clock unattributed; and the second planner defect from § 11.
+
+---
+
+## 22. Phase 10, closed
+
+Opened on a baseline that did not exist and a suite nobody had read. Closed with five defects fixed,
+one release out, and consumer-facing guidance that rests on measurement.
+
+### What was fixed
+
+| | where | released |
+|---|---|---|
+| Planner scanned 1,000 rows per query execution to estimate a row count | § 8, § 12 | **11.1.0** |
+| LSM write-ahead log bypassed the OS write cache | § 16 | pending |
+| Every LSM connection-string parameter was inert | § 18.1 | pending |
+| `Flush()` conflated "make durable" with "reorganise" | § 18.2 | pending |
+| Every LSM commit wrote an SSTable | § 18.3 | pending |
+
+The first took the unique-index seek from **23x slower than LiteDB to 4x faster** - 97x on the
+operation itself - and improved every query carrying a `WHERE`. The other four took the LSM store
+from **12-20x behind the B+Tree on writes to parity**, and to a genuine 10-13% advantage at the
+storage layer on high-volume ingest.
+
+### What the instrument needed first, and it needed a lot
+
+The suite had **no assertion of any kind in 113 benchmark methods**: nothing had ever checked that
+WitDatabase, SQLite and LiteDB compute the same answer. It does now, and it is green. A LiteDB
+benchmark had been throwing and reporting `NA` since January. Six classes of seven measured a
+configuration no consumer runs. The `Ratio` column compared unlike operations. Write benchmarks
+returned `void`, so an engine that wrote nothing benchmarked as fast.
+
+Mutation testing, recorded as delivered in phase 0, had **never produced a single result** - the
+weekly workflow failed in 36 seconds on an option Stryker does not have.
+
+### Claims that measurement destroyed
+
+Five, each of which had been quoted as fact:
+
+- "78 benchmarks have never been run" - they had, and there are 99 of them.
+- Three benchmark projects "never tracked by git" - tracked, deleted, recoverable.
+- "LSM is non-linear in N, a defect signature" - its per-row cost *falls* as the table grows.
+- "WitDatabase allocates ~30% less than LiteDB" - true of one workload, false in the default
+  configuration, and it allocates 33x more on the unique-index seek.
+- `LIMIT` not short-circuiting - the strongest lead in the stale reports, already fixed.
+
+Two more were mine, corrected in the same session: `ORDER BY` called superlinear on a single
+interval, and a refutation built on a control that did not vary what it was believed to vary.
+
+### The rule that earned itself four times
+
+**One timing run lies.** In the mode sweep, pass one showed `BTreeParallelAuto` with a 4.13x per-row
+regression - the only non-linearity in the sweep, exactly the kind of thing that gets written up.
+Pass two: x0.83. A second anomaly died the same way, an apparent `Tx Rollback` regression after the
+planner fix turned out to be noise, and the store-level LSM runs threw a 12.8-second outlier into an
+otherwise 1.6-second set.
+
+And once, the counters caught what the timings could not: § 19 concluded "LSM does not win" from a
+benchmark where `StoreLsm.Statistics` reports **0 flushes and 0 compactions**. The measurement was of
+an LSM that had never done anything an LSM does. **Check that the mechanism under test actually ran.**
+
+### Handed forward, each with a measured reason
+
+- **One shared write-ahead log across index key spaces.** Every secondary index has its own
+  `StoreLsm` today. Cost measured: 7.2 µs per row per index against the B+Tree's 2.7, and it is what
+  removes LSM's advantage on any realistic schema. A design change, not a defect fix - its own phase.
+- **LSM autocommit, ~5x the B+Tree**, undiagnosed. Group commit is the standard answer and would
+  help both stores.
+- **The second planner defect** (§ 11): `RANGE_SELECTIVITY` is a constant, so an applicable index
+  always wins a range comparison. A 75% range over a low-cardinality index costs 2.5x the scan it
+  replaced. Needs distinct-value statistics the engine does not keep.
+- **Compaction's share of wall clock** - now observable, not yet attributed.
+- **Mutation testing** - the invalid flag is gone, but that the workflow completes is unproven.
+- **`[BenchmarkCategory]` on 113 methods**, which is what would let the `Ratio` column return.

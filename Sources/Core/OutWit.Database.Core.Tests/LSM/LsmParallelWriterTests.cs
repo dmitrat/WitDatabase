@@ -506,7 +506,7 @@ public class LsmParallelWriterTests : IDisposable
         await writer.FlushAllAsync();
 
         // Force store flush
-        store.Flush();
+        store.Checkpoint();
 
         // Verify data
         for (int i = 0; i < 200; i++)

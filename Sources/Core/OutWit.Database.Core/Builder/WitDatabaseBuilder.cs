@@ -412,7 +412,10 @@ public sealed class WitDatabaseBuilder
     {
         var cryptoProvider = BuildCryptoProvider();
         var directory = Options.LsmDirectory ?? Options.FilePath!;
-        var lsmOptions = Options.StoreParameters.Get<LsmOptions>("options") ?? new LsmOptions();
+        // Without FromParameters this was new LsmOptions(), so every LSM setting in a
+        // connection string was dropped for the main store. See LsmOptions.FromParameters.
+        var lsmOptions = Options.StoreParameters.Get<LsmOptions>("options")
+                         ?? LsmOptions.FromParameters(Options.StoreParameters);
 
         if (cryptoProvider != null)
         {
@@ -767,7 +770,10 @@ public sealed class WitDatabaseBuilder
                 if (!Directory.Exists(indexPath))
                     Directory.CreateDirectory(indexPath);
 
-                var lsmOptions = new LsmOptions();
+                // The indexes follow the database's own configuration. They used to get
+                // plain defaults, so a connection string tuning the LSM store tuned only
+                // half of it and the indexes quietly did something else.
+                var lsmOptions = LsmOptions.FromParameters(Options.StoreParameters);
                 if (cryptoProvider != null && encryptionSalt != null)
                 {
                     lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider.Clone(), encryptionSalt);

@@ -154,7 +154,7 @@ public sealed class ScanDuringCompactionTests
             for (int i = 0; i < ROWS / 4; i++)
                 store.Put(Key(batch * (ROWS / 4) + i), Value(batch * (ROWS / 4) + i));
 
-            store.Flush();
+            store.Checkpoint();
         }
     }
 

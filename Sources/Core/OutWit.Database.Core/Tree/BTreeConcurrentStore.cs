@@ -376,6 +376,26 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
 
     /// <inheritdoc/>
     /// <remarks>
+    /// Forwarded rather than left to the interface default, which would call <see cref="Flush"/> -
+    /// on a wrapped LSM store that means "make durable" and would quietly not reorganise anything.
+    /// </remarks>
+    public void Checkpoint()
+    {
+        ThrowIfDisposed();
+
+        m_lock.EnterWriteLock();
+        try
+        {
+            ((IKeyValueStore)m_store).Checkpoint();
+        }
+        finally
+        {
+            m_lock.ExitWriteLock();
+        }
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
     /// Synchronous under the lock, deliberately - see the type's remarks on why no method here may
     /// await inside <see cref="m_lock"/>. This is the one that was caught: an index flush resumed on
     /// a different thread and threw <c>SynchronizationLockException</c> out of <c>ExitWriteLock</c>.

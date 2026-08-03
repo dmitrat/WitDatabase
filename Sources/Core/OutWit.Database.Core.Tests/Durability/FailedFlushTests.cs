@@ -59,7 +59,7 @@ public sealed class FailedFlushTests
         for (int i = 0; i < 5; i++)
             store.Put(Key(i), Value(i));
 
-        Assert.That(() => store.Flush(), Throws.InstanceOf<IOException>(),
+        Assert.That(() => store.Checkpoint(), Throws.InstanceOf<IOException>(),
             "the injected failure has to actually fail the flush");
 
         // A second batch, and a flush that succeeds - this is the one that used to overwrite the only
@@ -67,7 +67,7 @@ public sealed class FailedFlushTests
         for (int i = 5; i < 10; i++)
             store.Put(Key(i), Value(i));
 
-        store.Flush();
+        store.Checkpoint();
 
         var readable = Enumerable.Range(0, 10).Count(i => store.Get(Key(i)) != null);
 
@@ -93,12 +93,12 @@ public sealed class FailedFlushTests
         for (int i = 0; i < 5; i++)
             store.Put(Key(i), Value(i));
 
-        Assert.That(() => store.Flush(), Throws.InstanceOf<IOException>());
+        Assert.That(() => store.Checkpoint(), Throws.InstanceOf<IOException>());
 
         for (int i = 5; i < 10; i++)
             store.Put(Key(i), Value(i));
 
-        store.Flush();
+        store.Checkpoint();
 
         var scanned = store.Scan(null, null).Select(e => System.Text.Encoding.UTF8.GetString(e.Key)).ToList();
 
@@ -118,12 +118,12 @@ public sealed class FailedFlushTests
 
         store.Put(Key(1), Value(1));
 
-        Assert.That(() => store.Flush(), Throws.InstanceOf<IOException>());
+        Assert.That(() => store.Checkpoint(), Throws.InstanceOf<IOException>());
 
         // Overwrite one key and delete another, after the flush failed.
         store.Put(Key(1), System.Text.Encoding.UTF8.GetBytes("newer"));
 
-        store.Flush();
+        store.Checkpoint();
 
         Assert.That(store.Get(Key(1)), Is.EqualTo(System.Text.Encoding.UTF8.GetBytes("newer")),
             "putting the failed flush's rows back must not resurrect a value that was overwritten "
@@ -142,7 +142,7 @@ public sealed class FailedFlushTests
         for (int i = 0; i < 10; i++)
             store.Put(Key(i), Value(i));
 
-        store.Flush();
+        store.Checkpoint();
 
         Assert.That(Enumerable.Range(0, 10).Count(i => store.Get(Key(i)) != null), Is.EqualTo(10));
     }

@@ -1228,6 +1228,39 @@ FOR UPDATE SKIP LOCKED;
 
 ---
 
+## 14.9 Choosing a storage engine
+
+`Store=btree` is the default and is the right choice for almost everything. `Store=lsm` is a real
+alternative for one shape of workload, and the boundary is narrow enough that it has to be stated
+precisely rather than as "LSM is write-optimised".
+
+Measured on a Ryzen 9 5950X, .NET 10, 500,000 rows written in batches of 1,000, three rounds each,
+microseconds per row:
+
+| | B+Tree | LSM | |
+|---|---|---|---|
+| Sustained ingest, **no secondary indexes** | 15.10 | 15.36 | parity |
+| Sustained ingest, **3 secondary indexes** | 23.16 | **36.86** | **LSM 1.6x slower** |
+
+Driven at the storage layer, without the SQL engine in the way, LSM is **10-13% faster** at 500,000
+and 1,000,000 rows - so the structure does deliver its advantage, and secondary indexes are what
+take it away. Each index gets its own LSM store today, with its own write-ahead log and its own
+compaction, so the cost of maintaining one is 7.2 µs per row against the B+Tree's 2.7.
+
+**Choose `Store=lsm` when all of these hold:**
+
+- writes dominate reads, and they arrive as a sustained stream rather than in occasional small
+  transactions;
+- the table is large - the advantage appears above roughly half a million rows, because below that
+  the in-memory table never fills and the structure never does the sequential work it exists for;
+- the table carries **few or no secondary indexes**.
+
+**Keep the default otherwise** - for read-heavy work, for small transactions, for autocommit (where
+LSM is still several times behind), and for any table with several indexes.
+
+Both engines are durable and both honour `SyncWrites`, `MemTableSize` and the rest of the
+connection-string settings; the choice is about the shape of the workload, not about safety.
+
 ## 15. Concurrency Control
 
 ### 15.0 The concurrency model

@@ -131,7 +131,7 @@ namespace OutWit.Database.Core.Tests.LSM
                 {
                     store.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(i * 10));
                 }
-                store.Flush(); // Explicitly flush to SSTable
+                store.Checkpoint(); // Explicitly flush to SSTable
             }
 
             // Reopen and verify
@@ -205,7 +205,7 @@ namespace OutWit.Database.Core.Tests.LSM
                     // Same keys, different values each wave
                     store.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(wave * 1000 + i));
                 }
-                store.Flush();
+                store.Checkpoint();
             }
 
             // After compaction, only newest values should remain
@@ -236,14 +236,14 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 store.Put(BitConverter.GetBytes(i), new byte[100]);
             }
-            store.Flush();
+            store.Checkpoint();
 
             // Delete all
             for (int i = 0; i < 100; i++)
             {
                 store.Delete(BitConverter.GetBytes(i));
             }
-            store.Flush();
+            store.Checkpoint();
 
             // Force compaction
             store.Compact();
@@ -279,7 +279,7 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 store.Put(BitConverter.GetBytes(i), new byte[100]);
             }
-            store.Flush();
+            store.Checkpoint();
 
             // First read - populates cache
             var watch = System.Diagnostics.Stopwatch.StartNew();
@@ -326,7 +326,7 @@ namespace OutWit.Database.Core.Tests.LSM
                 {
                     store.Put(BitConverter.GetBytes(i), BitConverter.GetBytes(wave));
                 }
-                store.Flush();
+                store.Checkpoint();
             }
 
             // Populate cache
@@ -376,7 +376,7 @@ namespace OutWit.Database.Core.Tests.LSM
             for (int i = 0; i < 5; i++) store.Get(BitConverter.GetBytes(i));
             store.Delete(BitConverter.GetBytes(0));
             store.Scan(null, null).ToList();
-            store.Flush();
+            store.Checkpoint();
 
             // Verify stats
             Assert.That(stats.Puts, Is.EqualTo(10));
@@ -410,7 +410,7 @@ namespace OutWit.Database.Core.Tests.LSM
             Assert.Throws<ObjectDisposedException>(() => store.Put("key"u8.ToArray(), "value"u8.ToArray()));
             Assert.Throws<ObjectDisposedException>(() => store.Delete("key"u8));
             Assert.Throws<ObjectDisposedException>(() => store.Scan(null, null).ToList());
-            Assert.Throws<ObjectDisposedException>(() => store.Flush());
+            Assert.Throws<ObjectDisposedException>(() => store.Checkpoint());
         }
 
         #endregion
@@ -441,7 +441,7 @@ namespace OutWit.Database.Core.Tests.LSM
             {
                 store.Put(BitConverter.GetBytes(i), value);
             }
-            store.Flush();
+            store.Checkpoint();
             store.WaitForCompaction();
 
             // Verify random sample

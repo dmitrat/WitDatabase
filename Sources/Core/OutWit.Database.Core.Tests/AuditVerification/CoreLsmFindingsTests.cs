@@ -62,10 +62,10 @@ public class CoreLsmFindingsTests
             {
                 for (int i = 0; i < 5; i++)
                     store.Put(Key($"k{i}"), Value($"v{i}"));
-                store.Flush();
+                store.Checkpoint();
 
                 store.Delete(Key("k0"));
-                store.Flush();
+                store.Checkpoint();
 
                 // Keep only the OLDEST input - the one holding k0 as live data. Restoring the
                 // tombstone file as well would mask k0 again and prove nothing; the dangerous crash
@@ -105,7 +105,7 @@ public class CoreLsmFindingsTests
 
     [Test]
     [Ignore("CONFIRMED 2026-07-27, and totally: all five entries were lost - k0..k4 all missing "
-            + "after Dispose() followed by store.Flush(). The ordinary `using` shape throws away "
+            + "after Dispose() followed by store.Checkpoint(). The ordinary `using` shape throws away "
             + "everything the caller wrote that had not yet crossed the buffer threshold. "
             + "core-lsm, Core/LSM/LsmParallelWriter.cs:497")]
     public void DisposingTheParallelWriterFlushesWhatItBufferedTest()
@@ -120,7 +120,7 @@ public class CoreLsmFindingsTests
             writer.Put(Key($"k{i}"), Value($"v{i}"));
 
         writer.Dispose();
-        store.Flush();
+        store.Checkpoint();
 
         var missing = Enumerable.Range(0, 5)
             .Where(i => store.Get(Key($"k{i}")) == null)
