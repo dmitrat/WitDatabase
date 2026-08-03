@@ -1,5 +1,72 @@
 # Changelog
 
+## 11.1.0
+
+Phase 10, first fix: **the query planner stopped scanning 1,000 rows to decide whether to use an
+index.** A minor rather than a patch because it changes how plans are costed, and a minor rather
+than a major because it changes no answer, no API and no file format - an application that worked on
+11.0.0 cannot fail on 11.1.0 without changing a line.
+
+The whole change is one function. `QueryPlanner.EstimateTableRowCount` opened a table scan and read
+up to **1,000 rows on every query execution**, purely to estimate a row count for the cost model. It
+now reads the catalog's O(1) per-table counter - the same one that makes `SELECT COUNT(*)` flat in
+table size.
+
+### Fixed
+
+- **Any `SELECT` with a `WHERE` against a table carrying an index paid a 1,000-row scan before it
+  ran.** Measured at ~1,317 KB and ~0.49 ms per query execution, flat in table size because the old
+  scan was capped at 1,000 rows - so the cost of *choosing* an index was about **200x the lookup it
+  saved**.
+
+  The estimate bought nothing even at that price. The cost model is homogeneous in it - a table scan
+  is costed at `N x 1.0` and an index range at `N x 0.2 x 0.5` - so `N` cancels out of the comparison
+  and the same plan is chosen whatever the estimate says. The old code also returned `count * 10`
+  once it hit its cap, reporting **every table of 1,000 rows or more as exactly 10,000** regardless
+  of its real size.
+
+### Performance
+
+Measured on a Ryzen 9 5950X, .NET 10, BenchmarkDotNet ShortRun, in the default configuration
+(MVCC on, durable commit, B+Tree) - the one every ADO.NET and EF Core consumer gets. Every figure is
+the result of two passes, and the full record with its spread is in
+`Docs/PHASE10-PERFORMANCE-PLAN.md`.
+
+| operation | 11.0.0 | 11.1.0 | |
+|---|---|---|---|
+| Index seek on a UNIQUE index, x100 | 48.42 ms / 125,332 KB | **0.500 ms / 970 KB** | **97x faster, 129x less allocated** |
+| Index seek, non-unique, x20 | 19.01 ms | 8.40 ms | 2.3x |
+| Composite index query | 9.89 ms | 4.52 ms | 2.2x |
+| Index range scan (`> threshold`) | 1.571 ms | 0.839 ms | 1.9x |
+| Index range scan (`BETWEEN`) | 1.397 ms | 0.832 ms | 1.7x |
+| `SELECT ... WHERE Age > 30` | 1.637 ms | 1.114 ms | 1.5x |
+| Full scan with no usable index | 7.53 ms | 5.94 ms | 1.27x |
+| aggregates, joins, projections | | | 5-8% |
+| inserts, updates, transactions | | | unchanged |
+
+The write paths are untouched - the planner is not on them. The unindexed scan gains because it
+still has a `WHERE` over a table that has indexes, so it paid the estimate without ever using one.
+
+Against **LiteDB**, the pure-.NET engine this project measures itself against, the unique-index seek
+went from **23.4x slower to 4x faster**; the non-unique seek, both range scans, filtered `SELECT` and
+full scan all moved from 1.2-2.1x slower to parity. Two operations remain more than 3x behind, both
+inserts: autocommit at 21.4x - the durable-commit cost chosen deliberately in 4.0.0, on which
+WitDatabase is 3.3x *faster* than SQLite - and `INSERT ... RETURNING` at 3.1x.
+
+### Known and unchanged
+
+- **The planner still has no selectivity statistics.** `RANGE_SELECTIVITY` is a fixed 0.2, so an
+  applicable index always wins a range comparison whatever the predicate really selects. A range
+  selecting ~75% of a **low-cardinality** non-unique index costs 2.5x the scan it replaced (499 ms
+  against 199 ms at 100,000 rows). SQLite shows the same 13.7x jump on the same shape: visiting rows
+  in index-key order when the key is uncorrelated with physical row order is random access into the
+  table. Fixing it needs distinct-value statistics the engine does not keep.
+- **`Store=lsm` is 12-20x slower than the B+Tree store on writes**, at every size, and is *not*
+  non-linear in N as previously recorded - per-row cost falls as the table grows. First diagnosis in
+  `Docs/PHASE10-PERFORMANCE-PLAN.md` para 14: the primary key is free, and secondary index
+  maintenance dominates at roughly 48 us per row per index. Until that is understood, LSM should not
+  be presented as the write-optimised option.
+
 ## 11.0.0
 
 Phase 9d: **user-defined functions and stored procedures**, and the five defects the area's audit
