@@ -571,3 +571,67 @@ Phase 4 recorded that making autocommit durable cost **~1.5x** on the write path
 5,000 rows in a transaction: `Default` (MVCC on, durable) at 7.7-8.0 µs/row against `BTree`
 (`MVCC=false`) at 5.0-5.1 - **~1.55x**, in both passes. The price of the D in ACID is what it was
 said to be.
+
+---
+
+## 11. The refutation in § 9.5 was wrong, and the corrected experiment names a second planner defect
+
+§ 9.5 reported that the obvious explanation for `WHERE Age > 30` costing 405 ms at 100,000 rows -
+the planner taking an index for a range that selects most of the table - had been **tested and
+refuted**, because the same range on an indexed and an unindexed column cost the same.
+
+**That experiment did not refute the hypothesis. It failed to test it.** The "indexed" column it used
+was `AltInt`, seeded as `i` and inserted in order, so the index key order was *perfectly correlated
+with physical row order*. Walking that index visits rows in exactly the order a table scan would.
+The control did not vary the thing it was believed to vary - which is the failure this project has a
+rule about, applied here to my own instrument.
+
+The corrected experiment adds `Bucket`, an integer with **60 distinct values** and a non-unique
+index - the shape of `Users.Age`, the column that produced the unexplained number. Same table, same
+~75% selectivity, three ways of reaching the rows:
+
+| range selecting ~75% | 20,000 rows | 100,000 rows |
+|---|---|---|
+| no index (forced scan) | 31.8 ms | 199.5 ms |
+| **unique** index, correlated with row order | 33.1 ms | 229.2 ms |
+| **low-cardinality** non-unique index | 34.9 ms | **499.5 ms** |
+
+**It reproduces.** At 100,000 rows the low-cardinality index costs 2.5x the scan it replaced, and
+2.2x the correlated index. Allocation is unchanged across all three (282 / 280 / 305 MB), so this is
+time, not materialisation - the rows cost more to *reach*, not more to build.
+
+**SQLite does the same thing, which identifies the mechanism rather than excusing it.** Its
+low-cardinality range costs 228.6 ms against 16.7 ms for the correlated index and 19.5 ms for the
+plain scan - a 13.7x jump on the same shape. Visiting rows in index-key order when the key is
+uncorrelated with physical order is random access into the table, and both engines pay for it.
+WitDatabase pays 2.2x what SQLite pays, which is its own read-path cost on top, not a separate
+defect.
+
+### Why the planner cannot avoid this today
+
+The cost model in `OptimizerQuery` is:
+
+```
+table scan      = N x 1.0
+equality seek   = 5.0 + max(1, N x 0.01) x 1.0
+index range     = max(1, N x 0.2) x 0.5   =  N x 0.1
+```
+
+`RANGE_SELECTIVITY` is the constant **0.2**, applied to every range predicate regardless of what it
+actually selects. So an index range is costed at `0.1N` against a scan's `1.0N`: **an applicable
+index always wins, for any table size, whatever the predicate really selects.** Both sides are linear
+in `N`, so the estimate cancels - which is why § 8's 1,000-row scan buys a number that cannot change
+the decision.
+
+That is two distinct defects in the same place, and they are opposite in shape:
+
+- **§ 8 - the planner pays for a number that does not matter.** A 1,000-row scan per query execution
+  to estimate a row count that cancels out of every comparison.
+- **§ 11 - the planner lacks the number that does matter.** No selectivity and no notion of
+  correlation between index order and row order, so it takes an index for a predicate matching 75% of
+  the table and turns a sequential scan into random access.
+
+Both are "the planner has no statistics", and the `TODO` in `EstimateTableRowCount` asks for exactly
+that. They are worth separating because their fixes differ sharply in size and risk: the first is a
+small, near-zero-risk substitution measured in § 8; the second changes which plan is chosen and needs
+statistics that do not exist yet.
