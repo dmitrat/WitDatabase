@@ -5,7 +5,7 @@
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
     
-    <Version>11.1.0</Version>
+    <Version>11.2.0</Version>
     <Description>ChaCha20-Poly1305 encryption provider for WitDatabase using BouncyCastle. Ideal for Blazor WebAssembly where hardware AES acceleration is unavailable.</Description>
     <PackageTags>OutWit;database;encryption;chacha20;poly1305;bouncycastle;blazor;wasm;security</PackageTags>
   </PropertyGroup>

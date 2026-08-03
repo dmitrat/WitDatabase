@@ -1,5 +1,86 @@
 # Changelog
 
+## 11.2.0
+
+Phase 10 closed: **four defects in the LSM storage engine**, which was 12-20x slower than the B+Tree
+on writes - the workload an LSM tree is chosen for. A minor rather than a major because no answer, no
+file format and no API changed; a minor rather than a patch because `IKeyValueStore` gained a member
+and `Flush()` on the LSM store now means something narrower.
+
+`Store=lsm` is now a defensible choice, and `Docs/WitSQL.md` para 14.9 states exactly where it wins
+and where it does not - because measurement showed the boundary is narrow enough that "LSM is
+write-optimised" is not a true sentence on its own.
+
+### Fixed
+
+- **The write-ahead log bypassed the OS write cache.** It was opened with `FileOptions.WriteThrough`,
+  so every append went to the device; combined with a `SeekToEnd()` that flushed the buffer on each
+  entry, the 4 KB buffer never accumulated anything. In LSM mode each secondary index has its own
+  store and therefore its own log, so three indexes meant four write-through streams per row. It also
+  contradicted its own option - `SyncWrites` documents itself as "if false, relies on OS buffering"
+  and defaults to false, while the handle made OS buffering impossible.
+
+- **Every LSM connection-string parameter was inert.** `MemTableSize`, `SyncWrites`, `EnableWal`,
+  `BlockSize`, `CompactionTrigger` and the block-cache settings were all dropped: the builder
+  constructed the store directly and asked only for a ready-made options object, while the parser
+  that turns connection-string keys into options was reachable only through the provider registry.
+  Measured with 5 MB written in one transaction, `MemTableSize=1024` produced **1** SSTable before
+  and **5,556** after.
+
+- **Every commit wrote an SSTable.** `Transaction.Commit` calls `Flush()`, and `Flush()` emptied the
+  MemTable whenever it held anything at all - so `MemTableSizeLimit` was unreachable and each commit
+  paid to create a file, write its blocks, bloom filter and index, fsync it and leave the compactor
+  more work. A transaction cost the same whether it held one row or a hundred, which is the signature
+  of paying for something other than the work.
+
+- **Secondary index stores ignored configuration**, receiving plain defaults regardless of the
+  connection string.
+
+### Added
+
+- **`IKeyValueStore.Checkpoint()`** - forces a store's accumulated in-memory state out to its main
+  on-disk structure. It defaults to `Flush()`, so existing implementations need no change.
+
+  `Flush()` now means **make durable** and is what a commit calls; `Checkpoint()` means **force the
+  accumulated state out now** and is what a size threshold, maintenance or a caller wanting an
+  on-disk sorted file calls. Every database separates these - PostgreSQL commits by syncing the WAL
+  and moves buffers on `CHECKPOINT`, SQLite has `PRAGMA synchronous` and `PRAGMA wal_checkpoint`,
+  RocksDB has `SyncWAL()` and `Flush()`. Durability is an operation on the log; reorganising the data
+  structure is a separate decision.
+
+  **If you called `Flush()` on a store to get an SSTable on disk, call `Checkpoint()`.** Durability
+  is unaffected either way, and is verified by the 13 out-of-process crash tests.
+
+### Performance
+
+Ryzen 9 5950X, .NET 10, medians of repeated rounds. Full record and method in
+`Docs/PHASE10-PERFORMANCE-PLAN.md`.
+
+| | before | after |
+|---|---|---|
+| 50 transactions x 1 row | 14.67 ms/tx | **2.11-3.00 ms/tx** |
+| 50 transactions x 100 rows | 13.32 ms/tx | **4.47-5.03 ms/tx** |
+| 1,000 rows, no index | 118 ms | **33 ms** |
+| 1,000 rows, PK + 3 indexes | 534 ms | **44 ms** |
+
+Against the B+Tree store, LSM went from **12-20x behind on writes to parity**, and at the storage
+layer on sustained ingest it is now **10-13% faster** at 500,000 and 1,000,000 rows - while doing 19
+flushes and 5 compactions, so the work is happening rather than being deferred out of the
+measurement.
+
+### Known, and the reason para 14.9 is narrow
+
+**The advantage does not survive secondary indexes.** At 500,000 rows through SQL: parity with the
+B+Tree without indexes (15.10 against 15.36 µs/row), and **1.6x slower with three** (23.16 against
+36.86). Index maintenance costs 2.7 µs per row per index on the B+Tree and 7.2 on LSM, because each
+secondary index still gets its own LSM store with its own log, MemTable and compaction schedule.
+Sharing one log across index key spaces - as RocksDB does with column families - is the next piece of
+work and is a design change rather than a defect fix.
+
+Also unchanged: LSM autocommit is still several times the B+Tree's and undiagnosed, and the query
+planner still has no selectivity statistics, so a range over a low-cardinality index can cost more
+than the scan it replaces.
+
 ## 11.1.0
 
 Phase 10, first fix: **the query planner stopped scanning 1,000 rows to decide whether to use an
