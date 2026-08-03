@@ -15,6 +15,20 @@ public class WitDbConnectionScenariosTests
     private string? m_testDbPath;
     private string? m_testLsmPath;
 
+    /// <summary>
+    /// A directory of its own for the <c>ChangeDatabase</c> tests, which need the database to be
+    /// <b>named</b> <c>mydb</c> rather than to contain anything.
+    /// </summary>
+    /// <remarks>
+    /// They used to write <c>Data Source=mydb.witdb</c> - a relative path, so the file landed in the
+    /// test runner's working directory and was never deleted. The one on this machine was created in
+    /// December 2025 and had been reopened by every run since; when 12.0.0 started refusing a database
+    /// whose transaction model does not match the connection string, all three failed, because that
+    /// seven-month-old file was written without MVCC. A test that shares a database with its own
+    /// history is a test whose subject can change without anyone touching it.
+    /// </remarks>
+    private string? m_changeDatabaseDirectory;
+
     #endregion
 
     #region Setup/TearDown
@@ -24,6 +38,8 @@ public class WitDbConnectionScenariosTests
     {
         m_testDbPath = Path.Combine(Path.GetTempPath(), $"WitDbScenario_{Guid.NewGuid():N}.witdb");
         m_testLsmPath = Path.Combine(Path.GetTempPath(), $"WitDbScenario_LSM_{Guid.NewGuid():N}");
+        m_changeDatabaseDirectory = Path.Combine(Path.GetTempPath(), $"WitDbScenario_Name_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(m_changeDatabaseDirectory);
     }
 
     [TearDown]
@@ -38,7 +54,15 @@ public class WitDbConnectionScenariosTests
         {
             try { Directory.Delete(m_testLsmPath, recursive: true); } catch { }
         }
+
+        if (m_changeDatabaseDirectory != null && Directory.Exists(m_changeDatabaseDirectory))
+        {
+            try { Directory.Delete(m_changeDatabaseDirectory, recursive: true); } catch { }
+        }
     }
+
+    /// <summary>A database called <c>mydb</c>, in a directory nothing else writes to.</summary>
+    private string NamedDatabase() => Path.Combine(m_changeDatabaseDirectory!, "mydb.witdb");
 
     #endregion
 
@@ -567,7 +591,7 @@ public class WitDbConnectionScenariosTests
     [Test]
     public void ChangeDatabaseToSameNameSucceedsTest()
     {
-        using var connection = new WitDbConnection("Data Source=mydb.witdb");
+        using var connection = new WitDbConnection($"Data Source={NamedDatabase()}");
         connection.Open();
 
         Assert.DoesNotThrow(() => connection.ChangeDatabase("mydb"));
@@ -576,7 +600,7 @@ public class WitDbConnectionScenariosTests
     [Test]
     public void ChangeDatabaseToMainSucceedsTest()
     {
-        using var connection = new WitDbConnection("Data Source=mydb.witdb");
+        using var connection = new WitDbConnection($"Data Source={NamedDatabase()}");
         connection.Open();
 
         Assert.DoesNotThrow(() => connection.ChangeDatabase("main"));
@@ -585,7 +609,7 @@ public class WitDbConnectionScenariosTests
     [Test]
     public void ChangeDatabaseToDifferentNameThrowsTest()
     {
-        using var connection = new WitDbConnection("Data Source=mydb.witdb");
+        using var connection = new WitDbConnection($"Data Source={NamedDatabase()}");
         connection.Open();
 
         Assert.Throws<NotSupportedException>(() => connection.ChangeDatabase("otherdb"));

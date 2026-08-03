@@ -178,18 +178,6 @@ public class ConfigurationMismatchTests
             $"original {(verdict.SurvivesTheOriginal ? "survives" : "LOST")}  {verdict.Detail}" +
             (verdict.SurvivesTheOriginal ? "" : $"  || creator now sees: {verdict.SurvivalReason}"));
 
-        var defect = KnownDefect(creator, opener);
-
-        if (defect != null)
-        {
-            // PINS A DEFECT, NOT CORRECT BEHAVIOUR. Invert this to the assertion below when it is fixed;
-            // going red here is the proof the fix landed.
-            Assert.That(verdict.Outcome, Is.EqualTo(Outcome.OpensAndDataIsGone),
-                $"<{creator.Label}> -> <{opener.Label}> no longer reproduces a pinned defect ({defect}) - " +
-                "re-measure and invert the pin.");
-            return;
-        }
-
         // Refusing AT OPEN is a legitimate answer - a construction kit may have illegal shapes as long as
         // it says so. Opening without complaint and then not having the data is not: that reads to a
         // consumer as an empty database, and the natural next step writes over one that is intact.
@@ -201,48 +189,60 @@ public class ConfigurationMismatchTests
     }
 
     /// <summary>
-    /// The pairs that are known to open without complaint and show no data. Two causes, both defects.
+    /// Probe: a database written under one transaction model is REFUSED by the other, rather than
+    /// opening and reporting its tables missing.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>1. The transaction model changes the on-disk layout, and nothing says so.</b> A database
-    /// written with MVCC opens perfectly with <c>MVCC=false</c> or <c>Transactions=false</c> and reports
-    /// <c>Table 'X' not found</c> - and the other way round. The rows are still there: the probe checks,
-    /// and the original configuration reads them back afterwards. So this is invisibility, not loss -
-    /// until the consumer does the obvious thing with an apparently empty database and creates the
-    /// schema on top of it.
+    /// This pinned twelve grid cases and now asserts the fix - the last of the three defects this
+    /// fixture found. A database written with MVCC (the default) opened perfectly under
+    /// <c>MVCC=false</c> or <c>Transactions=false</c> and answered <c>Table 'Mismatch' not found</c>,
+    /// in both directions. The rows were never lost: the creator read them back afterwards, which is
+    /// what the <c>SurvivesTheOriginal</c> half of every verdict is for. The danger was the next step -
+    /// a consumer meeting an apparently empty database creates the schema, over one that was intact.
     /// </para>
     /// <para>
-    /// <b>2. A larger <c>PageSize</c> reinitialises the header.</b> Opening a 4,096-byte database with
-    /// <c>PageSize=16384</c> does not report the mismatch the other direction reports so clearly - it
-    /// opens, shows nothing, and afterwards the ORIGINAL configuration gets
-    /// <c>Page size mismatch: file has 16384 bytes</c>. That is destruction, not invisibility, and it is
-    /// the most serious thing this fixture found.
+    /// The fix compares the <c>Mvcc</c> and <c>Transactions</c> flags the header has always recorded
+    /// against the configuration now asking to open, and refuses when the MVCC layer is present on one
+    /// side only. <c>MVCC=false</c> and <c>Transactions=false</c> write the same layout as each other,
+    /// so that pair still opens - the grid measures it, and refusing it would refuse something that
+    /// works.
+    /// </para>
+    /// <para>
+    /// The third assertion is the one the phase has earned three times over: a refusal must not leave
+    /// the data file open. Two handle leaks and a refused encrypted open all had exactly this shape.
     /// </para>
     /// </remarks>
-    private static string? KnownDefect(Setup creator, Setup opener)
+    [TestCase("default", "locks", TestName = "{m}(mvcc database opened without mvcc)")]
+    [TestCase("default", "no-tx", TestName = "{m}(mvcc database opened without transactions)")]
+    [TestCase("locks", "default", TestName = "{m}(lock-based database opened with mvcc)")]
+    [TestCase("no-tx", "default", TestName = "{m}(transactionless database opened with mvcc)")]
+    public void ADifferentTransactionModelIsRefusedAtOpenTest(string creatorLabel, string openerLabel)
     {
-        if (creator.Label == "lsm" || opener.Label == "lsm")
-            return null;
+        var creator = SETUPS.Single(s => s.Label == creatorLabel);
+        var opener = SETUPS.Single(s => s.Label == openerLabel);
 
-        // Encryption and page size are checked before anything else, so a pair that also differs in one
-        // of those refuses at open and never reaches the layout question.
-        string[] mvccPlain = ["default", "cache-lru", "cachesize"];
-        string[] transactional = ["locks", "no-tx"];
+        var verdict = CreateThenOpen(creator, opener);
 
-        if (mvccPlain.Contains(creator.Label) && transactional.Contains(opener.Label))
-            return "the transaction model changes the on-disk layout and nothing says so";
+        Assert.That(verdict.Outcome, Is.EqualTo(Outcome.RefusedAtOpen),
+            $"<{creatorLabel}> -> <{openerLabel}>: {verdict.Outcome}. {verdict.Detail}");
 
-        if (transactional.Contains(creator.Label) && mvccPlain.Contains(opener.Label))
-            return "the transaction model changes the on-disk layout and nothing says so";
+        Assert.That(verdict.Detail, Does.Contain("MVCC"),
+            "the refusal does not name the setting that caused it, which is what a consumer has to act on: " +
+            verdict.Detail);
 
-        // FIXED, and this comment is the record: `PageSize=16384` over a 4,096-byte database used to
-        // open, show nothing and reinitialise the header, after which the configuration that wrote the
-        // file could not open it either. StorageFile refuses a file too short to hold one page of the
-        // size being asked for, so this pair is an ordinary RefusedAtOpen now.
-
-        return null;
+        Assert.That(verdict.SurvivesTheOriginal, Is.True,
+            "after the refusal the database is no longer readable by the configuration that wrote it: " +
+            verdict.SurvivalReason);
     }
+
+    // The grid pinned two more defects and no longer reproduces either; the record, because the shapes
+    // recur. A larger PageSize REINITIALISED the header - opening a 4,096-byte database with
+    // PageSize=16384 showed nothing and afterwards the ORIGINAL configuration got "Page size mismatch:
+    // file has 16384 bytes", which is destruction rather than invisibility and the most serious thing
+    // this fixture found; StorageFile now refuses a file too short to hold one page of the size being
+    // asked for. And the transaction model changed the layout with nothing to say so - see
+    // ADifferentTransactionModelIsRefusedAtOpenTest above, which asserts the refusal that replaced it.
 
     /// <summary>
     /// Probe: an open that is REFUSED leaves the data file open, so the database cannot be opened again
@@ -401,10 +401,17 @@ public class ConfigurationMismatchTests
             : $"Data Source={dataSource};{settings}";
     }
 
+    /// <summary>
+    /// One line per verdict, and the whole message on it. Taking only the FIRST line used to be enough;
+    /// a refusal that lists what it disagrees with puts its reason on the second one, which made the
+    /// report read "Database configuration mismatch:" and stop.
+    /// </summary>
     private static string Short(Exception exception)
     {
-        var line = exception.Message.Split('\n')[0].Trim();
-        return line.Length > 160 ? line[..160] : line;
+        var line = string.Join(" / ",
+            exception.Message.Split('\n', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries));
+
+        return line.Length > 240 ? line[..240] : line;
     }
 
     #endregion

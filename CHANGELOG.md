@@ -8,12 +8,14 @@ connection string, from `WitDbConnectionStringBuilder`, and from Entity Framewor
 
 
 Phase 11, the modular structure: **the combinations this construction kit offers have been enumerated,
-built and run for the first time.** Two instruments - a reflection census that asks whether a
-connection-string keyword reaches the engine at all, and a 153-case matrix that runs the same workload
-through every legal combination and compares the answers.
+built and run for the first time.** Five instruments - a reflection census that asks whether a
+connection-string keyword reaches the engine at all; a 153-case matrix that runs the same workload
+through every legal combination and compares the answers; an 8x8 grid that creates a database with one
+configuration and opens it with another; the same combinations with two connections open at once; and
+durability crossed with configuration, one process kill each.
 
-A minor rather than a major because no answer and no file format changed. It is not a patch because a
-configuration that used to be accepted and ignored is now either honoured or refused.
+The second reason it is a major is the transaction-model check below: an application that opened an
+MVCC database with `MVCC=false` used to get an empty-looking database and now gets an error.
 
 **Reassuring, and worth stating:** no combination opens, accepts every statement and answers something
 different. Every defect found is in construction or in close.
@@ -47,6 +49,26 @@ different. Every defect found is in construction or in close.
   rows survived a clean close and reopen; the eighth did not. With MVCC the commit path's `FlushAllAsync`
   hid it. The writer now hands over the buffers that are still filling before it closes the queue.
 
+- **Switching `MVCC` or `Transactions` made an existing database look empty.** A database created with
+  the default `MVCC=true` opened without complaint under `MVCC=false` or `Transactions=false` and then
+  reported every table as missing - and the other way round. The rows were never lost: the
+  configuration that wrote them read them back afterwards. The danger was the next step, because a
+  consumer meeting an apparently empty database creates the schema, over one that was intact. The
+  database header has always recorded which transaction model wrote it; that record is now compared at
+  `Open` and a mismatch is refused with a message naming the setting. `MVCC=false` and
+  `Transactions=false` write the same layout as each other and still open each other's databases.
+
+- **A larger `PageSize` reinitialised the header of an existing database.** `StorageFile` counted
+  pages as `length / pageSize`, so a 4,096-byte database opened with `PageSize=16384` counted zero
+  pages, the page manager took that for a new database and overwrote the header - after which the
+  configuration that created the file could not open it either. A non-empty file too short to hold one
+  page is refused now.
+
+- **A refused open held the data file for the life of the process.** A wrong password or a wrong page
+  size left the storage that had already been built undisposed, so the next attempt - with the right
+  password - met "the process cannot access the file", a message naming the wrong problem entirely.
+  Anything that fails between building the store and handing it over now disposes it.
+
 - **The B+Tree store was left unserialised when no parallel mode was asked for.** Secondary index
   stores have been wrapped unconditionally since 6.0.0, because a second connection is enough to walk
   into a leaf split someone else is halfway through; the main store was left conditional on
@@ -66,6 +88,17 @@ different. Every defect found is in construction or in close.
 
 - **`Journal=…` with `MVCC=true` or with transactions off is refused at `Open`**, with a message naming
   the way out. Nothing would have used it.
+
+- **`IProviderMetadataSource`, a new interface**, lets a store hand back the provider metadata the
+  database it opened was created with. `StoreBTree` implements it and `BTreeConcurrentStore` delegates;
+  stores with no header to answer from - the LSM and in-memory ones - simply do not implement it. This
+  is what the transaction-model check reads.
+
+- **`Docs/WitSQL.md` para 14.10** now also states what may and may not be changed on an existing
+  database, and carries a measured durability table: a committed transaction survives a process kill
+  under every transaction model, both stores, both journals and encryption - and is lost, along with
+  the whole database, under `Synchronous Commit=false` and `Transactions=false`, both of which
+  document that they trade it.
 
 - **`Docs/WitSQL.md` para 14.10** states which combinations are supported, which are refused and why -
   including that `Auto`, `Buffered`, `Latched` and `Optimistic` are four spellings of "make this store

@@ -31,7 +31,7 @@ namespace OutWit.Database.Core.Tree;
 /// The same reasoning is why <see cref="Scan"/> hands its results out in chunks rather than holding
 /// the read lock across the consumer's code.
 /// </remarks>
-public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatistics
+public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource
 {
     #region Constants
 
@@ -453,6 +453,14 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
 
     /// <inheritdoc/>
     public string ProviderKey => PROVIDER_KEY;
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Delegated rather than answered here: since 12.0.0 every B+Tree store the builder produces is
+    /// wrapped in this one, so a caller that asked the store for its metadata and got nothing would be
+    /// asking the wrapper.
+    /// </remarks>
+    public ProviderMetadata? StoredMetadata => m_store.StoredMetadata;
 
     #endregion
 

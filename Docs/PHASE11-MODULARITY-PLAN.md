@@ -191,7 +191,11 @@ Full suite after all five, with the CI filter: **green**, 10,406 tests across ei
 3. ~~Diagnose § 4.1 - the data loss.~~ **Done, § 4a.**
 4. ~~Decide and act on the census's inert settings.~~ **Two of three done, § 6.**
 5. ~~Write the supported matrix into `WitSQL.md`.~~ **Done, § 14.10.**
-6. Open: the parallel modes (§ 6.3), and the async builder route (§ 6.5).
+6. ~~The parallel modes (§ 6.3).~~ **Done - removed, § 6.3b.**
+7. ~~A database created by one configuration, opened by another (§ 6a).~~ **Done, all three fixed.**
+8. ~~The two probes never built - two connections (§ 6c) and durability by configuration (§ 6d).~~
+   **Done.**
+9. Open: the async builder route (§ 6.5), and the three areas in § 6b that no instrument has touched.
 
 ## 6. Decisions
 
@@ -349,17 +353,105 @@ destruction. **Three defects, none of them previously known:**
    process, under a message that names the wrong problem. Same shape as the two handle leaks § 4a fixed -
    something is constructed, the build then fails, nothing disposes what was built.
 
-**Two of the three are fixed, and the pins went red first - which is the proof.** `StorageFile` refuses
+**All three are fixed, each with its pins going red first - which is the proof.** `StorageFile` refuses
 a file too short to hold one page of the size being asked for, so § 6a.2 is now an ordinary refusal at
 open; and the storage the store was going to own is disposed when that store's construction throws, so
 § 6a.3 leaves nothing behind. Both pins are inverted and assert the fixed behaviour.
 
-**§ 6a.1 is not fixed and is handed forward.** The header already records `ProviderFeatures.Mvcc` and
-`Transactions` - the metadata is written on creation and loaded on open - so the fix is a comparison at
-open, refusing when the file was written under a different transaction model. What it needs first is a
-public way to read the stored metadata back off a built store; `StoreBTree` keeps its `PageManager`
-private and only the async factory takes metadata in. That is a small design decision rather than a
-patch, and it should not be made at the end of a session.
+**§ 6a.1 is now FIXED too, 2026-08-03, and the pins went red before they were inverted** - twelve pairs
+were pinned as `OpensAndDataIsGone`, and every one of them now refuses at open instead. The design
+decision it was
+waiting on is `IProviderMetadataSource`: a store that keeps a header may hand back the
+`ProviderMetadata` it was opened with, `StoreBTree` implements it over its private `PageManager`, and
+`BTreeConcurrentStore` delegates - a separate interface rather than a member of `IKeyValueStore`,
+because most stores have no header to answer from. `WitDatabaseBuilder.ValidateStoredConfiguration`
+compares it against the configuration now asking to open and throws `ConfigurationMismatchException`,
+a type that already existed for this and was called by nothing.
+
+**What is compared is the layout, not the keywords.** The MVCC store writes every value under a
+versioned key and nothing else does, so the question is whether that layer is present on both sides:
+transactions on *and* MVCC on. The grid measures that `MVCC=false` and `Transactions=false` read each
+other's databases correctly, so refusing that pair would refuse something that works. A file whose
+metadata section was never written - an empty store provider key - is left alone: this exists to stop a
+wrong answer, not to make old databases unopenable.
+
+**The refusal must also let go of the file**, which is why the probe asserts that the creator can still
+read its rows afterwards. `Build` now disposes the store on any failure between construction and
+handing it to `WitDatabase`, rather than only releasing the database lock - the fourth time this phase
+has met "something is constructed, the build then fails, nothing disposes what was built".
+
+**Two collateral findings, both from the same red run:**
+
+- **Three ADO tests had been reusing a database created in December 2025.** `ChangeDatabase*` opened
+  `Data Source=mydb.witdb` - a relative path, so the file landed in the test runner's working directory
+  and was never deleted. It was written without MVCC, so every run since had been opening a non-MVCC
+  database under the MVCC default and seeing nothing; the refusal is what made that visible. They get a
+  database of their own now.
+- **The crash suite's attribution probe opened a database *underneath* the MVCC layer through
+  `WitDatabaseBuilder`**, which is exactly what is now refused. It asks a storage-layer question, so it
+  opens `StoreBTree` directly - which is what "underneath the MVCC layer" always meant.
+
+## 6c. Instrument D - the combinations crossed with two connections
+
+`TwoConnectionMatrixTests`, 24 combinations x 2 tests plus a control: the store x transaction model x
+encryption cross product and six add-ons, each run twice - once down a single connection and once with
+two connections open over the same database at the same time.
+
+The matrix is single-connection, and that is not the shape this engine is designed for: the model is
+*one process, one engine per database, many connections*, because the target is ASP.NET Core. 5.0.0
+built that shape, and **its defects were configuration-shaped** - a table created by one connection was
+`Table not found` to another - but it was never crossed with the configurations.
+
+**The workload asks the two questions in the order that matters:** the second connection reads what the
+first wrote *before* it opened, and the first reads what the second wrote *after* it opened. The second
+is the state that went stale in phase 5, where eleven tests passed because they all populated their
+table before the second connection existed. It also crosses schema with connections (a table created by
+one is written to by the other), and checks that closing one connection leaves the other with a working
+database.
+
+**Controls both ways.** The single-connection run is the control that separates "this combination
+cannot do the work" from "this combination cannot do it twice at once". And two connections to two
+*different* databases must share nothing - without that, "the second connection sees the first's rows"
+is an assertion no run could fail.
+
+**All 49 cases pass.** Two connections work under every store, every transaction model, with and without
+encryption, and with each add-on. Worth stating for one of them: `Store=inmemory` with a file
+`Data Source` **is** shared between connections in the same process - it is keyed by the path like any
+other - and is still not persistent.
+
+## 6d. Instrument E - durability crossed with configuration
+
+`DurabilityByConfigurationTests`, `Category=Crash`, nine configurations x two runs, through the
+out-of-process crash runner phase 4 built. The runner takes `--settings` now, so a scenario can be
+played under any connection string; the two new ones write the rows the strongest way the configuration
+allows and report **which** way, so a run that fell back to autocommit cannot be read as a commit that
+held.
+
+The thirteen crash tests this project had all ran one configuration - a bare `Data Source=` - and
+durability is precisely what a configuration decides.
+
+| configuration | clean close | after a kill | |
+|---|---|---|---|
+| default (MVCC) | 20/20 | **20/20** | asserted |
+| `MVCC=false` | 20/20 | **20/20** | asserted |
+| `MVCC=false;Journal=wal` | 20/20 | **20/20** | asserted |
+| `MVCC=false;Journal=rollback` | 20/20 | **20/20** | asserted |
+| `Store=lsm` | 20/20 | **20/20** | asserted |
+| `Store=lsm;MVCC=false` | 20/20 | **20/20** | asserted |
+| encrypted (`aes-gcm`) | 20/20 | **20/20** | asserted |
+| `Synchronous Commit=false` | 20/20 | **0/20** | recorded |
+| `Transactions=false` | 20/20 | **0/20** | recorded |
+
+**Every configuration that promises a durable commit keeps one**, and the row count agrees with the
+rows in each case - which is the pairing phase 4 learned to check separately.
+
+**The two zeros are the instrument's control in the other direction.** They are not defects: both
+configurations disclaim the promise, and a probe that reported survival everywhere would be a probe that
+could not see loss. What they add to the record is how *complete* the loss is - not "the last commit is
+missing" but nothing at all, including the table: after the kill the reopened database reports `T` not
+found. `Transactions=false` is worth saying plainly, because phase 4's "autocommit is durable" is a
+statement about the implicit per-statement **transaction**, and with the transaction layer switched off
+there is nothing to make durable.
 
 ## 6b. Still unexplored
 
@@ -367,12 +459,10 @@ patch, and it should not be made at the end of a session.
   registrations appear in no census and no matrix.
 - **Extensibility itself**: nothing registers a third-party `IStorage`/`IKeyValueStore`/`ICryptoProvider`
   and drives a database through it, which is the construction kit's central claim.
-- **The matrix is single-connection.** The ASP.NET shape - many connections over one engine - has never
-  been crossed with the combinations.
-- **Durability has never been crossed with configuration.** The 13 `Category=Crash` tests run the default
-  and nothing else.
+- ~~**The matrix is single-connection.**~~ **Done, § 6c.**
+- ~~**Durability has never been crossed with configuration.**~~ **Done, § 6d.**
 - **"Works" means "works on eight rows"** - no combination in the matrix reaches a compaction, a page
-  split or an overflow page.
+  split or an overflow page. Instrument D writes nine and instrument E twenty, so this is unchanged.
 - The five ADO-level keywords the census cannot see structurally: `Enlist`, `Connection Timeout`,
   `Pooling`, `Min`/`Max Pool Size`, `Default Timeout`.
 

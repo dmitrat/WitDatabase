@@ -11,7 +11,7 @@ namespace OutWit.Database.Core.Stores;
 /// Key-value store implementation backed by B+Tree.
 /// Implements IKeyValueStore for unified storage engine interface.
 /// </summary>
-public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyncDisposable
+public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IAsyncDisposable
 {
     #region Constants
 
@@ -489,6 +489,25 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IAsyn
 
     /// <inheritdoc/>
     public string ProviderKey => PROVIDER_KEY;
+
+    /// <summary>
+    /// The provider metadata recorded in this database's header.
+    /// </summary>
+    /// <remarks>
+    /// The page manager is private on purpose - nothing outside this store should be reaching into the
+    /// pages - so this property is the one thing it lets out: the record of the configuration the
+    /// database was <b>created</b> with. The builder compares it against the configuration now asking
+    /// to open, because a database written with MVCC and opened without it used to open without
+    /// complaint and report every table missing.
+    /// </remarks>
+    public ProviderMetadata? StoredMetadata
+    {
+        get
+        {
+            ThrowIfDisposed();
+            return m_pageManager.GetProviderMetadata();
+        }
+    }
 
     /// <summary>
     /// Gets the approximate size of the store in bytes.

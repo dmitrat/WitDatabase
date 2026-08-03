@@ -57,10 +57,12 @@ public sealed class WitDatabaseBuilder
         // DatabaseAlreadyOpenException rather than with whichever raw IOException a share-mode
         // collision happens to produce first. Released by WitDatabase.Dispose.
         var databaseLock = AcquireExclusiveLock();
+        IKeyValueStore? store = null;
 
         try
         {
-            var store = BuildStoreInternal();
+            store = BuildStoreInternal();
+            ValidateStoredConfiguration(store);
             OnStoreBuilt?.Invoke(store);
 
             var indexManager = BuildIndexManagerInternal();
@@ -77,6 +79,13 @@ public sealed class WitDatabaseBuilder
         {
             // A Build that fails half way must not leave the database locked - nothing would ever
             // release it. ProbeRefusedOpenLeavesNothingBehindTest is the test for this shape.
+            //
+            // And the store goes with it. Everything from here on can throw - the stored-configuration
+            // check below does so deliberately - and the store is already holding the data file open by
+            // then, so leaving it would lock the database out of its own process. That is the third
+            // shape of handle leak this phase has found, so the disposal is unconditional rather than
+            // attached to any one failure.
+            store?.Dispose();
             databaseLock?.Dispose();
             throw;
         }
@@ -90,10 +99,12 @@ public sealed class WitDatabaseBuilder
         ValidateConfiguration();
 
         var databaseLock = AcquireExclusiveLock();
+        IKeyValueStore? store = null;
 
         try
         {
-            var store = await BuildStoreInternalAsync(cancellationToken).ConfigureAwait(false);
+            store = await BuildStoreInternalAsync(cancellationToken).ConfigureAwait(false);
+            ValidateStoredConfiguration(store);
             OnStoreBuilt?.Invoke(store);
 
             var indexManager = BuildIndexManagerInternal();
@@ -112,6 +123,7 @@ public sealed class WitDatabaseBuilder
         }
         catch
         {
+            store?.Dispose();
             databaseLock?.Dispose();
             throw;
         }
@@ -377,6 +389,66 @@ public sealed class WitDatabaseBuilder
                 "versions and takes no journal, so the setting would be accepted and ignored. Use " +
                 "MVCC=false to get a journalled transactional store, or drop the journal setting.");
         }
+    }
+
+    /// <summary>
+    /// Refuses a database that was written under a different transaction model from the one now asking
+    /// to open it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>MVCC changes the key layout, and until 12.0.0 nothing said so.</b> A database created with the
+    /// default configuration and opened with <c>MVCC=false</c> or <c>Transactions=false</c> opened
+    /// without a word of complaint and then answered <c>Table 'X' not found</c> - in both directions.
+    /// The rows were still there: the configuration that wrote them read them back afterwards. So it was
+    /// invisibility rather than loss, right up to the moment the consumer did the obvious thing with an
+    /// apparently empty database and created the schema on top of one that was intact. Measured across
+    /// the 8x8 grid in <c>ConfigurationMismatchTests</c>.
+    /// </para>
+    /// <para>
+    /// The header has recorded <see cref="ProviderFeatures.Mvcc"/> and
+    /// <see cref="ProviderFeatures.Transactions"/> since the metadata section existed, so this needs no
+    /// format change - only a comparison, and a way to read the metadata back off a built store, which
+    /// is <see cref="IProviderMetadataSource"/>.
+    /// </para>
+    /// <para>
+    /// <b>What is compared is the layout, not the keywords.</b> The MVCC store writes every value under
+    /// a versioned key and nothing else does, so the question is whether the MVCC layer is there at all:
+    /// transactions enabled <i>and</i> MVCC enabled. <c>MVCC=false</c> and <c>Transactions=false</c>
+    /// produce the same layout as each other and read each other's databases correctly - measured, and
+    /// the grid pins it - so refusing that pair would be refusing something that works.
+    /// </para>
+    /// <para>
+    /// A file whose metadata section was never written carries an empty store provider key. That is
+    /// indistinguishable from "created by a version that did not record it", so it is left alone: this
+    /// check exists to stop a silent wrong answer, not to make old databases unopenable.
+    /// </para>
+    /// </remarks>
+    private void ValidateStoredConfiguration(IKeyValueStore store)
+    {
+        if (store is not IProviderMetadataSource source || source.StoredMetadata is not { } stored)
+            return;
+
+        if (string.IsNullOrEmpty(stored.StoreProviderKey))
+            return;
+
+        var storedHasMvcc = stored.HasTransactions && stored.HasMvcc;
+        var currentHasMvcc = Options.EnableTransactions && Options.EnableMvcc;
+
+        if (storedHasMvcc == currentHasMvcc)
+            return;
+
+        var mismatch = storedHasMvcc
+            ? "The database was created with MVCC and this configuration opens it without. The MVCC "
+              + "store keeps every value under a versioned key, so a store opened without it finds none "
+              + "of them and reports every table as missing - the data is intact and invisible. Open it "
+              + "with MVCC=true, or create a new database."
+            : "The database was created without MVCC and this configuration opens it with MVCC. The MVCC "
+              + "store looks for values under versioned keys, so it finds none of the ones already "
+              + "written and reports every table as missing - the data is intact and invisible. Open it "
+              + "with MVCC=false, or create a new database.";
+
+        throw new ConfigurationMismatchException(BuildProviderMetadata(), stored, [mismatch]);
     }
 
     private void ValidateSyncBuildAllowed()

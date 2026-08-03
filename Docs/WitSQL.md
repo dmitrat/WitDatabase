@@ -1266,7 +1266,9 @@ connection-string settings; the choice is about the shape of the workload, not a
 WitDatabase is a construction kit: a workload chooses a store, a transaction model, a parallel mode,
 encryption, a journal and a cache. Every combination below has been **built and run** - the matrix is
 `CombinationMatrixTests`, 153 cases, and every one of them opens a database, runs the same workload and
-compares the answers. What is written here is measured, not intended.
+compares the answers. Every combination is run a second time with **two connections open over it at
+once** - the shape an ASP.NET Core host produces - and all of them work. What is written here is
+measured, not intended.
 
 **The rule this table exists to make true:** a setting is either honoured or refused at `Open` with an
 explanation. Nothing is accepted and ignored.
@@ -1326,6 +1328,42 @@ A caller driving a store directly, without the engine, can still wrap it: `LsmPa
 `MemTableSize`, `SyncWrites`, `EnableWal`, `BlockSize`, `CompactionTrigger`, `EnableBlockCache`,
 `BlockCacheSize` and `BackgroundCompaction` reach both the main store and every secondary index store.
 They are ignored by the other stores.
+
+### Changing the configuration of a database that already exists
+
+**A database records the transaction model it was created with, and opening it under another one is
+refused at `Open`.** The MVCC store keeps every value under a versioned key and no other configuration
+does, so a database written with `MVCC=true` - the default - and opened with `MVCC=false` or
+`Transactions=false` used to open without a word of complaint and then report every table as missing.
+The rows were never lost; they were invisible, and the natural next step - creating the schema on what
+looks like an empty database - wrote over one that was intact. Both directions are refused now, with a
+message naming the setting.
+
+`MVCC=false` and `Transactions=false` write the same layout as each other, so either can open the
+other's database.
+
+A `PageSize` that the file was not created with is refused the same way, in both directions. `Cache`,
+`CacheSize`, `Synchronous Commit`, `FileLocking` and `Isolation Level` may be changed freely between
+sessions - they select behaviour rather than layout.
+
+### Durability by configuration
+
+Measured, one process kill per configuration, 20 rows committed and the process killed with no close
+and no dispose (`DurabilityByConfigurationTests`):
+
+| configuration | a committed transaction after a process kill |
+|---|---|
+| default (`MVCC=true`, `Synchronous Commit=true`) | **survives** |
+| `MVCC=false`, with or without `Journal=wal` / `Journal=rollback` | **survives** |
+| `Store=lsm`, with either transaction model | **survives** |
+| encrypted (`Encryption=aes-gcm`) | **survives** |
+| `Synchronous Commit=false` | **lost** - documented, this is what the setting trades |
+| `Transactions=false` | **lost** - there is no commit to make durable |
+
+The last two lose everything written since the database was opened, including the table: the reopened
+database reports it as not found. `Transactions=false` is the one worth reading twice - autocommit is
+durable *because* each statement runs in an implicit transaction, and with the transaction layer
+switched off there is none.
 
 ### Settings that are read but not enforced
 
