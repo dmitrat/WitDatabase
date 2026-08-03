@@ -913,3 +913,64 @@ the main store, the indexes should follow it rather than silently doing somethin
 **Not changed here.** The measurement above was taken by editing the file and reverting it; nothing
 in this commit alters the engine. The fix is one line, its performance case is measured, and its
 durability case is stated - it wants an explicit decision rather than an assumption.
+
+---
+
+## 16. Fix two: the write-ahead log no longer bypasses the OS write cache
+
+`FileOptions.WriteThrough` is gone from `WriteAheadLogBase`. Durability never depended on it and does
+not now: it comes from `Sync()`, which calls `Flush(flushToDisk: true)` - `StoreLsm` calls it per
+write when `SyncWrites` is on and the LSM log calls it on commit, and `TransactionalStore` calls it
+through the journal on commit.
+
+**Verified rather than argued.** The full suite is green at **6,643 tests**, and separately the
+**13 `Category=Crash` tests pass** - the out-of-process kill tests phase 4 built to prove a committed
+transaction survives a process being killed. Those are the arbiter for this change, and they are
+unchanged.
+
+### What it bought, two passes
+
+`InsertBenchmarks`, `UpdateBenchmarks`, `TransactionBenchmarks`, 100 rows, `Lsm` against `BTree`:
+
+| operation | Lsm/BTree pass 1 | pass 2 |
+|---|---|---|
+| `INSERT` without a transaction, x100 | 4.76x | 5.60x |
+| `INSERT` in a transaction | 3.67x | 3.86x |
+| Transaction with savepoint | 2.32x | 2.57x |
+| `UPDATE` by PK | 1.81x | 1.80x |
+| `UPDATE … RETURNING` | 1.81x | 1.75x |
+| Single transaction, N `INSERT`s | 1.75x | 1.73x |
+| Bulk `UPDATE` | 1.68x | 1.68x |
+| `UPDATE` by indexed column | 1.69x | 1.55x |
+| Sequential reads x100 | 1.08x | 1.18x |
+| Transaction rollback | 1.04x | 0.98x |
+
+**The LSM penalty went from 12-20x to 1.0-5.6x**, and reads and rollback reached parity.
+
+Two readings are excluded rather than quoted: `INSERT … RETURNING` moved 0.92x → 1.69x because its
+B+Tree denominator halved between passes, and `Mixed Tx` produced a 98x B+Tree outlier in pass two
+(2.90 ms → 284.21 ms). Neither carries a conclusion.
+
+### The remaining penalty is a fixed cost per transaction, not per row
+
+The anatomy at **1,000 rows** measured LSM at 44.30 ms against B+Tree's 49.27 ms with three
+secondary indexes - LSM *faster*. These benchmarks at **100 rows** put it 1.7-3.9x behind. Same
+engine, same fix, opposite verdict, and the difference is batch size: what is left is a fixed cost
+per transaction that amortises as the batch grows.
+
+That is also the answer to *"is there a workload where LSM helps?"* - **on the evidence so far, no,
+and the suite cannot answer it properly.** LSM reaches parity on reads and on large batches and wins
+nowhere. The workload the structure is designed for - large sequential write batches - is not in the
+suite at all: `InsertBenchmarks` stops at 5,000 rows and the anatomy at 1,000. Answering it needs a
+benchmark aimed at that shape, not another reading of the ones that exist.
+
+**Autocommit remains the worst place**: ~12.8 ms per single inserted row on LSM against ~2.7 ms on
+B+Tree, roughly 5x, and the fix barely moved it. It is a separate cost from the one removed here and
+has not been diagnosed.
+
+### Found on the way and not fixed
+
+Index stores are constructed with `new LsmOptions()` in
+`WitDatabaseBuilder.CreateLsmIndexFactory`, so a connection string's `SyncWrites` never reaches them
+- every secondary index silently runs on defaults. Whatever is decided for the main store, the
+indexes should follow it rather than doing something else unannounced.
