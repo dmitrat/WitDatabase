@@ -8,19 +8,24 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AssemblyName>WitDatabaseStudio</AssemblyName>
-    <ApplicationIcon>WitDatabase.ico</ApplicationIcon>
-    
-    <!-- Release info -->
+    <ApplicationIcon>Assets\Branding\WitDatabaseStudio.ico</ApplicationIcon>
+
+    <!-- Studio is a desktop application, not a library. Directory.Build.props turns
+         GeneratePackageOnBuild on for everything that is not a test project and does not
+         opt out, which was producing an OutWit.Database.Studio.<version>.nupkg on every
+         Release build. -->
+    <IsPackable>false</IsPackable>
+
+    <!-- Release info. The release workflow overrides Version from the studio-v* tag; this
+         is what a local build gets. -->
     <Version>1.0.1</Version>
     <Product>WitDatabase Studio</Product>
+    <Company>OutWit</Company>
   </PropertyGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="Assets\**" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="WitDatabase.ico" />
+    <!-- The branding sources are packaging inputs, not things to embed in the assembly. -->
+    <AvaloniaResource Include="Assets\**" Exclude="Assets\Branding\**" />
   </ItemGroup>
 
   <ItemGroup>
@@ -29,16 +34,12 @@
   </ItemGroup>
 
   <ItemGroup>
-    <PackageReference Include="Avalonia" Version="11.3.11" />
-    <PackageReference Include="Avalonia.AvaloniaEdit" Version="11.3.0" />
-    <PackageReference Include="Avalonia.Desktop" Version="11.3.11" />
-    <PackageReference Include="Avalonia.Themes.Fluent" Version="11.3.11" />
-    <PackageReference Include="Avalonia.Fonts.Inter" Version="11.3.11" />
-	  <PackageReference Include="Avalonia.Controls.DataGrid" Version="11.3.11" />
-    <PackageReference Include="Avalonia.Diagnostics" Version="11.3.11">
-      <IncludeAssets Condition="'$(Configuration)' != 'Debug'">None</IncludeAssets>
-      <PrivateAssets Condition="'$(Configuration)' != 'Debug'">All</PrivateAssets>
-    </PackageReference>
+    <PackageReference Include="Avalonia" Version="12.1.1" />
+    <PackageReference Include="Avalonia.AvaloniaEdit" Version="12.0.0" />
+    <PackageReference Include="Avalonia.Desktop" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Themes.Fluent" Version="12.1.1" />
+    <PackageReference Include="Avalonia.Fonts.Inter" Version="12.1.1" />
+	  <PackageReference Include="Avalonia.Controls.DataGrid" Version="12.1.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="10.0.2" />
     <PackageReference Include="Microsoft.Extensions.Logging.Console" Version="10.0.2" />
     <PackageReference Include="OutWit.Common.MVVM.Avalonia" Version="2.0.4" />

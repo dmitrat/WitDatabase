@@ -20,8 +20,9 @@
             <TextBlock Text="Open Database"
                        FontSize="18"
                        FontWeight="SemiBold"/>
-            <TextBlock Text="Open an existing WitDatabase file"
+            <TextBlock Text="Open an existing database. Its configuration is read from the database itself."
                        Foreground="Gray"
+                       TextWrapping="Wrap"
                        FontSize="12"/>
         </StackPanel>
 
@@ -29,24 +30,30 @@
         <TabControl Grid.Row="1">
             <TabItem Header="General">
                 <StackPanel Spacing="16" Margin="8" MaxWidth="560">
-                    <!-- File Path -->
+                    <!-- Database path. A B+Tree database is a file and an LSM database is a
+                         directory, so both pickers are offered - a file picker alone made an LSM
+                         database impossible to open. -->
                     <StackPanel Spacing="4">
-                        <TextBlock Text="Database File:"
+                        <TextBlock Text="Database:"
                                    FontWeight="SemiBold"/>
-                        <Grid ColumnDefinitions="*,Auto">
+                        <Grid ColumnDefinitions="*,Auto,Auto">
                             <TextBox Grid.Column="0"
                                      Text="{Binding ConnectionInfo.FilePath, Mode=TwoWay}"
                                      Watermark="C:\Data\myapp.witdb"
                                      Margin="0,0,8,0"/>
                             <Button Grid.Column="1"
                                     Command="{Binding BrowseFileCommand}"
-                                    Content="Browse..."
-                                    Width="100"/>
+                                    Content="File..."
+                                    Width="90"
+                                    Margin="0,0,8,0"
+                                    ToolTip.Tip="Open a B+Tree database file"/>
+                            <Button Grid.Column="2"
+                                    Command="{Binding BrowseFolderCommand}"
+                                    Content="Folder..."
+                                    Width="90"
+                                    ToolTip.Tip="Open an LSM database, which is a directory of SSTables"/>
                         </Grid>
                     </StackPanel>
-
-                    <CheckBox IsChecked="{Binding UseAutoDetectedSettings}"
-                              Content="Auto-detect settings from database"/>
 
                     <!-- Encryption -->
                     <CheckBox IsChecked="{Binding ConnectionInfo.IsEncrypted}"
@@ -63,14 +70,12 @@
                                  RevealPassword="False"/>
                     </StackPanel>
 
-                    <!-- Storage Engine -->
-                    <StackPanel Spacing="4" IsEnabled="{Binding !UseAutoDetectedSettings}">
-                        <TextBlock Text="Storage Engine:"
-                                   FontWeight="SemiBold"/>
-                        <ComboBox ItemsSource="{Binding StorageEngines}"
-                                  SelectedItem="{Binding SelectedStorageEngine}"
-                                  HorizontalAlignment="Stretch"/>
-                    </StackPanel>
+                    <!-- Storage engine, transactions, MVCC and file locking used to be offered here
+                         and on an Advanced tab. None of them ever reached the engine:
+                         BuildConnectionString emits only Data Source, Mode, Encryption, Password and
+                         Store, so clearing "Enable MVCC" got an MVCC database and no message. Since
+                         12.2.0 the file records all of them and supplies whatever the connection
+                         string does not name, so the honest fix is to stop asking. -->
 
                     <!-- Read Only -->
                     <CheckBox IsChecked="{Binding ConnectionInfo.IsReadOnly}"
@@ -95,28 +100,6 @@
                 </StackPanel>
             </TabItem>
 
-            <TabItem Header="Advanced" IsVisible="{Binding !UseAutoDetectedSettings}">
-                <Grid Margin="8" ColumnDefinitions="*,*" ColumnSpacing="16">
-                    <StackPanel Grid.Column="0" Spacing="8">
-                        <TextBlock Text="Transaction Settings:" FontWeight="SemiBold"/>
-
-                        <CheckBox IsChecked="{Binding EnableTransactions}"
-                                  Content="Enable ACID transactions"/>
-
-                        <CheckBox IsChecked="{Binding EnableMvcc}"
-                                  Content="Enable MVCC (Multi-Version Concurrency Control)"
-                                  IsEnabled="{Binding EnableTransactions}"
-                                  Margin="24,4,0,0"/>
-                    </StackPanel>
-
-                    <StackPanel Grid.Column="1" Spacing="8">
-                        <TextBlock Text="Multi-Process Safety:" FontWeight="SemiBold"/>
-
-                        <CheckBox IsChecked="{Binding EnableFileLocking}"
-                                  Content="Enable file locking"/>
-                    </StackPanel>
-                </Grid>
-            </TabItem>
         </TabControl>
 
         <!-- Buttons -->

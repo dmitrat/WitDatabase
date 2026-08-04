@@ -36,8 +36,15 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitDefault()
     {
+        if (ConnectionInfo != null)
+            ConnectionInfo.PropertyChanged -= OnConnectionInfoPropertyChanged;
+
         ConnectionInfo = new ConnectionInfo();
         ConnectionInfo.PropertyChanged += OnConnectionInfoPropertyChanged;
+
+        // A dialog reopened after a failed attempt used to come back still showing the old error,
+        // because InitDefault replaced everything except this.
+        ErrorMessage = null;
 
         StorageEngines = ["btree", "lsm"];
         SelectedStorageEngine = "btree";
@@ -61,6 +68,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     private void InitCommands()
     {
         BrowseFileCommand = new RelayCommandAsync(BrowseFileAsync);
+        BrowseFolderCommand = new RelayCommandAsync(BrowseFolderAsync);
         ConnectCommand = new RelayCommandAsync(ConnectAsync);
         CancelCommand = new RelayCommand(Cancel);
     }
@@ -87,6 +95,34 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         else
             await OpenExistingDatabaseAsync(storageProvider);
         
+    }
+
+    /// <summary>
+    /// An LSM database is a DIRECTORY of SSTables, not a file, so a file picker can never select one -
+    /// which meant Studio could create an LSM database and never reopen it. This is the other half of
+    /// Browse.
+    /// </summary>
+    private async Task BrowseFolderAsync()
+    {
+        if (ApplicationVm.MainWindow == null)
+            return;
+
+        var folders = await ApplicationVm.MainWindow.StorageProvider.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = "Open LSM Database Folder",
+                AllowMultiple = false
+            });
+
+        if (folders.Count <= 0)
+            return;
+
+        var folderPath = folders[0].Path.LocalPath;
+        ConnectionInfo.FilePath = folderPath;
+
+        ApplyAutoDetectedSettings(folderPath);
+
+        UpdateStatus();
     }
 
     private async Task OpenExistingDatabaseAsync(IStorageProvider storageProvider)
@@ -117,37 +153,58 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         var filePath = files[0].Path.LocalPath;
         ConnectionInfo.FilePath = filePath;
 
-        // Auto-detect settings from existing database
-        if (UseAutoDetectedSettings && File.Exists(filePath))
-        {
-            try
-            {
-                StorageDetectionResult dbInfo = WitDatabase.GetDatabaseInfo(filePath);
-                ConnectionInfo.IsEncrypted = dbInfo.RequiresPassword;
-
-                // Set storage engine from detected store type
-                if (!string.IsNullOrEmpty(dbInfo.StoreType))
-                {
-                    SelectedStorageEngine = dbInfo.StoreType.ToLowerInvariant();
-                }
-
-                // Configure features
-                // If encrypted, we can't read features reliably, keep user's defaults
-                if (!dbInfo.RequiresPassword)
-                {
-                    EnableTransactions = dbInfo.HasTransactions;
-                    EnableMvcc = dbInfo.HasMvcc;
-                    EnableFileLocking = dbInfo.HasFileLocking;
-                }
-            }
-            catch
-            {
-                // Ignore errors during detection
-            }
-        }
+        ApplyAutoDetectedSettings(filePath);
 
         UpdateStatus();
 
+    }
+
+    /// <summary>
+    /// A WitDatabase is a file for the paged stores and a directory for LSM, so both count.
+    /// </summary>
+    private static bool DatabaseExists(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        return File.Exists(path) || Directory.Exists(path);
+    }
+
+    /// <summary>
+    /// Reads the configuration a database records about itself and shows it in the dialog.
+    /// Called by the Browse path; separated so that it can be driven without a file picker.
+    /// </summary>
+    public void ApplyAutoDetectedSettings(string filePath)
+    {
+        // DatabaseExists rather than File.Exists: an LSM database is a directory, and guarding on
+        // File.Exists meant detection was silently skipped for one of the two stores.
+        if (!UseAutoDetectedSettings || !DatabaseExists(filePath))
+            return;
+
+        try
+        {
+            StorageDetectionResult dbInfo = WitDatabase.GetDatabaseInfo(filePath);
+            ConnectionInfo.IsEncrypted = dbInfo.RequiresPassword;
+
+            // Set storage engine from detected store type
+            if (!string.IsNullOrEmpty(dbInfo.StoreType))
+            {
+                SelectedStorageEngine = dbInfo.StoreType.ToLowerInvariant();
+            }
+
+            // Configure features
+            // If encrypted, we can't read features reliably, keep user's defaults
+            if (!dbInfo.RequiresPassword)
+            {
+                EnableTransactions = dbInfo.HasTransactions;
+                EnableMvcc = dbInfo.HasMvcc;
+                EnableFileLocking = dbInfo.HasFileLocking;
+            }
+        }
+        catch
+        {
+            // Ignore errors during detection
+        }
     }
 
     private async Task CreateNewDatabaseAsync(IStorageProvider storageProvider)
@@ -278,6 +335,16 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                 
                 Logger.LogInformation("Database file created: {FilePath}", ConnectionInfo.FilePath);
             }
+            else if (IsFileBased && !DatabaseExists(ConnectionInfo.FilePath))
+            {
+                // The engine creates a database it is asked to open and cannot find, which is right
+                // for a provider and wrong for a dialog called Open: a user whose file has moved
+                // would be shown an empty database and read it as their data being gone.
+                ErrorMessage = $"Database not found: {ConnectionInfo.FilePath}";
+                Logger.LogWarning("Refused to open a database that does not exist: {FilePath}",
+                    ConnectionInfo.FilePath);
+                return;
+            }
 
             // Connect to the database (both for new and existing)
             Logger.LogInformation("Attempting to connect to database: {FilePath}", ConnectionInfo.FilePath);
@@ -372,6 +439,15 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     #endregion
 
     #region Public Methods
+
+    /// <summary>
+    /// Returns the dialog to the state a freshly opened one is in. Public so that the reset both
+    /// dialogs perform can be driven without a window.
+    /// </summary>
+    public void ResetForNewDialog()
+    {
+        InitDefault();
+    }
 
     public async Task<bool> ShowCreateDialogAsync()
     {
@@ -479,6 +555,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     #region Commands
 
     public ICommand BrowseFileCommand { get; private set; } = null!;
+
+    public ICommand BrowseFolderCommand { get; private set; } = null!;
 
     public ICommand ConnectCommand { get; private set; } = null!;
 

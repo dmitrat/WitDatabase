@@ -3,6 +3,8 @@ using System.ComponentModel;
 using System.Data;
 using System.Windows.Input;
 using Avalonia.Controls;
+// Avalonia 12 moved SetTextAsync off IClipboard and onto ClipboardExtensions.
+using Avalonia.Input.Platform;
 using Microsoft.Extensions.Logging;
 using OutWit.Common.Aspects;
 using OutWit.Common.Locker;

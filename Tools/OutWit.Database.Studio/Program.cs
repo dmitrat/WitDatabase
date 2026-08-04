@@ -23,14 +23,72 @@ sealed class Program
     [STAThread]
     public static void Main(string[] args)
     {
+        InstallCrashHandlers();
+
         try
         {
             BuildAvaloniaApp()
                 .StartWithClassicDesktopLifetime(args);
         }
+        catch (Exception ex)
+        {
+            Fatal("Startup", ex);
+            throw;
+        }
         finally
         {
             s_serviceProvider?.Dispose();
+        }
+    }
+
+    #endregion
+
+    #region Crash Handling
+
+    /// <summary>
+    /// Studio had no unhandled-exception handling of any kind, and RelayCommandAsync.Execute is
+    /// 'async void' - so an exception escaping any command body ended the process with no message,
+    /// no trace and, since the console provider writes nowhere in a WinExe, no log either.
+    ///
+    /// These do not swallow anything. They write the failure down before it takes the process, and an
+    /// unobserved task exception is marked observed so that a fire-and-forget continuation cannot kill
+    /// a session over something nobody was waiting for.
+    /// </summary>
+    private static void InstallCrashHandlers()
+    {
+        AppDomain.CurrentDomain.UnhandledException += (_, e) =>
+            Fatal("AppDomain.UnhandledException", e.ExceptionObject as Exception);
+
+        TaskScheduler.UnobservedTaskException += (_, e) =>
+        {
+            Fatal("TaskScheduler.UnobservedTaskException", e.Exception);
+            e.SetObserved();
+        };
+    }
+
+    private static void Fatal(string source, Exception? exception)
+    {
+        try
+        {
+            var logger = s_serviceProvider?.GetService<ILogger<Program>>();
+
+            if (logger != null)
+            {
+                logger.LogCritical(exception, "Unhandled exception from {Source}", source);
+                return;
+            }
+
+            // The failure may predate the service provider, so fall back to the same file directly.
+            var line = $"{DateTime.Now:yyyy-MM-dd HH:mm:ss.fff} [CRT] {source} - {exception}"
+                + Environment.NewLine;
+
+            var path = FileLoggerProvider.DefaultPath();
+            Directory.CreateDirectory(Path.GetDirectoryName(path)!);
+            File.AppendAllText(path, line);
+        }
+        catch
+        {
+            // nothing left to do; never fail inside the failure handler
         }
     }
 
@@ -54,10 +112,11 @@ sealed class Program
     {
         var services = new ServiceCollection();
 
-        // Logging
+        // Logging - the console provider writes nowhere in a WinExe, so the file is the real one.
         services.AddLogging(builder =>
         {
             builder.AddConsole();
+            builder.AddProvider(new FileLoggerProvider(FileLoggerProvider.DefaultPath()));
             builder.SetMinimumLevel(LogLevel.Information);
         });
 

@@ -23,6 +23,13 @@ public sealed partial class DatabaseService : IDatabaseService
     private ConnectionInfo? m_currentConnection;
     private bool m_disposed;
 
+    /// <summary>
+    /// The last status actually delivered to subscribers. Compared against the live state rather
+    /// than against a value captured by the caller: ConnectAsync calls DisconnectAsync, which raises
+    /// its own event, so anything the caller captured beforehand is stale by the time it is used.
+    /// </summary>
+    private bool m_lastRaisedStatus;
+
     #endregion
 
     #region Constructors
@@ -38,8 +45,6 @@ public sealed partial class DatabaseService : IDatabaseService
 
     public async Task<bool> ConnectAsync(ConnectionInfo connection, CancellationToken ct = default)
     {
-        var wasConnected = IsConnected;
-
         try
         {
             await DisconnectAsync();
@@ -54,7 +59,7 @@ public sealed partial class DatabaseService : IDatabaseService
 
             m_logger.LogInformation("Successfully connected to database: {FilePath}", connection.FilePath);
 
-            RaiseConnectionStatusChangedIfNeeded(wasConnected);
+            RaiseConnectionStatusChangedIfNeeded();
             return true;
         }
         catch (Exception ex)
@@ -65,15 +70,13 @@ public sealed partial class DatabaseService : IDatabaseService
             m_connection = null;
             m_currentConnection = null;
 
-            RaiseConnectionStatusChangedIfNeeded(wasConnected);
+            RaiseConnectionStatusChangedIfNeeded();
             return false;
         }
     }
 
     public async Task DisconnectAsync()
     {
-        var wasConnected = IsConnected;
-
         if (m_connection != null)
         {
             await m_connection.CloseAsync();
@@ -83,19 +86,28 @@ public sealed partial class DatabaseService : IDatabaseService
             m_logger.LogInformation("Disconnected from database");
         }
 
-        RaiseConnectionStatusChangedIfNeeded(wasConnected);
+        RaiseConnectionStatusChangedIfNeeded();
     }
 
     public bool IsConnected => m_connection?.State == ConnectionState.Open;
 
     public ConnectionInfo? CurrentConnection => m_currentConnection;
 
-    private void RaiseConnectionStatusChangedIfNeeded(bool wasConnected)
+    /// <summary>
+    /// Raises the status event when the live state differs from what subscribers were last told.
+    ///
+    /// It takes no 'wasConnected' argument on purpose. ConnectAsync begins by calling DisconnectAsync,
+    /// which raises 'disconnected' on its own; a caller comparing against a value captured before that
+    /// call would find connected == connected and stay silent, leaving every view believing the
+    /// application is disconnected while the service is connected.
+    /// </summary>
+    private void RaiseConnectionStatusChangedIfNeeded()
     {
         var isConnected = IsConnected;
-        if (isConnected == wasConnected)
+        if (isConnected == m_lastRaisedStatus)
             return;
 
+        m_lastRaisedStatus = isConnected;
         ConnectionStatusChanged?.Invoke(this, isConnected);
     }
 
