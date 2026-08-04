@@ -764,6 +764,55 @@ order-preserving, so this needs no per-type ladder.
   had just been given, so the first "after" measurement was identical to the "before" one - measuring
   the path that had not changed.
 
+### 7a.10 The double write, measured before it is touched - and the premise was wrong
+
+The remaining 2x on a transactional write was recorded as "the commit rewrites every version a second
+time". Before changing that, the tests it would have to keep green were written, because MVCC had none
+of them: `MvccCommitAtomicityTests` asks about snapshots **inside one session**, and
+`MvccKeyValueStoreTests` reopens a database only to check a cached timestamp.
+
+**`Mvcc.VisibilityAcrossReopenTests`** - five cases, all green today: a committed write survives a
+reopen; a rolled-back write does not; an abandoned transaction leaves nothing; a transaction still open
+when the store closes leaves nothing; and a rolled-back **overwrite** leaves the original value rather
+than a mixture.
+
+**`Durability.UncommittedWriteAfterAKillTests`** - the same question where no cleanup runs, through the
+out-of-process runner with a new `uncommitted-kill` scenario. Every crash test this project had asks
+whether something **survives**; none asked whether something that should not survive is gone, and an
+engine that wrote everything the moment it was asked would pass all of the first set and fail this one.
+Green: 0 rows after the kill, against the control's 20 for the same rows committed.
+
+**The attribution is what changed the design question, and it took two wrong guesses to get to.** The
+probe was written to distinguish "the rows never reached the media" from "they did and the rules hide
+them". It measured a file of **8 KB after 20,000 uncommitted rows** - so the first guess, that 20,000
+rows would overflow a 1,000-page cache and force evictions, was wrong. Cutting the cache to eight pages
+measured **8 KB again**, which is the real finding: **`MvccTransaction.Put` buffers into an in-memory
+change set and the store is not touched until `Commit`**. An uncommitted transaction cannot leave
+anything behind under any cache size, on any media.
+
+**So the double write is not what the record said.** Both writes happen inside the commit, and reading
+`MvccTransaction.Commit` in that light:
+
+1. the commit timestamp is allocated **first**, under the commit lock;
+2. each version is installed with `PutVersion(key, value, commitTimestamp, TransactionId)` - carrying
+   the transaction id, so it looks uncommitted;
+3. `CommitTransaction` **rewrites every one of them** to clear the id and stamp the timestamp;
+4. the timestamp is published, and *that* is what makes the commit all-or-nothing to readers - a
+   snapshot cannot be above an unpublished timestamp;
+5. the flush follows, which is what makes it durable.
+
+**The second write therefore changes a marker whose final value was known before the first write was
+made.** Installing the records already stamped committed would halve the writes, and the atomicity
+readers see would still come from step 4.
+
+**Not done, and here is what it needs first.** `PutVersion` passes the transaction id to
+`MarkPreviousVersionDeleted`, which uses it to decide which previous versions it may touch - "only my
+own uncommitted, or anything committed". Passing 0 to make the new record committed would change that
+decision as a side effect, which is exactly the class of change this project has been bitten by: a
+correct edit in one place that alters a rule somewhere else. It needs the marker and the ownership to
+be separated, and then the atomicity fixture is what proves it - which is why those tests were written
+before the change rather than after.
+
 ## 7. Ledger
 
 47 suppressed entries (33 `[Ignore(…)]` + 14 `Ignore =`) plus 2 `[Explicit]`, counted with the commands
