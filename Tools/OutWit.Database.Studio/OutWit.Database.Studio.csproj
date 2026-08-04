@@ -8,19 +8,24 @@
     <ApplicationManifest>app.manifest</ApplicationManifest>
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <AssemblyName>WitDatabaseStudio</AssemblyName>
-    <ApplicationIcon>WitDatabase.ico</ApplicationIcon>
-    
-    <!-- Release info -->
+    <ApplicationIcon>Assets\Branding\WitDatabaseStudio.ico</ApplicationIcon>
+
+    <!-- Studio is a desktop application, not a library. Directory.Build.props turns
+         GeneratePackageOnBuild on for everything that is not a test project and does not
+         opt out, which was producing an OutWit.Database.Studio.<version>.nupkg on every
+         Release build. -->
+    <IsPackable>false</IsPackable>
+
+    <!-- Release info. The release workflow overrides Version from the studio-v* tag; this
+         is what a local build gets. -->
     <Version>1.0.1</Version>
     <Product>WitDatabase Studio</Product>
+    <Company>OutWit</Company>
   </PropertyGroup>
 
   <ItemGroup>
-    <AvaloniaResource Include="Assets\**" />
-  </ItemGroup>
-
-  <ItemGroup>
-    <Content Include="WitDatabase.ico" />
+    <!-- The branding sources are packaging inputs, not things to embed in the assembly. -->
+    <AvaloniaResource Include="Assets\**" Exclude="Assets\Branding\**" />
   </ItemGroup>
 
   <ItemGroup>

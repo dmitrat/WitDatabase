@@ -1,0 +1,32 @@
+{
+    "GeneralSettings": {
+        "NetProjectPath": "OutWit.Database.Studio.csproj",
+        "ApplicationName": "WitDatabase Studio",
+        "Version": "1.0.1",
+        "PackageName": "WitDatabaseStudio",
+        "AssemblyName": {
+            "$type": "msbuild",
+            "property": "AssemblyName"
+        }
+    },
+    "LinuxSettings": {
+        "AppIcon": "Assets/Branding/WitDatabaseStudio.svg",
+        "Maintainer": "OutWit",
+        "CreateBinSymlink": "True"
+    },
+    "Win32Settings": {
+        "InstallerIcon": "Assets/Branding/WitDatabaseStudio.ico",
+        "Company": "OutWit",
+        "IncludeUninstaller": "True"
+    },
+    "MacOsSettings": {
+        "CreateBundle": true,
+        "BundleIdentifier": "io.outwit.witdatabase.studio",
+        "AppIcon": "Assets/Branding/WitDatabaseStudio.icns",
+        "SigningCredentialsType": "AdHoc"
+    },
+    "PublishSettings": {
+        "PublishSingleFile": "False",
+        "ExtraBuildProperties": {}
+    }
+}

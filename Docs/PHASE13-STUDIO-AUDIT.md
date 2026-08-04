@@ -314,6 +314,64 @@ subscription per dialog.
 Unchanged at **45 suppressed entries (31 `[Ignore(…)]` + 14 `Ignore =`) plus 2 `[Explicit]`**, counted
 with the commands on this branch. Nothing in `Sources/**` was touched by this phase.
 
+## 6a. The release pipeline, modelled on the WitCloud client
+
+`studio-release.yml` replaces `release.yml`, which is deleted rather than left beside it: keeping two
+release workflows for one product, one of them writing into the engine's tag namespace, is worse than
+having one.
+
+### 6a.1 What changed against the workflow it replaces
+
+| | old `release.yml` | new `studio-release.yml` |
+|---|---|---|
+| trigger | `workflow_dispatch` only, tag derived from the csproj version | **`studio-v*` tag**, plus dispatch |
+| tag namespace | `v1.0.1` - the engine's `v*` list | `studio-v*`, separate by construction |
+| packaging | `dotnet publish` + `Compress-Archive`/`tar` | **Avalonia Parcel**: NSIS installer, `.deb`, `.zip` |
+| tracks | self-contained only | self-contained **and** framework-dependent (`-no-dotnet`) |
+| macOS | `macos-13`, defaulted **off**, never ran | `macos-14` (arm64), always in the matrix |
+| signing | none | macOS Developer-ID + notarization, Linux GPG-signed `SHA256SUMS`, Windows Authenticode via SSL.com eSigner |
+| missing platform | silent | **`::warning::NO ARTIFACT FOR <os>`**, per platform |
+
+**Every signing step is a no-op when its secrets are absent**, exactly as the WitCloud client does for
+eSigner, so a release still ships unsigned rather than failing. The committed `.parcel` says `AdHoc` for
+macOS and the workflow patches it to `P12Certificate` only when `APPLE_CERT_P12_BASE64` exists - so a
+fork, or this repository before the certificates are bought, still packs.
+
+Windows signing keeps WitCloud's quota rule: the eSigner tier is ~240 signatures a year, so
+`-dev`/`-test`/`-internal` tags are not signed unless `sign=true` forces it.
+
+### 6a.2 Stated, not left to be discovered
+
+`v1.0.1` shipped two platforms of the three its matrix listed and said nothing, because `buildMacOS`
+defaulted to false. The release job now **enumerates the three platform labels and emits a warning for
+each one with no artifact**. macOS is `continue-on-error` for now - it has never built once, and it must
+not be able to block a release the two proven platforms produce - which is exactly why the warning has
+to exist.
+
+**`osx-x64` is not built.** The workflow it replaces offered it and never ran it. Apple Silicon is the
+target that matters first; the header says so rather than leaving a reader to infer it from the matrix.
+
+### 6a.3 The icons, which did not exist
+
+Studio shipped one icon: `WitDatabase.ico`, a **single 256x209 image**. Windows stretches a non-square
+icon; macOS `.icns` and Linux packaging will not take one, and neither format existed. `Assets/Branding`
+now holds `.ico` (7 sizes), `.icns` (7 sizes), `.svg` and `.png`, **derived from the logo Studio already
+had** rather than redrawn - squared onto a transparent canvas without rescaling the artwork.
+`build-icons.py` sits beside them so the derivation is reproducible and the branding has one source.
+
+### 6a.4 Measured locally before spending a CI cycle
+
+Parcel 1.0.5 packed `win-x64` on this machine and the artifact was checked rather than the exit code:
+`WitDatabaseStudio.x64.1.0.1.zip`, 50 MB, **258 entries**, 111.5 MB unpacked, containing
+`WitDatabaseStudio.exe`. It was then **extracted and run** - the window opens, renders and carries the
+new icon.
+
+One thing worth separating: the automation tool refused to launch that executable with
+`0x80040201`. Started directly it runs fine. **The instrument failed, not the artifact** - checked
+before it could become a finding.
+
+Linux and macOS cannot be settled here. CI is the arbiter, as it was for `FileLocking=false`.
+
 ## 7. Verification
 
 `OutWit.Database.Studio.Tests`, the CI filter, on this branch:
