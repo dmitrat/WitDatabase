@@ -309,6 +309,27 @@ survived a careful read of the code and did not survive being built.
   complete** (needs a manual dispatch); **`FileLocking=false` on Linux**, which is a decision rather
   than a defect.
 
+## 6a. The version, and the one thing this breaks
+
+**12.2.0 - a minor that carries a narrow break, taken deliberately.**
+
+The project's test is *can an application that worked on the previous version fail on this one without
+changing a line?* Here it answers **yes**, in exactly one place, and it is proved by execution rather
+than argued: `WitDatabase.Open` used to read `FileLocking` out of the header and call
+`WithoutFileLocking()` when the flag was clear, so a database created with `FileLocking=false` reopened
+without the guard. It does not any more - safety settings are not restored - so the exclusive lock is
+taken and **a second engine over that database is refused**. `FileLockingIsNotRestoredTests` asserts
+both halves: the data still comes back, and the second `Open` throws.
+
+Dmitry took the minor knowingly, and the reasons are on the record rather than implied: the break is
+Linux-only in practice, it needs `FileLocking=false` written out explicitly, `WitSQL.md` § 15.0
+documents that setting as *disabling the guard*, and the hole it closes is one this project had already
+named - `FileLocking=false` admitting two engines on Linux was recorded as a gap in the intent, not an
+accepted trade-off.
+
+Everything else in the phase is a fix or an addition. The file format stays readable in both
+directions, and no public API was removed.
+
 ## 7. Ledger
 
 **45 suppressed entries (31 `[Ignore(…)]` + 14 `Ignore =`) plus 2 `[Explicit]`**, counted with the

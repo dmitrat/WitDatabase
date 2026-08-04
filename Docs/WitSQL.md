@@ -1354,6 +1354,11 @@ symmetry. Both trade a guarantee away, and restoring them would let a *file* mak
 less durable, or less exclusive, than the defaults promise - for a caller who said nothing about
 either. Name them again in the connection string when you want them.
 
+> **Changed in 12.2.0.** `WitDatabase.Open(path)` used to restore `FileLocking` from the header, so a
+> database created with `FileLocking=false` reopened without the exclusive guard. It now takes the
+> guard, and a second engine over that database is refused. If you were relying on that, write
+> `FileLocking=false` in the connection string.
+
 **Encryption:** the header records that a database is encrypted and with which provider, so opening one
 without a password is refused rather than misread. Nothing else can be restored for an encrypted
 database except its transaction model: the header is inside the encrypted page, so a non-default
