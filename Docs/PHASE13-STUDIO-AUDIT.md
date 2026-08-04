@@ -271,7 +271,38 @@ and the connection lifecycle. Three tests cover the provider, one of them a cont
 the minimum level must not be written, without which "the log contains what we asked for" would pass for
 a provider that writes everything.
 
-### 5.4 S12 - a fresh dialog showed the previous attempt's error
+### 5.4 S11 - Avalonia 11.3.11 to 12.1.x, and the advisory closes
+
+Dmitry took the major deliberately, and the reason is not freshness: **`Tmds.DBus.Protocol` goes
+0.21.2 to 0.94.1**, which closes GHSA-xrw6-gwf8-vvr9. Measured on the dependency graph rather than
+assumed.
+
+**The upgrade cost one line of source.** Avalonia 12 moved `SetTextAsync` off `IClipboard` and onto
+`ClipboardExtensions`, so `QueryTabViewModel` needed `using Avalonia.Input.Platform;`. Nothing else in
+86 files failed to compile.
+
+**Two things had to be given up or accepted, and both are recorded rather than absorbed:**
+
+- **`Avalonia.Diagnostics` has no 12.x release at all** - 105 versions on nuget.org, the highest
+  11.3.18. It was a Debug-only DevTools reference and is now removed. That loses the F12 inspector in
+  Debug builds until the package catches up.
+- **`OutWit.Common.MVVM.Avalonia` 2.0.4 still declares a dependency on Avalonia 11.3.11**, and it is a
+  separate repository. NuGet's nearest-wins gives Studio Avalonia 12, so the package runs against a
+  major it was not compiled for. **It works** - the application starts, binds, opens a database and
+  loads the explorer, with nothing in the log - but that is evidence for the surface Studio uses, not a
+  guarantee. It should be rebuilt against Avalonia 12 and released before Studio ships on this.
+
+**Verified by execution, not by the suite**, which matters because the 279 tests are headless
+ViewModel tests and instantiate no visual tree: the application was launched, a database opened through
+the dialog, and the explorer and workspace loaded, with no error or warning written to the new log.
+
+`Microsoft.Extensions.*` went 10.0.2 to 10.0.10 in the same change.
+
+**Still open, and not Studio's:** `SQLitePCLRaw.lib.e_sqlite3` (GHSA-2m69-gcr7-jv3q) and
+`Microsoft.OpenApi` (GHSA-v5pm-xwqc-g5wc) carry high-severity advisories in the benchmark, oracle-test
+and sample projects. None of them is a shipped package, and none is Studio.
+
+### 5.5 S12 - a fresh dialog showed the previous attempt's error
 
 Found in the application while confirming S2: `InitDefault` replaced `ConnectionInfo` and every setting
 but left `ErrorMessage` alone, so a dialog reopened after a refusal came back still showing it. It now
