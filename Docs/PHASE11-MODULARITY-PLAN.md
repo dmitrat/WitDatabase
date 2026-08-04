@@ -619,6 +619,38 @@ because a green test nobody has tried to break is a claim rather than evidence, 
 assumption about `Synchronous Commit=false` was wrong: it defers durability against a **process kill**,
 which instrument E measures at 0 of 20 rows, not the write itself.
 
+### 7a.7 The planner's range estimate, measured - and the reason it is not fixed here
+
+Phase 10 handed forward *"`RANGE_SELECTIVITY` is a constant"* with no measurement attached. It has one
+now. `SelectivityEstimateTests` asks the optimizer what a predicate will return, runs the same predicate
+through a real database of 1,000 rows holding the values 1..1000, and compares:
+
+| predicate | estimated | actual | ratio |
+|---|---|---|---|
+| `Value > 999` | 200 | 1 | **200x too high** |
+| `Value > 990` | 200 | 10 | 20x |
+| `Value > 800` | 200 | 200 | **1.00** - the case the constant was written for |
+| `Value > 500` | 200 | 500 | 0.40 |
+| `Value > 0` | 200 | 1000 | **0.20 - five times too low** |
+| `Value < 10` | 200 | 9 | 22x |
+| `Value < 900` | 200 | 899 | 0.22 |
+
+The controls hold in both directions: a unique-index equality is estimated exactly, and the 20% case
+comes out at 1.00, so the harness is not reporting error everywhere.
+
+**And the fix is a storage change rather than an optimizer one, which is the finding under the finding.**
+Interpolating between the smallest and largest key in the index is the obvious repair, and that data is
+not cheaply available: `ISecondaryIndex` has `GetFirstEntry` and `GetLastEntry`, and the B+Tree
+implementation of the latter is `Scan(null, null).LastOrDefault()` - **a full scan**. Calling it per
+query would reinstate precisely the defect 11.1.0 removed, where the planner scanned 1,000 rows per
+execution and a unique-index seek was 97x slower for it. It is also a latent cost in a **public API**
+for anyone who calls it today.
+
+So the work is: a first/last key that descends the tree (a capability on the store, with a scanning
+fallback for implementations that cannot do better), then an index-statistics input to the optimizer,
+then interpolation. That is a decision about a public interface, so it is written down here with its
+measurement rather than taken at the end of a session.
+
 ## 7. Ledger
 
 47 suppressed entries (33 `[Ignore(…)]` + 14 `Ignore =`) plus 2 `[Explicit]`, counted with the commands
