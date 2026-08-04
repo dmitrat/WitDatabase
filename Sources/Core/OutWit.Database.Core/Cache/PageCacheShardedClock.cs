@@ -11,7 +11,7 @@ namespace OutWit.Database.Core.Cache;
 /// Recommended for high-concurrency and scan-heavy workloads.
 /// For simpler workloads with low concurrency, <see cref="PageCacheLru"/> may be sufficient.
 /// </remarks>
-public sealed class PageCacheShardedClock : IPageCache
+public sealed class PageCacheShardedClock : IPageCache, IAsyncDisposable
 {
     #region Constants
 
@@ -33,7 +33,7 @@ public sealed class PageCacheShardedClock : IPageCache
 
     #region Nested Types
 
-    private sealed class CacheShard : IDisposable
+    private sealed class CacheShard : IDisposable, IAsyncDisposable
     {
         #region Fields
 
@@ -600,6 +600,39 @@ public sealed class PageCacheShardedClock : IPageCache
             }
         }
 
+        /// <summary>
+        /// The same shutdown without a single synchronous storage call.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="Dispose"/> ends in <c>FlushAllInternal</c>, which writes every dirty page through
+        /// <c>IStorage.WritePage</c> - so a storage that has no synchronous write (a browser's IndexedDb)
+        /// could never be closed. The flush happens through <see cref="FlushAllAsync"/> here, and it runs
+        /// <b>before</b> the lock is taken rather than inside it, because nothing may be awaited under
+        /// <c>m_lock</c>.
+        /// </remarks>
+        public async ValueTask DisposeAsync()
+        {
+            if (m_disposed)
+                return;
+
+            await FlushAllAsync(CancellationToken.None).ConfigureAwait(false);
+
+            // The drain is still needed: FlushAllAsync hands buffers to the storage and returns before
+            // the storage is necessarily finished with them.
+            SpinWait.SpinUntil(() => Volatile.Read(ref m_writesInFlight) == 0, DISPOSE_DRAIN_TIMEOUT);
+
+            lock (m_lock)
+            {
+                if (m_disposed)
+                    return;
+
+                DiscardAllPages(keepPinnedBuffers: true);
+
+                m_asyncLock.Dispose();
+                m_disposed = true;
+            }
+        }
+
         #endregion
 
         #region Properties
@@ -812,6 +845,23 @@ public sealed class PageCacheShardedClock : IPageCache
             {
                 shard.Dispose();
             }
+        }
+    }
+
+    /// <summary>
+    /// Closes every shard without a synchronous storage call, so a database on a storage that has none
+    /// can be closed at all.
+    /// </summary>
+    public async ValueTask DisposeAsync()
+    {
+        if (m_disposed)
+            return;
+
+        m_disposed = true;
+
+        foreach (var shard in m_shards)
+        {
+            await shard.DisposeAsync().ConfigureAwait(false);
         }
     }
 

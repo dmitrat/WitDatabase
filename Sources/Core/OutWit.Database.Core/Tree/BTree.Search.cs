@@ -197,6 +197,78 @@ public sealed partial class BTree
     }
 
     /// <summary>
+    /// Finds the rightmost leaf page in the tree.
+    /// </summary>
+    /// <remarks>
+    /// The twin of <see cref="FindLeftmostLeaf"/>, and the reason it exists: without it the only way to
+    /// reach the largest key was to walk every entry, so <c>ISecondaryIndex.GetLastEntry</c> was
+    /// <c>Scan(null, null).LastOrDefault()</c> - a full pass over the index for one key.
+    /// </remarks>
+    private uint FindRightmostLeaf()
+    {
+        uint currentPage = m_rootPageNumber;
+
+        while (true)
+        {
+            var page = m_pageManager.GetPage(currentPage);
+            var node = new BTreeNode(page.Data, PageSize, currentPage);
+
+            if (node.IsLeaf)
+            {
+                m_pageManager.ReleasePage(currentPage);
+                return currentPage;
+            }
+
+            // An internal node holds KeyCount keys and KeyCount + 1 children, so the last child is at
+            // KeyCount rather than at KeyCount - 1. Getting that wrong walks into the second-largest
+            // subtree and reports a key that exists but is not the largest.
+            uint childPage = node.GetChild(node.KeyCount);
+            m_pageManager.ReleasePage(currentPage);
+            currentPage = childPage;
+        }
+    }
+
+    /// <summary>
+    /// The smallest key in the tree, or null when it is empty.
+    /// </summary>
+    public byte[]? GetFirstKey()
+    {
+        var leaf = FindLeftmostLeaf();
+        var page = m_pageManager.GetPage(leaf);
+
+        try
+        {
+            var node = new BTreeNode(page.Data, PageSize, leaf);
+
+            return node.KeyCount == 0 ? null : node.GetKey(0).ToArray();
+        }
+        finally
+        {
+            m_pageManager.ReleasePage(leaf);
+        }
+    }
+
+    /// <summary>
+    /// The largest key in the tree, or null when it is empty.
+    /// </summary>
+    public byte[]? GetLastKey()
+    {
+        var leaf = FindRightmostLeaf();
+        var page = m_pageManager.GetPage(leaf);
+
+        try
+        {
+            var node = new BTreeNode(page.Data, PageSize, leaf);
+
+            return node.KeyCount == 0 ? null : node.GetKey(node.KeyCount - 1).ToArray();
+        }
+        finally
+        {
+            m_pageManager.ReleasePage(leaf);
+        }
+    }
+
+    /// <summary>
     /// Finds the leftmost leaf page in the tree asynchronously.
     /// </summary>
     private async ValueTask<uint> FindLeftmostLeafAsync(CancellationToken cancellationToken)

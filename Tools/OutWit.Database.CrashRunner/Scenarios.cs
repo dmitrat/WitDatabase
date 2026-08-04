@@ -1,4 +1,4 @@
-using System.Data.Common;
+﻿using System.Data.Common;
 using OutWit.Database.AdoNet;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Engine;
@@ -104,6 +104,17 @@ public static class Scenarios
     /// </remarks>
     public const string CONFIGURED_COMMIT_KILL = "configured-commit-kill";
 
+    /// <summary>
+    /// Write inside a transaction, do <b>not</b> commit, and die.
+    /// </summary>
+    /// <remarks>
+    /// The other side of durability, and the one nothing had ever asked of this engine: a commit that
+    /// returns must survive, and a transaction that never committed must leave nothing behind. It has
+    /// to be a kill rather than a close, because closing rolls active transactions back - the question
+    /// is what the media says when no rollback ever ran.
+    /// </remarks>
+    public const string UNCOMMITTED_KILL = "uncommitted-kill";
+
     #endregion
 
     #region Functions
@@ -124,6 +135,7 @@ public static class Scenarios
         LOCK_HELD_KILL => LockHeldKill(context),
         CONFIGURED_CONTROL_CLEAN => ConfiguredControlClean(context),
         CONFIGURED_COMMIT_KILL => ConfiguredCommitKill(context),
+        UNCOMMITTED_KILL => UncommittedKill(context),
         _ => null
     };
 
@@ -139,7 +151,8 @@ public static class Scenarios
         MVCC_ENGINE_COMMIT_KILL,
         LOCK_HELD_KILL,
         CONFIGURED_CONTROL_CLEAN,
-        CONFIGURED_COMMIT_KILL
+        CONFIGURED_COMMIT_KILL,
+        UNCOMMITTED_KILL
     };
 
     #endregion
@@ -283,6 +296,24 @@ public static class Scenarios
         // connection string says nothing beyond Data Source, so this is the configuration the
         // documentation calls durable.
         return context.Park(("rows", context.Rows));
+    }
+
+    private static int UncommittedKill(ScenarioContext context)
+    {
+        var connection = new WitDbConnection(ConnectionString(context));
+        connection.Open();
+        context.Ready();
+
+        // The table is created and committed first, so what the kill is being asked about is the rows
+        // rather than whether the schema survived - the same reasoning as RowIdCommitKill.
+        Command(connection, $"CREATE TABLE {context.Table} (Id BIGINT PRIMARY KEY AUTOINCREMENT, V INT)");
+
+        var transaction = connection.BeginTransaction();
+        InsertRows(connection, context, transaction);
+
+        // Killed here: the rows are written, the transaction has neither committed nor rolled back, and
+        // nothing will run on the way out.
+        return context.Park(("rows", context.Rows), ("mode", "uncommitted"));
     }
 
     private static int ConfiguredControlClean(ScenarioContext context)

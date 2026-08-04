@@ -9,7 +9,7 @@ namespace OutWit.Database.Core.Managers;
 /// Manages page allocation, deallocation, and access for the database.
 /// Coordinates between storage and cache layers.
 /// </summary>
-public sealed class PageManager : IDisposable
+public sealed class PageManager : IDisposable, IAsyncDisposable
 {
     #region Fields
 
@@ -910,6 +910,53 @@ public sealed class PageManager : IDisposable
                     m_disposed = true;
                 }
             }
+        }
+    }
+
+    /// <summary>
+    /// Closes the page manager without a single synchronous storage call.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="Dispose"/> writes the header through <c>IStorage.WritePage</c> and then disposes a
+    /// cache that flushes the same way, so a storage that offers no synchronous write - a browser's
+    /// IndexedDb - could not close a database at all. Every step here has an asynchronous twin that
+    /// already existed: <see cref="FlushAsync"/> writes the header and the dirty pages, and both page
+    /// caches now close asynchronously as well.
+    /// </para>
+    /// <para>
+    /// Nothing is awaited under <c>m_lock</c>: the flush runs first, and the lock is taken only to mark
+    /// the manager disposed. A cache that is not asynchronously disposable falls back to the
+    /// synchronous close, which is correct for one backed by ordinary storage and is the only thing a
+    /// third-party implementation of <c>IPageCache</c> can be assumed to have.
+    /// </para>
+    /// </remarks>
+    public async ValueTask DisposeAsync()
+    {
+        if (m_disposed)
+            return;
+
+        bool initialized;
+
+        lock (m_lock)
+        {
+            if (m_disposed)
+                return;
+
+            initialized = m_initialized;
+        }
+
+        if (initialized)
+            await FlushAsync().ConfigureAwait(false);
+
+        if (m_cache is IAsyncDisposable asyncCache)
+            await asyncCache.DisposeAsync().ConfigureAwait(false);
+        else
+            m_cache.Dispose();
+
+        lock (m_lock)
+        {
+            m_disposed = true;
         }
     }
 

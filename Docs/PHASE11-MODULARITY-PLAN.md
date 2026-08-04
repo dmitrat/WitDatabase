@@ -1,4 +1,4 @@
-# Phase 11 - the modular structure
+﻿# Phase 11 - the modular structure
 
 **Opened 2026-08-03**, on `phase11-modularity`, after every phase of the plan closed with 11.2.0.
 
@@ -461,10 +461,357 @@ there is nothing to make durable.
   and drives a database through it, which is the construction kit's central claim.
 - ~~**The matrix is single-connection.**~~ **Done, § 6c.**
 - ~~**Durability has never been crossed with configuration.**~~ **Done, § 6d.**
-- **"Works" means "works on eight rows"** - no combination in the matrix reaches a compaction, a page
-  split or an overflow page. Instrument D writes nine and instrument E twenty, so this is unchanged.
+- ~~**"Works" means "works on eight rows"**~~ **Done, § 7a.5** - 2,000 rows through five configurations,
+  with the page splits, overflow chains and compactions measured off the files rather than assumed.
 - The five ADO-level keywords the census cannot see structurally: `Enlist`, `Connection Timeout`,
   `Pooling`, `Min`/`Max Pool Size`, `Default Timeout`.
+
+## 7a. After 12.0.0 - the follow-ups, 2026-08-03
+
+The release went out with three items open in § 6.5 and § 6b. Two are now closed and the third turned
+into two findings that are handed forward with measurements rather than guesses.
+
+### 7a.1 § 6.5 - the two build routes now agree, and the defect was wider than recorded
+
+`SyncAndAsyncBuildAgreeTests` builds the same configuration with `Build()` and with `BuildAsync()` and
+compares a **structural signature** - the runtime types of every store, page cache and storage reachable
+in the built graph. Controls both ways: the signature must tell a B+Tree database from an in-memory one,
+and one route must agree with itself across two builds.
+
+**Three of seven configurations disagreed**, not the one the plan recorded:
+
+| configuration | `Build()` | `BuildAsync()` |
+|---|---|---|
+| `Store=inmemory`, file data source | `StoreInMemory` | `StoreBTree` over `StorageFile` - **and it opens the file** |
+| a third-party registered store | the registered store | `StoreBTree` |
+| `Cache=lru` | `PageCacheLru` | `PageCacheShardedClock` |
+
+So the asynchronous route ignored the **cache** as well as the store - the same defect `Cache=lru` had
+on the synchronous route until 12.0.0, one method along.
+
+**The fix:** everything that is not the built-in B+Tree store is built where the synchronous route
+builds it, in the provider registry. The B+Tree store keeps a route of its own for one reason - its page
+manager reads the header while it is constructed, which a storage that can only work asynchronously
+cannot serve - and it now reads its parameters from the same bag the registry factory reads.
+`StoreBTree.CreateAsync` gained the overload that takes an `IPageCache`, the asynchronous twin of the
+constructor 12.0.0 added. Nine of nine agree; Core's 2,251 tests are unchanged.
+
+### 7a.2 § 6b - extensibility, executed
+
+`ThirdPartyProviderTests`. A third-party `IKeyValueStore`, `IPageCache` and `ICryptoProvider`, each
+registered in the provider registry and named in a **connection string**, plus a third-party `IStorage`
+handed to the builder - each driving a real database through SQL.
+
+**The control is inside every probe and it is a counter.** Each provider counts the calls it receives
+and every test asserts the count is not zero, because "registered and then ignored" is the failure this
+phase kept finding and a test that only checked the rows would pass through it. Measured: store 74
+writes, cache 447 page requests, crypto 11 encryptions with `row1` absent from the file, storage 11 page
+writes. And in the other direction, a provider key registered nowhere is refused at `Open`.
+
+### 7a.3 `Core.BouncyCastle` - the package works, and a connection string alone cannot reach it
+
+`Encryption=chacha20-poly1305` is refused with *"provider is not registered. Available: aes-gcm"* when
+the only thing pointing at the package is a reference. The registration hangs off a `[ModuleInitializer]`,
+and the CLR runs one when the assembly is **loaded** - which it is not, until something touches a type
+in it. The package's own README documents `WithBouncyCastleEncryption(...)`, an extension method on a
+type in the assembly, so the documented route loads it as a side effect and works; a consumer who writes
+connection strings has no such side effect.
+
+The refusal is legible, so the phase's rule holds. What was wrong is the documentation, and it now says
+to call `BouncyCastleProviderRegistration.EnsureRegistered()` once at startup. With that,
+ChaCha20-Poly1305 passes everything AES does: the workload, a reopen, no plaintext in the file, and a
+refusal on the wrong password and on none.
+
+### 7a.4 `Core.IndexedDb` - the browser story is one statement wide, and it is pinned
+
+The package cannot run on a build machine - `StorageIndexedDb` talks to JavaScript. What it **rests on**
+can: a stand-in `IAsyncOnlyStorage` whose every synchronous member throws. Measured, and stable over
+three whole-fixture runs:
+
+- the build is asynchronous throughout - the storage is initialised and written asynchronously;
+- `CREATE TABLE` survives, and it survives because it writes **nothing**: the storage's write count is
+  1 before it and 1 after;
+- the **first `INSERT` throws**. Its implicit per-statement transaction commits, the commit flushes, and
+  `PageManager.Flush` writes the header through the synchronous `IStorage.WritePage` before calling the
+  synchronous `IStorage.Flush`;
+- every close ends in the same place, and there is no asynchronous way round it.
+
+**The close half of this is now BUILT - see § 7a.6.** What remains is the write path, and it is a
+larger thing than a chain of disposals: the engine has no asynchronous execution at all.
+`WitSqlEngine` offers `Execute` and `Query` and nothing else, and the ADO layer's
+`ExecuteNonQueryAsync` is `Task.Run` around the synchronous one - a thread-pool hop, which in a
+single-threaded browser is worse than useless. Until an asynchronous statement path exists down to
+`Transaction.CommitAsync`, a write cannot avoid the synchronous flush its commit performs.
+
+**The chain had five missing links when this was written, and seven when it was built:**
+`PageManager` has `FlushAsync` and no `DisposeAsync`, and its flush writes the header synchronously;
+`StoreBTree.DisposeAsync` calls that synchronous `Dispose`, under a comment claiming it is safe;
+`BTreeConcurrentStore` - which since 12.0.0 wraps **every** B+Tree store - implements no
+`IAsyncDisposable`, so an asynchronous disposal degrades at that link; nor does `MvccTransactionalStore`,
+the default transaction model; and `WitSqlEngine` is `IDisposable` only, so a consumer has no
+asynchronous close to call.
+
+**The instrument was wrong first, for the ninth time in this project.** Its first version closed the
+database in a `finally`, so the exception from the close replaced the exception from the workload and
+the run reported the *statement* failing where the truth was the *close*. Re-measured with the throwing
+cleanup removed, the boundary is exactly where it is stated above. **A cleanup that can throw hides what
+the test came to measure.**
+
+### 7a.5 "Works" no longer means "works on eight rows"
+
+`ScaleMatrixTests`. Five configurations, 2,000 rows in one transaction, a secondary index, and every
+hundredth row carrying a 4,000-character payload - against an inline limit measured at **960 bytes**, so
+those values cannot be anywhere but an overflow chain.
+
+**The workload is not the assertion; the evidence is**, read off the files after the database is closed:
+
+| configuration | 2,000 rows | 8 rows (control) |
+|---|---|---|
+| `btree` | **116 pages** | 2 |
+| `btree` encrypted | 116 pages | 2 |
+| `btree`, `MVCC=false` | 78 pages | 2 |
+| `lsm` | 6 SSTables, highest id **14** | 1, id 0 |
+| `lsm`, `MVCC=false` | 2 SSTables, highest id **3** | 1, id 0 |
+
+A highest file id above the number of files means SSTables were written and then merged away, which is
+what a compaction looks like from outside the store. The eight-row control is what makes those numbers
+mean something: without it, "the file has many pages" is a statement about the engine's appetite rather
+than about the workload.
+
+**Everything answered correctly** - every row back after a reopen, the 4,000-character value byte for
+byte, and a secondary index lookup at 2,000 rows. No defect at volume, which is worth stating plainly
+after a phase in which every instrument found one.
+
+### 7a.6 The asynchronous close, built - and what the revert test said about its test
+
+The pinned half of § 7a.4 is closed: a database on a storage with **no synchronous operations at all**
+can now be closed, through the engine and through the database, under both transaction models. Two
+probes were red first and are green now.
+
+**Seven links, two more than the pin had named** - the two extra were found by reading the layer below
+rather than by following the stack:
+
+| link | what it did |
+|---|---|
+| `PageCacheShardedClock` and its shard | `Dispose` flushed every dirty page through the synchronous `WritePage` |
+| `PageCacheLru` | the same, in the other implementation - **the third time these two have shared a defect** |
+| `PageManager` | no `DisposeAsync` at all; the synchronous one writes the header synchronously |
+| `StoreBTree.DisposeAsync` | called that synchronous `Dispose`, under a comment claiming it was safe |
+| `MvccKeyValueStore` | closed its inner store synchronously |
+| `MvccTransactionalStore` | no `IAsyncDisposable` - and it is the **default** transaction model |
+| `BTreeConcurrentStore` | no `IAsyncDisposable`, and since 12.0.0 it wraps **every** B+Tree store, so it broke the asynchronous close of every database |
+| `WitSqlEngine` | `IDisposable` only, so a consumer had nothing asynchronous to call |
+
+**A second way to close a database is a second way to lose one**, so `AsynchronousCloseTests` asks
+whether the rows come back afterwards, with the synchronous close as its control. Green, three models
+plus one, at both the engine and the database level.
+
+**Then its power was measured, and the answer was not the expected one.** The flush was removed from the
+asynchronous close - the page manager's, then the engine's, then the page cache's, then the MVCC
+store's, and finally all four together - and the fixture stayed **green every time**, including under
+`Synchronous Commit=false`, which had been added on the assumption that it would leave the rows
+unflushed until the close. It does not: the data is on the media before anything is closed, because
+each statement runs in an implicit transaction, and the close path itself flushes in five places.
+
+So the fixture verifies that the new close path does not **lose or corrupt** what was written - the real
+risk of a second close path - and it is **not** a test of the flush. That is written into the fixture,
+because a green test nobody has tried to break is a claim rather than evidence, and because the
+assumption about `Synchronous Commit=false` was wrong: it defers durability against a **process kill**,
+which instrument E measures at 0 of 20 rows, not the write itself.
+
+### 7a.7 The planner's range estimate, measured - and the reason it is not fixed here
+
+Phase 10 handed forward *"`RANGE_SELECTIVITY` is a constant"* with no measurement attached. It has one
+now. `SelectivityEstimateTests` asks the optimizer what a predicate will return, runs the same predicate
+through a real database of 1,000 rows holding the values 1..1000, and compares:
+
+| predicate | estimated | actual | ratio |
+|---|---|---|---|
+| `Value > 999` | 200 | 1 | **200x too high** |
+| `Value > 990` | 200 | 10 | 20x |
+| `Value > 800` | 200 | 200 | **1.00** - the case the constant was written for |
+| `Value > 500` | 200 | 500 | 0.40 |
+| `Value > 0` | 200 | 1000 | **0.20 - five times too low** |
+| `Value < 10` | 200 | 9 | 22x |
+| `Value < 900` | 200 | 899 | 0.22 |
+
+The controls hold in both directions: a unique-index equality is estimated exactly, and the 20% case
+comes out at 1.00, so the harness is not reporting error everywhere.
+
+**And the fix is a storage change rather than an optimizer one, which is the finding under the finding.**
+Interpolating between the smallest and largest key in the index is the obvious repair, and that data is
+not cheaply available: `ISecondaryIndex` has `GetFirstEntry` and `GetLastEntry`, and the B+Tree
+implementation of the latter is `Scan(null, null).LastOrDefault()` - **a full scan**. Calling it per
+query would reinstate precisely the defect 11.1.0 removed, where the planner scanned 1,000 rows per
+execution and a unique-index seek was 97x slower for it. It is also a latent cost in a **public API**
+for anyone who calls it today.
+
+So the work is: a first/last key that descends the tree (a capability on the store, with a scanning
+fallback for implementations that cannot do better), then an index-statistics input to the optimizer,
+then interpolation. That is a decision about a public interface, so it is written down here with its
+measurement rather than taken at the end of a session.
+
+### 7a.8 The MVCC commit read the whole database to find what it had just written
+
+Phase 11 measured, and did not chase, that four writers in transactions took **181 s** against
+autocommit's **61 s** for the same 100,000 rows. A transaction being three times slower than no
+transaction is the wrong way round, and it was the largest unexplained number the phase produced.
+
+**The mechanism, found with one writer and no contention at all.** `CommitCostProbeTests` commits the
+same ten rows against databases of growing size:
+
+| rows already in the store | commit of 10 rows, before | after |
+|---|---|---|
+| 1,000 | 2.80 ms | 2.11 ms |
+| 2,000 | 3.40 ms | 2.15 ms |
+| 4,000 | 4.67 ms | 2.20 ms |
+| 8,000 | 6.96 ms | 2.14 ms |
+| **8x the data** | **2.5x the commit** | **1.0x** |
+
+`MvccKeyValueStore.CommitTransaction` scanned every record in the store to find the versions the
+transaction had just written - and `RollbackTransaction` did the same. So the cost of committing ten
+rows was the cost of reading everything else, and a hundred commits over a growing store are quadratic.
+The store remembers the versioned keys each transaction wrote now, and commit and rollback visit those.
+The predicate is unchanged - a record still has to carry the transaction's own id - so only the
+candidate set is smaller; a transaction id this store never saw, a record left by an earlier process,
+still falls back to the scan, because for that there is nothing else to go on.
+
+**Attributed end to end, both sides on this machine in the same minutes**, four writers x 25,000 rows
+through a database:
+
+| | autocommit | batches of 1,000 in a transaction |
+|---|---|---|
+| commit scans the store | 3.1 s | **50.8 s - 16.3x** |
+| commit visits its own writes | 3.4 s | **7.2 s - 2.1x** |
+
+**And the probe was wrong before its subject, for the second time in this session.** Its first version
+handed a bare `StoreBTree` to the transactional store; four threads tore it apart inside a leaf split,
+which is the correct answer to the question that version was actually asking - `StoreBTree` has no
+locking and since 12.0.0 the builder wraps every one. It measures through a database now, as the
+original measurement did.
+
+**What is left is a different defect, pinned with its number.** Two times is still the wrong way round
+for a batch of a thousand rows, and the flush is not the reason - 0.5 s of a 3.8 s difference, measured
+by running the batches with `SynchronousCommit` off. The reason is structural: **a commit rewrites every
+version a second time**, so a transactional write costs two writes to the store where an autocommitted
+one costs a single write. Removing that means marking the transaction committed once and resolving
+visibility through the transaction table on read - a design change rather than a patch, and the next
+thing to decide in this area.
+
+### 7a.8b The pin CI rejected, and what it taught about measuring on one machine
+
+The commit-cost pin was set at "less than 1.6x growth for 8x the data" from a machine where a commit
+takes 2 ms, and **CI failed it at 1.9x**. The numbers are the finding:
+
+| store | 1,000 | 2,000 | 4,000 | 8,000 | growth |
+|---|---|---|---|---|---|
+| this machine | 2.11 ms | 2.15 | 2.20 | 2.14 | 1.0x |
+| CI | 0.24 ms | 0.38 | 0.45 | 0.45 | **1.9x** |
+
+CI commits in a tenth of the time, so a residual cost that a 2 ms floor hid here was visible there -
+the `log n` of inserting ten rows into a deeper tree, which flattens at 4,000 and is not the scan
+coming back. **A bound taken from one machine measures that machine.**
+
+The instrument was widened rather than the bound loosened, so it separates the two states by
+construction. Measured at 2,000 / 8,000 / 32,000 rows, both ways:
+
+| | 2,000 | 8,000 | 32,000 | growth |
+|---|---|---|---|---|
+| commit scans the store | 14.61 ms | 57.82 | 255.51 | **17.5x for 16x the data** - linear, as a scan must be |
+| commit visits its own writes | 3.28 ms | 3.24 | 3.29 | **1.0x** |
+
+The bound is now 4.0: four times above the fixed state and four times below the broken one. **Local
+green is not evidence; CI is the arbiter** - and this time what it caught was the instrument.
+
+### 7a.9 The range estimate now comes from the data, and what that is and is not worth
+
+§ 7a.7 measured the defect and handed the fix forward because it needed a first/last key that descends
+the tree. That is built, and with it the estimate:
+
+| predicate, 1,000 rows holding 1..1000 | before | after | actual |
+|---|---|---|---|
+| `Value > 999` | 200 | **1** | 1 |
+| `Value > 990` | 200 | **10** | 10 |
+| `Value > 800` | 200 | 200 | 200 |
+| `Value > 500` | 200 | **500** | 500 |
+| `Value > 0` | 200 | **1000** | 1000 |
+| `Value < 10` | 200 | **9** | 9 |
+| `Value < 900` | 200 | **899** | 899 |
+
+**What was built, in three pieces.** `BTree` descends to its rightmost leaf as it always could to its
+leftmost, and `StoreBTree` exposes both through a new `IKeyRangeSource` - a separate interface, like
+`IProviderMetadataSource`, so a store that cannot answer cheaply is not made to pretend. The secondary
+index uses it, which is where the second finding is: **`GetLastEntry` was a full scan of the index, and
+the query planner already called it for `MIN`/`MAX` optimisation** - so `SELECT MAX(x)` on an indexed
+column was advertised as an index operation and was O(n). Measured on 20,000 keys: **0.001 ms by descent
+against 10.575 ms by scan, 7489x**. Then `IIndexRangeStatistics` carries "where does this value sit in
+the index" to the optimizer, which interpolates on the encoded key bytes - the encoding is
+order-preserving, so this needs no per-type ladder.
+
+**Three qualifications, all measured, because the headline overstates it on its own.**
+
+- **On skewed data the new estimate is worse than the constant.** 900 rows holding 1..900 and 100 around
+  a million: `Value < 500` is estimated at **1** where the truth is 499. Linear interpolation between
+  two keys does exactly that, and the case is in the fixture with its numbers. This is what a histogram
+  fixes, and a histogram costs writes.
+- **Today the estimate does not decide index against table scan at all.** A scan costs `rows x 1.0`, an
+  index range costs `estimated x 0.5`, and the estimate can never exceed the row count - so the index
+  wins even for a predicate that returns the whole table. Asserted, not reasoned: the whole-table range
+  still chooses the index. The estimate ranks indexes against each other; an accurate one is a
+  **precondition** for a cost model that could choose, not an improvement by itself.
+- **The instrument was wrong twice on the way.** Its shuffle overflowed `int` and produced a negative
+  index, so every case failed on the helper; and it called the optimizer **without** the statistics it
+  had just been given, so the first "after" measurement was identical to the "before" one - measuring
+  the path that had not changed.
+
+### 7a.10 The double write, measured before it is touched - and the premise was wrong
+
+The remaining 2x on a transactional write was recorded as "the commit rewrites every version a second
+time". Before changing that, the tests it would have to keep green were written, because MVCC had none
+of them: `MvccCommitAtomicityTests` asks about snapshots **inside one session**, and
+`MvccKeyValueStoreTests` reopens a database only to check a cached timestamp.
+
+**`Mvcc.VisibilityAcrossReopenTests`** - five cases, all green today: a committed write survives a
+reopen; a rolled-back write does not; an abandoned transaction leaves nothing; a transaction still open
+when the store closes leaves nothing; and a rolled-back **overwrite** leaves the original value rather
+than a mixture.
+
+**`Durability.UncommittedWriteAfterAKillTests`** - the same question where no cleanup runs, through the
+out-of-process runner with a new `uncommitted-kill` scenario. Every crash test this project had asks
+whether something **survives**; none asked whether something that should not survive is gone, and an
+engine that wrote everything the moment it was asked would pass all of the first set and fail this one.
+Green: 0 rows after the kill, against the control's 20 for the same rows committed.
+
+**The attribution is what changed the design question, and it took two wrong guesses to get to.** The
+probe was written to distinguish "the rows never reached the media" from "they did and the rules hide
+them". It measured a file of **8 KB after 20,000 uncommitted rows** - so the first guess, that 20,000
+rows would overflow a 1,000-page cache and force evictions, was wrong. Cutting the cache to eight pages
+measured **8 KB again**, which is the real finding: **`MvccTransaction.Put` buffers into an in-memory
+change set and the store is not touched until `Commit`**. An uncommitted transaction cannot leave
+anything behind under any cache size, on any media.
+
+**So the double write is not what the record said.** Both writes happen inside the commit, and reading
+`MvccTransaction.Commit` in that light:
+
+1. the commit timestamp is allocated **first**, under the commit lock;
+2. each version is installed with `PutVersion(key, value, commitTimestamp, TransactionId)` - carrying
+   the transaction id, so it looks uncommitted;
+3. `CommitTransaction` **rewrites every one of them** to clear the id and stamp the timestamp;
+4. the timestamp is published, and *that* is what makes the commit all-or-nothing to readers - a
+   snapshot cannot be above an unpublished timestamp;
+5. the flush follows, which is what makes it durable.
+
+**The second write therefore changes a marker whose final value was known before the first write was
+made.** Installing the records already stamped committed would halve the writes, and the atomicity
+readers see would still come from step 4.
+
+**Not done, and here is what it needs first.** `PutVersion` passes the transaction id to
+`MarkPreviousVersionDeleted`, which uses it to decide which previous versions it may touch - "only my
+own uncommitted, or anything committed". Passing 0 to make the new record committed would change that
+decision as a side effect, which is exactly the class of change this project has been bitten by: a
+correct edit in one place that alters a rule somewhere else. It needs the marker and the ownership to
+be separated, and then the atomicity fixture is what proves it - which is why those tests were written
+before the change rather than after.
 
 ## 7. Ledger
 

@@ -15,7 +15,7 @@ namespace OutWit.Database.Engine;
 /// The main SQL execution engine for WitDatabase.
 /// Provides query execution, DDL/DML operations, and transaction management.
 /// </summary>
-public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionManager
+public sealed partial class WitSqlEngine : IDatabase, IDisposable, IAsyncDisposable, ITransactionManager
 {
     #region Fields
 
@@ -491,6 +491,35 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, ITransactionM
             
             m_database.Dispose();
         }
+    }
+
+    /// <summary>
+    /// Closes the engine, and the database under it, without a synchronous storage call.
+    /// </summary>
+    /// <remarks>
+    /// The last link of the asynchronous close chain and the only one a consumer holds: everything
+    /// below - the transactional store, the MVCC store, the B+Tree store, its page manager and its page
+    /// cache - now closes asynchronously, and an engine that offered nothing but <see cref="Dispose"/>
+    /// meant none of it could be reached. It matters for a storage that has no synchronous operations
+    /// at all, which is what <c>OutWit.Database.Core.IndexedDb</c> is.
+    /// </remarks>
+    public async ValueTask DisposeAsync()
+    {
+        m_currentTransaction?.Dispose();
+
+        if (!m_ownsStore)
+            return;
+
+        try
+        {
+            await m_database.FlushAsync().ConfigureAwait(false);
+        }
+        catch
+        {
+            // Best effort - don't fail dispose on flush errors, exactly as the synchronous close.
+        }
+
+        await m_database.DisposeAsync().ConfigureAwait(false);
     }
 
     #endregion

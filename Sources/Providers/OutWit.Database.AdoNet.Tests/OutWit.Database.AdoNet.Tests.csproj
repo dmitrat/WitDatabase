@@ -21,6 +21,10 @@
 
   <ItemGroup>
     <ProjectReference Include="..\OutWit.Database.AdoNet\OutWit.Database.AdoNet.csproj" />
+    <!-- Referenced so that the ChaCha20-Poly1305 provider registers itself and can be selected from a
+         connection string, which is what AlternativeProviderPackagesTests measures. Nothing in the
+         AdoNet layer depends on it. -->
+    <ProjectReference Include="..\..\Core\OutWit.Database.Core.BouncyCastle\OutWit.Database.Core.BouncyCastle.csproj" />
   </ItemGroup>
 
   <ItemGroup>

@@ -162,6 +162,25 @@ public interface IDatabase
     IEnumerable<DefinitionIndex> GetTableIndexes(string tableName);
 
     /// <summary>
+    /// The index itself rather than its definition, when this database has one built.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Added so the query planner can ask an index what range of values it holds - its smallest and
+    /// largest key - and estimate a range predicate from the data instead of from a constant. Before
+    /// this the optimizer had only <see cref="DefinitionIndex"/>, which says what the index is on and
+    /// nothing about what is in it, so every range predicate was estimated at 20% of the table:
+    /// measured, 200x too high on a one-row range and five times too low on a whole-table one.
+    /// </para>
+    /// <para>
+    /// It has a default implementation that answers <c>null</c> on purpose. Several test doubles
+    /// implement this interface, an estimate is optional by nature, and a planner that cannot get one
+    /// falls back to what it did before.
+    /// </para>
+    /// </remarks>
+    ISecondaryIndex? GetPhysicalIndex(string indexName) => null;
+
+    /// <summary>
     /// Create an index.
     /// </summary>
     void CreateIndex(DefinitionIndex metadata);

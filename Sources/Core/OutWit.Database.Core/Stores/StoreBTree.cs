@@ -11,7 +11,7 @@ namespace OutWit.Database.Core.Stores;
 /// Key-value store implementation backed by B+Tree.
 /// Implements IKeyValueStore for unified storage engine interface.
 /// </summary>
-public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IAsyncDisposable
+public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IKeyRangeSource, IAsyncDisposable
 {
     #region Constants
 
@@ -185,16 +185,44 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
     /// <param name="providerMetadata">Provider metadata for new databases.</param>
     /// <param name="cancellationToken">Cancellation token.</param>
     /// <returns>An initialized BTreeStore.</returns>
-    public static async ValueTask<StoreBTree> CreateAsync(
-        IStorage storage, 
-        int cacheSize, 
-        bool ownsStorage, 
+    public static ValueTask<StoreBTree> CreateAsync(
+        IStorage storage,
+        int cacheSize,
+        bool ownsStorage,
         ProviderMetadata? providerMetadata,
         CancellationToken cancellationToken = default)
     {
         ArgumentNullException.ThrowIfNull(storage);
-        
-        var cache = new PageCacheShardedClock(storage, cacheSize);
+
+        return CreateAsync(storage, new PageCacheShardedClock(storage, cacheSize), ownsStorage,
+            providerMetadata, cancellationToken);
+    }
+
+    /// <summary>
+    /// Creates a new BTreeStore over a caller-supplied page cache asynchronously.
+    /// </summary>
+    /// <remarks>
+    /// The asynchronous twin of the constructor that made the <c>Cache</c> provider key mean something.
+    /// Without it the asynchronous build route constructed a <see cref="PageCacheShardedClock"/>
+    /// whatever the configuration asked for, which is the same defect the synchronous route had until
+    /// 12.0.0 - one route honouring a setting and the other ignoring it.
+    /// </remarks>
+    /// <param name="storage">Storage implementation.</param>
+    /// <param name="cache">The page cache this store reads and writes through.</param>
+    /// <param name="ownsStorage">If true, disposes the storage when this store is disposed.</param>
+    /// <param name="providerMetadata">Provider metadata for new databases.</param>
+    /// <param name="cancellationToken">Cancellation token.</param>
+    /// <returns>An initialized BTreeStore.</returns>
+    public static async ValueTask<StoreBTree> CreateAsync(
+        IStorage storage,
+        IPageCache cache,
+        bool ownsStorage,
+        ProviderMetadata? providerMetadata,
+        CancellationToken cancellationToken = default)
+    {
+        ArgumentNullException.ThrowIfNull(storage);
+        ArgumentNullException.ThrowIfNull(cache);
+
         var pageManager = await PageManager.CreateAsync(storage, cache, providerMetadata, cancellationToken)
             .ConfigureAwait(false);
         
@@ -370,6 +398,31 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
 
     #endregion
 
+    #region Key range
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A descent to the leftmost leaf - the depth of the tree, not its size.
+    /// </remarks>
+    public byte[]? GetFirstKey()
+    {
+        ThrowIfDisposed();
+        return m_tree.GetFirstKey();
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A descent to the rightmost leaf. The only way to reach the largest key before this was to walk
+    /// every entry, which is what made <c>ISecondaryIndex.GetLastEntry</c> a full scan.
+    /// </remarks>
+    public byte[]? GetLastKey()
+    {
+        ThrowIfDisposed();
+        return m_tree.GetLastKey();
+    }
+
+    #endregion
+
     #region Count
 
     /// <summary>
@@ -452,12 +505,15 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
         m_disposed = true;
 
         await m_tree.DisposeAsync().ConfigureAwait(false);
-        
+
         if (m_ownsPageManager)
         {
-            // PageManager doesn't have IAsyncDisposable, use sync dispose
-            // This is OK because it just flushes cache which uses async internally
-            m_pageManager.Dispose();
+            // It was NOT OK, and the comment that used to say so is the reason this is worth a note:
+            // PageManager.Dispose writes the header through the synchronous IStorage.WritePage and then
+            // disposes a cache that flushes the same way. Over a storage with no synchronous operations
+            // - a browser's IndexedDb - that made the database unclosable, measured in
+            // AlternativeProviderPackagesTests.
+            await m_pageManager.DisposeAsync().ConfigureAwait(false);
         }
         
         if (m_ownsStorage)

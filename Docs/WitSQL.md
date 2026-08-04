@@ -1365,6 +1365,39 @@ database reports it as not found. `Transactions=false` is the one worth reading 
 durable *because* each statement runs in an implicit transaction, and with the transaction layer
 switched off there is none.
 
+### Selecting a provider from another package
+
+`Encryption=chacha20-poly1305` comes from `OutWit.Database.Core.BouncyCastle`, and **referencing the
+package is not enough to make the keyword work**. The package registers its provider from a module
+initializer, which the runtime executes when the assembly is loaded - and an assembly nothing has
+touched is never loaded. Call it once at startup:
+
+```csharp
+OutWit.Database.Core.BouncyCastle.BouncyCastleProviderRegistration.EnsureRegistered();
+```
+
+The fluent route documented in that package's README - `WithBouncyCastleEncryption(...)` - needs nothing,
+because calling an extension method on a type in the assembly loads it. A connection string does not.
+Without either, `Open` refuses with `Encryption provider 'chacha20-poly1305' is not registered`. The same
+applies to any provider a third party registers from its own module initializer.
+
+### Storage that has no synchronous operations (Blazor WASM, IndexedDb)
+
+A database can be **built** and **closed** over a storage that offers only asynchronous operations -
+`BuildAsync`, then `await engine.DisposeAsync()` or `await database.DisposeAsync()`, under either
+transaction model. It cannot yet be **written to**: the implicit transaction behind every statement
+commits, the commit flushes, and the flush writes the database header through the synchronous
+`IStorage.WritePage`.
+
+Measured with a storage whose synchronous members throw: the build is asynchronous throughout,
+`CREATE TABLE` succeeds (it writes nothing), and the first `INSERT` throws. The gap is not the close - it
+is that there is no asynchronous statement path: `WitSqlEngine` offers `Execute` and `Query` only, and
+`DbCommand.ExecuteNonQueryAsync` runs the synchronous path on a thread-pool thread, which a browser does
+not have.
+
+`OutWit.Database.Core.IndexedDb` is the package this affects. Treat it as unfinished rather than
+supported until an asynchronous statement path exists.
+
 ### Settings that are read but not enforced
 
 `Isolation Level` is recorded and reported, and the engine does not yet vary its behaviour by it. It is

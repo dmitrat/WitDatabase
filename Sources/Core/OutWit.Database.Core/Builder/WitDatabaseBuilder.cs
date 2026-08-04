@@ -598,6 +598,26 @@ public sealed class WitDatabaseBuilder
         return store;
     }
 
+    /// <summary>
+    /// The asynchronous half of <see cref="BuildStoreInternal"/>, which must build the same store it
+    /// does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Until 12.0.0 this method built a <see cref="StoreBTree"/> for every configuration that was
+    /// not LSM.</b> `Store=inmemory` therefore opened the data file it exists in order not to touch, a
+    /// third-party store registered in the provider registry was ignored outright, and `Cache=lru`
+    /// selected a cache that was then never constructed - measured three ways in
+    /// <c>SyncAndAsyncBuildAgreeTests</c>, which compares the two routes' object graphs.
+    /// </para>
+    /// <para>
+    /// So everything except the B+Tree store is built where the synchronous route builds it, in the
+    /// registry. The B+Tree store keeps a route of its own here for one reason: its page manager reads
+    /// the header while it is being constructed, and a storage that can only work asynchronously
+    /// (Blazor WASM) cannot serve that. What it must not do is read anything else differently, which is
+    /// why the parameters below are taken from the same bag the registry factory reads.
+    /// </para>
+    /// </remarks>
     private async ValueTask<IKeyValueStore> BuildStoreInternalAsync(CancellationToken cancellationToken)
     {
         // Use custom store directly
@@ -608,21 +628,41 @@ public sealed class WitDatabaseBuilder
         if (Options.UseLsmTree)
             return BuildLsmStore();
 
-        // BTree with async init
+        if (!string.Equals(Options.EffectiveStoreProviderKey, StoreBTree.PROVIDER_KEY, StringComparison.OrdinalIgnoreCase))
+            return BuildStoreFromRegistry();
+
         var cryptoProvider = BuildCryptoProvider();
-        var storage = BuildStorage(cryptoProvider);
         var metadata = BuildProviderMetadata();
 
-        if (storage is IAsyncInitializable asyncInitializable)
-        {
-            await asyncInitializable.InitializeAsync(cancellationToken).ConfigureAwait(false);
-        }
+        var supplied = Options.StoreParameters.Get<IStorage?>("storage", null);
+        var storage = supplied ?? BuildStorage(cryptoProvider);
 
-        var store = await StoreBTree.CreateAsync(storage, Options.CacheSize, ownsStorage: true, metadata, cancellationToken)
-            .ConfigureAwait(false);
-        
-        // Serialise the store if its own implementation does not
-        return WrapForConcurrency(store);
+        try
+        {
+            if (storage is IAsyncInitializable asyncInitializable)
+                await asyncInitializable.InitializeAsync(cancellationToken).ConfigureAwait(false);
+
+            var cacheSize = Options.StoreParameters.Get("cacheSize", Options.CacheSize);
+            var ownsStorage = Options.StoreParameters.Get("ownsStorage", true);
+            var cache = Options.StoreParameters.Get<IPageCache?>("cache", null) ?? BuildPageCache(storage);
+
+            var store = cache != null
+                ? await StoreBTree.CreateAsync(storage, cache, ownsStorage, metadata, cancellationToken)
+                    .ConfigureAwait(false)
+                : await StoreBTree.CreateAsync(storage, cacheSize, ownsStorage, metadata, cancellationToken)
+                    .ConfigureAwait(false);
+
+            // Serialise the store if its own implementation does not
+            return WrapForConcurrency(store);
+        }
+        catch when (supplied == null)
+        {
+            // Only what this method opened. The same shape as the synchronous route's catch, and the
+            // same reason: a store that never took ownership leaves the file held for the life of the
+            // process, and the next attempt meets "the process cannot access the file".
+            storage.Dispose();
+            throw;
+        }
     }
 
     private IStorage BuildStorage(ICryptoProvider? cryptoProvider = null)

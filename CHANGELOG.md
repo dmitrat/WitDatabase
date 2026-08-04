@@ -1,5 +1,92 @@
 ﻿# Changelog
 
+## 12.1.0
+
+Phase 11's follow-ups. A **minor**: behaviour is fixed and the public API grew, and no answer, no file
+format and no existing contract changed. The two build routes now agree, the construction kit's
+central claim is executed rather than asserted, a database can be closed without synchronous I/O,
+and two operations that read the whole database to answer a small question no longer do.
+
+### Fixed
+
+- **`BuildAsync` ignored the store and the cache the configuration chose.** It built a `StoreBTree` for
+  every configuration that was not LSM, so on that route `Store=inmemory` opened the data file it exists
+  in order not to touch, a third-party store registered in the provider registry was ignored outright,
+  and `Cache=lru` selected a cache that was never constructed. Everything but the built-in B+Tree store
+  is now built where the synchronous route builds it - in the provider registry - and the B+Tree store,
+  which keeps a route of its own because its page manager reads the header while it is constructed, reads
+  its parameters from the same bag the registry factory reads. Measured by building each configuration
+  both ways and comparing the object graphs.
+
+### Fixed
+
+- **`SELECT MAX(x)` on an indexed column read the whole index.** The planner optimises `MIN`/`MAX`
+  through `ISecondaryIndex.GetFirstEntry`/`GetLastEntry`, and the second of those was
+  `Scan(null, null).LastOrDefault()` - so an operation advertised as an index lookup was O(n). The
+  B+Tree descends to its rightmost leaf now, as it always could to its leftmost: **0.001 ms against
+  10.575 ms on 20,000 keys.**
+
+- **The query optimizer estimated every range predicate at 20% of the table.** It now asks the index
+  what range of values it holds and interpolates. Measured on 1,000 rows holding 1..1000, the estimate
+  for `Value > 999` goes from 200 to **1** (one row is the truth) and for `Value > 0` from 200 to
+  **1000**. Two things this does not do, both measured and recorded rather than left to be assumed: on
+  heavily skewed data a linear interpolation is *worse* than the constant, which is what a histogram
+  would fix; and with the present cost model the estimate does not decide index against table scan at
+  all, since an index range is priced below a scan for any estimate - so this is a precondition for a
+  cost model that can choose, not a plan change on its own.
+
+- **An MVCC commit read the whole database to find what it had just written.**
+  `MvccKeyValueStore.CommitTransaction` scanned every record in the store looking for the versions the
+  transaction had written, and `RollbackTransaction` did the same - so committing ten rows cost the
+  reading of everything else, and a hundred commits over a growing store were quadratic. The store keeps
+  the versioned keys each open transaction wrote and visits those instead; the rule that decides whether
+  a record belongs to the transaction is unchanged, and an id this process never saw still falls back to
+  the scan so that a record left by an earlier one stays recoverable.
+
+  Measured with one writer and no contention, committing the same ten rows: **2.80 ms against 1,000 rows
+  and 6.96 ms against 8,000 before - eight times the data for two and a half times the commit - and
+  2.11 ms against 2.14 ms after, which is 1.0x.** End to end, four writers x 25,000 rows through a
+  database: batches of 1,000 in a transaction went from **50.8 s to 7.2 s**, against 3.1 s for the same
+  writes on autocommit. What remains - a transaction still costing about twice a plain write - is the
+  commit rewriting every version a second time, which is recorded rather than fixed.
+
+### Added
+
+- **A database can now be closed without a synchronous storage call.** `WitSqlEngine`,
+  `MvccTransactionalStore`, `MvccKeyValueStore`, `BTreeConcurrentStore`, `PageManager` and both page
+  caches gained `DisposeAsync`, and `StoreBTree.DisposeAsync` stopped calling the synchronous one. Until
+  this, an asynchronous close degraded to a synchronous flush at the first link that had none - and
+  since 12.0.0 that was `BTreeConcurrentStore`, which wraps every B+Tree store, so it affected every
+  database. It matters for a storage that has no synchronous operations at all, which is what
+  `OutWit.Database.Core.IndexedDb` is; the same package still cannot be **written** to, because there is
+  no asynchronous statement path.
+
+- **`StoreBTree.CreateAsync(IStorage, IPageCache, bool, ProviderMetadata?, CancellationToken)`** - the
+  asynchronous twin of the constructor that made the `Cache` provider key mean something in 12.0.0.
+
+### Verified
+
+- **The configurations now run at a size that reaches the structures.** Every combination the matrix
+  covers had only ever been run on eight rows, which fit in one leaf. 2,000 rows through five
+  configurations, with a 4,000-character payload against a 960-byte inline limit, produce measured page
+  splits (116 pages against 2 for eight rows), overflow chains and LSM compactions (SSTables written and
+  merged away) - and every answer, including the large value and a secondary index lookup, is correct
+  after a reopen. No defect at volume.
+
+### Documentation
+
+- **A provider from another package needs its assembly loaded before a connection string can name it.**
+  `Encryption=chacha20-poly1305` is refused unless something has touched a type in
+  `OutWit.Database.Core.BouncyCastle`, because the registration hangs off a module initializer and the
+  runtime loads an assembly lazily. `WitSQL.md` para 14.10 now says to call
+  `BouncyCastleProviderRegistration.EnsureRegistered()` at startup; the fluent route was never affected.
+
+- **A storage with no synchronous operations can host a database that cannot be written to.** Measured
+  with a stand-in for `OutWit.Database.Core.IndexedDb`: the build is asynchronous throughout,
+  `CREATE TABLE` succeeds because it writes nothing, and the first `INSERT` throws - the commit's flush
+  writes the header through the synchronous `IStorage.WritePage`, and so does every close. Documented in
+  `WitSQL.md` para 14.10 as unfinished rather than supported.
+
 ## 12.0.0
 
 A **major**, and the reason is the last section: `Parallel Mode` and `Max Writers` are gone from the

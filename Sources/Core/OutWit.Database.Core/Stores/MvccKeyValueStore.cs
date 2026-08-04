@@ -15,7 +15,7 @@ namespace OutWit.Database.Core.Stores
     /// - Version suffix is the inverted timestamp (MaxValue - timestamp) for descending order
     /// - This allows efficient retrieval of the latest version via prefix scan
     /// </summary>
-    public sealed class MvccKeyValueStore : IMvccStore
+    public sealed class MvccKeyValueStore : IMvccStore, IAsyncDisposable
     {
         #region Constants
 
@@ -37,6 +37,31 @@ namespace OutWit.Database.Core.Stores
         private readonly bool m_ownsStore;
         private readonly ByteArrayComparer m_comparer;
         private readonly object m_maxTimestampLock = new();
+
+        /// <summary>
+        /// The versioned keys each open transaction has written, so that committing or rolling one back
+        /// touches its own writes instead of reading the whole store to find them.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Commit and rollback used to scan every record in the database.</b> Measured with a
+        /// single writer and no contention at all, committing the same ten rows cost 2.80 ms against a
+        /// store of 1,000 rows and 6.96 ms against one of 8,000 - eight times the data for two and a
+        /// half times the commit, on a transaction that had not changed. A hundred such commits over a
+        /// growing store is quadratic, which is what phase 11 measured from the outside as 181 s for
+        /// four writers in transactions against 61 s for the same rows on autocommit.
+        /// </para>
+        /// <para>
+        /// The set is only an index into what the transaction wrote; the record's own
+        /// <c>TransactionId</c> is still what decides whether a key is committed, so a key that is
+        /// listed but does not belong to the transaction is skipped exactly as the scan skipped it. An
+        /// id this store has never seen - a record left by a previous process, say - falls back to the
+        /// scan, because for that there is nothing else to go on.
+        /// </para>
+        /// </remarks>
+        private readonly Dictionary<long, HashSet<byte[]>> m_transactionWrites = new();
+
+        private readonly object m_transactionWritesLock = new();
         private long m_cachedMaxTimestamp;
         private bool m_maxTimestampDirty;
         private bool m_disposed;
@@ -341,7 +366,8 @@ namespace OutWit.Database.Core.Stores
             var versionedKey = CreateVersionedKey(keyArray, timestamp);
 
             m_innerStore.Put(versionedKey, record.Serialize());
-            
+            RememberWrite(transactionId, versionedKey);
+
             // Update cached max timestamp
             UpdateCachedMaxTimestamp(timestamp);
         }
@@ -406,14 +432,15 @@ namespace OutWit.Database.Core.Stores
             if (transactionId == 0)
                 throw new ArgumentException("Transaction ID cannot be 0.", nameof(transactionId));
 
-            // Scan all records and commit those belonging to this transaction
-            foreach (var (key, data) in m_innerStore.Scan(null, null))
+            foreach (var key in WrittenKeys(transactionId))
             {
                 // Skip metadata keys
                 if (IsMetadataKey(key))
                     continue;
-                    
-                if (!MvccRecord.TryDeserialize(data, out var record))
+
+                var data = m_innerStore.Get(key);
+
+                if (data == null || !MvccRecord.TryDeserialize(data, out var record))
                     continue;
 
                 if (record.TransactionId == transactionId)
@@ -423,6 +450,8 @@ namespace OutWit.Database.Core.Stores
                     m_innerStore.Put(key, committedRecord.Serialize());
                 }
             }
+
+            ForgetTransaction(transactionId);
 
             m_timestampManager.MarkCommitted(transactionId, commitTimestamp);
             
@@ -441,13 +470,15 @@ namespace OutWit.Database.Core.Stores
             // Find and remove all records belonging to this transaction
             var keysToDelete = new List<byte[]>();
 
-            foreach (var (key, data) in m_innerStore.Scan(null, null))
+            foreach (var key in WrittenKeys(transactionId))
             {
                 // Skip metadata keys
                 if (IsMetadataKey(key))
                     continue;
-                    
-                if (!MvccRecord.TryDeserialize(data, out var record))
+
+                var data = m_innerStore.Get(key);
+
+                if (data == null || !MvccRecord.TryDeserialize(data, out var record))
                     continue;
 
                 if (record.TransactionId == transactionId)
@@ -455,6 +486,8 @@ namespace OutWit.Database.Core.Stores
                     keysToDelete.Add(key);
                 }
             }
+
+            ForgetTransaction(transactionId);
 
             foreach (var key in keysToDelete)
             {
@@ -705,6 +738,53 @@ namespace OutWit.Database.Core.Stores
 
         #region Tools
 
+        /// <summary>
+        /// Records that a transaction wrote a versioned key.
+        /// </summary>
+        private void RememberWrite(long transactionId, byte[] versionedKey)
+        {
+            if (transactionId == 0)
+                return;
+
+            lock (m_transactionWritesLock)
+            {
+                if (!m_transactionWrites.TryGetValue(transactionId, out var keys))
+                {
+                    keys = new HashSet<byte[]>(m_comparer);
+                    m_transactionWrites[transactionId] = keys;
+                }
+
+                keys.Add(versionedKey);
+            }
+        }
+
+        /// <summary>
+        /// The keys a transaction wrote, or every key in the store when this store never saw it write.
+        /// </summary>
+        /// <remarks>
+        /// The fallback is what keeps a record left behind by an earlier process recoverable: nothing in
+        /// memory knows which keys it wrote, so the only way to find them is still to look at all of
+        /// them. It is the cost the ordinary path used to pay on every commit.
+        /// </remarks>
+        private IEnumerable<byte[]> WrittenKeys(long transactionId)
+        {
+            lock (m_transactionWritesLock)
+            {
+                if (m_transactionWrites.TryGetValue(transactionId, out var keys))
+                    return keys.ToList();
+            }
+
+            return m_innerStore.Scan(null, null).Select(entry => entry.Key).ToList();
+        }
+
+        private void ForgetTransaction(long transactionId)
+        {
+            lock (m_transactionWritesLock)
+            {
+                m_transactionWrites.Remove(transactionId);
+            }
+        }
+
         private bool MarkPreviousVersionDeleted(byte[] key, long deleteTimestamp, long transactionId)
         {
             var startKey = CreateVersionedKey(key, long.MaxValue);
@@ -729,6 +809,10 @@ namespace OutWit.Database.Core.Stores
                 // Mark as deleted
                 var deletedRecord = record.WithDeleteTimestamp(deleteTimestamp);
                 m_innerStore.Put(versionedKey, deletedRecord.Serialize());
+
+                // Listed for the same reason the new version is: a transaction that deletes its own
+                // uncommitted version has to find that key again at commit time without a scan.
+                RememberWrite(transactionId, versionedKey);
                 return true;
             }
 
@@ -858,6 +942,37 @@ namespace OutWit.Database.Core.Stores
             {
                 m_innerStore.Dispose();
             }
+        }
+
+        /// <summary>
+        /// The same shutdown, passing the asynchronous close down to the store underneath.
+        /// </summary>
+        /// <remarks>
+        /// The link that would otherwise break the chain in the default configuration: the MVCC store
+        /// sits between the transactional store and the B+Tree one, and a synchronous close here reaches
+        /// a synchronous storage write however asynchronous both its neighbours are.
+        /// </remarks>
+        public async ValueTask DisposeAsync()
+        {
+            if (m_disposed) return;
+            m_disposed = true;
+
+            try
+            {
+                PersistMaxTimestampIfNeeded();
+            }
+            catch
+            {
+                // Ignore errors during dispose - store might already be disposed
+            }
+
+            if (!m_ownsStore)
+                return;
+
+            if (m_innerStore is IAsyncDisposable asyncStore)
+                await asyncStore.DisposeAsync().ConfigureAwait(false);
+            else
+                m_innerStore.Dispose();
         }
 
         #endregion
