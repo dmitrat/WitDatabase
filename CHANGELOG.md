@@ -1,9 +1,11 @@
 ﻿# Changelog
 
-## Unreleased
+## 12.1.0
 
-Phase 11's follow-ups: the two build routes now agree, and the construction kit's central claim is
-executed rather than asserted.
+Phase 11's follow-ups. A **minor**: behaviour is fixed and the public API grew, and no answer, no file
+format and no existing contract changed. The two build routes now agree, the construction kit's
+central claim is executed rather than asserted, a database can be closed without synchronous I/O,
+and two operations that read the whole database to answer a small question no longer do.
 
 ### Fixed
 
