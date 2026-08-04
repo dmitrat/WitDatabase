@@ -22,6 +22,61 @@ namespace OutWit.Database.Core.Builder;
 /// </remarks>
 public sealed class WitDatabaseBuilderOptions
 {
+    #region Stored Configuration
+
+    /// <summary>
+    /// Settings the caller named, as opposed to those left at their defaults. Only consulted when
+    /// <see cref="RestoreStoredConfiguration"/> is on.
+    /// </summary>
+    private readonly HashSet<string> m_named = new(StringComparer.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// Whether a database that already exists may supply the settings the caller did not name.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Off by default, and deliberately: a builder written by hand states its configuration in full, so
+    /// letting a file override any of it would change what existing code does. It is switched on by the
+    /// routes where the caller is not spelling out a configuration - a connection string, and
+    /// <see cref="WitDatabase.Open(string)"/> - which are the routes that meet a database somebody else
+    /// created.
+    /// </para>
+    /// <para>
+    /// <b>What is restored is layout and performance, never safety.</b> The store, page size, encryption,
+    /// transaction model, journal, cache and cache size come back from the file;
+    /// <c>Synchronous Commit</c>, <c>FileLocking</c> and <c>Isolation Level</c> do not. A file that
+    /// could turn off durability or exclusive locking for a caller who said nothing about either would
+    /// be a way to make a database quietly less safe than the defaults promise, and those three are
+    /// properties of a session rather than of the data.
+    /// </para>
+    /// </remarks>
+    public bool RestoreStoredConfiguration { get; set; }
+
+    /// <summary>
+    /// Records that the caller named a setting, so a stored value must not overwrite it.
+    /// </summary>
+    public void MarkNamed(string setting) => m_named.Add(setting);
+
+    /// <summary>
+    /// Whether the caller named a setting.
+    /// </summary>
+    public bool IsNamed(string setting) => m_named.Contains(setting);
+
+    /// <summary>Names used by <see cref="MarkNamed"/>, kept together so they cannot drift apart.</summary>
+    public static class Setting
+    {
+        public const string STORE = "Store";
+        public const string PAGE_SIZE = "PageSize";
+        public const string CACHE = "Cache";
+        public const string CACHE_SIZE = "CacheSize";
+        public const string JOURNAL = "Journal";
+        public const string TRANSACTIONS = "Transactions";
+        public const string MVCC = "MVCC";
+        public const string ENCRYPTION = "Encryption";
+    }
+
+    #endregion
+
     #region Store Configuration
 
     /// <summary>

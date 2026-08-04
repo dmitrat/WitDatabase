@@ -1329,22 +1329,54 @@ A caller driving a store directly, without the engine, can still wrap it: `LsmPa
 `BlockCacheSize` and `BackgroundCompaction` reach both the main store and every secondary index store.
 They are ignored by the other stores.
 
-### Changing the configuration of a database that already exists
+### Opening a database that already exists: what the file remembers
 
-**A database records the transaction model it was created with, and opening it under another one is
-refused at `Open`.** The MVCC store keeps every value under a versioned key and no other configuration
-does, so a database written with `MVCC=true` - the default - and opened with `MVCC=false` or
-`Transactions=false` used to open without a word of complaint and then report every table as missing.
-The rows were never lost; they were invisible, and the natural next step - creating the schema on what
-looks like an empty database - wrote over one that was intact. Both directions are refused now, with a
-message naming the setting.
+**Settings are named when a database is created. Opening it needs only `Data Source=`** - the file
+records the configuration it was made with, and supplies whatever the connection string does not say.
+Measured, not intended: `ConfigurationRestoreTests` creates a database with each setting, reopens it
+with `Data Source=` and nothing else, and compares the engine it gets with the one the full connection
+string builds.
+
+| setting | restored from the file? |
+|---|---|
+| `Store`, `PageSize`, `Transactions`, `MVCC`, `Journal` | yes |
+| `Cache`, `CacheSize` | yes |
+| `MemTableSize`, `BlockSize`, `CompactionTrigger`, `EnableWal`, `SyncWrites`, `EnableBlockCache`, `BlockCacheSize` | yes |
+| `Encryption` | the flag is recorded; the **password** is yours to supply |
+| `Synchronous Commit`, `FileLocking` | **no** - see below |
+| `Isolation Level` | **no** - a property of the session, not of the data |
+
+**A connection string always wins.** Anything it names is used; the file fills in the rest. So a
+database created with `Cache=lru` and opened with `Data Source=db;Cache=clock` gets a clock cache.
+
+**`Synchronous Commit` and `FileLocking` are deliberately not restored**, and the reason is not
+symmetry. Both trade a guarantee away, and restoring them would let a *file* make a database quietly
+less durable, or less exclusive, than the defaults promise - for a caller who said nothing about
+either. Name them again in the connection string when you want them.
+
+**Encryption:** the header records that a database is encrypted and with which provider, so opening one
+without a password is refused rather than misread. Nothing else can be restored for an encrypted
+database except its transaction model: the header is inside the encrypted page, so a non-default
+`PageSize`, `Cache` or `CacheSize` has to be named again.
+
+**A transaction model you name and the database does not have is still refused at `Open`.** The MVCC
+store keeps every value under a versioned key and no other configuration does, so a database written
+with `MVCC=true` - the default - and opened with `MVCC=false` used to open without a word of complaint
+and then report every table as missing. The rows were never lost; they were invisible, and the natural
+next step - creating the schema on what looks like an empty database - wrote over one that was intact.
+Both directions are refused, with a message naming the setting. Not naming a model is not a
+disagreement: it is restored.
 
 `MVCC=false` and `Transactions=false` write the same layout as each other, so either can open the
 other's database.
 
-A `PageSize` that the file was not created with is refused the same way, in both directions. `Cache`,
-`CacheSize`, `Synchronous Commit`, `FileLocking` and `Isolation Level` may be changed freely between
-sessions - they select behaviour rather than layout.
+**LSM databases record this in a `provider.meta` file** beside their SSTables, because a directory has
+no page to put a header in. Before 12.2.0 they recorded nothing, and `WitDatabase.Open` on one built a
+store with no transaction layer and reported every table as missing.
+
+**Databases created before 12.2.0** record only the store, the encryption provider and the feature
+flags; everything else falls back to the defaults, exactly as it did. They open unchanged, and a build
+older than 12.2.0 reads a database created by this one.
 
 ### Durability by configuration
 
@@ -1400,8 +1432,14 @@ supported until an asynchronous statement path exists.
 
 ### Settings that are read but not enforced
 
-`Isolation Level` is recorded and reported, and the engine does not yet vary its behaviour by it. It is
-listed here rather than removed because ADO.NET consumers set it as a matter of course.
+`Isolation Level` is recorded and reported, and the engine does not vary its answers by it. Measured,
+both on a scan and on a single-key lookup: a transaction opened at `Serializable`, `RepeatableRead` or
+`Snapshot` **sees a row another connection commits after it began**, which each of those three levels
+exists to prevent. `ReadCommitted` behaves correctly, and is the control - it must see the row, and does.
+
+Treat every level as `ReadCommitted` until this changes. It is listed rather than removed because
+ADO.NET consumers set it as a matter of course, and refusing it would break them for a setting that has
+never done anything.
 
 ### A note on spelling
 

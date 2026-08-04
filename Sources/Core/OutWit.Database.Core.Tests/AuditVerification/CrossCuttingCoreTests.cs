@@ -16,17 +16,20 @@ public class CrossCuttingCoreTests
 
     #region Reopening an encrypted MVCC database
 
+    /// <summary>
+    /// FIXED in 12.2.0. Was: an encrypted database created with MVCC came back without it.
+    /// </summary>
+    /// <remarks>
+    /// The marker's reasoning was right about the mechanism and wrong about the conclusion drawn from
+    /// it. The encrypted overload cannot read the header <b>from the file</b> - it is inside the
+    /// encrypted page - and that was taken to mean the configuration was unknowable, so
+    /// <c>WithTransactions()</c> was called unconditionally. But the store decrypts the header as soon
+    /// as it is built, and the transactional layer is built after the store: phase 12 reconciles the
+    /// transaction model there, which is late enough to know and early enough to matter.
+    /// </remarks>
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: SupportsMvcc is False after the reopen. The unencrypted Open() reads the "
-            + "header and restores MVCC when detection.HasMvcc; the encrypted overload cannot read the "
-            + "header, so it unconditionally calls WithTransactions(). "
-            + "cross-cutting, Core/Builder/WitDatabase.cs:310")]
     public void EncryptedMvccDatabaseStaysMvccWhenReopenedTest()
     {
-        // Finding: WitDatabase.cs:310 - the unencrypted Open() reads the header and restores MVCC
-        // when detection.HasMvcc; the encrypted Open(path, password) cannot read the header, so it
-        // unconditionally calls WithTransactions() and never WithMvcc(). An encrypted database
-        // created with MVCC therefore comes back as a non-MVCC one, silently.
         var directory = CreateTempDirectory();
         var path = Path.Combine(directory, "encrypted.witdb");
         const string password = "correct horse battery staple";
@@ -55,10 +58,11 @@ public class CrossCuttingCoreTests
         }
     }
 
+    /// <summary>
+    /// FIXED in 12.2.0. Was: the row written before the reopen came back NULL, because the two modes
+    /// disagree about the on-disk key format and the reopen silently chose the other one.
+    /// </summary>
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and it costs data: the row written before the reopen comes back NULL. "
-            + "The downgrade is not a capability question - the two modes disagree about the on-disk "
-            + "key format, so everything written under MVCC becomes unreachable.")]
     public void EncryptedMvccDatabaseStillReadsItsDataWhenReopenedTest()
     {
         // The consequence that would actually cost a user data: if the two modes disagree about the

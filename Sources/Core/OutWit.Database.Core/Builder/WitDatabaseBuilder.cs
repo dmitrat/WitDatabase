@@ -50,6 +50,10 @@ public sealed class WitDatabaseBuilder
     /// </summary>
     public WitDatabase Build()
     {
+        // Before validation, so that the configuration the file supplies is validated too rather than
+        // arriving behind the check.
+        RestoreStoredConfiguration();
+
         ValidateConfiguration();
         ValidateSyncBuildAllowed();
 
@@ -96,6 +100,8 @@ public sealed class WitDatabaseBuilder
     /// </summary>
     public async ValueTask<WitDatabase> BuildAsync(CancellationToken cancellationToken = default)
     {
+        RestoreStoredConfiguration();
+
         ValidateConfiguration();
 
         var databaseLock = AcquireExclusiveLock();
@@ -424,6 +430,186 @@ public sealed class WitDatabaseBuilder
     /// check exists to stop a silent wrong answer, not to make old databases unopenable.
     /// </para>
     /// </remarks>
+    /// <summary>
+    /// Fills in the settings the caller did not name from the ones the database recorded when it was
+    /// created. Does nothing unless <see cref="WitDatabaseBuilderOptions.RestoreStoredConfiguration"/>
+    /// is on, and never overwrites a setting the caller named.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Phase 12 measured what a reopen used to recover: nothing. A database created with
+    /// <c>Cache=lru;CacheSize=64</c> and opened with <c>Data Source=</c> alone built a sharded clock
+    /// with the default capacity and said nothing; fourteen settings behaved that way and five were
+    /// refused. The file had a place to record most of them - <c>ProviderMetadata</c> declared the cache
+    /// and journal keys with the comment "Not persisted" - and now it does.
+    /// </para>
+    /// <para>
+    /// <b>The order matters.</b> The store comes first, because it decides which of the rest apply, and
+    /// restoring it turns a path that is a directory into an LSM database rather than a file the
+    /// operating system refuses to open. The transaction model comes before the journal, because a
+    /// journal is only legal without MVCC - restoring one into an MVCC configuration would produce a
+    /// combination the validator refuses, which is a worse answer than the one this replaces.
+    /// </para>
+    /// <para>
+    /// <b>What is deliberately not restored:</b> <c>Synchronous Commit</c>, <c>FileLocking</c> and
+    /// <c>Isolation Level</c>. See <see cref="WitDatabaseBuilderOptions.RestoreStoredConfiguration"/>.
+    /// </para>
+    /// </remarks>
+    private void RestoreStoredConfiguration()
+    {
+        if (!Options.RestoreStoredConfiguration)
+            return;
+
+        // A caller who supplied the store or the storage is not asking a file what to build.
+        if (Options.CustomStore != null || Options.CustomStorage != null)
+            return;
+
+        var path = Options.FilePath ?? Options.LsmDirectory;
+
+        if (string.IsNullOrEmpty(path))
+            return;
+
+        if (StorageDetector.ReadStoredConfiguration(path) is not { } stored)
+            return;
+
+        var metadata = stored.Metadata;
+
+        RestoreStore(stored, metadata, path);
+        RefuseNamedTransactionModelMismatch(metadata);
+        RestoreTransactionModel(metadata);
+
+        if (!Options.IsNamed(WitDatabaseBuilderOptions.Setting.PAGE_SIZE) && stored.PageSize > 0)
+            Options.StoreParameters.Set("pageSize", (int)stored.PageSize);
+
+        if (!Options.IsNamed(WitDatabaseBuilderOptions.Setting.CACHE) &&
+            !string.IsNullOrEmpty(metadata.CacheProviderKey))
+        {
+            Options.CacheProviderKey = metadata.CacheProviderKey;
+        }
+
+        if (!Options.IsNamed(WitDatabaseBuilderOptions.Setting.CACHE_SIZE) && metadata.CacheSize > 0)
+            Options.CacheParameters.Set("size", metadata.CacheSize);
+
+        // Only meaningful without MVCC, and the model above has already been restored, so this asks
+        // the configuration as it now stands rather than as it arrived.
+        if (!Options.IsNamed(WitDatabaseBuilderOptions.Setting.JOURNAL) &&
+            !string.IsNullOrEmpty(metadata.JournalProviderKey) &&
+            Options.EnableTransactions && !Options.EnableMvcc)
+        {
+            Options.JournalProviderKey = metadata.JournalProviderKey;
+        }
+
+        RestoreLsmOptions(stored);
+    }
+
+    private void RestoreStore(StoredConfiguration stored, ProviderMetadata metadata, string path)
+    {
+        if (Options.IsNamed(WitDatabaseBuilderOptions.Setting.STORE))
+            return;
+
+        var storedKey = stored.IsDirectory ? StoreLsm.PROVIDER_KEY : metadata.StoreProviderKey;
+
+        if (string.IsNullOrEmpty(storedKey) || storedKey == Options.StoreProviderKey)
+            return;
+
+        Options.StoreProviderKey = storedKey;
+
+        // The LSM store is given a directory and the B+Tree store a file, and a connection string that
+        // never said Store= has only set the one. Without this, restoring the store key alone left the
+        // LSM store looking for a directory parameter nobody had filled in.
+        if (storedKey == StoreLsm.PROVIDER_KEY && !Options.StoreParameters.Has("directory"))
+            Options.StoreParameters.Set("directory", path);
+    }
+
+    /// <summary>
+    /// Refuses a transaction model the caller named that the database was not created with.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <see cref="ValidateStoredConfiguration"/> does this for the B+Tree store, from the metadata the
+    /// built store exposes - and the LSM store exposes none, so that check has never applied to it. It
+    /// did not show, because opening an LSM directory without <c>Store=lsm</c> failed in the operating
+    /// system: a directory is not a file. Restoring the store from the sidecar removed that accident and
+    /// left the real gap visible, which <c>ConfigurationMismatchTests</c> reported immediately as
+    /// <c>OpensAndDataIsGone</c> for <c>lsm -&gt; MVCC=false</c>.
+    /// </para>
+    /// <para>
+    /// So the same question is asked here, where the answer is available for both stores, and only for a
+    /// model the caller actually named - one they did not name is restored rather than refused.
+    /// </para>
+    /// </remarks>
+    private void RefuseNamedTransactionModelMismatch(ProviderMetadata stored)
+    {
+        if (string.IsNullOrEmpty(stored.StoreProviderKey))
+            return;
+
+        if (!Options.IsNamed(WitDatabaseBuilderOptions.Setting.TRANSACTIONS) &&
+            !Options.IsNamed(WitDatabaseBuilderOptions.Setting.MVCC))
+        {
+            return;
+        }
+
+        var storedHasMvcc = stored.HasTransactions && stored.HasMvcc;
+
+        if (storedHasMvcc == (Options.EnableTransactions && Options.EnableMvcc))
+            return;
+
+        throw new ConfigurationMismatchException(BuildProviderMetadata(), stored, [TransactionModelMismatch(storedHasMvcc)]);
+    }
+
+    /// <summary>
+    /// The one wording for a transaction-model mismatch, so the two places that can detect it cannot
+    /// explain it differently.
+    /// </summary>
+    private static string TransactionModelMismatch(bool storedHasMvcc)
+    {
+        return storedHasMvcc
+            ? "The database was created with MVCC and this configuration opens it without. The MVCC "
+              + "store keeps every value under a versioned key, so a store opened without it finds none "
+              + "of them and reports every table as missing - the data is intact and invisible. Open it "
+              + "with MVCC=true, or create a new database."
+            : "The database was created without MVCC and this configuration opens it with MVCC. The MVCC "
+              + "store looks for values under versioned keys, so it finds none of the ones already "
+              + "written and reports every table as missing - the data is intact and invisible. Open it "
+              + "with MVCC=false, or create a new database.";
+    }
+
+    private void RestoreTransactionModel(ProviderMetadata metadata)
+    {
+        if (!Options.IsNamed(WitDatabaseBuilderOptions.Setting.TRANSACTIONS))
+            Options.EnableTransactions = metadata.HasTransactions;
+
+        if (!Options.IsNamed(WitDatabaseBuilderOptions.Setting.MVCC))
+            Options.TransactionParameters.Set("mvcc", metadata.HasTransactions && metadata.HasMvcc);
+    }
+
+    private void RestoreLsmOptions(StoredConfiguration stored)
+    {
+        if (stored.Lsm is not { } lsm || Options.StoreProviderKey != StoreLsm.PROVIDER_KEY)
+            return;
+
+        // Each is restored on its own, so naming one in a connection string does not discard the rest.
+        // Every spelling LsmOptions.FromParameters accepts has to be checked before a value is put back:
+        // a connection string writes MemTableSize and this would otherwise add memTableSize beside it and
+        // leave which one wins to the order of a lookup.
+        Restore(lsm.MemTableSizeLimit, "MemTableSize", "memTableSize", "MemTableSizeLimit");
+        Restore(lsm.BlockCacheSizeBytes, "BlockCacheSize", "blockCacheSize", "BlockCacheSizeBytes");
+        Restore(lsm.BlockSize, "BlockSize", "blockSize");
+        Restore(lsm.Level0CompactionTrigger, "CompactionTrigger", "compactionTrigger", "Level0CompactionTrigger");
+        Restore(lsm.EnableWal, "EnableWal", "enableWal");
+        Restore(lsm.SyncWrites, "SyncWrites", "syncWrites");
+        Restore(lsm.EnableBlockCache, "EnableBlockCache", "enableBlockCache");
+        Restore(lsm.BackgroundCompaction, "BackgroundCompaction", "backgroundCompaction");
+
+        void Restore(object value, params string[] names)
+        {
+            if (names.Any(Options.StoreParameters.Has))
+                return;
+
+            Options.StoreParameters.Set(names[0], value);
+        }
+    }
+
     private void ValidateStoredConfiguration(IKeyValueStore store)
     {
         if (store is not IProviderMetadataSource source || source.StoredMetadata is not { } stored)
@@ -438,17 +624,22 @@ public sealed class WitDatabaseBuilder
         if (storedHasMvcc == currentHasMvcc)
             return;
 
-        var mismatch = storedHasMvcc
-            ? "The database was created with MVCC and this configuration opens it without. The MVCC "
-              + "store keeps every value under a versioned key, so a store opened without it finds none "
-              + "of them and reports every table as missing - the data is intact and invisible. Open it "
-              + "with MVCC=true, or create a new database."
-            : "The database was created without MVCC and this configuration opens it with MVCC. The MVCC "
-              + "store looks for values under versioned keys, so it finds none of the ones already "
-              + "written and reports every table as missing - the data is intact and invisible. Open it "
-              + "with MVCC=false, or create a new database.";
+        // A caller who did not name the transaction model gets the one the database was created with,
+        // rather than a refusal for a disagreement they never expressed. This seam is used as well as
+        // the pre-read in RestoreStoredConfiguration because it is the only one that works for an
+        // ENCRYPTED database: the header is inside the encrypted page, so nothing can be read from the
+        // file before the store is built - and the transactional layer is built after this point, so
+        // there is still time to choose.
+        if (Options.RestoreStoredConfiguration &&
+            !Options.IsNamed(WitDatabaseBuilderOptions.Setting.TRANSACTIONS) &&
+            !Options.IsNamed(WitDatabaseBuilderOptions.Setting.MVCC))
+        {
+            Options.EnableTransactions = stored.HasTransactions;
+            Options.TransactionParameters.Set("mvcc", storedHasMvcc);
+            return;
+        }
 
-        throw new ConfigurationMismatchException(BuildProviderMetadata(), stored, [mismatch]);
+        throw new ConfigurationMismatchException(BuildProviderMetadata(), stored, [TransactionModelMismatch(storedHasMvcc)]);
     }
 
     private void ValidateSyncBuildAllowed()
@@ -559,8 +750,14 @@ public sealed class WitDatabaseBuilder
             lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider, salt);
         }
 
+        // Written before the store, and only when the directory does not already carry one: the sidecar
+        // records what the database was CREATED with, so reopening it under other settings must not
+        // rewrite it. Same rule as the database header, which is only filled in by InitializeNewDatabase.
+        if (LsmDirectoryMetadata.Read(directory) is null)
+            LsmDirectoryMetadata.Write(directory, BuildProviderMetadata(), StoredOptionsOf(lsmOptions));
+
         var store = new StoreLsm(directory, lsmOptions);
-        
+
         // Serialise the store if its own implementation does not
         return WrapForConcurrency(store);
     }
@@ -853,7 +1050,26 @@ public sealed class WitDatabaseBuilder
             StoreProviderKey = Options.EffectiveStoreProviderKey,
             EncryptionProviderKey = Options.CustomCryptoProvider?.ProviderKey ?? Options.EncryptionProviderKey ?? "",
             CacheProviderKey = Options.CacheProviderKey ?? PageCacheShardedClock.PROVIDER_KEY,
-            JournalProviderKey = Options.CustomJournal?.ProviderKey ?? Options.JournalProviderKey ?? ""
+            JournalProviderKey = Options.CustomJournal?.ProviderKey ?? Options.JournalProviderKey ?? "",
+            CacheSize = Options.CacheSize
+        };
+    }
+
+    /// <summary>
+    /// The subset of the LSM options a connection string can select, for the directory's sidecar.
+    /// </summary>
+    private static LsmStoredOptions StoredOptionsOf(LsmOptions options)
+    {
+        return new LsmStoredOptions
+        {
+            MemTableSizeLimit = options.MemTableSizeLimit,
+            BlockCacheSizeBytes = options.BlockCacheSizeBytes,
+            BlockSize = options.BlockSize,
+            Level0CompactionTrigger = options.Level0CompactionTrigger,
+            EnableWal = options.EnableWal,
+            SyncWrites = options.SyncWrites,
+            EnableBlockCache = options.EnableBlockCache,
+            BackgroundCompaction = options.BackgroundCompaction
         };
     }
 

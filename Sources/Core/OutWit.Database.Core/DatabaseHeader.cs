@@ -3,7 +3,7 @@ using System.Buffers.Binary;
 namespace OutWit.Database.Core;
 
 /// <summary>
-/// Database file header structure (100 bytes at the beginning of the file)
+/// Database file header structure (128 bytes at the beginning of the file)
 /// </summary>
 /// <remarks>
 /// Layout:
@@ -17,7 +17,7 @@ namespace OutWit.Database.Core;
 /// [36-39]  Transaction counter (for WAL)
 /// [40-43]  Database flags
 /// [44-47]  Checkpoint counter
-/// [48-99]  Provider metadata (store, encryption, features)
+/// [48-127] Provider metadata (store, encryption, cache, journal, features)
 /// </remarks>
 public struct DatabaseHeader
 {

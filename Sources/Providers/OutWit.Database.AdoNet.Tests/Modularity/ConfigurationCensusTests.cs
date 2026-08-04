@@ -1,6 +1,4 @@
-﻿using System.Reflection;
-using System.Security.Cryptography;
-using System.Text;
+﻿using System.Text;
 
 namespace OutWit.Database.AdoNet.Tests.Modularity;
 
@@ -144,24 +142,6 @@ public class ConfigurationCensusTests
     }
 
     private sealed record Result(Knob Knob, Verdict Verdict, IReadOnlyList<Diff> Structural, int NoiseCount, string? Note);
-
-    #endregion
-
-    #region Constants
-
-    /// <summary>How deep the reflection walk goes before it records a type name and stops.</summary>
-    private const int MAX_DEPTH = 9;
-
-    /// <summary>How many elements of an ordered collection are walked. Enough to see a shard array.</summary>
-    private const int MAX_ELEMENTS = 8;
-
-    /// <summary>Types the walk records by name and does not open - locks, handles, threads, streams.</summary>
-    private static readonly Type[] OPAQUE =
-    [
-        typeof(Delegate), typeof(Thread), typeof(Task), typeof(SemaphoreSlim), typeof(ReaderWriterLockSlim),
-        typeof(CancellationTokenSource), typeof(Stream), typeof(System.Runtime.InteropServices.SafeHandle),
-        typeof(WaitHandle), typeof(System.Data.Common.DbConnectionStringBuilder)
-    ];
 
     #endregion
 
@@ -362,11 +342,7 @@ public class ConfigurationCensusTests
 
         // Self-calibration: anything that already differs between two builds of the SAME configuration is
         // noise - a temporary path, a handle, a timing - and cannot be evidence about the keyword.
-        var noise = new HashSet<string>(
-            baselineOne.Keys.Union(baselineTwo.Keys)
-                .Where(k => !baselineOne.TryGetValue(k, out var a) ||
-                            !baselineTwo.TryGetValue(k, out var b) ||
-                            a != b));
+        var noise = EngineFingerprint.Noise(baselineOne, baselineTwo);
 
         var diffs = new List<Diff>();
 
@@ -426,11 +402,9 @@ public class ConfigurationCensusTests
             ? RunWorkload(connection)
             : [];
 
-        var values = new SortedDictionary<string, string>(StringComparer.Ordinal);
-        var seen = new HashSet<object>(ReferenceEqualityComparer.Instance);
-
-        Walk(Field(connection, "m_database"), "database", MAX_DEPTH, values, seen);
-        Walk(Field(connection, "m_engine"), "engine", MAX_DEPTH, values, seen);
+        var values = EngineFingerprint.Take(
+            ("database", EngineFingerprint.Field(connection, "m_database")),
+            ("engine", EngineFingerprint.Field(connection, "m_engine")));
 
         return new Side(values, workloadErrors);
     }
@@ -526,119 +500,6 @@ public class ConfigurationCensusTests
     #endregion
 
     #region Fingerprinting
-
-    /// <summary>
-    /// Records the shape of an object graph: the runtime type at every reachable field, and the value of
-    /// every scalar. Fields only, never properties - a property can compute, allocate or lock, and this
-    /// has to be able to look at a live engine without changing it.
-    /// </summary>
-    private static void Walk(object? node, string path, int depth,
-        SortedDictionary<string, string> into, HashSet<object> seen)
-    {
-        if (node == null)
-        {
-            into[path] = "null";
-            return;
-        }
-
-        var type = node.GetType();
-
-        if (TryScalar(node, type, out var scalar))
-        {
-            into[path] = scalar;
-            return;
-        }
-
-        into[$"{path}::type"] = $"t:{type.Name}";
-
-        if (depth <= 0 || IsOpaque(type) || !seen.Add(node))
-            return;
-
-        if (node is System.Collections.ICollection collection)
-        {
-            into[$"{path}::count"] = $"n:{collection.Count}";
-
-            // An ORDERED collection is walked as well as counted, up to a bound. Stopping at the count
-            // made the census blind in a way the controls did not cover: the page cache keeps its
-            // capacity inside an array of shards, so CacheSize reported INERT while it was arriving
-            // perfectly well. Dictionaries and sets are left alone - their order is not stable enough to
-            // compare, and the noise calibration would only throw the whole subtree away.
-            if (node is System.Collections.IList list)
-            {
-                for (var index = 0; index < Math.Min(list.Count, MAX_ELEMENTS); index++)
-                    Walk(list[index], $"{path}[{index}]", depth - 1, into, seen);
-            }
-
-            return;
-        }
-
-        // Anything outside this product is recorded by type and not opened: its internals are the
-        // framework's business and a rich source of noise.
-        if (type.Namespace?.StartsWith("OutWit", StringComparison.Ordinal) != true)
-            return;
-
-        foreach (var field in FieldsOf(type))
-        {
-            object? value;
-
-            try
-            {
-                value = field.GetValue(node);
-            }
-            catch
-            {
-                continue;
-            }
-
-            Walk(value, $"{path}.{field.Name}", depth - 1, into, seen);
-        }
-    }
-
-    private static bool TryScalar(object node, Type type, out string value)
-    {
-        value = node switch
-        {
-            string s => $"s:{s}",
-            bool b => $"b:{b}",
-            Enum e => $"e:{e}",
-            TimeSpan t => $"n:{t.Ticks}",
-            byte[] bytes => $"h:{bytes.Length}:{Convert.ToHexString(SHA256.HashData(bytes))[..8]}",
-            _ when type.IsPrimitive || type == typeof(decimal) => $"n:{Convert.ToString(node, System.Globalization.CultureInfo.InvariantCulture)}",
-            _ => ""
-        };
-
-        return value.Length > 0;
-    }
-
-    private static bool IsOpaque(Type type)
-    {
-        return OPAQUE.Any(opaque => opaque.IsAssignableFrom(type)) ||
-               type.Name.Contains("Lock", StringComparison.Ordinal);
-    }
-
-    /// <summary>
-    /// Every instance field the type has, including private fields declared on its base types - which is
-    /// what <c>GetFields</c> alone does not return.
-    /// </summary>
-    private static IEnumerable<FieldInfo> FieldsOf(Type type)
-    {
-        for (var current = type; current != null && current != typeof(object); current = current.BaseType)
-        {
-            foreach (var field in current.GetFields(
-                         BindingFlags.Instance | BindingFlags.Public | BindingFlags.NonPublic | BindingFlags.DeclaredOnly))
-            {
-                yield return field;
-            }
-        }
-    }
-
-    private static object? Field(object instance, string name)
-    {
-        var field = instance.GetType().GetField(name, BindingFlags.Instance | BindingFlags.NonPublic)
-                    ?? throw new InvalidOperationException($"{instance.GetType().Name} has no field {name}.");
-
-        return field.GetValue(instance);
-    }
 
     private static string Short(Exception exception)
     {

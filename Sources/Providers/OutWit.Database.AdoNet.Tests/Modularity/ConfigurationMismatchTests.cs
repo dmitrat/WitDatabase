@@ -186,6 +186,14 @@ public class ConfigurationMismatchTests
             (verdict.SurvivesTheOriginal
                 ? "IS still readable by the configuration that wrote it."
                 : "is NOT readable even by the configuration that wrote it any more."));
+
+        // Survival was printed by every cell and asserted by none, and a cell duly went red in prose
+        // rather than in the run: opening an LSM database with a wrong password refused, and left the
+        // write-ahead log open, so the creator's own configuration then met "the process cannot access
+        // the file". A wrong connection string may be refused; it may not cost the owner its database.
+        Assert.That(verdict.SurvivesTheOriginal, Is.True,
+            $"<{creator.Label}> -> <{opener.Label}>: after this open the database is no longer readable " +
+            $"by the configuration that wrote it - {verdict.SurvivalReason}");
     }
 
     /// <summary>
@@ -213,19 +221,19 @@ public class ConfigurationMismatchTests
     /// the data file open. Two handle leaks and a refused encrypted open all had exactly this shape.
     /// </para>
     /// </remarks>
-    [TestCase("default", "locks", TestName = "{m}(mvcc database opened without mvcc)")]
-    [TestCase("default", "no-tx", TestName = "{m}(mvcc database opened without transactions)")]
-    [TestCase("locks", "default", TestName = "{m}(lock-based database opened with mvcc)")]
-    [TestCase("no-tx", "default", TestName = "{m}(transactionless database opened with mvcc)")]
-    public void ADifferentTransactionModelIsRefusedAtOpenTest(string creatorLabel, string openerLabel)
+    [TestCase("default", "MVCC=false", TestName = "{m}(mvcc database opened with mvcc off)")]
+    [TestCase("default", "Transactions=false", TestName = "{m}(mvcc database opened with transactions off)")]
+    [TestCase("locks", "MVCC=true", TestName = "{m}(lock-based database opened with mvcc on)")]
+    [TestCase("no-tx", "MVCC=true", TestName = "{m}(transactionless database opened with mvcc on)")]
+    public void ANamedTransactionModelThatConflictsIsRefusedAtOpenTest(string creatorLabel, string openerSettings)
     {
         var creator = SETUPS.Single(s => s.Label == creatorLabel);
-        var opener = SETUPS.Single(s => s.Label == openerLabel);
+        var opener = new Setup($"named:{openerSettings}", openerSettings);
 
         var verdict = CreateThenOpen(creator, opener);
 
         Assert.That(verdict.Outcome, Is.EqualTo(Outcome.RefusedAtOpen),
-            $"<{creatorLabel}> -> <{openerLabel}>: {verdict.Outcome}. {verdict.Detail}");
+            $"<{creatorLabel}> -> <{openerSettings}>: {verdict.Outcome}. {verdict.Detail}");
 
         Assert.That(verdict.Detail, Does.Contain("MVCC"),
             "the refusal does not name the setting that caused it, which is what a consumer has to act on: " +
@@ -234,6 +242,40 @@ public class ConfigurationMismatchTests
         Assert.That(verdict.SurvivesTheOriginal, Is.True,
             "after the refusal the database is no longer readable by the configuration that wrote it: " +
             verdict.SurvivalReason);
+    }
+
+    /// <summary>
+    /// Probe: a connection string that does not name the transaction model gets the one the database was
+    /// created with, rather than a refusal.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This replaces two cases that used to expect a refusal, and the change is the point of phase
+    /// 12.</b> 12.0.0 refused every transaction-model disagreement because refusing was the best answer
+    /// available: nothing could tell a caller who had chosen <c>MVCC=true</c> from one who had merely
+    /// not mentioned it, so both were treated as a choice. A connection string knows which of its
+    /// keywords were written, and a database records the model it was made with, so the second case can
+    /// now be answered by opening correctly.
+    /// </para>
+    /// <para>
+    /// The refusal is not weakened: naming a conflicting model is still refused, which is what
+    /// <see cref="ANamedTransactionModelThatConflictsIsRefusedAtOpenTest"/> asserts on the same pairs.
+    /// The two tests are the two directions of one rule, and either alone would let the other's
+    /// behaviour regress unnoticed.
+    /// </para>
+    /// </remarks>
+    [TestCase("locks", TestName = "{m}(lock-based database)")]
+    [TestCase("no-tx", TestName = "{m}(transactionless database)")]
+    public void AnUnnamedTransactionModelIsRestoredFromTheDatabaseTest(string creatorLabel)
+    {
+        var creator = SETUPS.Single(s => s.Label == creatorLabel);
+        var opener = new Setup("says nothing", "");
+
+        var verdict = CreateThenOpen(creator, opener);
+
+        Assert.That(verdict.Outcome, Is.EqualTo(Outcome.Correct),
+            $"<{creatorLabel}> opened by a connection string that names no transaction model: " +
+            $"{verdict.Outcome}. {verdict.Detail}");
     }
 
     // The grid pinned two more defects and no longer reproduces either; the record, because the shapes
