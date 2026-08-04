@@ -112,6 +112,15 @@ Both directions stay readable, and that is asserted rather than assumed:
 The format version's **minor** is bumped to 1.1. The major is what an older build refuses on, and it is
 unchanged.
 
+**And the third direction, which is the one a deployment actually produces: downgrade, write, upgrade.**
+A 12.1.0 build writing to a database this version created clears bytes 0-99 and writes its own 100, so
+byte 88 - the first byte of the cache key - is zeroed. `ReadProviderKey` stops at the first null, so the
+key reads as **empty** whatever survives after it, which is "not recorded" and falls back to the
+default. The journal key and the cache size sit past byte 99 and come through untouched. Checked against
+the 12.1.0 source rather than assumed: `DatabaseHeader.WriteTo` clears `buffer[..100]` and
+`ProviderMetadata.WriteTo` clears `span[40..52]`. So the worst a downgrade can do is lose the cache
+choice, which costs performance and no answers.
+
 Provider keys are stored as text rather than as an enumeration, because a third party can register a
 cache or journal provider under any key - `ThirdPartyProviderTests` drives a real database through one -
 and an id would quietly close the registry.
