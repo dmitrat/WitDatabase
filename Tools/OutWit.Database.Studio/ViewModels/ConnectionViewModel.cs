@@ -36,8 +36,15 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitDefault()
     {
+        if (ConnectionInfo != null)
+            ConnectionInfo.PropertyChanged -= OnConnectionInfoPropertyChanged;
+
         ConnectionInfo = new ConnectionInfo();
         ConnectionInfo.PropertyChanged += OnConnectionInfoPropertyChanged;
+
+        // A dialog reopened after a failed attempt used to come back still showing the old error,
+        // because InitDefault replaced everything except this.
+        ErrorMessage = null;
 
         StorageEngines = ["btree", "lsm"];
         SelectedStorageEngine = "btree";
@@ -121,6 +128,17 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
         UpdateStatus();
 
+    }
+
+    /// <summary>
+    /// A WitDatabase is a file for the paged stores and a directory for LSM, so both count.
+    /// </summary>
+    private static bool DatabaseExists(string path)
+    {
+        if (string.IsNullOrWhiteSpace(path))
+            return false;
+
+        return File.Exists(path) || Directory.Exists(path);
     }
 
     /// <summary>
@@ -286,6 +304,16 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                 
                 Logger.LogInformation("Database file created: {FilePath}", ConnectionInfo.FilePath);
             }
+            else if (IsFileBased && !DatabaseExists(ConnectionInfo.FilePath))
+            {
+                // The engine creates a database it is asked to open and cannot find, which is right
+                // for a provider and wrong for a dialog called Open: a user whose file has moved
+                // would be shown an empty database and read it as their data being gone.
+                ErrorMessage = $"Database not found: {ConnectionInfo.FilePath}";
+                Logger.LogWarning("Refused to open a database that does not exist: {FilePath}",
+                    ConnectionInfo.FilePath);
+                return;
+            }
 
             // Connect to the database (both for new and existing)
             Logger.LogInformation("Attempting to connect to database: {FilePath}", ConnectionInfo.FilePath);
@@ -380,6 +408,15 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     #endregion
 
     #region Public Methods
+
+    /// <summary>
+    /// Returns the dialog to the state a freshly opened one is in. Public so that the reset both
+    /// dialogs perform can be driven without a window.
+    /// </summary>
+    public void ResetForNewDialog()
+    {
+        InitDefault();
+    }
 
     public async Task<bool> ShowCreateDialogAsync()
     {

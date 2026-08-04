@@ -104,6 +104,17 @@ public class StudioEngineContactTests
         }
     }
 
+    /// <summary>
+    /// Puts a real database on disk without going through a dialog, for cases that need one to exist
+    /// before the dialog is driven.
+    /// </summary>
+    private static async Task CreateOnDiskAsync(string path)
+    {
+        await using var connection = new WitDbConnection($"Data Source={path}");
+        await connection.OpenAsync();
+        await connection.CloseAsync();
+    }
+
     private static string[] Listing(string directory)
     {
         if (!Directory.Exists(directory))
@@ -337,19 +348,18 @@ public class StudioEngineContactTests
     #region Findings - pinned as measured, with the inversion each fix must produce
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR.
+    /// S2, FIXED. The Open dialog refuses a path that is not there.
     ///
-    /// The Open dialog cannot fail on a path that does not exist: the engine creates the database, and
-    /// the directory with it. A user who mistypes a path, or whose file has moved, is told the open
-    /// succeeded and shown an empty database - which reads as "my data is gone".
+    /// It used to be unable to fail: the engine creates a database it is asked to open and cannot
+    /// find, so a user whose file had moved was told the open succeeded and shown an empty database -
+    /// which reads as "my data is gone", and the natural next step writes a schema over nothing.
     ///
-    /// Attributed below to the engine rather than to Studio, and the fix belongs in Studio: the Open
-    /// dialog should refuse a path that does not exist before it builds a connection string.
-    ///
-    /// WHEN FIXED: IsConnected becomes False and ErrorMessage names the missing file.
+    /// The engine still creates on open, which is right for a provider and is asserted separately by
+    /// AttributionTheEngineItselfCreatesOnOpenTest. The refusal belongs to the dialog, and the file
+    /// must not be created as a side effect of being asked for.
     /// </summary>
     [Test]
-    public async Task TheOpenDialogCreatesADatabaseWhenThePathDoesNotExistTest()
+    public async Task TheOpenDialogRefusesAPathThatDoesNotExistTest()
     {
         var absent = Path.Combine(m_root, "no-such-directory", "absent.witdb");
 
@@ -362,11 +372,11 @@ public class StudioEngineContactTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(db.IsConnected, Is.True,
-                "PIN: Open on a non-existent path is expected to succeed today. If this is now False, "
-                + "the defect is fixed - invert this test.");
-            Assert.That(File.Exists(absent), Is.True,
-                "PIN: the Open dialog is expected to have created the file it was asked to open.");
+            Assert.That(db.IsConnected, Is.False, "a database that does not exist must not open");
+            Assert.That(vm.ErrorMessage, Does.Contain("not found"),
+                "the dialog must say which file it could not find");
+            Assert.That(File.Exists(absent), Is.False,
+                "and it must not have created the file it refused to open");
         });
 
         db.Dispose();
@@ -598,12 +608,12 @@ public class StudioEngineContactTests
     #region Switching databases - found by driving the application, not by this instrument
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. The most user-visible one in this fixture.
+    /// S1, FIXED. Switching databases keeps every view in step with the service.
     ///
-    /// Open a database, then open another one without closing the first: Studio ends up connected to
-    /// NEITHER. The Database Explorer shows the second database's node, the path is added to Recent
-    /// Files, and the status bar reads "Connected: False" with the welcome screen back. Switching
-    /// databases requires restarting the application.
+    /// Before the fix: open a database, then open another without closing the first, and Studio showed
+    /// the second database's node in the explorer, added the path to Recent Files, and reported
+    /// "Connected: False" with the welcome screen back and Close Database disabled. Switching
+    /// databases required restarting the application.
     ///
     /// Found by driving the shipping executable, NOT by this fixture, and that is the lesson: every
     /// other case here builds a fresh DatabaseService, while the application registers ONE as a
@@ -614,25 +624,31 @@ public class StudioEngineContactTests
     /// database being absent - that was isolated by running the same switch between two databases
     /// that both already existed.
     ///
-    /// THE MECHANISM, and it is not that the connection fails - the connection succeeds. It is the
-    /// EVENT the whole user interface binds to. DatabaseService.ConnectAsync captures
-    /// 'wasConnected = IsConnected' (true) and then calls DisconnectAsync, which raises
-    /// ConnectionStatusChanged(false) from its own comparison. The new connection then opens, and
-    /// ConnectAsync compares the now-true IsConnected against the stale 'wasConnected' it captured
-    /// BEFORE the disconnect - they are equal, so no event is raised. The last thing the interface
-    /// ever hears is 'false'.
+    /// THE MECHANISM, which was never that the connection failed - the connection always succeeded.
+    /// It was the EVENT the whole user interface binds to. ConnectAsync captured
+    /// 'wasConnected = IsConnected' (true) and then called DisconnectAsync, which raised
+    /// ConnectionStatusChanged(false) from its own comparison. The new connection opened, and
+    /// ConnectAsync compared the now-true IsConnected against the stale 'wasConnected' captured
+    /// BEFORE the disconnect - equal, so nothing was raised. The last thing the interface heard was
+    /// 'false', while the service was connected.
     ///
-    /// So the service is connected and every view believes it is not. That is why the explorer shows
-    /// the new database's node - it was filled in by the caller's own success path - while the status
-    /// bar reads Connected: False and Close Database is disabled.
+    /// The fix removes the captured value rather than patching the one call site: the service now
+    /// compares against the last status it actually delivered, so no caller can get this wrong again.
     ///
-    /// WHEN FIXED: the last observed status is true, and it agrees with IsConnected.
+    /// This test asserts the EVENT STREAM rather than IsConnected, because IsConnected was correct
+    /// throughout and asserting it is what made the first version of this test pass against the
+    /// defect.
     /// </summary>
     [Test]
-    public async Task OpeningASecondDatabaseLeavesEveryViewBelievingItIsDisconnectedTest()
+    public async Task OpeningASecondDatabaseKeepsEveryViewInStepTest()
     {
         var first = Path.Combine(m_root, "first.witdb");
         var second = Path.Combine(m_root, "second.witdb");
+
+        // Both databases must already exist - the Open dialog refuses a path that is not there since
+        // S2 was fixed, and the first version of this test was quietly relying on that defect.
+        await CreateOnDiskAsync(first);
+        await CreateOnDiskAsync(second);
 
         // One service and one ViewModel for the whole session - what Program.cs registers.
         var (_, vm, db) = NewStudio();
@@ -659,18 +675,44 @@ public class StudioEngineContactTests
 
         Assert.Multiple(() =>
         {
-            // The connection itself is fine - which is what makes this so confusing in use.
             Assert.That(db.IsConnected, Is.True,
                 "the service is connected to the second database");
 
-            Assert.That(observed.Count, Is.EqualTo(2),
-                "PIN: the interface is expected to hear exactly two events today - connected, then "
-                + "disconnected - and never to be told about the second connection.");
+            Assert.That(observed[^1], Is.True,
+                "the last status the interface hears must agree with the service");
 
-            Assert.That(observed[^1], Is.False,
-                "PIN: the last status the interface hears is 'disconnected', while the service is "
-                + "connected. If this is now True, the defect is fixed - invert this assertion.");
+            // connected -> disconnected -> connected. The middle one is real: the first database is
+            // genuinely closed before the second opens, and the views should see that.
+            Assert.That(observed, Is.EqualTo(new[] { true, false, true }).AsCollection,
+                "the interface must be told about the second connection");
         });
+    }
+
+    /// <summary>
+    /// S12, FIXED. A dialog reopened after a failed attempt used to come back still showing the old
+    /// error - InitDefault replaced ConnectionInfo and everything else, but not ErrorMessage. Found by
+    /// driving the application: a refused open left its message sitting on the next fresh dialog.
+    /// </summary>
+    [Test]
+    public async Task ReopeningTheDialogClearsTheErrorFromTheLastAttemptTest()
+    {
+        var (_, vm, db) = NewStudio();
+
+        vm.IsNewDatabase = false;
+        vm.ConnectionInfo.FilePath = Path.Combine(m_root, "absent.witdb");
+
+        await PressConnectAsync(vm);
+
+        Assert.That(vm.ErrorMessage, Is.Not.Null.And.Not.Empty,
+            "the failed attempt must have produced an error for this case to mean anything");
+
+        // What ShowOpenDialogAsync / ShowCreateDialogAsync do before showing the dialog again.
+        vm.ResetForNewDialog();
+
+        Assert.That(vm.ErrorMessage, Is.Null,
+            "a freshly opened dialog must not show the previous attempt's error");
+
+        db.Dispose();
     }
 
     #endregion

@@ -224,26 +224,83 @@ Recorded because a null result is only worth anything when the search that produ
   page size, no cache and no transaction model, so everything but the data source is supplied by the
   file. Studio's LSM reopen (S3) works *only* because of it.
 
-## 5. Ledger
+## 5. What was fixed, and how each fix was proved
+
+Dmitry, 2026-08-04: **S1, S2 and S7 first, then the rest.** S12 was found while verifying them and is a
+two-line repair, so it went in with them. Every fix inverts the pin that recorded the defect, and every
+one was re-checked in the running application rather than only in the suite - which matters here,
+because S1 was invisible to the suite in the first place.
+
+### 5.1 S1 - the fix removes the captured value rather than patching the call site
+
+`RaiseConnectionStatusChangedIfNeeded` no longer takes a `wasConnected` argument. The service records
+the last status it actually **delivered** and compares the live state against that, so no caller can
+reintroduce a stale capture. The event stream for a switch is now `connected → disconnected →
+connected`; the middle one is real and the views should see it, because the first database genuinely is
+closed before the second opens.
+
+**Verified in the application**, on the sequence that produced the defect: open a database, then open
+another without closing it. `Connected: True`, the query tab intact, the explorer and the status bar
+naming the same database. Before, this gave `Connected: False`, the welcome screen and a disabled
+*Close Database*.
+
+### 5.2 S2 - the dialog refuses, the engine still creates
+
+The Open path refuses a `Data Source` that is neither a file nor a directory - both, so the refusal is
+already right for LSM when S5 is done - and says which path it could not find. The engine's
+create-on-open is untouched and still asserted by `AttributionTheEngineItselfCreatesOnOpenTest`, because
+it is correct for a provider.
+
+**One thing this exposed, which is worth recording:** the first version of the S1 test opened two
+databases that did not exist and was **relying on the defect S2 fixes**. It went red the moment the
+refusal landed. A test that needs a defect in order to pass is a test that was measuring the wrong thing.
+
+### 5.3 S7 - a log a support engineer can read, and handlers that write the failure down
+
+`FileLoggerProvider` writes to `%AppData%/WitDatabase.Studio/logs/studio.log`, rolling at 5 MB and
+keeping three. No new dependency: it is one file appended under a lock, and it never throws into the
+application it exists to describe - which is asserted, against a path that cannot be created.
+
+`Program.Main` installs `AppDomain.CurrentDomain.UnhandledException` and
+`TaskScheduler.UnobservedTaskException` before Avalonia starts, with a fallback that writes straight to
+the same file for failures that predate the service provider. They do not swallow anything; they make
+sure the failure is written down before it takes the process.
+
+**Verified by execution:** after a session the log holds 51 lines, including the S2 refusal at `[WRN]`
+and the connection lifecycle. Three tests cover the provider, one of them a control - a message below
+the minimum level must not be written, without which "the log contains what we asked for" would pass for
+a provider that writes everything.
+
+### 5.4 S12 - a fresh dialog showed the previous attempt's error
+
+Found in the application while confirming S2: `InitDefault` replaced `ConnectionInfo` and every setting
+but left `ErrorMessage` alone, so a dialog reopened after a refusal came back still showing it. It now
+clears, and it also unsubscribes the old `ConnectionInfo`'s handler, which was accumulating one
+subscription per dialog.
+
+## 6. Ledger
 
 Unchanged at **45 suppressed entries (31 `[Ignore(…)]` + 14 `Ignore =`) plus 2 `[Explicit]`**, counted
 with the commands on this branch. Nothing in `Sources/**` was touched by this phase.
 
-## 6. Verification
+## 7. Verification
 
 `OutWit.Database.Studio.Tests`, the CI filter, on this branch:
 
 | | passed | failed |
 |---|---|---|
-| before | 259 | 0 |
-| after | **275** | 0 |
+| before the phase | 259 | 0 |
+| audit, before any fix | 275 | 0 |
+| after S1, S2, S7, S12 | **279** | 0 |
 
-The sixteen added are Instrument S. The one change to shipping code is the extraction of
-`ApplyAutoDetectedSettings` out of `OpenExistingDatabaseAsync`, which the Browse path still calls; no
-behaviour moved with it.
+Nothing under `Sources/**` was touched, so no engine suite can be affected by this phase.
 
-## 7. What this phase does not do
+## 8. What this phase does not do
 
-No defect above is fixed here. The audit was asked for first, and S1, S2, S4 and S5 each change what the
-dialogs do, which is a decision rather than a repair. Every finding is pinned by a test that states the
-inversion its fix must produce, so the fixes can be taken in any order and each proves itself.
+**S3, S4, S5, S6, S8, S9, S10 and S11 are not fixed here.** S4 and S5 change what the dialogs offer -
+taking four dead controls off the Open dialog, and letting a directory be chosen - which is a design
+decision rather than a repair. S3 and S6 need the Create dialog's storage handling rebuilt. S9, S10 and
+S11 belong with the packaging and cross-platform work that follows.
+
+Every one of them is pinned by a test that states the inversion its fix must produce, so they can be
+taken in any order and each proves itself when it lands.
