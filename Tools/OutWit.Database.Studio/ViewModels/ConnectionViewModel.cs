@@ -68,6 +68,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     private void InitCommands()
     {
         BrowseFileCommand = new RelayCommandAsync(BrowseFileAsync);
+        BrowseFolderCommand = new RelayCommandAsync(BrowseFolderAsync);
         ConnectCommand = new RelayCommandAsync(ConnectAsync);
         CancelCommand = new RelayCommand(Cancel);
     }
@@ -94,6 +95,34 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         else
             await OpenExistingDatabaseAsync(storageProvider);
         
+    }
+
+    /// <summary>
+    /// An LSM database is a DIRECTORY of SSTables, not a file, so a file picker can never select one -
+    /// which meant Studio could create an LSM database and never reopen it. This is the other half of
+    /// Browse.
+    /// </summary>
+    private async Task BrowseFolderAsync()
+    {
+        if (ApplicationVm.MainWindow == null)
+            return;
+
+        var folders = await ApplicationVm.MainWindow.StorageProvider.OpenFolderPickerAsync(
+            new FolderPickerOpenOptions
+            {
+                Title = "Open LSM Database Folder",
+                AllowMultiple = false
+            });
+
+        if (folders.Count <= 0)
+            return;
+
+        var folderPath = folders[0].Path.LocalPath;
+        ConnectionInfo.FilePath = folderPath;
+
+        ApplyAutoDetectedSettings(folderPath);
+
+        UpdateStatus();
     }
 
     private async Task OpenExistingDatabaseAsync(IStorageProvider storageProvider)
@@ -147,7 +176,9 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     public void ApplyAutoDetectedSettings(string filePath)
     {
-        if (!UseAutoDetectedSettings || !File.Exists(filePath))
+        // DatabaseExists rather than File.Exists: an LSM database is a directory, and guarding on
+        // File.Exists meant detection was silently skipped for one of the two stores.
+        if (!UseAutoDetectedSettings || !DatabaseExists(filePath))
             return;
 
         try
@@ -524,6 +555,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     #region Commands
 
     public ICommand BrowseFileCommand { get; private set; } = null!;
+
+    public ICommand BrowseFolderCommand { get; private set; } = null!;
 
     public ICommand ConnectCommand { get; private set; } = null!;
 

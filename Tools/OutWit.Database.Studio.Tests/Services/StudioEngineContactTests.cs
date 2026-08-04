@@ -720,67 +720,73 @@ public class StudioEngineContactTests
     #region The dialog against the file - what 12.2.0 made the file remember
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR.
+    /// S4, FIXED. The Open dialog used to offer Transactions, MVCC, File locking and a Storage Engine.
+    /// BuildConnectionString emits none of the first three, so every one of those controls reached
+    /// nothing: clearing "Enable MVCC" got an MVCC database and no message.
     ///
-    /// The Open dialog's Advanced tab offers Transactions, MVCC and File locking, and its General tab
-    /// offers a Storage Engine. ConnectionInfo.BuildConnectionString emits none of the first three, so
-    /// every one of those controls reaches nothing at all - a user who clears "Enable MVCC" on the
-    /// Open dialog gets an MVCC database and no message.
+    /// They were removed rather than wired up, because since 12.2.0 the file records all four and
+    /// supplies whatever the connection string does not name - so asking the user is asking them to
+    /// override a correct answer with a guess.
     ///
-    /// Since 12.2.0 the file supplies all four itself, so the fix is to take them off the Open dialog
-    /// rather than to wire them up.
-    ///
-    /// WHEN FIXED: these controls no longer exist on the Open dialog, and this test goes with them.
+    /// What this test guards is the property that made those controls dishonest, and it is still true:
+    /// the Open path's connection string carries only what the user genuinely chooses. If a future
+    /// change puts one of these keywords back into it, it must come with a control that works.
     /// </summary>
     [Test]
-    public void OpenDialogAdvancedSettingsReachNothingTest()
+    public void TheOpenPathNamesOnlyWhatTheUserActuallyChoosesTest()
     {
         var (_, vm, db) = NewStudio();
 
         vm.IsNewDatabase = false;
         vm.ConnectionInfo.FilePath = Path.Combine(m_root, "settings.witdb");
-
-        vm.EnableTransactions = false;
-        vm.EnableMvcc = false;
-        vm.EnableFileLocking = false;
-        vm.SelectedPageSize = 16384;
-        vm.CacheSize = 99;
+        vm.ConnectionInfo.IsReadOnly = true;
 
         var connectionString = vm.ConnectionInfo.BuildConnectionString();
 
         Assert.Multiple(() =>
         {
-            Assert.That(connectionString, Does.Not.Contain("Transactions"),
-                "PIN: the Open dialog's transaction checkbox reaches nothing today.");
-            Assert.That(connectionString, Does.Not.Contain("MVCC"),
-                "PIN: the Open dialog's MVCC checkbox reaches nothing today.");
-            Assert.That(connectionString, Does.Not.Contain("FileLocking"),
-                "PIN: the Open dialog's file-locking checkbox reaches nothing today.");
-            Assert.That(connectionString, Does.Not.Contain("PageSize"),
-                "PIN: the page size reaches nothing on the Open path today.");
-            Assert.That(connectionString, Does.Not.Contain("CacheSize"),
-                "PIN: the cache size reaches nothing on the Open path today.");
+            // What the user did choose, and what the dialog still offers.
+            Assert.That(connectionString, Does.Contain("Data Source="));
+            Assert.That(connectionString, Does.Contain("Mode=ReadOnly"));
+
+            // What the file supplies, and the dialog no longer asks for.
+            Assert.That(connectionString, Does.Not.Contain("Transactions"));
+            Assert.That(connectionString, Does.Not.Contain("MVCC"));
+            Assert.That(connectionString, Does.Not.Contain("FileLocking"));
+            Assert.That(connectionString, Does.Not.Contain("PageSize"));
+            Assert.That(connectionString, Does.Not.Contain("CacheSize"));
         });
 
         db.Dispose();
     }
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR.
+    /// S5, FIXED. An LSM database is a DIRECTORY, and the Open dialog used a file picker with no
+    /// folder option anywhere in the application - so Studio could create an LSM database and never
+    /// reopen one. Typing the path did not help either: auto-detection guarded on File.Exists, which
+    /// is false for a directory, so it silently did nothing for one of the two stores.
     ///
-    /// An LSM database is a DIRECTORY. Studio's Open dialog uses a file picker with no folder option
-    /// anywhere in the application, so an LSM database cannot be selected at all - and typing its path
-    /// does not help, because auto-detection calls File.Exists, which is false for a directory.
-    ///
-    /// WHEN FIXED: ApplyAutoDetectedSettings reports 'lsm' for a directory, and the dialog offers a
-    /// way to choose one.
+    /// The dialog now offers a Folder... button beside File..., and detection accepts both.
     /// </summary>
     [Test]
-    public void AnLsmDatabaseCannotBeSelectedInTheOpenDialogTest()
+    public async Task AnLsmDatabaseIsDetectedAndOpenedFromItsDirectoryTest()
     {
         var directory = Path.Combine(m_root, "an-lsm-database");
-        Directory.CreateDirectory(directory);
-        File.WriteAllText(Path.Combine(directory, "provider.meta"), "");
+
+        // A real LSM database, built by the engine rather than faked with a stub file.
+        await using (var seed = new WitDbConnection($"Data Source={directory};Store=lsm"))
+        {
+            await seed.OpenAsync();
+
+            await using var command = seed.CreateCommand();
+            command.CommandText = "CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))";
+            await command.ExecuteNonQueryAsync();
+
+            command.CommandText = "INSERT INTO Probe (Id, Name) VALUES (1, 'alpha')";
+            await command.ExecuteNonQueryAsync();
+
+            await seed.CloseAsync();
+        }
 
         var (_, vm, db) = NewStudio();
 
@@ -788,11 +794,37 @@ public class StudioEngineContactTests
         vm.UseAutoDetectedSettings = true;
         vm.ConnectionInfo.FilePath = directory;
 
+        // What the Folder... button does after the picker returns.
         vm.ApplyAutoDetectedSettings(directory);
 
-        Assert.That(vm.SelectedStorageEngine, Is.EqualTo("btree"),
-            "PIN: auto-detection is expected to leave 'btree' selected for an LSM directory today, "
-            + "because it guards on File.Exists. If this now reports 'lsm', invert this test.");
+        Assert.That(vm.SelectedStorageEngine, Is.EqualTo("lsm"),
+            "auto-detection must report 'lsm' for an LSM directory");
+
+        await PressConnectAsync(vm);
+
+        Assert.That(db.IsConnected, Is.True, $"the LSM database must open: {vm.ErrorMessage}");
+
+        var (rows, error) = await ReadProbeRowsAsync(db);
+
+        Assert.That(error, Is.Null, "reading back from the reopened LSM database failed");
+        Assert.That(rows, Is.EqualTo(1), "the row written before the close must come back");
+
+        await db.DisconnectAsync();
+        db.Dispose();
+    }
+
+    /// <summary>
+    /// S5's other half: the dialog has to offer a way to choose a directory at all. A folder picker
+    /// needs a window, so what is asserted here is that the command exists and is bound - the button
+    /// in OpenDatabaseDialog.axaml binds to exactly this.
+    /// </summary>
+    [Test]
+    public void TheOpenDialogOffersAFolderPickerTest()
+    {
+        var (_, vm, db) = NewStudio();
+
+        Assert.That(vm.BrowseFolderCommand, Is.Not.Null,
+            "the Open dialog must offer a folder route, or an LSM database cannot be selected");
 
         db.Dispose();
     }

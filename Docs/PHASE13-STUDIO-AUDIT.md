@@ -302,7 +302,34 @@ the dialog, and the explorer and workspace loaded, with no error or warning writ
 `Microsoft.OpenApi` (GHSA-v5pm-xwqc-g5wc) carry high-severity advisories in the benchmark, oracle-test
 and sample projects. None of them is a shipped package, and none is Studio.
 
-### 5.5 S12 - a fresh dialog showed the previous attempt's error
+### 5.5 S4 and S5 - the Open dialog stops asking for what the file already knows
+
+Taken together because they are the same dialog and the same misconception: that Studio has to tell the
+engine what a database is.
+
+**S4 - four controls removed rather than wired up.** The Open dialog offered *Enable ACID
+transactions*, *Enable MVCC*, *Enable file locking* and a *Storage Engine*, and
+`BuildConnectionString` emitted none of the first three. Since 12.2.0 the file records all four and
+supplies whatever the connection string does not name, so asking the user is asking them to override a
+correct answer with a guess. The Advanced tab is gone and the header now says where the configuration
+comes from.
+
+The test that pinned the defect was replaced by one that guards the property which made those controls
+dishonest, and is still true: the Open path names only `Data Source` and what the user genuinely
+chooses (`Mode=ReadOnly`, encryption). If a keyword goes back into it, it must come with a control that
+works.
+
+**S5 - an LSM database can be opened.** It is a *directory*, and the dialog had a file picker with no
+folder option anywhere in the application, so Studio could create an LSM database and never reopen one.
+Typing the path did not help either: `ApplyAutoDetectedSettings` guarded on `File.Exists`, silently
+skipping detection for one of the two stores. There is now a **Folder...** button beside **File...**,
+and detection uses the same file-or-directory test the S2 refusal uses.
+
+**Proved end to end rather than at the seam:** the test builds a real LSM database through the engine,
+writes a row, closes it, then drives the dialog at the directory - detection reports `lsm`, the
+connection opens, and the row comes back.
+
+### 5.6 S12 - a fresh dialog showed the previous attempt's error
 
 Found in the application while confirming S2: `InitDefault` replaced `ConnectionInfo` and every setting
 but left `ErrorMessage` alone, so a dialog reopened after a refusal came back still showing it. It now
@@ -380,16 +407,17 @@ Linux and macOS cannot be settled here. CI is the arbiter, as it was for `FileLo
 |---|---|---|
 | before the phase | 259 | 0 |
 | audit, before any fix | 275 | 0 |
-| after S1, S2, S7, S12 | **279** | 0 |
+| after S1, S2, S7, S12 | 279 | 0 |
+| after S4, S5 | **280** | 0 |
 
 Nothing under `Sources/**` was touched, so no engine suite can be affected by this phase.
 
 ## 8. What this phase does not do
 
-**S3, S4, S5, S6, S8, S9, S10 and S11 are not fixed here.** S4 and S5 change what the dialogs offer -
-taking four dead controls off the Open dialog, and letting a directory be chosen - which is a design
-decision rather than a repair. S3 and S6 need the Create dialog's storage handling rebuilt. S9, S10 and
-S11 belong with the packaging and cross-platform work that follows.
+**S3, S6, S8 and S10 are not fixed here.** S3 and S6 need the Create dialog's storage handling rebuilt -
+it builds an LSM database in the wrong place and connects to a different one than it created. S8 is the
+missing automation peer on the SQL editor. S10 - macOS - is not a code change at all: the pipeline now
+builds it, and CI has to say whether it works.
 
 Every one of them is pinned by a test that states the inversion its fix must produce, so they can be
 taken in any order and each proves itself when it lands.
