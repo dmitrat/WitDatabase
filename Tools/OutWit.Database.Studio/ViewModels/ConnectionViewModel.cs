@@ -117,37 +117,45 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         var filePath = files[0].Path.LocalPath;
         ConnectionInfo.FilePath = filePath;
 
-        // Auto-detect settings from existing database
-        if (UseAutoDetectedSettings && File.Exists(filePath))
-        {
-            try
-            {
-                StorageDetectionResult dbInfo = WitDatabase.GetDatabaseInfo(filePath);
-                ConnectionInfo.IsEncrypted = dbInfo.RequiresPassword;
-
-                // Set storage engine from detected store type
-                if (!string.IsNullOrEmpty(dbInfo.StoreType))
-                {
-                    SelectedStorageEngine = dbInfo.StoreType.ToLowerInvariant();
-                }
-
-                // Configure features
-                // If encrypted, we can't read features reliably, keep user's defaults
-                if (!dbInfo.RequiresPassword)
-                {
-                    EnableTransactions = dbInfo.HasTransactions;
-                    EnableMvcc = dbInfo.HasMvcc;
-                    EnableFileLocking = dbInfo.HasFileLocking;
-                }
-            }
-            catch
-            {
-                // Ignore errors during detection
-            }
-        }
+        ApplyAutoDetectedSettings(filePath);
 
         UpdateStatus();
 
+    }
+
+    /// <summary>
+    /// Reads the configuration a database records about itself and shows it in the dialog.
+    /// Called by the Browse path; separated so that it can be driven without a file picker.
+    /// </summary>
+    public void ApplyAutoDetectedSettings(string filePath)
+    {
+        if (!UseAutoDetectedSettings || !File.Exists(filePath))
+            return;
+
+        try
+        {
+            StorageDetectionResult dbInfo = WitDatabase.GetDatabaseInfo(filePath);
+            ConnectionInfo.IsEncrypted = dbInfo.RequiresPassword;
+
+            // Set storage engine from detected store type
+            if (!string.IsNullOrEmpty(dbInfo.StoreType))
+            {
+                SelectedStorageEngine = dbInfo.StoreType.ToLowerInvariant();
+            }
+
+            // Configure features
+            // If encrypted, we can't read features reliably, keep user's defaults
+            if (!dbInfo.RequiresPassword)
+            {
+                EnableTransactions = dbInfo.HasTransactions;
+                EnableMvcc = dbInfo.HasMvcc;
+                EnableFileLocking = dbInfo.HasFileLocking;
+            }
+        }
+        catch
+        {
+            // Ignore errors during detection
+        }
     }
 
     private async Task CreateNewDatabaseAsync(IStorageProvider storageProvider)
