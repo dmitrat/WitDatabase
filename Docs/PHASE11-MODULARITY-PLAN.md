@@ -698,6 +698,47 @@ one costs a single write. Removing that means marking the transaction committed 
 visibility through the transaction table on read - a design change rather than a patch, and the next
 thing to decide in this area.
 
+### 7a.9 The range estimate now comes from the data, and what that is and is not worth
+
+§ 7a.7 measured the defect and handed the fix forward because it needed a first/last key that descends
+the tree. That is built, and with it the estimate:
+
+| predicate, 1,000 rows holding 1..1000 | before | after | actual |
+|---|---|---|---|
+| `Value > 999` | 200 | **1** | 1 |
+| `Value > 990` | 200 | **10** | 10 |
+| `Value > 800` | 200 | 200 | 200 |
+| `Value > 500` | 200 | **500** | 500 |
+| `Value > 0` | 200 | **1000** | 1000 |
+| `Value < 10` | 200 | **9** | 9 |
+| `Value < 900` | 200 | **899** | 899 |
+
+**What was built, in three pieces.** `BTree` descends to its rightmost leaf as it always could to its
+leftmost, and `StoreBTree` exposes both through a new `IKeyRangeSource` - a separate interface, like
+`IProviderMetadataSource`, so a store that cannot answer cheaply is not made to pretend. The secondary
+index uses it, which is where the second finding is: **`GetLastEntry` was a full scan of the index, and
+the query planner already called it for `MIN`/`MAX` optimisation** - so `SELECT MAX(x)` on an indexed
+column was advertised as an index operation and was O(n). Measured on 20,000 keys: **0.001 ms by descent
+against 10.575 ms by scan, 7489x**. Then `IIndexRangeStatistics` carries "where does this value sit in
+the index" to the optimizer, which interpolates on the encoded key bytes - the encoding is
+order-preserving, so this needs no per-type ladder.
+
+**Three qualifications, all measured, because the headline overstates it on its own.**
+
+- **On skewed data the new estimate is worse than the constant.** 900 rows holding 1..900 and 100 around
+  a million: `Value < 500` is estimated at **1** where the truth is 499. Linear interpolation between
+  two keys does exactly that, and the case is in the fixture with its numbers. This is what a histogram
+  fixes, and a histogram costs writes.
+- **Today the estimate does not decide index against table scan at all.** A scan costs `rows x 1.0`, an
+  index range costs `estimated x 0.5`, and the estimate can never exceed the row count - so the index
+  wins even for a predicate that returns the whole table. Asserted, not reasoned: the whole-table range
+  still chooses the index. The estimate ranks indexes against each other; an accurate one is a
+  **precondition** for a cost model that could choose, not an improvement by itself.
+- **The instrument was wrong twice on the way.** Its shuffle overflowed `int` and produced a negative
+  index, so every case failed on the helper; and it called the optimizer **without** the statistics it
+  had just been given, so the first "after" measurement was identical to the "before" one - measuring
+  the path that had not changed.
+
 ## 7. Ledger
 
 47 suppressed entries (33 `[Ignore(…)]` + 14 `Ignore =`) plus 2 `[Explicit]`, counted with the commands

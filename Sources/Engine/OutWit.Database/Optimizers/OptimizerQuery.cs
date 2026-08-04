@@ -1,4 +1,4 @@
-using OutWit.Database.Definitions;
+﻿using OutWit.Database.Definitions;
 using OutWit.Database.Model;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Types;
@@ -65,12 +65,18 @@ public sealed class OptimizerQuery
     /// <param name="whereClause">The WHERE clause expression.</param>
     /// <param name="availableIndexes">Available indexes on the table.</param>
     /// <param name="estimatedRowCount">Estimated row count in the table.</param>
+    /// <param name="statistics">
+    /// Where a value sits inside the range an index holds, when that can be had cheaply. Omitted, every
+    /// range predicate falls back to <see cref="RANGE_SELECTIVITY"/> - which is what the optimizer did
+    /// before it could ask, and is wrong by up to 200x in either direction.
+    /// </param>
     /// <returns>The best index strategy, or null if table scan is preferred.</returns>
     public IndexStrategy? FindBestIndex(
         string tableName,
         WitSqlExpression? whereClause,
         IEnumerable<DefinitionIndex> availableIndexes,
-        long estimatedRowCount)
+        long estimatedRowCount,
+        IIndexRangeStatistics? statistics = null)
     {
         if (whereClause == null || estimatedRowCount <= 0)
             return null;
@@ -90,7 +96,7 @@ public sealed class OptimizerQuery
             if (index.IsPrimaryKey)
                 continue;
 
-            var strategy = EvaluateIndex(index, predicates, estimatedRowCount);
+            var strategy = EvaluateIndex(index, predicates, estimatedRowCount, statistics);
             if (strategy != null && strategy.EstimatedCost < bestCost)
             {
                 bestStrategy = strategy;
@@ -107,7 +113,8 @@ public sealed class OptimizerQuery
     private IndexStrategy? EvaluateIndex(
         DefinitionIndex index,
         IReadOnlyList<PredicateInfo> predicates,
-        long estimatedRowCount)
+        long estimatedRowCount,
+        IIndexRangeStatistics? statistics)
     {
         // Find predicates that match the index's first column
         // (For composite indexes, we need to match from the leftmost column)
@@ -191,7 +198,9 @@ public sealed class OptimizerQuery
                 strategy.AccessType = IndexAccessType.RangeScan;
                 strategy.RangeEnd = matchingPredicate.CompareValue;
                 strategy.RangeEndInclusive = matchingPredicate.Operator == BinaryOperatorType.LessOrEqual;
-                strategy.EstimatedRowsReturned = Math.Max(1, (long)(estimatedRowCount * RANGE_SELECTIVITY));
+                strategy.EstimatedRowsReturned = RangeRows(
+                    estimatedRowCount,
+                    statistics?.FractionBelow(index.Name, LiteralValue(matchingPredicate.CompareValue)));
                 strategy.EstimatedCost = strategy.EstimatedRowsReturned * INDEX_RANGE_COST_PER_ROW;
                 break;
 
@@ -200,7 +209,12 @@ public sealed class OptimizerQuery
                 strategy.AccessType = IndexAccessType.RangeScan;
                 strategy.RangeStart = matchingPredicate.CompareValue;
                 strategy.RangeStartInclusive = matchingPredicate.Operator == BinaryOperatorType.GreaterOrEqual;
-                strategy.EstimatedRowsReturned = Math.Max(1, (long)(estimatedRowCount * RANGE_SELECTIVITY));
+
+                // Above the bound rather than below it, which is the whole point of asking: the same
+                // predicate shape can match one row or the entire table depending on where the bound
+                // falls in the data.
+                var below = statistics?.FractionBelow(index.Name, LiteralValue(matchingPredicate.CompareValue));
+                strategy.EstimatedRowsReturned = RangeRows(estimatedRowCount, below.HasValue ? 1 - below.Value : null);
                 strategy.EstimatedCost = strategy.EstimatedRowsReturned * INDEX_RANGE_COST_PER_ROW;
                 break;
 
@@ -210,9 +224,64 @@ public sealed class OptimizerQuery
         }
 
         // Check for BETWEEN (combined predicates on same column)
-        TryOptimizeForBetween(strategy, firstColumn, predicates, estimatedRowCount);
+        TryOptimizeForBetween(strategy, firstColumn, predicates, estimatedRowCount, statistics, index.Name);
 
         return strategy;
+    }
+
+    /// <summary>
+    /// The constant a predicate compares against, or null when it does not compare against one.
+    /// </summary>
+    /// <remarks>
+    /// A predicate carries an <b>expression</b>, not a value - <c>WHERE a &gt; b</c> is as legal as
+    /// <c>WHERE a &gt; 5</c> - and only a literal says where in the data the bound falls. Anything else
+    /// gets no estimate rather than a wrong one, which is why this returns null instead of guessing.
+    /// </remarks>
+    private static object? LiteralValue(WitSqlExpression? expression)
+    {
+        return expression is WitSqlExpressionLiteral literal ? literal.Value : null;
+    }
+
+    /// <summary>
+    /// Rows a one-sided range is expected to return, from a measured fraction where there is one.
+    /// </summary>
+    /// <remarks>
+    /// The floor of one row is deliberate and matters more than it looks: an estimate of zero makes an
+    /// index look free, and the optimizer would then choose it for a predicate that matches nothing and
+    /// for one that matches everything alike.
+    /// </remarks>
+    private static long RangeRows(long estimatedRowCount, double? fraction)
+    {
+        var selectivity = fraction.HasValue
+            ? Math.Clamp(fraction.Value, 0.0, 1.0)
+            : RANGE_SELECTIVITY;
+
+        return Math.Max(1, (long)(estimatedRowCount * selectivity));
+    }
+
+    /// <summary>
+    /// Rows a two-sided range is expected to return: what is below the upper bound, less what is below
+    /// the lower one.
+    /// </summary>
+    /// <remarks>
+    /// Falls back to half the one-sided constant, which is what this did before there was anything to
+    /// measure. The bounds arrive in whichever order the predicates were written, so the difference is
+    /// taken by absolute value rather than by assuming which is which.
+    /// </remarks>
+    private static long BetweenRows(
+        long estimatedRowCount,
+        IIndexRangeStatistics? statistics,
+        string indexName,
+        object? firstBound,
+        object? secondBound)
+    {
+        var first = statistics?.FractionBelow(indexName, firstBound);
+        var second = statistics?.FractionBelow(indexName, secondBound);
+
+        if (!first.HasValue || !second.HasValue)
+            return Math.Max(1, (long)(estimatedRowCount * RANGE_SELECTIVITY * 0.5));
+
+        return RangeRows(estimatedRowCount, Math.Abs(second.Value - first.Value));
     }
 
     /// <summary>
@@ -222,7 +291,9 @@ public sealed class OptimizerQuery
         IndexStrategy strategy,
         string columnName,
         IReadOnlyList<PredicateInfo> predicates,
-        long estimatedRowCount)
+        long estimatedRowCount,
+        IIndexRangeStatistics? statistics,
+        string indexName)
     {
         // If we already have a seek, skip
         if (strategy.AccessType == IndexAccessType.Seek)
@@ -247,8 +318,9 @@ public sealed class OptimizerQuery
             {
                 strategy.RangeStart = pred.CompareValue;
                 strategy.RangeStartInclusive = pred.Operator == BinaryOperatorType.GreaterOrEqual;
-                // BETWEEN is more selective
-                strategy.EstimatedRowsReturned = (long)(estimatedRowCount * RANGE_SELECTIVITY * 0.5);
+                strategy.EstimatedRowsReturned = BetweenRows(
+                    estimatedRowCount, statistics, indexName,
+                    LiteralValue(strategy.MatchedPredicate?.CompareValue), LiteralValue(pred.CompareValue));
                 strategy.EstimatedCost = strategy.EstimatedRowsReturned * INDEX_RANGE_COST_PER_ROW;
                 break;
             }
@@ -258,8 +330,9 @@ public sealed class OptimizerQuery
             {
                 strategy.RangeEnd = pred.CompareValue;
                 strategy.RangeEndInclusive = pred.Operator == BinaryOperatorType.LessOrEqual;
-                // BETWEEN is more selective
-                strategy.EstimatedRowsReturned = (long)(estimatedRowCount * RANGE_SELECTIVITY * 0.5);
+                strategy.EstimatedRowsReturned = BetweenRows(
+                    estimatedRowCount, statistics, indexName,
+                    LiteralValue(strategy.MatchedPredicate?.CompareValue), LiteralValue(pred.CompareValue));
                 strategy.EstimatedCost = strategy.EstimatedRowsReturned * INDEX_RANGE_COST_PER_ROW;
                 break;
             }

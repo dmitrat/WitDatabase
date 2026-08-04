@@ -18,6 +18,21 @@ executed rather than asserted.
 
 ### Fixed
 
+- **`SELECT MAX(x)` on an indexed column read the whole index.** The planner optimises `MIN`/`MAX`
+  through `ISecondaryIndex.GetFirstEntry`/`GetLastEntry`, and the second of those was
+  `Scan(null, null).LastOrDefault()` - so an operation advertised as an index lookup was O(n). The
+  B+Tree descends to its rightmost leaf now, as it always could to its leftmost: **0.001 ms against
+  10.575 ms on 20,000 keys.**
+
+- **The query optimizer estimated every range predicate at 20% of the table.** It now asks the index
+  what range of values it holds and interpolates. Measured on 1,000 rows holding 1..1000, the estimate
+  for `Value > 999` goes from 200 to **1** (one row is the truth) and for `Value > 0` from 200 to
+  **1000**. Two things this does not do, both measured and recorded rather than left to be assumed: on
+  heavily skewed data a linear interpolation is *worse* than the constant, which is what a histogram
+  would fix; and with the present cost model the estimate does not decide index against table scan at
+  all, since an index range is priced below a scan for any estimate - so this is a precondition for a
+  cost model that can choose, not a plan change on its own.
+
 - **An MVCC commit read the whole database to find what it had just written.**
   `MvccKeyValueStore.CommitTransaction` scanned every record in the store looking for the versions the
   transaction had written, and `RollbackTransaction` did the same - so committing ten rows cost the

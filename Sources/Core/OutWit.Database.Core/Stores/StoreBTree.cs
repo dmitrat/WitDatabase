@@ -11,7 +11,7 @@ namespace OutWit.Database.Core.Stores;
 /// Key-value store implementation backed by B+Tree.
 /// Implements IKeyValueStore for unified storage engine interface.
 /// </summary>
-public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IAsyncDisposable
+public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IKeyRangeSource, IAsyncDisposable
 {
     #region Constants
 
@@ -394,6 +394,31 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
         }
         
         await m_pageManager.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    #endregion
+
+    #region Key range
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A descent to the leftmost leaf - the depth of the tree, not its size.
+    /// </remarks>
+    public byte[]? GetFirstKey()
+    {
+        ThrowIfDisposed();
+        return m_tree.GetFirstKey();
+    }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// A descent to the rightmost leaf. The only way to reach the largest key before this was to walk
+    /// every entry, which is what made <c>ISecondaryIndex.GetLastEntry</c> a full scan.
+    /// </remarks>
+    public byte[]? GetLastKey()
+    {
+        ThrowIfDisposed();
+        return m_tree.GetLastKey();
     }
 
     #endregion

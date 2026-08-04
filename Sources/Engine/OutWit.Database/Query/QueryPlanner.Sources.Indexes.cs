@@ -1,4 +1,4 @@
-using OutWit.Database.Definitions;
+﻿using OutWit.Database.Definitions;
 using OutWit.Database.Expressions;
 using OutWit.Database.Interfaces;
 using OutWit.Database.Iterators;
@@ -41,7 +41,12 @@ public sealed partial class QueryPlanner
             
             if (estimatedRowCount >= MIN_ROWS_FOR_INDEX)
             {
-                strategy = m_optimizer.FindBestIndex(tableName, whereClause, indexes, estimatedRowCount);
+                // What the indexes actually hold, so a range predicate is estimated from the data
+                // rather than from a flat 20% of the table. Built per plan, and it reads nothing until
+                // a range predicate asks - an equality never pays for it.
+                var statistics = new IndexRangeStatistics(m_context.Database, table);
+
+                strategy = m_optimizer.FindBestIndex(tableName, whereClause, indexes, estimatedRowCount, statistics);
             }
         }
 
