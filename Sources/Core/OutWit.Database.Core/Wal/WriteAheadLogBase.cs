@@ -105,13 +105,31 @@ public abstract class WriteAheadLogBase : IDisposable
         m_stream = new FileStream(filePath, mode, FileAccess.ReadWrite, FileShare.Read, 4096, FileOptions.None);
         m_writer = new BinaryWriter(m_stream);
 
-        if (createNew || m_stream.Length == 0)
+        try
         {
-            WriteHeader();
+            if (createNew || m_stream.Length == 0)
+            {
+                WriteHeader();
+            }
+            else
+            {
+                ValidateHeader();
+            }
         }
-        else
+        catch
         {
-            ValidateHeader();
+            // A constructor that throws leaves nothing to call Dispose on, so the file it has already
+            // opened is held until finalization - and the log lives beside the database, so the database
+            // cannot be opened again in this process either. ValidateHeader refuses a real case: opening
+            // an LSM database with a password it was not written with reaches "WAL is not encrypted but
+            // encryptor was provided", and ConfigurationMismatchTests reported the creator's own
+            // configuration meeting "the process cannot access the file" afterwards.
+            //
+            // This is the FOURTH construct-then-fail-then-leak of this shape in this codebase, after the
+            // in-memory store's storage, the dropped journal, and the store whose build failed.
+            m_writer.Dispose();
+            m_stream.Dispose();
+            throw;
         }
     }
 

@@ -262,34 +262,21 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
 
         var builder = new WitDatabaseBuilder();
 
-        // Configure based on detected store type
+        // Only the shape of the path is decided here - a directory is an LSM database and a file is a
+        // paged one. Everything else comes from what the database recorded when it was created, which
+        // the builder reads for itself.
+        //
+        // This used to configure the transaction model from the detection result, and for an LSM
+        // database that was a guess dressed as a fact: the detector fills in no features for a
+        // directory, so HasTransactions was the default of a field nobody had set. Open then built a
+        // store with no transaction layer over an MVCC database, opened it without complaint and
+        // reported every table as missing. See LsmDirectoryMetadata.
         if (detection.StoreType == "lsm" || detection.IsDirectory)
-        {
             builder.WithLsmTree(path);
-        }
         else
-        {
-            builder.WithFilePath(path).WithBTree();
-        }
+            builder.WithFilePath(path);
 
-        // Configure features from detection
-        if (detection.HasTransactions)
-        {
-            // Use MVCC if it was enabled when the database was created
-            if (detection.HasMvcc)
-                builder.WithMvcc();
-            else
-                builder.WithTransactions();
-        }
-        else
-        {
-            builder.WithoutTransactions();
-        }
-
-        if (detection.HasFileLocking)
-            builder.WithFileLocking();
-        else
-            builder.WithoutFileLocking();
+        builder.Options.RestoreStoredConfiguration = true;
 
         return builder.Build();
     }
@@ -311,18 +298,21 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
 
         var builder = new WitDatabaseBuilder();
 
-        // Configure based on detected store type
         if (detection.StoreType == "lsm" || detection.IsDirectory)
-        {
             builder.WithLsmTree(path).WithEncryption(password);
-        }
         else
-        {
-            builder.WithFilePath(path).WithBTree().WithEncryption(password);
-        }
+            builder.WithFilePath(path).WithEncryption(password);
 
-        // Default to transactions enabled for encrypted DBs (we can't read header)
-        builder.WithTransactions();
+        // This used to call WithTransactions() unconditionally, under a comment saying the header
+        // cannot be read for an encrypted database - which is true of reading the FILE, and was taken
+        // to mean the configuration was unknowable. So an encrypted database created with MVCC came
+        // back without it, silently, and everything written under MVCC became unreachable: two
+        // suppressed markers in AuditVerification, confirmed 2026-07-27.
+        //
+        // The header is readable once the store is built, because the store decrypts it. That is where
+        // the transaction model is reconciled now - after the store and before the transactional layer
+        // that depends on it.
+        builder.Options.RestoreStoredConfiguration = true;
 
         return builder.Build();
     }

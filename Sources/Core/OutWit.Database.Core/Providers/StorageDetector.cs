@@ -32,6 +32,60 @@ public static class StorageDetector
     }
 
     /// <summary>
+    /// Reads the configuration a database recorded when it was created, without building anything.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Returns null when there is nothing to read: the path does not exist, it is not a WitDatabase, or
+    /// it is <b>encrypted</b> - the header is inside the encrypted page, so a caller who has not
+    /// supplied the password cannot be told what the file was configured with. That is a real limit and
+    /// it is measured in <c>ConfigurationRestoreTests</c> rather than assumed away: an encrypted
+    /// database still needs its non-default settings spelled out.
+    /// </para>
+    /// <para>
+    /// The B+Tree store keeps its configuration in the database header and the LSM store in a sidecar
+    /// beside its SSTables, so both are read here and answered in the same shape.
+    /// </para>
+    /// </remarks>
+    public static StoredConfiguration? ReadStoredConfiguration(string path)
+    {
+        if (string.IsNullOrEmpty(path))
+            return null;
+
+        if (Directory.Exists(path))
+            return LsmDirectoryMetadata.Read(path) is { } lsm
+                ? new StoredConfiguration(lsm.Metadata, PageSize: 0, IsDirectory: true, lsm.Options)
+                : null;
+
+        if (!File.Exists(path))
+            return null;
+
+        try
+        {
+            using var stream = new FileStream(path, FileMode.Open, FileAccess.Read, FileShare.Read);
+
+            if (stream.Length < DatabaseConstants.DATABASE_HEADER_SIZE)
+                return null;
+
+            var buffer = new byte[DatabaseConstants.DATABASE_HEADER_SIZE];
+            stream.ReadExactly(buffer);
+
+            // Encrypted files fail here, and so do files that are not databases. Both mean "nothing to
+            // restore from", which is the same answer.
+            if (!buffer.AsSpan(0, 16).SequenceEqual(DatabaseConstants.MAGIC_BYTES))
+                return null;
+
+            var header = DatabaseHeader.ReadFrom(buffer);
+
+            return new StoredConfiguration(header.Providers, header.PageSize, IsDirectory: false, Lsm: null);
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>
     /// Detects if the given directory is an LSM database.
     /// </summary>
     private static StorageDetectionResult DetectDirectory(string directory)
@@ -134,6 +188,19 @@ public static class StorageDetector
         }
     }
 }
+
+/// <summary>
+/// The configuration a database recorded when it was created.
+/// </summary>
+/// <param name="Metadata">Store, encryption, cache and journal keys, plus the feature flags.</param>
+/// <param name="PageSize">The page size the file was written with; zero for an LSM directory.</param>
+/// <param name="IsDirectory">Whether the database is an LSM directory rather than a paged file.</param>
+/// <param name="Lsm">The LSM options recorded in the sidecar, or null for a paged file.</param>
+public sealed record StoredConfiguration(
+    ProviderMetadata Metadata,
+    int PageSize,
+    bool IsDirectory,
+    LsmStoredOptions? Lsm);
 
 /// <summary>
 /// Result of storage type detection.

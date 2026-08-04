@@ -4,16 +4,40 @@ using TextEncoding = System.Text.Encoding;
 namespace OutWit.Database.Core;
 
 /// <summary>
-/// Provider metadata stored in the database header (bytes 48-99).
-/// Contains information about the providers used when creating the database.
+/// Provider metadata stored in the database header (bytes 48-127).
+/// Contains the configuration the database was created with.
 /// </summary>
 /// <remarks>
-/// Layout (52 bytes total):
-/// [48]      Features flags (encryption enabled, transactions enabled, etc.)
-/// [49-55]   Reserved bytes
-/// [56-71]   Store provider key (16 bytes, null-padded)
-/// [72-87]   Encryption provider key (16 bytes, null-padded)
-/// [88-99]   Reserved (12 bytes for future: cache, journal keys)
+/// <para>
+/// Layout (80 bytes total):
+/// [48]       Features flags (encryption enabled, transactions enabled, etc.)
+/// [49-55]    Reserved bytes
+/// [56-71]    Store provider key (16 bytes, null-padded)
+/// [72-87]    Encryption provider key (16 bytes, null-padded)
+/// [88-103]   Cache provider key (16 bytes, null-padded)
+/// [104-119]  Journal provider key (16 bytes, null-padded)
+/// [120-123]  Cache size in pages (int32, 0 = not recorded)
+/// [124-127]  Reserved
+/// </para>
+/// <para>
+/// <b>The cache and journal keys used to be declared here and not written.</b> The struct carried them
+/// with the comment "Not persisted - always uses default on reopen", and 12 bytes were reserved for
+/// them - which is not enough for two 16-byte keys and a cache size, so the region grew and the header
+/// with it, from 100 bytes to 128. Page 0 holds nothing but the header and the smallest page is 512
+/// bytes, so the room was already there.
+/// </para>
+/// <para>
+/// <b>Both directions stay readable.</b> A file written before 12.2.0 has zeros from byte 88 on, which
+/// reads as "not recorded" and falls back to the defaults it always used. A build older than 12.2.0
+/// reads only the first 100 bytes of a new file and sees exactly what it saw before. The format
+/// version's minor is bumped to record the change; the major is unchanged, and the major is what an
+/// older build refuses on.
+/// </para>
+/// <para>
+/// <b>Keys are stored as text, not as an enumeration.</b> A third party can register a cache or journal
+/// provider under any key - <c>ThirdPartyProviderTests</c> drives a real database through one - and an
+/// id would quietly make the registry closed.
+/// </para>
 /// </remarks>
 public struct ProviderMetadata
 {
@@ -32,7 +56,15 @@ public struct ProviderMetadata
     /// <summary>
     /// Total size of the metadata section.
     /// </summary>
-    public const int METADATA_SIZE = 52; // 48 to 99 inclusive
+    public const int METADATA_SIZE = 80; // 48 to 127 inclusive
+
+    /// <summary>Offsets within the metadata region.</summary>
+    private const int FEATURES = 0;
+    private const int STORE_KEY = 8;
+    private const int ENCRYPTION_KEY = 24;
+    private const int CACHE_KEY = 40;
+    private const int JOURNAL_KEY = 56;
+    private const int CACHE_SIZE = 72;
 
     #endregion
 
@@ -54,16 +86,19 @@ public struct ProviderMetadata
     public string EncryptionProviderKey;
 
     /// <summary>
-    /// Cache provider key (e.g., "clock", "lru").
-    /// Not persisted - always uses default on reopen.
+    /// Cache provider key (e.g., "clock", "lru"). Empty when the file does not record one.
     /// </summary>
     public string CacheProviderKey;
 
     /// <summary>
     /// Journal provider key (e.g., "wal", "rollback", "" for none).
-    /// Not persisted - always uses default on reopen.
     /// </summary>
     public string JournalProviderKey;
+
+    /// <summary>
+    /// Page cache size in pages. Zero means the file does not record one.
+    /// </summary>
+    public int CacheSize;
 
     #endregion
 
@@ -77,22 +112,7 @@ public struct ProviderMetadata
         if (headerBuffer.Length < DatabaseConstants.DATABASE_HEADER_SIZE)
             throw new ArgumentException($"Buffer must be at least {DatabaseConstants.DATABASE_HEADER_SIZE} bytes");
 
-        var span = headerBuffer[HEADER_OFFSET..];
-
-        // Features byte
-        span[0] = (byte)Features;
-
-        // Reserved bytes 1-7
-        span[1..8].Clear();
-
-        // Store provider key (16 bytes at offset 8)
-        WriteProviderKey(span[8..24], StoreProviderKey);
-
-        // Encryption provider key (16 bytes at offset 24)
-        WriteProviderKey(span[24..40], EncryptionProviderKey);
-
-        // Reserved for future (cache, journal keys)
-        span[40..METADATA_SIZE].Clear();
+        WriteBlock(headerBuffer.Slice(HEADER_OFFSET, METADATA_SIZE));
     }
 
     /// <summary>
@@ -103,15 +123,52 @@ public struct ProviderMetadata
         if (headerBuffer.Length < DatabaseConstants.DATABASE_HEADER_SIZE)
             throw new ArgumentException($"Buffer must be at least {DatabaseConstants.DATABASE_HEADER_SIZE} bytes");
 
-        var span = headerBuffer[HEADER_OFFSET..];
+        return ReadBlock(headerBuffer.Slice(HEADER_OFFSET, METADATA_SIZE));
+    }
+
+    /// <summary>
+    /// Writes the metadata region on its own, without a database header around it.
+    /// </summary>
+    /// <remarks>
+    /// The LSM store keeps a directory rather than a paged file, so it has nowhere to put a database
+    /// header - and until 12.2.0 it recorded nothing at all, which is why
+    /// <c>WitDatabase.Open</c> could build the wrong transaction model over one and report every table
+    /// as missing. Its sidecar carries this same block, so there is one encoding of these fields rather
+    /// than two that can drift apart.
+    /// </remarks>
+    public readonly void WriteBlock(Span<byte> block)
+    {
+        if (block.Length < METADATA_SIZE)
+            throw new ArgumentException($"Buffer must be at least {METADATA_SIZE} bytes", nameof(block));
+
+        block[..METADATA_SIZE].Clear();
+
+        block[FEATURES] = (byte)Features;
+
+        WriteProviderKey(block.Slice(STORE_KEY, MAX_PROVIDER_KEY_LENGTH), StoreProviderKey);
+        WriteProviderKey(block.Slice(ENCRYPTION_KEY, MAX_PROVIDER_KEY_LENGTH), EncryptionProviderKey);
+        WriteProviderKey(block.Slice(CACHE_KEY, MAX_PROVIDER_KEY_LENGTH), CacheProviderKey);
+        WriteProviderKey(block.Slice(JOURNAL_KEY, MAX_PROVIDER_KEY_LENGTH), JournalProviderKey);
+
+        BinaryPrimitives.WriteInt32LittleEndian(block[CACHE_SIZE..], Math.Max(0, CacheSize));
+    }
+
+    /// <summary>
+    /// Reads the metadata region on its own. A region of zeros reads as "nothing recorded".
+    /// </summary>
+    public static ProviderMetadata ReadBlock(ReadOnlySpan<byte> block)
+    {
+        if (block.Length < METADATA_SIZE)
+            throw new ArgumentException($"Buffer must be at least {METADATA_SIZE} bytes", nameof(block));
 
         return new ProviderMetadata
         {
-            Features = (ProviderFeatures)span[0],
-            StoreProviderKey = ReadProviderKey(span[8..24]),
-            EncryptionProviderKey = ReadProviderKey(span[24..40]),
-            CacheProviderKey = "",  // Not stored, use default
-            JournalProviderKey = "" // Not stored, use default
+            Features = (ProviderFeatures)block[FEATURES],
+            StoreProviderKey = ReadProviderKey(block.Slice(STORE_KEY, MAX_PROVIDER_KEY_LENGTH)),
+            EncryptionProviderKey = ReadProviderKey(block.Slice(ENCRYPTION_KEY, MAX_PROVIDER_KEY_LENGTH)),
+            CacheProviderKey = ReadProviderKey(block.Slice(CACHE_KEY, MAX_PROVIDER_KEY_LENGTH)),
+            JournalProviderKey = ReadProviderKey(block.Slice(JOURNAL_KEY, MAX_PROVIDER_KEY_LENGTH)),
+            CacheSize = BinaryPrimitives.ReadInt32LittleEndian(block[CACHE_SIZE..])
         };
     }
 
@@ -141,7 +198,8 @@ public struct ProviderMetadata
             StoreProviderKey = StoreProviderKey,
             EncryptionProviderKey = EncryptionProviderKey,
             CacheProviderKey = CacheProviderKey,
-            JournalProviderKey = JournalProviderKey
+            JournalProviderKey = JournalProviderKey,
+            CacheSize = CacheSize
         };
     }
 
@@ -206,29 +264,42 @@ public struct ProviderMetadata
         return obj is ProviderMetadata other &&
                Features == other.Features &&
                StoreProviderKey == other.StoreProviderKey &&
-               EncryptionProviderKey == other.EncryptionProviderKey;
+               EncryptionProviderKey == other.EncryptionProviderKey &&
+               CacheProviderKey == other.CacheProviderKey &&
+               JournalProviderKey == other.JournalProviderKey &&
+               CacheSize == other.CacheSize;
     }
 
     public override readonly int GetHashCode()
     {
-        return HashCode.Combine(Features, StoreProviderKey, EncryptionProviderKey);
+        return HashCode.Combine(Features, StoreProviderKey, EncryptionProviderKey,
+            CacheProviderKey, JournalProviderKey, CacheSize);
     }
 
     public override readonly string ToString()
     {
         var parts = new List<string> { $"Store={StoreProviderKey ?? "btree"}" };
-        
+
         if (IsEncrypted)
             parts.Add($"Encryption={EncryptionProviderKey}");
-        
+
         if (HasTransactions)
             parts.Add("Transactions");
-        
+
         if (HasMvcc)
             parts.Add("MVCC");
-        
+
         if (HasFileLocking)
             parts.Add("FileLocking");
+
+        if (!string.IsNullOrEmpty(CacheProviderKey))
+            parts.Add($"Cache={CacheProviderKey}");
+
+        if (!string.IsNullOrEmpty(JournalProviderKey))
+            parts.Add($"Journal={JournalProviderKey}");
+
+        if (CacheSize > 0)
+            parts.Add($"CacheSize={CacheSize}");
 
         return $"ProviderMetadata({string.Join(", ", parts)})";
     }

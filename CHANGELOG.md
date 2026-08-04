@@ -1,5 +1,80 @@
 ﻿# Changelog
 
+## 12.2.0
+
+Phase 12 - what a database remembers about how it was made. Phase 11 proved that every setting is
+honoured or refused when a database is **created**; this asks what a consumer meets afterwards, opening
+it with `Data Source=` and nothing else. Measured before anything changed: **none of 21 settings was
+restored** - 14 were silently replaced by a default and 5 refused.
+
+A **minor that carries one narrow break**, taken deliberately - see *Changed* below.
+
+### Added
+
+- **A database records the configuration it was created with, and supplies it at `Open`.** `Store`,
+  `PageSize`, the transaction model, `Journal`, `Cache`, `CacheSize` and every LSM setting a connection
+  string can select now come back from the file. **The connection string always wins**: restoration only
+  fills in what the caller did not name. Measured by `ConfigurationRestoreTests`, which creates a
+  database with a setting, reopens it with the full connection string and with the bare one, and
+  compares the two engines structurally - 0 restored before, 17 after.
+- **LSM databases carry a `provider.meta` sidecar**, written atomically beside their SSTables, because a
+  directory has no page to put a header in. A directory without one reads as "created before this
+  existed" and behaves exactly as it did.
+- `ProviderMetadata` records the cache and journal provider keys and the page cache size. The two keys
+  had been declared on the struct since 2.0.0 under the comment *"Not persisted - always uses default on
+  reopen"*.
+
+### Fixed
+
+- **`WitDatabase.Open` on an LSM database opened without complaint and reported every table as
+  missing**, with the rows intact underneath. This is the shape 12.0.0 fixed for the B+Tree store, and it
+  survived because that fix compared against a header the LSM store did not have: the detector fills in
+  no feature flags for a directory, so the transaction model came back as the default of a field nobody
+  had set, and `Open` built a store with no transaction layer over a database whose every value sits
+  under a versioned MVCC key. A consumer reads "table not found" as "empty database", and the next step
+  writes over one that was intact.
+- **An encrypted database created with MVCC came back without it, and its rows came back NULL.** Two
+  suppressed markers, confirmed 2026-07-27 and unmoved since. `WitDatabase.Open(path, password)` cannot
+  read the header *from the file* - it is inside the encrypted page - and that was taken to mean the
+  configuration was unknowable. The store decrypts the header as soon as it is built, and the
+  transactional layer is built after the store.
+- **A transaction model that conflicts with the database is refused for the LSM store too.** That check
+  read the metadata the built store exposes, and the LSM store exposes none, so it had never applied to
+  LSM. It did not show while opening an LSM directory without `Store=lsm` failed in the operating system.
+- **A refused open no longer costs the owner its database.** The write-ahead log's header check refuses
+  from a *constructor*, after the file is open, so nothing was left to dispose it: opening an LSM
+  database with the wrong password left `wal.log` held and the creator's own configuration then met
+  "the process cannot access the file". Fourth occurrence of this shape.
+- **`Data Source=` alone opens an LSM database, and one created with a non-default `PageSize`.** Both
+  used to fail - the first with a raw `Access to the path is denied`, because a bare connection string
+  built a B+Tree store and handed it a directory.
+
+### Changed
+
+- **`WitDatabase.Open` no longer restores `FileLocking` from the header**, so a database created with
+  `FileLocking=false` is now opened *with* the exclusive guard and a second engine over it is refused.
+  **This is the one thing in this release that can make working code fail without a change to it.** It
+  is deliberate: safety settings are not restored, because a file may not make a database quietly less
+  durable or less exclusive than the defaults promise, for a caller who said nothing about either. Write
+  `FileLocking=false` in the connection string to get the old behaviour. `Synchronous Commit` and
+  `Isolation Level` are excluded for the same reason and the second one - a property of a session rather
+  than of the data.
+- **The database header grew from 100 to 128 bytes** and the on-disk format version's minor from 1.0 to
+  1.1. Page 0 holds nothing but the header and the smallest page a database can have is 512 bytes, so
+  the room was already there. **Both directions still read**: a file written earlier reads as "nothing
+  recorded" and falls back to the defaults it always used, and a build older than this one reads the
+  first 100 bytes of a new file and sees exactly what it saw before.
+
+### Known
+
+- **`Isolation Level` is reported and changes nothing.** Recorded in phase 6 and confirmed here by
+  measurement rather than re-reading: a transaction opened at `Serializable`, `RepeatableRead` or
+  `Snapshot` sees a row another connection commits after it began, on a scan and on a single-key lookup
+  alike, with `ReadCommitted` as the control behaving correctly. Treat every level as `ReadCommitted`.
+- **A transactional write costs two writes to the store where an autocommitted one costs one** - counted,
+  101 against 50 for 50 rows. The commit installs each version stamped with the transaction id and then
+  rewrites it to clear the id.
+
 ## 12.1.0
 
 Phase 11's follow-ups. A **minor**: behaviour is fixed and the public API grew, and no answer, no file

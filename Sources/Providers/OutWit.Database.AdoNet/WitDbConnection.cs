@@ -467,6 +467,14 @@ public sealed class WitDbConnection : DbConnection
                 providerParams.Set(key, value);
         }
 
+        // A connection string is not a full statement of a configuration - it is what one deployment
+        // chose to write down - so a database that already exists supplies the rest. Which keywords were
+        // actually written has to be recorded first, because the Configure* methods below call the same
+        // builder methods whether or not the keyword appeared: ConfigureTransactions calls WithMvcc for
+        // the default as well as for MVCC=true, so the builder cannot tell them apart afterwards.
+        builder.Options.RestoreStoredConfiguration = true;
+        MarkNamedSettings(builder, options, providerParams);
+
         // Configure storage
         builder.WithOpenTimeout(TimeSpan.FromSeconds(Math.Max(0, options.ConnectionTimeout)));
 
@@ -491,6 +499,39 @@ public sealed class WitDbConnection : DbConnection
         ConfigureFileLocking(builder, providerParams);
 
         return builder.Build();
+    }
+
+    /// <summary>
+    /// Records which settings the connection string actually named, so that opening an existing
+    /// database supplies the rest without overwriting any of them.
+    /// </summary>
+    /// <remarks>
+    /// Keyword presence is asked of the connection string itself rather than of the value, because
+    /// every one of these has a default that is indistinguishable from a value someone wrote:
+    /// <c>MVCC=true</c> and no <c>MVCC</c> at all produce the same <c>options.Mvcc</c>, and a file
+    /// created with <c>MVCC=false</c> has to be able to restore itself in the second case and be
+    /// refused in the first.
+    /// </remarks>
+    private static void MarkNamedSettings(WitDatabaseBuilder builder, WitDbConnectionStringBuilder options,
+        ProviderParameters providerParams)
+    {
+        Mark(options.ContainsKey("Store"), WitDatabaseBuilderOptions.Setting.STORE);
+        Mark(options.ContainsKey("Cache"), WitDatabaseBuilderOptions.Setting.CACHE);
+        Mark(options.ContainsKey("Journal"), WitDatabaseBuilderOptions.Setting.JOURNAL);
+        Mark(options.ContainsKey("MVCC"), WitDatabaseBuilderOptions.Setting.MVCC);
+        Mark(options.ContainsKey("Transactions"), WitDatabaseBuilderOptions.Setting.TRANSACTIONS);
+        Mark(options.ContainsKey("Encryption") || options.ContainsKey("Password"), WitDatabaseBuilderOptions.Setting.ENCRYPTION);
+
+        // PageSize and CacheSize are pass-through settings rather than declared keywords, so they are
+        // asked of the parameter bag the loop above filled in.
+        Mark(providerParams.Has("PageSize") || providerParams.Has("pageSize"), WitDatabaseBuilderOptions.Setting.PAGE_SIZE);
+        Mark(providerParams.Has("CacheSize") || providerParams.Has("cacheSize"), WitDatabaseBuilderOptions.Setting.CACHE_SIZE);
+
+        void Mark(bool named, string setting)
+        {
+            if (named)
+                builder.Options.MarkNamed(setting);
+        }
     }
 
     private static void ConfigureStorage(WitDatabaseBuilder builder, WitDbConnectionStringBuilder options)

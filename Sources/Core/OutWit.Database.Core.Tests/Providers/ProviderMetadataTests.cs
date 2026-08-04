@@ -65,11 +65,12 @@ public class ProviderMetadataTests
             StoreProviderKey = "btree",
             EncryptionProviderKey = "aes-gcm",
             CacheProviderKey = "clock",
-            JournalProviderKey = "wal"
+            JournalProviderKey = "wal",
+            CacheSize = 512
         };
 
         using var storage = new StorageMemory();
-        
+
         // Create with metadata
         using (var pageManager = new PageManager(storage, 100))
         {
@@ -81,12 +82,57 @@ public class ProviderMetadataTests
         using (var pageManager = new PageManager(storage, 100))
         {
             var loaded = pageManager.GetProviderMetadata();
-            
+
             Assert.That(loaded.StoreProviderKey, Is.EqualTo("btree"));
             Assert.That(loaded.EncryptionProviderKey, Is.EqualTo("aes-gcm"));
             Assert.That(loaded.IsEncrypted, Is.True);
             Assert.That(loaded.HasTransactions, Is.True);
+
+            // These three were set by this test before 12.2.0 and asserted by nothing, which is how a
+            // field can be declared, filled in by the builder and dropped on the way to the file for as
+            // long as nobody looks. They were dropped: the struct carried them with the comment "Not
+            // persisted - always uses default on reopen".
+            Assert.That(loaded.CacheProviderKey, Is.EqualTo("clock"));
+            Assert.That(loaded.JournalProviderKey, Is.EqualTo("wal"));
+            Assert.That(loaded.CacheSize, Is.EqualTo(512));
         }
+    }
+
+    /// <summary>
+    /// A header region of zeros - which is what a file written before 12.2.0 carries from byte 88 on -
+    /// reads as "nothing recorded" rather than as a provider key of some other shape.
+    /// </summary>
+    [Test]
+    public void MetadataWrittenBeforeTheRegionGrewReadsAsUnrecordedTest()
+    {
+        var buffer = new byte[DatabaseConstants.DATABASE_HEADER_SIZE];
+
+        var old = new ProviderMetadata
+        {
+            Features = ProviderFeatures.Transactions | ProviderFeatures.Mvcc,
+            StoreProviderKey = "btree",
+            EncryptionProviderKey = "",
+            CacheProviderKey = "clock",
+            JournalProviderKey = "wal",
+            CacheSize = 900
+        };
+
+        old.WriteTo(buffer);
+
+        // Everything a pre-12.2.0 build would not have written, zeroed: bytes 88 onwards.
+        Array.Clear(buffer, ProviderMetadata.HEADER_OFFSET + 40,
+            ProviderMetadata.METADATA_SIZE - 40);
+
+        var loaded = ProviderMetadata.ReadFrom(buffer);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(loaded.StoreProviderKey, Is.EqualTo("btree"), "The old fields must still read.");
+            Assert.That(loaded.HasMvcc, Is.True);
+            Assert.That(loaded.CacheProviderKey, Is.Empty, "An unwritten key must not read as a value.");
+            Assert.That(loaded.JournalProviderKey, Is.Empty);
+            Assert.That(loaded.CacheSize, Is.Zero, "Zero is what 'not recorded' has to look like.");
+        });
     }
 
     [Test]

@@ -1,4 +1,4 @@
-namespace OutWit.Database.Core;
+﻿namespace OutWit.Database.Core;
 
 /// <summary>
 /// Database format constants
@@ -13,7 +13,7 @@ public static class DatabaseConstants
     /// <summary>
     /// Current format version (major.minor as ushort)
     /// </summary>
-    public const ushort FORMAT_VERSION = 0x0100; // 1.0
+    public const ushort FORMAT_VERSION = 0x0101; // 1.1 - provider metadata grew to record cache, journal and cache size
 
     /// <summary>
     /// Default page size in bytes (4KB)
@@ -33,7 +33,7 @@ public static class DatabaseConstants
     /// <summary>
     /// Size of the database file header in bytes
     /// </summary>
-    public const int DATABASE_HEADER_SIZE = 100;
+    public const int DATABASE_HEADER_SIZE = 128;
 
     /// <summary>
     /// Size of a page header in bytes

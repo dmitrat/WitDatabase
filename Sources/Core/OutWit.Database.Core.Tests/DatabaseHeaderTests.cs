@@ -267,10 +267,30 @@ public class DatabaseHeaderTest
         Assert.That(restored.TransactionCounter, Is.EqualTo(uint.MaxValue));
     }
 
+    /// <summary>
+    /// The header is 128 bytes, and it must stay inside the smallest page a database can have.
+    /// </summary>
+    /// <remarks>
+    /// It was 100 until 12.2.0, when the provider metadata region grew to record the cache and journal
+    /// keys and the cache size - fields the struct had declared and never written. Page 0 is cleared and
+    /// rewritten in full on every header flush and holds nothing else, so the room was already there;
+    /// what has to stay true is that it fits in the SMALLEST page, which is the second assertion.
+    /// </remarks>
     [Test]
     public void HeaderSizeConstantIsCorrectTest()
     {
-        Assert.That(DatabaseConstants.DATABASE_HEADER_SIZE, Is.EqualTo(100));
+        Assert.Multiple(() =>
+        {
+            Assert.That(DatabaseConstants.DATABASE_HEADER_SIZE, Is.EqualTo(128));
+
+            Assert.That(DatabaseConstants.DATABASE_HEADER_SIZE,
+                Is.LessThanOrEqualTo(DatabaseConstants.MIN_PAGE_SIZE),
+                "The header has to fit in page 0 at the smallest page size a database can be created with.");
+
+            Assert.That(ProviderMetadata.HEADER_OFFSET + ProviderMetadata.METADATA_SIZE,
+                Is.EqualTo(DatabaseConstants.DATABASE_HEADER_SIZE),
+                "The metadata region has to end exactly where the header does.");
+        });
     }
 
     #endregion
