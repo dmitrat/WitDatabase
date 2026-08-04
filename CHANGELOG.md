@@ -16,6 +16,23 @@ executed rather than asserted.
   its parameters from the same bag the registry factory reads. Measured by building each configuration
   both ways and comparing the object graphs.
 
+### Fixed
+
+- **An MVCC commit read the whole database to find what it had just written.**
+  `MvccKeyValueStore.CommitTransaction` scanned every record in the store looking for the versions the
+  transaction had written, and `RollbackTransaction` did the same - so committing ten rows cost the
+  reading of everything else, and a hundred commits over a growing store were quadratic. The store keeps
+  the versioned keys each open transaction wrote and visits those instead; the rule that decides whether
+  a record belongs to the transaction is unchanged, and an id this process never saw still falls back to
+  the scan so that a record left by an earlier one stays recoverable.
+
+  Measured with one writer and no contention, committing the same ten rows: **2.80 ms against 1,000 rows
+  and 6.96 ms against 8,000 before - eight times the data for two and a half times the commit - and
+  2.11 ms against 2.14 ms after, which is 1.0x.** End to end, four writers x 25,000 rows through a
+  database: batches of 1,000 in a transaction went from **50.8 s to 7.2 s**, against 3.1 s for the same
+  writes on autocommit. What remains - a transaction still costing about twice a plain write - is the
+  commit rewriting every version a second time, which is recorded rather than fixed.
+
 ### Added
 
 - **A database can now be closed without a synchronous storage call.** `WitSqlEngine`,

@@ -651,6 +651,53 @@ fallback for implementations that cannot do better), then an index-statistics in
 then interpolation. That is a decision about a public interface, so it is written down here with its
 measurement rather than taken at the end of a session.
 
+### 7a.8 The MVCC commit read the whole database to find what it had just written
+
+Phase 11 measured, and did not chase, that four writers in transactions took **181 s** against
+autocommit's **61 s** for the same 100,000 rows. A transaction being three times slower than no
+transaction is the wrong way round, and it was the largest unexplained number the phase produced.
+
+**The mechanism, found with one writer and no contention at all.** `CommitCostProbeTests` commits the
+same ten rows against databases of growing size:
+
+| rows already in the store | commit of 10 rows, before | after |
+|---|---|---|
+| 1,000 | 2.80 ms | 2.11 ms |
+| 2,000 | 3.40 ms | 2.15 ms |
+| 4,000 | 4.67 ms | 2.20 ms |
+| 8,000 | 6.96 ms | 2.14 ms |
+| **8x the data** | **2.5x the commit** | **1.0x** |
+
+`MvccKeyValueStore.CommitTransaction` scanned every record in the store to find the versions the
+transaction had just written - and `RollbackTransaction` did the same. So the cost of committing ten
+rows was the cost of reading everything else, and a hundred commits over a growing store are quadratic.
+The store remembers the versioned keys each transaction wrote now, and commit and rollback visit those.
+The predicate is unchanged - a record still has to carry the transaction's own id - so only the
+candidate set is smaller; a transaction id this store never saw, a record left by an earlier process,
+still falls back to the scan, because for that there is nothing else to go on.
+
+**Attributed end to end, both sides on this machine in the same minutes**, four writers x 25,000 rows
+through a database:
+
+| | autocommit | batches of 1,000 in a transaction |
+|---|---|---|
+| commit scans the store | 3.1 s | **50.8 s - 16.3x** |
+| commit visits its own writes | 3.4 s | **7.2 s - 2.1x** |
+
+**And the probe was wrong before its subject, for the second time in this session.** Its first version
+handed a bare `StoreBTree` to the transactional store; four threads tore it apart inside a leaf split,
+which is the correct answer to the question that version was actually asking - `StoreBTree` has no
+locking and since 12.0.0 the builder wraps every one. It measures through a database now, as the
+original measurement did.
+
+**What is left is a different defect, pinned with its number.** Two times is still the wrong way round
+for a batch of a thousand rows, and the flush is not the reason - 0.5 s of a 3.8 s difference, measured
+by running the batches with `SynchronousCommit` off. The reason is structural: **a commit rewrites every
+version a second time**, so a transactional write costs two writes to the store where an autocommitted
+one costs a single write. Removing that means marking the transaction committed once and resolving
+visibility through the transaction table on read - a design change rather than a patch, and the next
+thing to decide in this area.
+
 ## 7. Ledger
 
 47 suppressed entries (33 `[Ignore(…)]` + 14 `Ignore =`) plus 2 `[Explicit]`, counted with the commands
