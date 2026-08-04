@@ -717,6 +717,134 @@ public class StudioEngineContactTests
 
     #endregion
 
+    #region The table editor - unsaved changes
+
+    /// <summary>
+    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR.
+    ///
+    /// Closing a table-edit tab with unsaved changes discards them, without asking and without saying
+    /// anything. `TableEditTabViewModel.CanClose()` returns true unconditionally, over a
+    /// `// TODO: Show confirmation dialog if HasChanges`, and `WorkspaceTabsViewModel.CloseTab` calls
+    /// `OnClosed()` the moment it says yes - which disposes the edited DataTable.
+    ///
+    /// This goes through the real close path (the tab strip's CloseTabCommand) rather than calling
+    /// CanClose directly, because what matters is that a user pressing the X loses work, not that a
+    /// method returns true.
+    ///
+    /// WHEN FIXED: closing a dirty tab either refuses (CanClose false, pending a prompt) or the tab
+    /// survives with its changes; either way this assertion inverts.
+    /// </summary>
+    [Test]
+    public async Task ClosingATableEditorWithUnsavedChangesDiscardsThemSilentlyTest()
+    {
+        var path = Path.Combine(m_root, "editor.witdb");
+        await CreateOnDiskAsync(path);
+
+        var (app, vm, db) = NewStudio();
+
+        vm.IsNewDatabase = false;
+        vm.ConnectionInfo.FilePath = path;
+        await PressConnectAsync(vm);
+
+        Assert.That(db.IsConnected, Is.True, $"setup: {vm.ErrorMessage}");
+
+        await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
+        await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
+
+        // A second tab has to exist: CloseTab refuses to close the last one.
+        var workspace = app.WorkspaceTabsVm;
+        var editor = await workspace.OpenTableEditTabAsync("Probe");
+
+        Assert.That(editor.EditableData, Is.Not.Null, "the editor loaded no data");
+        Assert.That(editor.EditableData!.Rows.Count, Is.EqualTo(1));
+
+        // Edit a cell exactly as the grid does: change the value, then tell the ViewModel.
+        var rowView = new System.Data.DataView(editor.EditableData)[0];
+        rowView.Row["Name"] = "edited-but-never-saved";
+        editor.CellEditedCommand.Execute(rowView);
+
+        Assert.That(editor.HasChanges, Is.True,
+            "the edit must register as a change for this case to mean anything");
+
+        // The user presses the X on the tab.
+        workspace.CloseTabCommand.Execute(editor);
+
+        Assert.That(workspace.Tabs, Does.Not.Contain(editor),
+            "PIN: the tab is expected to close without objection today.");
+
+        // And the database still holds the original - the work is gone.
+        var result = await db.ExecuteQueryAsync("SELECT Name FROM Probe");
+
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.Rows[0]["Name"], Is.EqualTo("original"),
+            "PIN: the unsaved edit is expected to be lost today, with no prompt and no message. If "
+            + "this now reads 'edited-but-never-saved', or the close was refused, invert this test.");
+
+        // It is gone from memory too, so there is nothing left to recover it from.
+        Assert.That(editor.EditableData, Is.Null,
+            "PIN: OnClosed disposes the edited table, so the change cannot be recovered.");
+
+        await db.DisconnectAsync();
+        db.Dispose();
+    }
+
+    /// <summary>
+    /// POSITIVE CONTROL for the test above, and it is the one that makes it mean anything.
+    ///
+    /// "The database still says 'original'" would read the same way if the editor could not save at
+    /// all. This drives the identical edit and presses Commit instead of the X: the new value must
+    /// reach the database. Only with this green does the case above describe lost work rather than a
+    /// broken editor.
+    /// </summary>
+    [Test]
+    public async Task ControlCommittingATableEditDoesReachTheDatabaseTest()
+    {
+        var path = Path.Combine(m_root, "editor-control.witdb");
+        await CreateOnDiskAsync(path);
+
+        var (app, vm, db) = NewStudio();
+
+        vm.IsNewDatabase = false;
+        vm.ConnectionInfo.FilePath = path;
+        await PressConnectAsync(vm);
+
+        Assert.That(db.IsConnected, Is.True, $"setup: {vm.ErrorMessage}");
+
+        await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
+        await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
+
+        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync("Probe");
+
+        var rowView = new System.Data.DataView(editor.EditableData!)[0];
+        rowView.Row["Name"] = "committed";
+        editor.CellEditedCommand.Execute(rowView);
+
+        Assert.That(editor.HasChanges, Is.True);
+
+        var commit = (RelayCommandAsync)editor.CommitCommand;
+        commit.Execute(null);
+
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (commit.IsExecuting)
+        {
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException("Commit did not complete within 30 seconds.");
+
+            await Task.Delay(10);
+        }
+
+        var result = await db.ExecuteQueryAsync("SELECT Name FROM Probe");
+
+        Assert.That(result.Data, Is.Not.Null);
+        Assert.That(result.Data!.Rows[0]["Name"], Is.EqualTo("committed"),
+            "CONTROL FAILED - the editor cannot save at all, so the case above is not about lost work.");
+
+        await db.DisconnectAsync();
+        db.Dispose();
+    }
+
+    #endregion
+
     #region The dialog against the file - what 12.2.0 made the file remember
 
     /// <summary>

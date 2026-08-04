@@ -164,6 +164,28 @@ The SQL editor does not appear in the window's accessibility tree at all, and te
 element does not reach it. Most buttons are announced by their layout class - the toolbar's buttons are
 named `Avalonia.Controls.StackPanel`, the icon buttons `Avalonia.Controls.PathIcon`.
 
+### S13 - closing a table editor with unsaved changes discards them silently
+
+Found while assessing how complete Studio is, from two `// TODO: Show confirmation dialog` markers -
+and then **proved by execution rather than reported from the reading**, because on this project a
+careful read is not evidence.
+
+`TableEditTabViewModel.CanClose()` returns `true` unconditionally, and
+`WorkspaceTabsViewModel.CloseTab` calls `OnClosed()` the moment it says yes - which disposes the edited
+`DataTable`. The same happens on Refresh. So a user who edits cells and presses the tab's X loses the
+work, with no prompt and no message.
+
+Driven through the real close path (the tab strip's `CloseTabCommand`, not `CanClose` directly): edit a
+cell, `HasChanges` is true, the tab closes without objection, the database still reads `original`, and
+`EditableData` is null so there is nothing left to recover from.
+
+**The positive control is what makes that mean anything.** *"The database still says original"* would
+read identically if the editor could not save at all. `ControlCommittingATableEditDoesReachTheDatabaseTest`
+drives the same edit and presses Commit: the new value reaches the database. Only with that green does
+the case above describe lost work rather than a broken editor.
+
+Not fixed - it needs a confirmation dialog, which is a UI decision.
+
 ### S9 - three packaging accidents
 
 - **Studio is packed as a NuGet package.** `Directory.Build.props` sets `GeneratePackageOnBuild` for
@@ -399,6 +421,44 @@ before it could become a finding.
 
 Linux and macOS cannot be settled here. CI is the arbiter, as it was for `FileLocking=false`.
 
+### 6a.5 The first run: macOS builds, and Windows breaks
+
+Run 30939311128, `workflow_dispatch` at `version=0.0.0-dev`, all twelve secrets present.
+
+| job | |
+|---|---|
+| pack linux-x64 (selfcontained / framework) | **success** |
+| pack macos-arm64 (selfcontained / framework) | **success - the first macOS build in this project's history** |
+| pack windows-x64 (selfcontained / framework) | **failure** |
+
+Verified against the release assets rather than the job status: six packages and six `SHA256SUMS`
+files, the Linux ones carrying `.asc` detached signatures - so GPG signing works. macOS produced
+`WitDatabaseStudio-0.0.0-dev-macos-arm64.zip` (48 MB) and its `-no-dotnet` track (15.7 MB).
+
+**The missing-platform warning fired, which is the point of having written it:**
+`##[warning]NO ARTIFACT FOR windows-x64 - this release does not cover it.` It was added because
+`v1.0.1` shipped two platforms of three in silence, and on its first outing it caught exactly that
+happening again.
+
+**Three defects, all of them in this workflow rather than in Studio.**
+
+1. **`docker run ghcr.io/sslcom/codesigner` cannot work on `windows-latest`.** That runner's Docker
+   daemon is in *Windows container* mode and the image is Linux-only:
+   `no matching manifest for windows(10.0.26100)/amd64`, exit 125. The WitCloud client uses the
+   official `sslcom/esigner-codesign@develop` action, which handles this; copying its *shape* without
+   copying its *mechanism* is what produced this.
+2. **The signing gate defaulted the wrong way.** It skipped only when the tag looked internal - so a
+   `workflow_dispatch` from `main` (ref name `main`, matching no internal pattern) fell through to
+   signing, and would have spent quota on a throwaway build. It now defaults to **not** signing and
+   turns on only for a public tag or an explicit `sign=true`, which is what WitCloud does.
+3. **A signing failure destroyed the build.** Both Windows packages were built and then thrown away
+   because a later step failed. The signing step is `continue-on-error` now, with a warning when no
+   signed file appears: **unsigned-and-shipped beats signed-and-absent.**
+
+The first is the interesting one. It is the same shape the audit kept finding one level down - a
+correct piece of code that one route does not go through - except here the route was a platform, and
+the only way to find out was to run it.
+
 ## 7. Verification
 
 `OutWit.Database.Studio.Tests`, the CI filter, on this branch:
@@ -408,7 +468,8 @@ Linux and macOS cannot be settled here. CI is the arbiter, as it was for `FileLo
 | before the phase | 259 | 0 |
 | audit, before any fix | 275 | 0 |
 | after S1, S2, S7, S12 | 279 | 0 |
-| after S4, S5 | **280** | 0 |
+| after S4, S5 | 280 | 0 |
+| after the S13 probe and its control | **282** | 0 |
 
 Nothing under `Sources/**` was touched, so no engine suite can be affected by this phase.
 
