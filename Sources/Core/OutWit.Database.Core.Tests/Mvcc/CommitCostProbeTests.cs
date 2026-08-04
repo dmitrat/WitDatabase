@@ -37,7 +37,7 @@ public class CommitCostProbeTests
     #region Constants
 
     /// <summary>Rows already committed in the database before the measured transaction runs.</summary>
-    private static readonly int[] SIZES = [1000, 2000, 4000, 8000];
+    private static readonly int[] SIZES = [2000, 8000, 32000];
 
     /// <summary>Rows the measured transaction writes - the same at every size, which is the point.</summary>
     private const int TRANSACTION_ROWS = 10;
@@ -110,16 +110,19 @@ public class CommitCostProbeTests
 
         TestContext.Out.Write(report.ToString());
 
-        // This pinned the defect and now asserts the fix. Before it, CommitTransaction scanned the
-        // whole store to find the versions the transaction had just written, so committing ten rows
-        // cost 2.80 ms against 1,000 rows and 6.96 ms against 8,000 - eight times the data for two and
-        // a half times the commit. The store remembers what each transaction wrote now: 2.08 ms and
-        // 2.14 ms, which is 1.0x.
+        // This pinned the defect and now asserts the fix, and the bound comes from measuring BOTH
+        // states at these sizes rather than from taste:
         //
-        // The bound is deliberately loose. What is being asserted is that the commit no longer depends
-        // on the size of the database, and a timing ratio on a shared build machine needs room; a
-        // return of the scan shows up as 2.5x, not as 1.6x.
-        Assert.That(growth, Is.LessThan(1.6),
+        //   with the scan    14.61 ms -> 57.82 -> 255.51   16x the data, 17.5x the commit (linear, as
+        //                                                  a scan of the whole store must be)
+        //   with the fix      3.28 ms ->  3.24 ->   3.29   16x the data,  1.0x the commit
+        //
+        // The first version of this pin was set at 1.6 from a machine where a 2 ms floor hid everything
+        // else, and CI failed it at 1.9 - the CI machine commits in 0.24 ms, so the residual log(n) of
+        // inserting into a deeper tree was visible there and invisible here. The sizes are wider now, so
+        // the scan's linear term dominates any log term, and 4.0 sits a factor of four above the fixed
+        // state and a factor of four below the broken one.
+        Assert.That(growth, Is.LessThan(4.0),
             $"committing {TRANSACTION_ROWS} rows costs {growth:0.0}x more on {SIZES[^1] / SIZES[0]}x the " +
             "data - the commit is reading something proportional to the database again");
     }

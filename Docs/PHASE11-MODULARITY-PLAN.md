@@ -1,4 +1,4 @@
-# Phase 11 - the modular structure
+﻿# Phase 11 - the modular structure
 
 **Opened 2026-08-03**, on `phase11-modularity`, after every phase of the plan closed with 11.2.0.
 
@@ -697,6 +697,31 @@ version a second time**, so a transactional write costs two writes to the store 
 one costs a single write. Removing that means marking the transaction committed once and resolving
 visibility through the transaction table on read - a design change rather than a patch, and the next
 thing to decide in this area.
+
+### 7a.8b The pin CI rejected, and what it taught about measuring on one machine
+
+The commit-cost pin was set at "less than 1.6x growth for 8x the data" from a machine where a commit
+takes 2 ms, and **CI failed it at 1.9x**. The numbers are the finding:
+
+| store | 1,000 | 2,000 | 4,000 | 8,000 | growth |
+|---|---|---|---|---|---|
+| this machine | 2.11 ms | 2.15 | 2.20 | 2.14 | 1.0x |
+| CI | 0.24 ms | 0.38 | 0.45 | 0.45 | **1.9x** |
+
+CI commits in a tenth of the time, so a residual cost that a 2 ms floor hid here was visible there -
+the `log n` of inserting ten rows into a deeper tree, which flattens at 4,000 and is not the scan
+coming back. **A bound taken from one machine measures that machine.**
+
+The instrument was widened rather than the bound loosened, so it separates the two states by
+construction. Measured at 2,000 / 8,000 / 32,000 rows, both ways:
+
+| | 2,000 | 8,000 | 32,000 | growth |
+|---|---|---|---|---|
+| commit scans the store | 14.61 ms | 57.82 | 255.51 | **17.5x for 16x the data** - linear, as a scan must be |
+| commit visits its own writes | 3.28 ms | 3.24 | 3.29 | **1.0x** |
+
+The bound is now 4.0: four times above the fixed state and four times below the broken one. **Local
+green is not evidence; CI is the arbiter** - and this time what it caught was the instrument.
 
 ### 7a.9 The range estimate now comes from the data, and what that is and is not worth
 
