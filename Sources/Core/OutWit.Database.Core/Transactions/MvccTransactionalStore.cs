@@ -17,7 +17,7 @@ namespace OutWit.Database.Core.Transactions
     /// - Snapshot isolation by default
     /// - Priority-based transaction wait queue
     /// </summary>
-    public sealed class MvccTransactionalStore : ITransactionalStore, IMvccStore
+    public sealed class MvccTransactionalStore : ITransactionalStore, IMvccStore, IAsyncDisposable
     {
         #region Constants
 
@@ -685,6 +685,52 @@ namespace OutWit.Database.Core.Transactions
             m_deadlockDetector.Dispose();
             m_rowLockManager.Dispose();
             m_mvccStore.Dispose();
+            m_lockManager?.Dispose();
+        }
+
+        /// <summary>
+        /// The same shutdown without a synchronous storage call, so the default transaction model can
+        /// close a database on a storage that has none.
+        /// </summary>
+        /// <remarks>
+        /// <see cref="TransactionalStore"/> - the lock-based half - has had an asynchronous close since
+        /// it was written; this one had none, so <c>WitDatabase.DisposeAsync</c> fell back to the
+        /// synchronous close for every database in the <b>default</b> configuration. The two must not
+        /// diverge, which is why the probe asserts both.
+        /// </remarks>
+        public async ValueTask DisposeAsync()
+        {
+            if (m_disposed) return;
+            m_disposed = true;
+
+            m_waitQueue.SignalAll();
+
+            lock (m_txLock)
+            {
+                foreach (var tx in m_activeTransactions.ToList())
+                {
+                    try { tx.Rollback(); } catch { }
+                }
+            }
+
+            try
+            {
+                await m_mvccStore.FlushAsync().ConfigureAwait(false);
+            }
+            catch
+            {
+                // Best effort - don't fail dispose on flush errors, exactly as the synchronous close.
+            }
+
+            m_waitQueue.Dispose();
+            m_deadlockDetector.Dispose();
+            m_rowLockManager.Dispose();
+
+            if (m_mvccStore is IAsyncDisposable asyncStore)
+                await asyncStore.DisposeAsync().ConfigureAwait(false);
+            else
+                m_mvccStore.Dispose();
+
             m_lockManager?.Dispose();
         }
 

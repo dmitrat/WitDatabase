@@ -480,12 +480,15 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
         m_disposed = true;
 
         await m_tree.DisposeAsync().ConfigureAwait(false);
-        
+
         if (m_ownsPageManager)
         {
-            // PageManager doesn't have IAsyncDisposable, use sync dispose
-            // This is OK because it just flushes cache which uses async internally
-            m_pageManager.Dispose();
+            // It was NOT OK, and the comment that used to say so is the reason this is worth a note:
+            // PageManager.Dispose writes the header through the synchronous IStorage.WritePage and then
+            // disposes a cache that flushes the same way. Over a storage with no synchronous operations
+            // - a browser's IndexedDb - that made the database unclosable, measured in
+            // AlternativeProviderPackagesTests.
+            await m_pageManager.DisposeAsync().ConfigureAwait(false);
         }
         
         if (m_ownsStorage)

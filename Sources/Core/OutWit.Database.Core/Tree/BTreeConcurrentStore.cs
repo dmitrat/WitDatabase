@@ -31,7 +31,7 @@ namespace OutWit.Database.Core.Tree;
 /// The same reasoning is why <see cref="Scan"/> hands its results out in chunks rather than holding
 /// the read lock across the consumer's code.
 /// </remarks>
-public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource
+public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IAsyncDisposable
 {
     #region Constants
 
@@ -520,6 +520,28 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
         if (m_ownsStore)
         {
             m_store.Dispose();
+        }
+    }
+
+    /// <summary>
+    /// Closes the wrapped store asynchronously.
+    /// </summary>
+    /// <remarks>
+    /// Since 12.0.0 every B+Tree store the builder produces is wrapped in this one, so a wrapper with
+    /// no asynchronous disposal broke the asynchronous close of <b>every</b> database - the layers above
+    /// look for <see cref="IAsyncDisposable"/> and fall back to the synchronous close when they do not
+    /// find it, and <see cref="StoreBTree"/>'s asynchronous close was then never reached.
+    /// </remarks>
+    public async ValueTask DisposeAsync()
+    {
+        if (m_disposed) return;
+        m_disposed = true;
+
+        m_lock.Dispose();
+
+        if (m_ownsStore)
+        {
+            await m_store.DisposeAsync().ConfigureAwait(false);
         }
     }
 

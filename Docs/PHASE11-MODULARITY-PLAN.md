@@ -536,7 +536,14 @@ three whole-fixture runs:
   synchronous `IStorage.Flush`;
 - every close ends in the same place, and there is no asynchronous way round it.
 
-**The chain has five missing links, which is why this is handed forward rather than patched:**
+**The close half of this is now BUILT - see § 7a.6.** What remains is the write path, and it is a
+larger thing than a chain of disposals: the engine has no asynchronous execution at all.
+`WitSqlEngine` offers `Execute` and `Query` and nothing else, and the ADO layer's
+`ExecuteNonQueryAsync` is `Task.Run` around the synchronous one - a thread-pool hop, which in a
+single-threaded browser is worse than useless. Until an asynchronous statement path exists down to
+`Transaction.CommitAsync`, a write cannot avoid the synchronous flush its commit performs.
+
+**The chain had five missing links when this was written, and seven when it was built:**
 `PageManager` has `FlushAsync` and no `DisposeAsync`, and its flush writes the header synchronously;
 `StoreBTree.DisposeAsync` calls that synchronous `Dispose`, under a comment claiming it is safe;
 `BTreeConcurrentStore` - which since 12.0.0 wraps **every** B+Tree store - implements no
@@ -574,6 +581,43 @@ than about the workload.
 **Everything answered correctly** - every row back after a reopen, the 4,000-character value byte for
 byte, and a secondary index lookup at 2,000 rows. No defect at volume, which is worth stating plainly
 after a phase in which every instrument found one.
+
+### 7a.6 The asynchronous close, built - and what the revert test said about its test
+
+The pinned half of § 7a.4 is closed: a database on a storage with **no synchronous operations at all**
+can now be closed, through the engine and through the database, under both transaction models. Two
+probes were red first and are green now.
+
+**Seven links, two more than the pin had named** - the two extra were found by reading the layer below
+rather than by following the stack:
+
+| link | what it did |
+|---|---|
+| `PageCacheShardedClock` and its shard | `Dispose` flushed every dirty page through the synchronous `WritePage` |
+| `PageCacheLru` | the same, in the other implementation - **the third time these two have shared a defect** |
+| `PageManager` | no `DisposeAsync` at all; the synchronous one writes the header synchronously |
+| `StoreBTree.DisposeAsync` | called that synchronous `Dispose`, under a comment claiming it was safe |
+| `MvccKeyValueStore` | closed its inner store synchronously |
+| `MvccTransactionalStore` | no `IAsyncDisposable` - and it is the **default** transaction model |
+| `BTreeConcurrentStore` | no `IAsyncDisposable`, and since 12.0.0 it wraps **every** B+Tree store, so it broke the asynchronous close of every database |
+| `WitSqlEngine` | `IDisposable` only, so a consumer had nothing asynchronous to call |
+
+**A second way to close a database is a second way to lose one**, so `AsynchronousCloseTests` asks
+whether the rows come back afterwards, with the synchronous close as its control. Green, three models
+plus one, at both the engine and the database level.
+
+**Then its power was measured, and the answer was not the expected one.** The flush was removed from the
+asynchronous close - the page manager's, then the engine's, then the page cache's, then the MVCC
+store's, and finally all four together - and the fixture stayed **green every time**, including under
+`Synchronous Commit=false`, which had been added on the assumption that it would leave the rows
+unflushed until the close. It does not: the data is on the media before anything is closed, because
+each statement runs in an implicit transaction, and the close path itself flushes in five places.
+
+So the fixture verifies that the new close path does not **lose or corrupt** what was written - the real
+risk of a second close path - and it is **not** a test of the flush. That is written into the fixture,
+because a green test nobody has tried to break is a claim rather than evidence, and because the
+assumption about `Synchronous Commit=false` was wrong: it defers durability against a **process kill**,
+which instrument E measures at 0 of 20 rows, not the write itself.
 
 ## 7. Ledger
 

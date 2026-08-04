@@ -1383,14 +1383,20 @@ applies to any provider a third party registers from its own module initializer.
 
 ### Storage that has no synchronous operations (Blazor WASM, IndexedDb)
 
-A database can be **built** over a storage that offers only asynchronous operations, and it cannot yet be
-**written to**: the implicit transaction behind every statement commits, the commit flushes, and the
-flush writes the database header through the synchronous `IStorage.WritePage`. Measured with a storage
-whose synchronous members throw: the build is asynchronous throughout, `CREATE TABLE` succeeds (it writes
-nothing), the first `INSERT` throws, and so does closing the database.
+A database can be **built** and **closed** over a storage that offers only asynchronous operations -
+`BuildAsync`, then `await engine.DisposeAsync()` or `await database.DisposeAsync()`, under either
+transaction model. It cannot yet be **written to**: the implicit transaction behind every statement
+commits, the commit flushes, and the flush writes the database header through the synchronous
+`IStorage.WritePage`.
+
+Measured with a storage whose synchronous members throw: the build is asynchronous throughout,
+`CREATE TABLE` succeeds (it writes nothing), and the first `INSERT` throws. The gap is not the close - it
+is that there is no asynchronous statement path: `WitSqlEngine` offers `Execute` and `Query` only, and
+`DbCommand.ExecuteNonQueryAsync` runs the synchronous path on a thread-pool thread, which a browser does
+not have.
 
 `OutWit.Database.Core.IndexedDb` is the package this affects. Treat it as unfinished rather than
-supported until the asynchronous flush-and-close path exists.
+supported until an asynchronous statement path exists.
 
 ### Settings that are read but not enforced
 

@@ -10,7 +10,7 @@ namespace OutWit.Database.Core.Cache;
 /// Simple LRU implementation - good for general workloads with low concurrency.
 /// For high-concurrency scenarios, consider using <see cref="PageCacheShardedClock"/>.
 /// </remarks>
-public sealed class PageCacheLru : IPageCache
+public sealed class PageCacheLru : IPageCache, IAsyncDisposable
 {
     #region Constants
 
@@ -570,6 +570,36 @@ public sealed class PageCacheLru : IPageCache
 
             // Pinned pages keep their pooled buffer rather than returning it. In the ordinary case
             // nothing is pinned by now; if the drain above timed out, a leak is the safe answer.
+            DiscardAllPages(keepPinnedBuffers: true);
+
+            m_asyncLock.Dispose();
+            m_disposed = true;
+        }
+    }
+
+    /// <summary>
+    /// The same shutdown without a single synchronous storage call.
+    /// </summary>
+    /// <remarks>
+    /// The twin of <see cref="PageCacheShardedClock"/>'s, and written at the same time on purpose: the
+    /// two cache implementations have now been found to share a defect twice - the <c>Clear</c> that
+    /// recycled a pooled buffer under a write, in 6.0.0, and this one. A storage with no synchronous
+    /// write could not close a database through either.
+    /// </remarks>
+    public async ValueTask DisposeAsync()
+    {
+        if (m_disposed)
+            return;
+
+        await FlushAllAsync(CancellationToken.None).ConfigureAwait(false);
+
+        SpinWait.SpinUntil(() => Volatile.Read(ref m_writesInFlight) == 0, DISPOSE_DRAIN_TIMEOUT);
+
+        lock (m_lock)
+        {
+            if (m_disposed)
+                return;
+
             DiscardAllPages(keepPinnedBuffers: true);
 
             m_asyncLock.Dispose();

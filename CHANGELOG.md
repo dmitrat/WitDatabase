@@ -18,6 +18,15 @@ executed rather than asserted.
 
 ### Added
 
+- **A database can now be closed without a synchronous storage call.** `WitSqlEngine`,
+  `MvccTransactionalStore`, `MvccKeyValueStore`, `BTreeConcurrentStore`, `PageManager` and both page
+  caches gained `DisposeAsync`, and `StoreBTree.DisposeAsync` stopped calling the synchronous one. Until
+  this, an asynchronous close degraded to a synchronous flush at the first link that had none - and
+  since 12.0.0 that was `BTreeConcurrentStore`, which wraps every B+Tree store, so it affected every
+  database. It matters for a storage that has no synchronous operations at all, which is what
+  `OutWit.Database.Core.IndexedDb` is; the same package still cannot be **written** to, because there is
+  no asynchronous statement path.
+
 - **`StoreBTree.CreateAsync(IStorage, IPageCache, bool, ProviderMetadata?, CancellationToken)`** - the
   asynchronous twin of the constructor that made the `Cache` provider key mean something in 12.0.0.
 

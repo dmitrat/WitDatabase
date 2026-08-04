@@ -15,7 +15,7 @@ namespace OutWit.Database.Core.Stores
     /// - Version suffix is the inverted timestamp (MaxValue - timestamp) for descending order
     /// - This allows efficient retrieval of the latest version via prefix scan
     /// </summary>
-    public sealed class MvccKeyValueStore : IMvccStore
+    public sealed class MvccKeyValueStore : IMvccStore, IAsyncDisposable
     {
         #region Constants
 
@@ -858,6 +858,37 @@ namespace OutWit.Database.Core.Stores
             {
                 m_innerStore.Dispose();
             }
+        }
+
+        /// <summary>
+        /// The same shutdown, passing the asynchronous close down to the store underneath.
+        /// </summary>
+        /// <remarks>
+        /// The link that would otherwise break the chain in the default configuration: the MVCC store
+        /// sits between the transactional store and the B+Tree one, and a synchronous close here reaches
+        /// a synchronous storage write however asynchronous both its neighbours are.
+        /// </remarks>
+        public async ValueTask DisposeAsync()
+        {
+            if (m_disposed) return;
+            m_disposed = true;
+
+            try
+            {
+                PersistMaxTimestampIfNeeded();
+            }
+            catch
+            {
+                // Ignore errors during dispose - store might already be disposed
+            }
+
+            if (!m_ownsStore)
+                return;
+
+            if (m_innerStore is IAsyncDisposable asyncStore)
+                await asyncStore.DisposeAsync().ConfigureAwait(false);
+            else
+                m_innerStore.Dispose();
         }
 
         #endregion

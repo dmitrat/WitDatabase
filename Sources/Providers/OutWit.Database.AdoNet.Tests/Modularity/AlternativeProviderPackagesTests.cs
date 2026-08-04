@@ -302,17 +302,88 @@ public class AlternativeProviderPackagesTests
             $"ASYNC-ONLY STORAGE  after CREATE TABLE: async writes {afterBuild} -> {storage.AsyncWrites}, " +
             $"async reads={storage.AsyncReads}");
 
-        Assert.Multiple(() =>
-        {
-            // PINS A DEFECT, NOT CORRECT BEHAVIOUR.
-            Assert.That(() => engine.Execute("INSERT INTO Probe (Id, Name) VALUES (1, 'row1')"),
-                Throws.TypeOf<NotSupportedException>(),
-                "the first row no longer reaches a synchronous write - re-measure and invert this pin");
+        // PINS A DEFECT, NOT CORRECT BEHAVIOUR. The engine has no asynchronous execution path at all -
+        // WitSqlEngine offers Execute and Query and nothing else, and the ADO layer's
+        // ExecuteNonQueryAsync is Task.Run around the synchronous one, which in a browser is worse than
+        // useless. Until that exists, a write cannot avoid the synchronous flush its commit performs.
+        Assert.That(() => engine.Execute("INSERT INTO Probe (Id, Name) VALUES (1, 'row1')"),
+            Throws.TypeOf<NotSupportedException>(),
+            "a synchronous write no longer reaches a synchronous storage call - re-measure and invert this pin");
+    }
 
-            Assert.That(async () => await database.DisposeAsync(), Throws.TypeOf<NotSupportedException>(),
-                "the asynchronous close no longer reaches a synchronous write - re-measure and invert " +
-                "this pin");
-        });
+    /// <summary>
+    /// Closing a database over such a storage asynchronously must not touch a synchronous storage
+    /// member - the stand-in throws on every one of them, so success here is proof rather than an
+    /// absence of evidence.
+    /// </summary>
+    /// <remarks>
+    /// The chain this exercises has six links, all of which had to be built: both page caches flush
+    /// synchronously in <c>Dispose</c>; <c>PageManager</c> had no <c>DisposeAsync</c> and its
+    /// synchronous one writes the header through <c>IStorage.WritePage</c>;
+    /// <c>StoreBTree.DisposeAsync</c> called that synchronous <c>Dispose</c> under a comment claiming it
+    /// was safe; <c>BTreeConcurrentStore</c> - which since 12.0.0 wraps every B+Tree store - implemented
+    /// no <c>IAsyncDisposable</c>, so an asynchronous disposal degraded at that link; nor did
+    /// <c>MvccTransactionalStore</c>, the default transaction model; and <c>WitSqlEngine</c> was
+    /// <c>IDisposable</c> only, so a consumer had nothing asynchronous to call.
+    /// </remarks>
+    [Test]
+    public async Task ClosingADatabaseOverAnAsyncOnlyStorageWorksTest()
+    {
+        var storage = new AsyncOnlyStorage();
+
+        var database = await new WitDatabaseBuilder()
+            .WithStorage(storage)
+            .WithBTree()
+            .BuildAsync();
+
+        Assert.That(async () => await database.DisposeAsync(), Throws.Nothing,
+            "closing a database over a storage with no synchronous operations still reaches one");
+
+        TestContext.Out.WriteLine(
+            $"ASYNC-ONLY STORAGE  after close: async writes={storage.AsyncWrites}, reads={storage.AsyncReads}");
+    }
+
+    /// <summary>
+    /// The same through the surface a consumer actually holds: the engine, which owns the database.
+    /// </summary>
+    /// <remarks>
+    /// The last link, and the one that made all the others unreachable - <c>WitSqlEngine</c> was
+    /// <c>IDisposable</c> only, so however asynchronous everything below it became, a consumer had
+    /// nothing asynchronous to call.
+    /// </remarks>
+    [Test]
+    public async Task ClosingThroughTheEngineOverAnAsyncOnlyStorageWorksTest()
+    {
+        var storage = new AsyncOnlyStorage();
+
+        var database = await new WitDatabaseBuilder()
+            .WithStorage(storage)
+            .WithBTree()
+            .BuildAsync();
+
+        var engine = new WitSqlEngine(database, ownsStore: true);
+
+        Assert.That(async () => await engine.DisposeAsync(), Throws.Nothing,
+            "closing through the engine over a storage with no synchronous operations still reaches one");
+    }
+
+    /// <summary>
+    /// The same, with the default transaction model rather than the lock-based one, because
+    /// <c>MvccTransactionalStore</c> is a separate link in the chain and the two must not diverge.
+    /// </summary>
+    [Test]
+    public async Task ClosingAnMvccDatabaseOverAnAsyncOnlyStorageWorksTest()
+    {
+        var storage = new AsyncOnlyStorage();
+
+        var database = await new WitDatabaseBuilder()
+            .WithStorage(storage)
+            .WithBTree()
+            .WithMvcc()
+            .BuildAsync();
+
+        Assert.That(async () => await database.DisposeAsync(), Throws.Nothing,
+            "closing an MVCC database over a storage with no synchronous operations still reaches one");
     }
 
     #endregion
