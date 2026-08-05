@@ -532,6 +532,73 @@ was made able to fail. Run 1 hid a broken platform behind a green job; run 2 hid
 notarization behind a green step; run 3 printed the reason. A pipeline earns trust by being made
 capable of reporting bad news, one refusal at a time.
 
+### 6a.8 Five hypotheses, then the instrument answered it in one line
+
+The rejection named `Contents/MacOS/WitDatabaseStudio`, so that binary was examined - by parsing the
+Mach-O out of the published `.zip`, on this machine, without macOS:
+
+| hypothesis | measurement | verdict |
+|---|---|---|
+| ad-hoc signed, no real identity | CMS blob is 9049 bytes, `Developer ID Application: Dmitry Ratner (37T5385ZPC)` → Apple Root CA | **wrong** |
+| hardened runtime missing | CodeDirectory flags `0x00010000` | **wrong** |
+| no secure timestamp | Apple Timestamp Certification Authority present | **wrong** |
+| modified after signing | 31 of 31 code page hashes recomputed and matched; `codeLimit` equals the signature offset exactly | **wrong** |
+| one unsigned binary among many | all **14** native Mach-O files carry a real identity + hardened runtime | **wrong** |
+| `CFBundleVersion: 0.0.0-dev` is not a legal version | fixed to `0.0.0`; the next run still returned `Invalid` | **wrong** (a real defect, but not this one) |
+
+Six in a row. What settled it was not a seventh guess: it was **asking `codesign` on the runner instead
+of asking Apple**, which answered in one line -
+
+```
+WitDatabaseStudio.app: a sealed resource is missing or invalid
+file added: …/Contents/MacOS/Antlr4.Runtime.Standard.dll     … 238 of them
+```
+
+Parcel seals the bundle before the managed payload is accounted for: **97 sealed entries against 255
+files**. That ratio had been measured two runs earlier, in passing, and walked past - it was the answer
+the whole time, sitting in a line of output nobody had a question for.
+
+**It also explains why every hypothesis above was wrong rather than merely unlucky.** They were all
+about the binaries, and the binaries were all fine. What was broken was the seal *around* them, and a
+bundle whose seal fails is reported by Apple *through its main binary* - so the error pointed at the one
+file that had nothing wrong with it.
+
+### 6a.9 The fix, and where it came from
+
+Dmitry named the WitCloud client as a scheme that works and was fought for. Its macOS block carries the
+same diagnosis in its own words - *"seals only ~18 files … the ~285 managed PE DLLs … are left
+UNSEALED"* - and the sequence that repairs it. The first attempt here re-signed only the bundle, which
+is the **last of its three steps**.
+
+Two things that sequence knows:
+
+- **`codesign` treats every file in `Contents/MacOS/` as a subcomponent that must be SIGNED, not merely
+  sealed** - dylibs, managed PE assemblies, and data files (`.deps.json`, `.runtimeconfig.json`) alike.
+  WitCloud's comment records that each run surfaced the next unsigned type. So: every non-apphost file,
+  then the apphost, then the bundle - bottom-up, and deliberately not `--deep`.
+- **Hardened runtime forbids by default exactly what .NET needs.** Without `allow-jit`,
+  `allow-unsigned-executable-memory` and `disable-library-validation`, the bundle notarizes and then
+  refuses to launch - a worse outcome than not notarizing at all.
+
+That is the **"copy the mechanism, not the shape"** lesson for the second time in this pipeline; the
+first was `docker run` instead of the eSigner action.
+
+### 6a.10 Verified on the artifact, not the log
+
+Run 30978144672: seven jobs green, 18 assets, `Notarization status: Accepted` on both macOS tracks,
+`The staple and validate action worked`, and no warning from any step in the workflow.
+
+Then the published `.zip` was downloaded and opened:
+
+| | before | after |
+|---|---|---|
+| sealed entries in `CodeResources` | 97 | **255** |
+| files in `MacOS/` + `Resources/` | 256 | 256 |
+| present but unsealed | 238 | **1** - `MacOS/WitDatabaseStudio`, correctly: the main executable carries its own embedded signature and anchors the bundle's |
+| stapled ticket | absent | **`Contents/CodeResources`, 7050 bytes**, magic `s8ch` |
+
+**macOS is signed, notarized and stapled.** Gatekeeper will not warn.
+
 ## 7. Verification
 
 `OutWit.Database.Studio.Tests`, the CI filter, on this branch:
