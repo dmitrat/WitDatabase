@@ -27,8 +27,11 @@ internal class FakeDatabaseService : IDatabaseService
     public Task<int> ExecuteNonQueryAsync(string sql, CancellationToken ct = default) => 
         Task.FromResult(0);
     
-    public Task<object?> ExecuteScalarAsync(string sql, CancellationToken ct = default) => 
+    public Task<object?> ExecuteScalarAsync(string sql, CancellationToken ct = default) =>
         Task.FromResult<object?>(null);
+
+    public Task<BatchResult> ExecuteBatchAsync(IReadOnlyList<string> statements, CancellationToken ct = default) =>
+        Task.FromResult(new BatchResult { FailedIndex = 0, ErrorMessage = "Not connected" });
     
     public Task<IReadOnlyList<TableInfo>> GetTablesAsync(CancellationToken ct = default) => 
         Task.FromResult<IReadOnlyList<TableInfo>>(Array.Empty<TableInfo>());

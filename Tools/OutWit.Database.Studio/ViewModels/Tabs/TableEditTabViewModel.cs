@@ -166,6 +166,15 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             var columns = await Database.GetColumnsAsync(TableName);
             Columns = columns.ToList();
             PrimaryKeyColumns = columns.Where(c => c.IsPrimaryKey).Select(c => c.Name).ToList();
+
+            // WS-35. Without a primary key there is no condition that names one row: the old fallback
+            // built a WHERE over every column, which two identical rows both satisfy - so editing one
+            // of them changed both, and the affected-row count nobody read was the only sign.
+            IsReadOnly = PrimaryKeyColumns.Count == 0;
+            ReadOnlyReason = IsReadOnly
+                ? $"\"{TableName}\" has no primary key, so a row cannot be identified. "
+                  + "The data is shown for viewing; edit it with a query that names the rows you mean."
+                : null;
         }
         catch (Exception ex)
         {
@@ -298,112 +307,65 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         UpdateStatus();
     }
 
+    /// <summary>
+    /// Applies the whole edit buffer as ONE transaction (WS-36, B2).
+    ///
+    /// It used to send the statements one at a time, each in its own try/catch, collecting failures
+    /// into a list and showing the first three. A buffer that failed halfway left the rows it had
+    /// already written and told the user "Update failed: ..." - who then had no way of knowing what
+    /// was in the database. Now nothing is applied unless all of it is, and a refused set keeps its
+    /// buffer so that nothing has to be retyped.
+    /// </summary>
     private async Task CommitChangesAsync()
     {
         if (EditableData == null || string.IsNullOrWhiteSpace(TableName) || m_originalData == null)
             return;
+
+        if (IsReadOnly)
+        {
+            SetErrorStatus(ReadOnlyReason ?? "This table cannot be edited.");
+            return;
+        }
 
         IsLoading = true;
         ClearStatus();
 
         try
         {
-            var errors = new List<string>();
+            var statements = BuildChangeScript(out var buildError);
 
-            // Process deletions
-            foreach (var row in m_deletedRows)
+            if (statements == null)
             {
-                var originalRowIndex = FindOriginalRowIndex(row);
-                if (originalRowIndex < 0)
-                {
-                    errors.Add("Cannot delete row: original row not found");
-                    continue;
-                }
-
-                var originalRow = m_originalData.Rows[originalRowIndex];
-                var whereClause = BuildWhereClause(originalRow);
-
-                if (string.IsNullOrEmpty(whereClause))
-                {
-                    errors.Add("Cannot delete row: no primary key or unique identifier");
-                    continue;
-                }
-
-                var deleteSql = $"DELETE FROM [{SqlValueFormatter.EscapeIdentifier(TableName)}] WHERE {whereClause}";
-                Logger.LogDebug("Executing DELETE: {Sql}", deleteSql);
-
-                try
-                {
-                    await Database.ExecuteNonQueryAsync(deleteSql);
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Delete failed: {ex.Message}");
-                }
+                SetErrorStatus(buildError!);
+                Logger.LogWarning("Nothing applied to {TableName}: {Error}", TableName, buildError);
+                return;
             }
 
-            // Process new rows
-            foreach (var newRow in m_newRows)
+            if (statements.Count == 0)
             {
-                var insertSql = BuildInsertStatement(newRow);
-                Logger.LogDebug("Executing INSERT: {Sql}", insertSql);
-
-                try
-                {
-                    await Database.ExecuteNonQueryAsync(insertSql);
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Insert failed: {ex.Message}");
-                }
+                SetSuccessStatus("Nothing to apply");
+                return;
             }
 
-            // Process modifications
-            foreach (var modifiedRow in m_modifiedRows)
+            var result = await Database.ExecuteBatchAsync(statements);
+
+            if (!result.Committed)
             {
-                if (modifiedRow.RowState == DataRowState.Deleted || modifiedRow.RowState == DataRowState.Detached)
-                    continue;
+                // The buffer is deliberately left alone, and the table is NOT reloaded: a reload would
+                // throw away exactly the work the user was told had not been saved.
+                SetErrorStatus(
+                    $"Nothing was applied. Statement {result.FailedIndex + 1} of {statements.Count} "
+                    + $"failed: {result.ErrorMessage}");
 
-                var originalRowIndex = FindOriginalRowIndex(modifiedRow);
-                if (originalRowIndex < 0)
-                {
-                    errors.Add("Cannot update row: original row not found");
-                    continue;
-                }
-
-                var originalRow = m_originalData.Rows[originalRowIndex];
-                var whereClause = BuildWhereClause(originalRow);
-
-                if (string.IsNullOrEmpty(whereClause))
-                {
-                    errors.Add("Cannot update row: no primary key or unique identifier");
-                    continue;
-                }
-
-                var updateSql = BuildUpdateStatement(modifiedRow, whereClause);
-                Logger.LogDebug("Executing UPDATE: {Sql}", updateSql);
-
-                try
-                {
-                    var rowsAffected = await Database.ExecuteNonQueryAsync(updateSql);
-                    Logger.LogDebug("UPDATE affected {Rows} rows", rowsAffected);
-                }
-                catch (Exception ex)
-                {
-                    errors.Add($"Update failed: {ex.Message}");
-                }
+                Logger.LogWarning("Commit to {TableName} rolled back at statement {Index}",
+                    TableName, result.FailedIndex + 1);
+                return;
             }
 
-            if (errors.Count > 0)
-            {
-                SetErrorStatus(string.Join("; ", errors.Take(3)));
-            }
-            else
-            {
-                SetSuccessStatus("Changes committed successfully");
-                ApplicationVm.MainWindowVm.StatusText = "Changes committed successfully";
-                IsModified = false;
-            }
+            SetSuccessStatus($"Applied {statements.Count} changes");
+            ApplicationVm.MainWindowVm.StatusText =
+                $"Applied {statements.Count} changes to \"{TableName}\"";
+            IsModified = false;
 
             await LoadTableDataAsync();
         }
@@ -417,6 +379,69 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             IsLoading = false;
             UpdateStatus();
         }
+    }
+
+    /// <summary>
+    /// Turns the edit buffer into the statements that will be sent, in the order they must run:
+    /// deletes, then inserts, then updates. Returns null - with a reason - when a row cannot be
+    /// addressed, because a set that cannot be expressed must not be half-expressed.
+    /// </summary>
+    private List<string>? BuildChangeScript(out string? error)
+    {
+        error = null;
+
+        var statements = new List<string>();
+        var table = SqlValueFormatter.EscapeIdentifier(TableName);
+
+        foreach (var row in m_deletedRows)
+        {
+            var originalRowIndex = FindOriginalRowIndex(row);
+
+            if (originalRowIndex < 0)
+            {
+                error = "Cannot delete a row: the row it was loaded from could not be found. Refresh and try again.";
+                return null;
+            }
+
+            var whereClause = BuildWhereClause(m_originalData!.Rows[originalRowIndex]);
+
+            if (string.IsNullOrEmpty(whereClause))
+            {
+                error = "Cannot delete a row: the table has no primary key.";
+                return null;
+            }
+
+            statements.Add($"DELETE FROM [{table}] WHERE {whereClause}");
+        }
+
+        foreach (var newRow in m_newRows)
+            statements.Add(BuildInsertStatement(newRow));
+
+        foreach (var modifiedRow in m_modifiedRows)
+        {
+            if (modifiedRow.RowState is DataRowState.Deleted or DataRowState.Detached)
+                continue;
+
+            var originalRowIndex = FindOriginalRowIndex(modifiedRow);
+
+            if (originalRowIndex < 0)
+            {
+                error = "Cannot update a row: the row it was loaded from could not be found. Refresh and try again.";
+                return null;
+            }
+
+            var whereClause = BuildWhereClause(m_originalData!.Rows[originalRowIndex]);
+
+            if (string.IsNullOrEmpty(whereClause))
+            {
+                error = "Cannot update a row: the table has no primary key.";
+                return null;
+            }
+
+            statements.Add(BuildUpdateStatement(modifiedRow, whereClause));
+        }
+
+        return statements;
     }
 
     private int FindOriginalRowIndex(DataRow row)
@@ -526,29 +551,22 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         return sql;
     }
 
+    /// <summary>
+    /// The condition that names exactly one row: its primary key, or nothing.
+    ///
+    /// There used to be a fallback that built the condition from EVERY column of the row. That is not
+    /// a unique condition - two identical rows both match it, so an UPDATE meant for one changed both,
+    /// and a DELETE meant for one removed both. It also compared BLOB columns in a WHERE clause. The
+    /// fallback is gone, and a table without a key is not editable at all (WS-35).
+    /// </summary>
     private string BuildWhereClause(DataRow row)
     {
-        var conditions = new List<string>();
+        if (PrimaryKeyColumns.Count == 0)
+            return string.Empty;
 
-        if (PrimaryKeyColumns.Count > 0)
-        {
-            foreach (var pkColumn in PrimaryKeyColumns)
-            {
-                var value = row[pkColumn];
-                conditions.Add($"[{SqlValueFormatter.EscapeIdentifier(pkColumn)}] = {SqlValueFormatter.FormatForSql(value)}");
-            }
-        }
-        else
-        {
-            foreach (DataColumn col in row.Table.Columns)
-            {
-                var value = row[col];
-                if (value == DBNull.Value)
-                    conditions.Add($"[{SqlValueFormatter.EscapeIdentifier(col.ColumnName)}] IS NULL");
-                else
-                    conditions.Add($"[{SqlValueFormatter.EscapeIdentifier(col.ColumnName)}] = {SqlValueFormatter.FormatForSql(value)}");
-            }
-        }
+        var conditions = PrimaryKeyColumns
+            .Select(pkColumn =>
+                $"[{SqlValueFormatter.EscapeIdentifier(pkColumn)}] = {SqlValueFormatter.FormatForSql(row[pkColumn])}");
 
         return string.Join(" AND ", conditions);
     }
@@ -626,10 +644,10 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     {
         HasChanges = m_deletedRows.Count > 0 || m_modifiedRows.Count > 0 || m_newRows.Count > 0;
         IsModified = HasChanges;
-        CanCommit = HasChanges && !IsLoading;
+        CanCommit = HasChanges && !IsLoading && !IsReadOnly;
         CanRollback = HasChanges && !IsLoading;
-        CanAddRow = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Database.IsConnected;
-        CanDeleteRow = SelectedRowView != null && !IsLoading;
+        CanAddRow = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Database.IsConnected && !IsReadOnly;
+        CanDeleteRow = SelectedRowView != null && !IsLoading && !IsReadOnly;
         CanRefresh = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Database.IsConnected;
         
         // Status bar states
@@ -753,6 +771,20 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     /// </summary>
     [Notify]
     public bool HasChanges { get; private set; }
+
+    /// <summary>
+    /// True when the table cannot be edited safely and the tab is a viewer (WS-35). Today that means
+    /// one thing: no primary key, so no row can be named.
+    /// </summary>
+    [Notify]
+    public bool IsReadOnly { get; private set; }
+
+    /// <summary>
+    /// Why editing is off, in words, for the banner. Grey buttons with no explanation send people
+    /// looking for a setting that does not exist.
+    /// </summary>
+    [Notify]
+    public string? ReadOnlyReason { get; private set; }
 
     /// <summary>
     /// Indicates if changes can be committed.
