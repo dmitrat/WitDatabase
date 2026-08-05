@@ -673,6 +673,9 @@ jobs:
           name: ${{ steps.name.outputs.name }}
           draft: false
           prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          # A real (non-prerelease) Studio release becomes the repository's Latest. Nothing is
+          # displaced by that: the engine ships to NuGet and publishes no GitHub releases.
+          make_latest: ${{ github.event.inputs.prerelease == 'true' && 'false' || 'true' }}
           files: release-files/*
           generate_release_notes: true
           fail_on_unmatched_files: true
