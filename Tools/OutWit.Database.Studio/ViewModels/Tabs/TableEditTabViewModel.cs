@@ -87,10 +87,48 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     public override string? UniqueId => $"edit:{TableName}";
 
-    public override bool CanClose()
+    /// <summary>
+    /// The number of edits waiting in the buffer: rows deleted, rows changed, rows added. Named in the
+    /// question, because "there are unsaved changes" is a sentence people click through.
+    /// </summary>
+    public int ChangeCount => m_deletedRows.Count + m_modifiedRows.Count + m_newRows.Count;
+
+    public override bool CanClose() => !HasChanges;
+
+    /// <summary>
+    /// Closing a dirty editor used to discard the buffer without a word - the tab went away and the
+    /// DataTable was disposed by OnClosed a line later, so there was nothing left to recover from.
+    /// </summary>
+    public override async Task<bool> ConfirmCloseAsync()
     {
-        // TODO: Show confirmation dialog if HasChanges
-        return true;
+        if (!HasChanges)
+            return true;
+
+        var decision = await ApplicationVm.Confirmations.AskAboutUnsavedChangesAsync(Title, ChangeCount);
+
+        switch (decision)
+        {
+            case UnsavedChangesDecision.Apply:
+                await CommitChangesAsync();
+
+                // The commit is a transaction that can be refused - by a constraint, by a conflict, by
+                // a lost connection. If it was, the tab stays open with its buffer: closing here would
+                // lose exactly what the user asked to keep.
+                if (HasChanges || HasError)
+                {
+                    Logger.LogWarning("Tab {Title} stays open: applying its changes failed", Title);
+                    return false;
+                }
+
+                return true;
+
+            case UnsavedChangesDecision.Discard:
+                Logger.LogInformation("Discarding {Count} unapplied changes in {Title}", ChangeCount, Title);
+                return true;
+
+            default:
+                return false;
+        }
     }
 
     public override void OnClosed()

@@ -5,6 +5,7 @@ using OutWit.Database.AdoNet;
 using OutWit.Database.Studio.Services;
 using OutWit.Database.Studio.Tests.Helpers;
 using OutWit.Database.Studio.ViewModels;
+using OutWit.Database.Studio.ViewModels.Tabs;
 
 namespace OutWit.Database.Studio.Tests.Services;
 
@@ -99,6 +100,27 @@ public class StudioEngineContactTests
         {
             if (DateTime.UtcNow > deadline)
                 throw new TimeoutException("The connect command did not complete within 60 seconds.");
+
+            await Task.Delay(10);
+        }
+    }
+
+    /// <summary>
+    /// Presses the X on a tab and waits. Closing became asynchronous when it started asking about
+    /// unapplied work, and RelayCommandAsync is 'async void', so IsExecuting is the only handle on
+    /// completion - asserting straight after Execute would read the state before the answer.
+    /// </summary>
+    private static async Task PressCloseTabAsync(WorkspaceTabsViewModel workspace, WorkspaceTabViewModel tab)
+    {
+        var command = (RelayCommandAsync<WorkspaceTabViewModel>)workspace.CloseTabCommand;
+
+        command.Execute(tab);
+
+        var deadline = DateTime.UtcNow.AddSeconds(60);
+        while (command.IsExecuting)
+        {
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException("The close command did not complete within 60 seconds.");
 
             await Task.Delay(10);
         }
@@ -720,27 +742,25 @@ public class StudioEngineContactTests
     #region The table editor - unsaved changes
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR.
+    /// INVERTED 2026-08-05, phase 0 / B6. This used to pin the defect: closing a table-edit tab with
+    /// unsaved changes discarded them, without asking and without saying anything, because
+    /// `TableEditTabViewModel.CanClose()` returned true over a `// TODO: Show confirmation dialog`.
     ///
-    /// Closing a table-edit tab with unsaved changes discards them, without asking and without saying
-    /// anything. `TableEditTabViewModel.CanClose()` returns true unconditionally, over a
-    /// `// TODO: Show confirmation dialog if HasChanges`, and `WorkspaceTabsViewModel.CloseTab` calls
-    /// `OnClosed()` the moment it says yes - which disposes the edited DataTable.
-    ///
-    /// This goes through the real close path (the tab strip's CloseTabCommand) rather than calling
-    /// CanClose directly, because what matters is that a user pressing the X loses work, not that a
-    /// method returns true.
-    ///
-    /// WHEN FIXED: closing a dirty tab either refuses (CanClose false, pending a prompt) or the tab
-    /// survives with its changes; either way this assertion inverts.
+    /// Now the close asks, and the answer here is Cancel: the tab stays, the buffer stays, the
+    /// database is untouched. It still goes through the real close path (the tab strip's
+    /// CloseTabCommand) rather than calling a method directly, because what matters is what happens
+    /// when a user presses the X.
     /// </summary>
     [Test]
-    public async Task ClosingATableEditorWithUnsavedChangesDiscardsThemSilentlyTest()
+    public async Task ClosingATableEditorWithUnsavedChangesAsksBeforeLosingThemTest()
     {
         var path = Path.Combine(m_root, "editor.witdb");
         await CreateOnDiskAsync(path);
 
         var (app, vm, db) = NewStudio();
+
+        var confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
+        app.Confirmations = confirmations;
 
         vm.IsNewDatabase = false;
         vm.ConnectionInfo.FilePath = path;
@@ -767,22 +787,119 @@ public class StudioEngineContactTests
             "the edit must register as a change for this case to mean anything");
 
         // The user presses the X on the tab.
-        workspace.CloseTabCommand.Execute(editor);
+        await PressCloseTabAsync(workspace, editor);
 
-        Assert.That(workspace.Tabs, Does.Not.Contain(editor),
-            "PIN: the tab is expected to close without objection today.");
+        Assert.Multiple(() =>
+        {
+            Assert.That(confirmations.TimesAsked, Is.EqualTo(1),
+                "the close must ask - a close that decides on its own is the defect, whichever way it decides");
+            Assert.That(confirmations.LastChangeCount, Is.EqualTo(1),
+                "the question names the size of the edit buffer");
 
-        // And the database still holds the original - the work is gone.
+            Assert.That(workspace.Tabs, Does.Contain(editor),
+                "the answer was Cancel, so the tab stays open");
+            Assert.That(editor.EditableData, Is.Not.Null,
+                "the edit buffer must survive a refused close - OnClosed disposes it");
+            Assert.That(editor.HasChanges, Is.True);
+        });
+
         var result = await db.ExecuteQueryAsync("SELECT Name FROM Probe");
 
-        Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Rows[0]["Name"], Is.EqualTo("original"),
-            "PIN: the unsaved edit is expected to be lost today, with no prompt and no message. If "
-            + "this now reads 'edited-but-never-saved', or the close was refused, invert this test.");
+            "Cancel writes nothing: the edit is still only in the buffer");
 
-        // It is gone from memory too, so there is nothing left to recover it from.
-        Assert.That(editor.EditableData, Is.Null,
-            "PIN: OnClosed disposes the edited table, so the change cannot be recovered.");
+        await db.DisconnectAsync();
+        db.Dispose();
+    }
+
+    /// <summary>
+    /// The other two answers, over the same real close path. Discard must lose the buffer and keep the
+    /// database; Apply must write it.
+    ///
+    /// Both directions matter: with only the Cancel case above, an implementation that refused every
+    /// close would pass, and a tab that can never be closed is its own defect.
+    /// </summary>
+    [TestCase(UnsavedChangesDecision.Discard, "original", TestName = "DiscardingUnsavedChangesClosesTheTabAndWritesNothingTest")]
+    [TestCase(UnsavedChangesDecision.Apply, "edited-and-applied", TestName = "ApplyingOnCloseWritesTheChangeAndClosesTheTabTest")]
+    public async Task ClosingADirtyEditorHonoursTheAnswer(UnsavedChangesDecision decision, string expected)
+    {
+        var path = Path.Combine(m_root, $"editor-{decision}.witdb");
+        await CreateOnDiskAsync(path);
+
+        var (app, vm, db) = NewStudio();
+
+        var confirmations = new ScriptedConfirmationService(decision);
+        app.Confirmations = confirmations;
+
+        vm.IsNewDatabase = false;
+        vm.ConnectionInfo.FilePath = path;
+        await PressConnectAsync(vm);
+
+        Assert.That(db.IsConnected, Is.True, $"setup: {vm.ErrorMessage}");
+
+        await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
+        await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
+
+        var workspace = app.WorkspaceTabsVm;
+        var editor = await workspace.OpenTableEditTabAsync("Probe");
+
+        var rowView = new System.Data.DataView(editor.EditableData!)[0];
+        rowView.Row["Name"] = "edited-and-applied";
+        editor.CellEditedCommand.Execute(rowView);
+
+        Assert.That(editor.HasChanges, Is.True);
+
+        await PressCloseTabAsync(workspace, editor);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(confirmations.TimesAsked, Is.EqualTo(1));
+            Assert.That(workspace.Tabs, Does.Not.Contain(editor), "the answer allowed the close");
+        });
+
+        var result = await db.ExecuteQueryAsync("SELECT Name FROM Probe");
+
+        Assert.That(result.Data!.Rows[0]["Name"], Is.EqualTo(expected));
+
+        await db.DisconnectAsync();
+        db.Dispose();
+    }
+
+    /// <summary>
+    /// CONTROL. A clean tab must close with no question at all - otherwise the fix would have turned
+    /// every close into a dialog, and the count above would never distinguish the two.
+    /// </summary>
+    [Test]
+    public async Task ControlAClosingTabWithNoChangesIsNotAskedAboutTest()
+    {
+        var path = Path.Combine(m_root, "editor-clean.witdb");
+        await CreateOnDiskAsync(path);
+
+        var (app, vm, db) = NewStudio();
+
+        var confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
+        app.Confirmations = confirmations;
+
+        vm.IsNewDatabase = false;
+        vm.ConnectionInfo.FilePath = path;
+        await PressConnectAsync(vm);
+
+        await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
+        await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
+
+        var workspace = app.WorkspaceTabsVm;
+        var editor = await workspace.OpenTableEditTabAsync("Probe");
+
+        Assert.That(editor.HasChanges, Is.False, "nothing was edited");
+
+        await PressCloseTabAsync(workspace, editor);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(confirmations.TimesAsked, Is.Zero,
+                "CONTROL: a tab with nothing to lose must close without a dialog");
+            Assert.That(workspace.Tabs, Does.Not.Contain(editor));
+        });
 
         await db.DisconnectAsync();
         db.Dispose();

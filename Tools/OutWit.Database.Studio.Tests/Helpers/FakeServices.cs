@@ -116,6 +116,37 @@ internal class FakeSettingsService : ISettingsService
 }
 
 /// <summary>
+/// Answers the unsaved-changes question with a scripted decision, and records that it was asked.
+///
+/// "Was the user asked" is half of what B6 is about: a close that silently applies is as wrong as a
+/// close that silently discards, and only the count can tell them apart.
+/// </summary>
+internal sealed class ScriptedConfirmationService : IConfirmationService
+{
+    public ScriptedConfirmationService(UnsavedChangesDecision decision)
+    {
+        Decision = decision;
+    }
+
+    public UnsavedChangesDecision Decision { get; set; }
+
+    public int TimesAsked { get; private set; }
+
+    public int LastChangeCount { get; private set; }
+
+    public string? LastTitle { get; private set; }
+
+    public Task<UnsavedChangesDecision> AskAboutUnsavedChangesAsync(string title, int changeCount)
+    {
+        TimesAsked++;
+        LastTitle = title;
+        LastChangeCount = changeCount;
+
+        return Task.FromResult(Decision);
+    }
+}
+
+/// <summary>
 /// Test double for IExportService.
 /// </summary>
 internal class FakeExportService : IExportService

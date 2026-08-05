@@ -50,7 +50,12 @@ public sealed partial class DatabaseService : IDatabaseService
             await DisconnectAsync();
 
             var connectionString = connection.BuildConnectionString();
-            m_logger.LogInformation("Attempting to connect with connection string: {ConnectionString}", connectionString);
+
+            // ToLogString, never BuildConnectionString: the latter carries ";Password=..." and this
+            // line reaches %AppData%\WitDatabase.Studio\logs\studio.log - the file users are asked to
+            // attach to an issue.
+            m_logger.LogInformation("Attempting to connect with connection string: {ConnectionString}",
+                connection.ToLogString());
 
             m_connection = new WitDbConnection(connectionString);
 
@@ -65,7 +70,7 @@ public sealed partial class DatabaseService : IDatabaseService
         catch (Exception ex)
         {
             m_logger.LogError(ex, "Failed to connect to database: {FilePath}, ConnectionString: {ConnectionString}",
-                connection.FilePath, connection.BuildConnectionString());
+                connection.FilePath, connection.ToLogString());
             m_connection?.Dispose();
             m_connection = null;
             m_currentConnection = null;

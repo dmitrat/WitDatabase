@@ -62,9 +62,26 @@ public sealed class ConnectionInfo : ModelBase
     #region Functions
 
     /// <summary>
-    /// Builds the connection string from this connection info.
+    /// Builds the connection string from this connection info. Carries the password, so it belongs to
+    /// the engine and nowhere else - never to a log, a message, a history entry or a saved list. Use
+    /// <see cref="ToLogString"/> for anything a human or a file will see.
     /// </summary>
     public string BuildConnectionString()
+    {
+        return Build(redactSecrets: false);
+    }
+
+    /// <summary>
+    /// The same connection string with the password replaced. Everything that makes a failed open
+    /// diagnosable - the data source, read-only, whether encryption was asked for, the store - is kept:
+    /// a log that says nothing about the attempt is a different defect from one that says too much.
+    /// </summary>
+    public string ToLogString()
+    {
+        return Build(redactSecrets: true);
+    }
+
+    private string Build(bool redactSecrets)
     {
         if (string.IsNullOrWhiteSpace(FilePath))
             throw new InvalidOperationException("FilePath must be specified before building connection string.");
@@ -78,7 +95,7 @@ public sealed class ConnectionInfo : ModelBase
         if (IsEncrypted && !string.IsNullOrEmpty(Password))
         {
             builder.Append(";Encryption=aes-gcm");
-            builder.Append($";Password={Password}");
+            builder.Append(redactSecrets ? ";Password=***" : $";Password={Password}");
         }
 
         if (!string.IsNullOrEmpty(StorageEngine) && StorageEngine != DEFAULT_STORAGE_ENGINE)
