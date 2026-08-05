@@ -488,6 +488,50 @@ so in its own workflow - *"macOS notarization of the multi-file bundle is still 
 current state is **signed but not notarized**: the application runs on macOS and Gatekeeper warns on
 first launch. What the rejection reason actually is, the next run will say.
 
+### 6a.7 The third run: the reason, at last, and it is one line
+
+Run 30971614703. Seven jobs green, 18 assets, all three platforms, `should_sign=false`, zero
+missing-platform warnings. And this time the step **said what it found** instead of reporting success:
+
+```
+Notarization status: Invalid
+##[warning]Notarization returned 'Invalid' - the bundle is signed but NOT notarized...
+```
+
+The submission log it now fetches contains **exactly one issue**, identical on both tracks:
+
+```json
+"statusSummary": "Archive contains critical validation errors",
+"statusCode": 4000,
+"issues": [{
+  "severity": "error",
+  "path": "…/WitDatabaseStudio.app/Contents/MacOS/WitDatabaseStudio",
+  "message": "The signature of the binary is invalid.",
+  "architecture": "arm64"
+}]
+```
+
+**That is a diagnosis rather than a symptom.** It is not the bundle layout, not a missing hardened
+runtime, not the `.zip` packaging, and not the managed assemblies - Apple objects to **one file**: the
+apphost, `Contents/MacOS/WitDatabaseStudio`, whose own signature is invalid. The bundle around it is
+signed (`_CodeSignature/CodeResources` is present and Apple read it), so what is broken is the seal on
+the native executable inside.
+
+That is the known shape for a .NET application bundle: nested Mach-O binaries must be signed
+**innermost-first** - every `.dylib` and the apphost, with hardened runtime and a secure timestamp -
+and only then the `.app` itself. Signing the bundle alone leaves the apphost carrying whatever
+signature `dotnet publish` gave it, which notarization rejects.
+
+**The next step is therefore specific:** sign the nested binaries before Parcel seals the bundle, or
+re-sign the apphost and re-seal afterwards. Not attempted here - it is a change to how the macOS
+artifact is built, and it deserves its own measurement rather than being bolted onto the run that
+diagnosed it.
+
+**And the shape worth keeping:** three runs, and each one only became useful because the previous one
+was made able to fail. Run 1 hid a broken platform behind a green job; run 2 hid a rejected
+notarization behind a green step; run 3 printed the reason. A pipeline earns trust by being made
+capable of reporting bad news, one refusal at a time.
+
 ## 7. Verification
 
 `OutWit.Database.Studio.Tests`, the CI filter, on this branch:

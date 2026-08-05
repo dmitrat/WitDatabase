@@ -156,6 +156,14 @@ jobs:
           echo "version=$V" >> "$GITHUB_OUTPUT"
           echo "Resolved version: $V"
 
+          # CFBundleVersion must be one to three period-separated INTEGERS. "0.0.0-dev" is not a
+          # version as far as macOS is concerned, and it went into the bundle verbatim - so the
+          # bundle version is the numeric part only, while artifact names keep the full string.
+          NUMERIC="${V%%-*}"
+          [[ "$NUMERIC" =~ ^[0-9]+(\.[0-9]+){0,2}$ ]] || NUMERIC="0.0.0"
+          echo "numeric=$NUMERIC" >> "$GITHUB_OUTPUT"
+          echo "Bundle version: $NUMERIC"
+
       - name: Patch .parcel (version, track, macOS signing)
         shell: bash
         env:
@@ -182,7 +190,8 @@ jobs:
             echo "::warning::APPLE_CERT_P12_BASE64 is not set - the macOS bundle will be ad-hoc signed and Gatekeeper will warn."
           fi
 
-          jq --arg v "${{ steps.ver.outputs.version }}" "$FILTER" \
+          # The numeric form, because this reaches CFBundleVersion on macOS.
+          jq --arg v "${{ steps.ver.outputs.numeric }}" "$FILTER" \
             "$PARCEL_PROJECT" > "$PARCEL_PROJECT.tmp"
           mv "$PARCEL_PROJECT.tmp" "$PARCEL_PROJECT"
           cat "$PARCEL_PROJECT"
@@ -249,6 +258,40 @@ jobs:
 
           echo "Packed:"
           find "$PARCEL_OUT" -type f | sort
+
+      # Apple's verdict costs a round trip and comes back as one line. codesign and spctl are the same
+      # validators, on this machine, for free - so ask them BEFORE submitting and print what they say.
+      #
+      # This exists because four hypotheses about the rejection were tested against the artifact and
+      # all four were wrong: the apphost carries a real Developer ID identity, hardened runtime, a
+      # secure timestamp, and 31 of 31 intact page hashes, and all 14 native binaries in the bundle
+      # are signed the same way. Whatever Apple objects to is something only its own validator sees,
+      # and this is where it becomes visible.
+      - name: Verify the signature locally before submitting (macOS)
+        if: runner.os == 'macOS'
+        continue-on-error: true
+        shell: bash
+        run: |
+          set -uo pipefail
+          ZIP=$(find "$PARCEL_OUT" -name '*.zip' | head -1)
+          WORK="$RUNNER_TEMP/verify"
+          rm -rf "$WORK" && mkdir -p "$WORK"
+          ditto -x -k "$ZIP" "$WORK"
+
+          APP=$(find "$WORK" -maxdepth 1 -name '*.app' | head -1)
+          echo "Verifying $APP"
+
+          echo "--- codesign --verify --deep --strict ---"
+          codesign --verify --deep --strict --verbose=4 "$APP" 2>&1 || echo "(codesign reported the above)"
+
+          echo "--- codesign -dvvv (main binary) ---"
+          codesign -dvvv "$APP" 2>&1 | head -30 || true
+
+          echo "--- spctl assessment (what Gatekeeper would say) ---"
+          spctl -a -t exec -vvv "$APP" 2>&1 || echo "(spctl reported the above; 'rejected' is expected before notarization)"
+
+          echo "--- CFBundleVersion ---"
+          /usr/libexec/PlistBuddy -c "Print :CFBundleVersion" "$APP/Contents/Info.plist" 2>&1 || true
 
       # The first run of this step submitted, waited, and reported success while Apple had answered
       # "Invalid" - notarytool's exit code does not follow the verdict, and nothing here read it. A
