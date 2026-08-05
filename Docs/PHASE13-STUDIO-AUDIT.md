@@ -459,6 +459,35 @@ The first is the interesting one. It is the same shape the audit kept finding on
 correct piece of code that one route does not go through - except here the route was a platform, and
 the only way to find out was to run it.
 
+### 6a.6 The second run: all three platforms, and a step that could not fail
+
+Run 30940536637, same dispatch. **All seven jobs green, 18 assets, all three platforms.**
+
+Checked against the artifacts rather than the names:
+
+| | |
+|---|---|
+| `...windows-x64.exe`, 49.7 MB | a real NSIS installer - `MZ` header, `Nullsoft` marker at offset 96188 |
+| `...macos-arm64.zip`, 48.3 MB | a real bundle - `WitDatabaseStudio.app/Contents/Info.plist`, `Contents/MacOS/`, and `_CodeSignature/CodeResources`, so Developer-ID signing landed |
+| `SHA256SUMS-linux-*.txt.asc` | GPG detached signatures present |
+| `should_sign=false` | the quota gate held: no eSigner signature spent on a throwaway build |
+| `NO ARTIFACT FOR` | not emitted - the only occurrence in the log is the echoed script source |
+
+**And a defect that the green hid.** The log carries `status: Invalid` twice: **Apple rejected the
+notarization of both macOS tracks**, and the step reported success anyway. `notarytool`'s exit code
+does not follow its verdict, and nothing read the verdict - so the step could not fail. It is the
+`COUNT(*)` lesson in another costume: never take a proxy for the answer.
+
+It now parses the status as JSON, warns when it is not `Accepted`, **fetches the submission log so the
+reason is visible** - the run above left only the word "Invalid" to work from - and staples the ticket
+into the bundle when Apple does accept. It is `continue-on-error`, for the same reason the Windows
+signing step is: notarization must not be able to destroy a build.
+
+**Worth knowing before diagnosing it:** the WitCloud client carries the same unsolved problem, and says
+so in its own workflow - *"macOS notarization of the multi-file bundle is still unsolved"*. So the
+current state is **signed but not notarized**: the application runs on macOS and Gatekeeper warns on
+first launch. What the rejection reason actually is, the next run will say.
+
 ## 7. Verification
 
 `OutWit.Database.Studio.Tests`, the CI filter, on this branch:
