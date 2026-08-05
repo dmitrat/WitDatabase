@@ -135,8 +135,8 @@ public class QueryTabViewModelTests
         // Act
         viewModel.IsModified = true;
 
-        // Assert - Shows • when modified
-        Assert.That(viewModel.DisplayTitle, Is.EqualTo("Query 1 •"));
+        // Assert - Shows â€¢ when modified
+        Assert.That(viewModel.DisplayTitle, Is.EqualTo("Query 1 â€¢"));
     }
 
     #endregion

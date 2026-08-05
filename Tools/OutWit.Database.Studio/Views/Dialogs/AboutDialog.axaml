@@ -115,7 +115,7 @@
                                       Width="14" Height="14"
                                       Foreground="{DynamicResource SystemAccentColor}"/>
                             <TextBlock VerticalAlignment="Center" FontSize="12">
-                                <Run Text="by Dmitry Ratner — "/>
+                                <Run Text="by Dmitry Ratner â€” "/>
                                 <Run Text="{Binding AuthorUrl}" 
                                      Foreground="{DynamicResource SystemAccentColor}"
                                      TextDecorations="Underline"/>

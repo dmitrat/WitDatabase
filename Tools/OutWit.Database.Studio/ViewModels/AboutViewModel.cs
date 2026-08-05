@@ -48,7 +48,7 @@ public sealed class AboutViewModel : ViewModelBase<ApplicationViewModel>
             : "1.0.0";
         
         ProductName = "WitDatabase Studio";
-        Copyright = $"© {DateTime.Now.Year} Dmitry Ratner. All rights reserved.";
+        Copyright = $"Â© {DateTime.Now.Year} Dmitry Ratner. All rights reserved.";
         Description = "A cross-platform database management tool for WitDatabase.";
     }
 
