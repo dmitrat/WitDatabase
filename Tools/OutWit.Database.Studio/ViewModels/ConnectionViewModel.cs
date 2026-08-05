@@ -209,6 +209,23 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task CreateNewDatabaseAsync(IStorageProvider storageProvider)
     {
+        // A B-Tree database is a file and an LSM database is a folder, so the two are picked with
+        // different pickers (WS-48). Asking for a file and then making a folder out of its parent is
+        // what put an abandoned database in the user's Documents.
+        if (SelectedStorageEngine == "lsm")
+        {
+            var folders = await storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+            {
+                Title = "Create LSM Database In Folder",
+                AllowMultiple = false
+            });
+
+            if (folders.Count > 0)
+                ConnectionInfo.FilePath = folders[0].Path.LocalPath;
+
+            return;
+        }
+
         // For new database - use Save dialog
         var saveOptions = new FilePickerSaveOptions
         {
@@ -236,6 +253,66 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         }
     }
 
+    /// <summary>
+    /// Creates the database the Create dialog describes, then closes it so that the connection below
+    /// opens it in the ordinary way.
+    /// </summary>
+    private async Task CreateDatabaseOnDiskAsync()
+    {
+        var builder = new WitDatabaseBuilder();
+
+        builder.WithFilePath(ConnectionInfo.FilePath);
+
+        if (SelectedStorageEngine == "btree")
+        {
+            builder.WithBTree();
+        }
+        else if (SelectedStorageEngine == "lsm")
+        {
+            // The chosen path IS the LSM database - a folder of SSTables. This used to be handed
+            // Path.GetDirectoryName(path), i.e. the folder the user picked a file IN, which built a
+            // second, empty LSM database beside the real one and abandoned it: choosing
+            // C:\Users\Me\Documents\mydb.witdb dropped provider.meta and wal.log into Documents.
+            builder.WithLsmTree(ConnectionInfo.FilePath);
+        }
+
+        if (ConnectionInfo.IsEncrypted && !string.IsNullOrEmpty(ConnectionInfo.Password))
+        {
+            builder.WithEncryption(ConnectionInfo.Password);
+        }
+
+        builder.WithPageSize(SelectedPageSize);
+        builder.WithCacheSize(CacheSize);
+
+        if (EnableTransactions)
+        {
+            if (EnableMvcc)
+                builder.WithMvcc();
+            else
+                builder.WithTransactions();
+        }
+        else
+        {
+            builder.WithoutTransactions();
+        }
+
+        if (EnableFileLocking)
+            builder.WithFileLocking();
+        else
+            builder.WithoutFileLocking();
+
+        // Build and immediately dispose: this call exists to create the database with the settings the
+        // dialog describes, and the connection that follows is what the user works through.
+        using (var db = builder.Build())
+        {
+        }
+
+        // Give the system time to release file locks
+        await Task.Delay(100, CancellationToken.None);
+
+        Logger.LogInformation("Database created: {FilePath}", ConnectionInfo.FilePath);
+    }
+
     private async Task ConnectAsync()
     {
         IsConnecting = true;
@@ -248,6 +325,18 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
             // Build connection with advanced settings if creating new database
             if (IsNewDatabase)
             {
+                // An in-memory database has no storage engine to choose and no place to put one. The
+                // combination used to be accepted and answered with WithLsmTree("."), which wrote a
+                // database into the process working directory - for an installed application, wherever
+                // it happened to be launched from (WS-48).
+                if (!IsFileBased && SelectedStorageEngine == "lsm")
+                {
+                    ErrorMessage = "An in-memory database cannot use the LSM store: LSM is a folder of "
+                        + "SSTables on disk. Choose B-Tree, or create the database as a folder.";
+                    Logger.LogWarning("Refused in-memory + lsm: the combination has no meaning");
+                    return;
+                }
+
                 // Validate file path for file-based database
                 if (IsFileBased && string.IsNullOrWhiteSpace(ConnectionInfo.FilePath))
                 {
@@ -255,85 +344,19 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                     return;
                 }
 
-                // Create new database with WitDatabaseBuilder
-                var builder = new WitDatabaseBuilder();
-                
-                // Storage
-                if (IsFileBased)
+                // An in-memory database is built by the connection and lives exactly as long as it.
+                // Building one here with WitDatabaseBuilder, disposing it and then connecting over
+                // 'Data Source=:memory:' created one database and handed the user another, empty one -
+                // every connection to ':memory:' gets its own. So: create nothing, connect.
+                if (!IsFileBased)
                 {
-                    builder.WithFilePath(ConnectionInfo.FilePath);
-                }
-                else
-                {
-                    builder.WithMemoryStorage();
-                    // For in-memory database, set a display name
                     ConnectionInfo.FilePath = ":memory:";
-                }
-                
-                // Storage engine
-                if (SelectedStorageEngine == "btree")
-                {
-                    builder.WithBTree();
-                }
-                else if (SelectedStorageEngine == "lsm")
-                {
-                    if (IsFileBased)
-                    {
-                        var directory = Path.GetDirectoryName(ConnectionInfo.FilePath) ?? ".";
-                        builder.WithLsmTree(directory);
-                    }
-                    else
-                    {
-                        builder.WithLsmTree(".");
-                    }
-                }
-                
-                // Encryption
-                if (ConnectionInfo.IsEncrypted && !string.IsNullOrEmpty(ConnectionInfo.Password))
-                {
-                    builder.WithEncryption(ConnectionInfo.Password);
-                }
-                
-                // Advanced settings
-                builder.WithPageSize(SelectedPageSize);
-                builder.WithCacheSize(CacheSize);
-                
-                if (EnableTransactions)
-                {
-                    if (EnableMvcc)
-                    {
-                        builder.WithMvcc();
-                    }
-                    else
-                    {
-                        builder.WithTransactions();
-                    }
+                    Logger.LogInformation("In-memory database: the connection creates it, nothing is built first");
                 }
                 else
                 {
-                    builder.WithoutTransactions();
+                    await CreateDatabaseOnDiskAsync();
                 }
-                
-                if (EnableFileLocking && IsFileBased)
-                {
-                    builder.WithFileLocking();
-                }
-                else
-                {
-                    builder.WithoutFileLocking();
-                }
-                
-                // Build and immediately dispose (just create the file)
-                using (var db = builder.Build())
-                {
-                    // Database file created with settings
-                    // Ensure all changes are flushed to disk
-                }
-                
-                // Give the system time to release file locks
-                await Task.Delay(100, CancellationToken.None);
-                
-                Logger.LogInformation("Database file created: {FilePath}", ConnectionInfo.FilePath);
             }
             else if (IsFileBased && !DatabaseExists(ConnectionInfo.FilePath))
             {

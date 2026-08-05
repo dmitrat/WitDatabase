@@ -505,26 +505,17 @@ public class StudioEngineContactTests
     }
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR - and NOT the defect first looked for.
+    /// INVERTED 2026-08-05, phase 0 / S3. This used to pin the litter: the Create dialog handed
+    /// WithLsmTree the FOLDER the user picked a file in, building a second, empty LSM database beside
+    /// the real one and abandoning it - choosing C:\Users\Me\Documents\mydb.witdb dropped
+    /// provider.meta and wal.log into Documents.
     ///
-    /// The hypothesis was that lsm loses its rows, because the Create dialog builds the LSM store in
-    /// Path.GetDirectoryName(FilePath) - the FOLDER the user picked a file in, not the file. It was
-    /// measured instead of assumed, and it is wrong: all 8 rows come back. Two things save it, and
-    /// neither is the dialog. The rows are written after the reconnect, so they land in the database
-    /// the CONNECTION STRING builds ('Store=lsm' on the file path, which the engine makes a
-    /// directory); and 12.2.0 restores the store from that directory's provider.meta sidecar, so the
-    /// reopen - which names no store at all, because auto-detection guards on File.Exists and a
-    /// directory is not a file - still gets an LSM database.
-    ///
-    /// What is left is real and this is what the test pins: WithLsmTree(parent) builds a SECOND,
-    /// EMPTY LSM database in the folder the user chose, and abandons it. Picking
-    /// C:\Users\Me\Documents\mydb.witdb drops provider.meta and wal.log into Documents.
-    ///
-    /// WHEN FIXED: the case directory holds one database - no provider.meta or wal.log beside the
-    /// chosen file - and this assertion inverts.
+    /// The chosen path is now the database itself. What is asserted is the same round trip plus the
+    /// absence of the litter: the case directory holds ONE database, and it is the one that was asked
+    /// for. The rows still come back - measured then, measured now.
     /// </summary>
     [Test]
-    public async Task RoundTripLsmAbandonsASecondDatabaseInTheChosenFolderTest()
+    public async Task RoundTripLsmLeavesNothingBesideTheDatabaseTest()
     {
         var trip = await RoundTripAsync("lsm", "lsm");
 
@@ -532,28 +523,29 @@ public class StudioEngineContactTests
         {
             Assert.That(trip.Created, Is.True, $"create: {trip.CreateError}");
             Assert.That(trip.Reopened, Is.True, $"reopen: {trip.ReopenError}");
-
-            // The rows survive - measured, against the hypothesis.
             Assert.That(trip.RowsAfterReopen, Is.EqualTo(PROBE_ROWS), $"read: {trip.ReadError}");
 
-            // The litter is the defect.
-            Assert.That(trip.FilesOnDisk, Does.Contain("provider.meta"),
-                "PIN: an abandoned LSM database is expected beside the chosen file today. If this is "
-                + "gone, the defect is fixed - invert this assertion.");
-            Assert.That(trip.FilesOnDisk, Does.Contain("wal.log"),
-                "PIN: the abandoned database's write-ahead log, in the user's own folder.");
+            Assert.That(trip.FilesOnDisk, Does.Not.Contain("provider.meta"),
+                "an abandoned LSM database beside the chosen path is what this used to pin");
+            Assert.That(trip.FilesOnDisk, Does.Not.Contain("wal.log"),
+                "and its write-ahead log, in the user's own folder");
+
+            // CONTROL: the database that WAS asked for is there, one level down. Without this,
+            // "no provider.meta in the folder" would pass for a dialog that created nothing at all.
+            Assert.That(trip.FilesOnDisk.Any(entry => entry.EndsWith("provider.meta", StringComparison.Ordinal)),
+                Is.True, "CONTROL: the LSM database itself must exist under the chosen path");
         });
     }
 
     /// <summary>
-    /// The same defect, at its worst: the in-memory option combined with 'lsm' calls
-    /// WithLsmTree(".") - so an LSM database is built in the PROCESS WORKING DIRECTORY, which for an
-    /// installed application is wherever it was launched from.
+    /// INVERTED 2026-08-05, phase 0 / S3. In-memory combined with 'lsm' used to call WithLsmTree("."),
+    /// writing a database into the PROCESS WORKING DIRECTORY - for an installed application, wherever
+    /// it happened to be launched from.
     ///
-    /// WHEN FIXED: no database appears in the working directory.
+    /// The combination is now refused, because it has no meaning: LSM is a folder of SSTables on disk.
     /// </summary>
     [Test]
-    public async Task InMemoryWithLsmBuildsADatabaseInTheWorkingDirectoryTest()
+    public async Task InMemoryWithLsmIsRefusedAndWritesNothingTest()
     {
         var working = Directory.GetCurrentDirectory();
         var meta = Path.Combine(working, "provider.meta");
@@ -570,12 +562,8 @@ public class StudioEngineContactTests
 
         await PressConnectAsync(vm);
 
-        await db.DisconnectAsync();
-        db.Dispose();
-
         var appeared = (!metaExisted && File.Exists(meta)) || (!walExisted && File.Exists(wal));
 
-        // Clean up after the subject, since the subject does not.
         try
         {
             if (!metaExisted && File.Exists(meta))
@@ -589,24 +577,29 @@ public class StudioEngineContactTests
             // leave it rather than fail the run
         }
 
-        Assert.That(appeared, Is.True,
-            "PIN: choosing in-memory + lsm is expected to write a database into the working directory "
-            + $"({working}) today. If nothing appeared, the defect is fixed - invert this test.");
+        Assert.Multiple(() =>
+        {
+            Assert.That(appeared, Is.False,
+                $"nothing may be written into the working directory ({working})");
+            Assert.That(db.IsConnected, Is.False, "the combination is refused, not quietly reinterpreted");
+            Assert.That(vm.ErrorMessage, Is.Not.Null.And.Contains("LSM"),
+                "and the refusal says which of the two choices cannot be had");
+        });
+
+        db.Dispose();
     }
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR.
+    /// INVERTED 2026-08-05, phase 0 / S6. The in-memory option used to build a database with
+    /// WitDatabaseBuilder, dispose it, and then connect over 'Data Source=:memory:' - and every
+    /// connection to ':memory:' gets its OWN private database, so everything the dialog configured was
+    /// discarded and the user got a different, empty one.
     ///
-    /// The in-memory option builds a database with WitDatabaseBuilder, disposes it, and then
-    /// reconnects over 'Data Source=:memory:'. An in-memory database keeps nothing after the last
-    /// connection closes, so everything the dialog configured is discarded and the user is connected
-    /// to a different, empty database.
-    ///
-    /// WHEN FIXED: the connection outlives the dialog, or the option states that it is a scratch
-    /// database.
+    /// Nothing is built first now: the connection creates the database and owns it. The round trip is
+    /// what proves there is only one - rows written through this connection are read back through it.
     /// </summary>
     [Test]
-    public async Task InMemoryConnectsToADifferentDatabaseThanItCreatedTest()
+    public async Task InMemoryConnectsToTheDatabaseItWillUseTest()
     {
         var (_, vm, db) = NewStudio();
 
@@ -617,9 +610,15 @@ public class StudioEngineContactTests
         await PressConnectAsync(vm);
 
         Assert.That(db.IsConnected, Is.True, $"create: {vm.ErrorMessage}");
-        Assert.That(vm.ConnectionInfo.BuildConnectionString(), Is.EqualTo("Data Source=:memory:"),
-            "PIN: the in-memory option reconnects over a bare ':memory:' connection string, so nothing "
-            + "the dialog configured reaches the database the user ends up on.");
+
+        await WriteProbeRowsAsync(db);
+        var (rows, readError) = await ReadProbeRowsAsync(db);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(vm.ConnectionInfo.BuildConnectionString(), Is.EqualTo("Data Source=:memory:"));
+            Assert.That(rows, Is.EqualTo(PROBE_ROWS), $"read: {readError}");
+        });
 
         await db.DisconnectAsync();
         db.Dispose();
