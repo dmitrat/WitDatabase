@@ -297,7 +297,7 @@ jobs:
           security list-keychains -d user -s "$KEYCHAIN" $(security list-keychains -d user | tr -d '"')
 
           IDENTITY=$(security find-identity -v -p codesigning "$KEYCHAIN" \
-            | grep "Developer ID Application" | head -1 | sed -E 's/.*"(.*)"/\1/')
+            | awk '/Developer ID Application/{print $2; exit}')
 
           if [[ -z "$IDENTITY" ]]; then
             echo "::warning::No Developer ID Application identity in the keychain - not re-sealing."
@@ -305,6 +305,22 @@ jobs:
             exit 0
           fi
           echo "Re-sealing with: $IDENTITY"
+
+          # Hardened runtime forbids by default exactly what a .NET application needs: a JIT, writable
+          # executable memory, and loading libraries signed by another identity. Without these the
+          # bundle notarizes and then refuses to launch, which is a worse outcome than not notarizing.
+          ENT="$RUNNER_TEMP/entitlements.plist"
+          cat > "$ENT" <<'PLIST'
+          <?xml version="1.0" encoding="UTF-8"?>
+          <!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+          <plist version="1.0"><dict>
+            <key>com.apple.security.cs.allow-jit</key><true/>
+            <key>com.apple.security.cs.allow-unsigned-executable-memory</key><true/>
+            <key>com.apple.security.cs.disable-library-validation</key><true/>
+            <key>com.apple.security.network.client</key><true/>
+            <key>com.apple.security.network.server</key><true/>
+          </dict></plist>
+          PLIST
 
           # Absolute, because the re-zip runs from inside $WORK.
           ZIP=$(cd "$(dirname "$(find "$PARCEL_OUT" -name '*.zip' | head -1)")" && pwd)/$(basename "$(find "$PARCEL_OUT" -name '*.zip' | head -1)")
@@ -320,12 +336,28 @@ jobs:
             exit 0
           fi
 
-          # The bundle only. Nested code is already signed with this identity; --force makes codesign
-          # recompute the resource seal over everything that is present now.
-          codesign --force --options runtime --timestamp --sign "$IDENTITY" "$APP"
+          APPHOST="$APP/Contents/MacOS/WitDatabaseStudio"
+
+          # Bottom-up, and deliberately NOT --deep, which Apple discourages and which signs the wrong
+          # things in the wrong order. The sequence is the one the WitCloud client arrived at the hard
+          # way, and it turns on a fact that is easy to get wrong: codesign treats EVERY file in
+          # Contents/MacOS/ as a subcomponent that must be SIGNED, not merely sealed - dylibs, the
+          # managed PE assemblies, and the data files (.deps.json, .runtimeconfig.json) alike. Signing
+          # only the bundle leaves them unsigned and the seal still fails.
+          echo "--- 1/3: every file in Contents/MacOS except the apphost ---"
+          find "$APP/Contents/MacOS" -type f ! -path "$APPHOST" \
+            -exec codesign --force --timestamp --options runtime --sign "$IDENTITY" {} +
+
+          echo "--- 2/3: the apphost, with entitlements ---"
+          codesign --force --timestamp --options runtime --entitlements "$ENT" \
+            --sign "$IDENTITY" "$APPHOST"
+
+          echo "--- 3/3: the bundle itself, last ---"
+          codesign --force --timestamp --options runtime --entitlements "$ENT" \
+            --sign "$IDENTITY" "$APP"
 
           echo "--- verifying the re-sealed bundle ---"
-          if codesign --verify --deep --strict --verbose=2 "$APP" 2>&1 | tail -5; then
+          if codesign --verify --strict --verbose=2 "$APP" 2>&1 | tail -8; then
             echo "Re-seal verified."
           else
             echo "::warning::the re-sealed bundle still does not verify - see above."
