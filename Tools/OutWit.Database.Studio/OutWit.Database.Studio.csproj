@@ -18,7 +18,7 @@
 
     <!-- Release info. The release workflow overrides Version from the studio-v* tag; this
          is what a local build gets. -->
-    <Version>2.0.0</Version>
+    <Version>3.0.0-dev</Version>
     <Product>WitDatabase Studio</Product>
     <Company>OutWit</Company>
   </PropertyGroup>

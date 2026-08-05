@@ -3,6 +3,44 @@
 Studio is versioned separately from the WitDatabase engine and released under its own `studio-v*` tag.
 The engine's changelog is `/CHANGELOG.md`.
 
+## 3.0.0-dev - in progress
+
+Studio is being refactored and redesigned. This section collects what has landed on the way; it is
+built and released under dev tags only, and is not a supported version. Full detail:
+`/Docs/PHASE14-STUDIO-REFACTORING.md`.
+
+### Fixed
+
+- **The password of an encrypted database is no longer written to the log file.** `DatabaseService`
+  logged the whole connection string - which carries `;Password=…` - on every connection attempt and
+  again on every failure. Harmless until 2.0 added a file log, and from that release on the password
+  was written to `%AppData%\WitDatabase.Studio\logs\studio.log`: the file users are asked to attach to
+  an issue. The log now records the data source, whether encryption was asked for and the store, and
+  nothing else.
+- **Deleting a row in the table editor now deletes it.** It never worked in any release. Rows read out
+  of the database were left in the state that means "not saved yet", and deleting one of those detaches
+  it rather than marking it deleted - so the commit threw, nothing was deleted, and every other edit in
+  the same buffer was lost with it.
+- **A set of edits is applied as one transaction.** It used to be sent one statement at a time: a set
+  that failed halfway left behind whatever had already gone in, and said only `Update failed: …`.
+  Now it is applied whole or not at all, and a refused set keeps its buffer so that nothing has to be
+  retyped.
+- **A table with no primary key opens for viewing, and says why.** Editing one built the `WHERE` clause
+  from every column of the row, which two identical rows both match - so changing one changed both.
+- **Closing a tab with unapplied edits asks.** Apply, discard, or keep the tab open. The same question
+  is asked when leaving the application and when disconnecting - while the connection is still there,
+  so that applying is still possible.
+- **File > Exit closes the application instead of ending the process.** It called `Environment.Exit(0)`,
+  which skips everything: the window size was not saved, unapplied edits were not asked about, and the
+  connection was never disposed - leaving the database file locked until the operating system reclaimed
+  the handle.
+- **Creating an LSM database no longer leaves a second, empty one beside it.** Choosing
+  `Documents\mydb.witdb` created the database *and* dropped `provider.meta` and `wal.log` into
+  `Documents`. Creating an LSM database now asks for a folder, because that is what one is.
+- **An in-memory database is the one you get.** The dialog used to build a database, throw it away and
+  connect to a different, empty one; combined with LSM it wrote a database into whichever directory the
+  application was launched from. That combination is now refused with an explanation.
+
 ## 2.0.0
 
 The first release since Studio was audited against the engine it ships with. Phase 13 asked what its
