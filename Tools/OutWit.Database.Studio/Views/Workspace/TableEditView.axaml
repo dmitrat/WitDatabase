@@ -9,10 +9,31 @@
              x:Class="OutWit.Database.Studio.Views.Workspace.TableEditView"
              x:DataType="tabs:TableEditTabViewModel">
 
-    <Grid RowDefinitions="Auto,*,Auto">
-        
-        <!-- Toolbar -->
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+        <!-- Read-only banner: an explanation, not a row of mysteriously grey buttons (WS-35) -->
         <Border Grid.Row="0"
+                Background="#FFF3CD"
+                BorderBrush="#FFC107"
+                BorderThickness="0,0,0,1"
+                Padding="10,6"
+                IsVisible="{Binding IsReadOnly}"
+                AutomationProperties.AutomationId="TableEditReadOnlyBanner">
+            <StackPanel Orientation="Horizontal" Spacing="8">
+                <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
+                          Width="14" Height="14"
+                          Foreground="#856404"
+                          VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding ReadOnlyReason}"
+                           FontSize="12"
+                           TextWrapping="Wrap"
+                           Foreground="#856404"
+                           VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- Toolbar -->
+        <Border Grid.Row="1"
                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                 BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                 BorderThickness="0,0,0,1"
@@ -116,7 +137,7 @@
         </Border>
 
         <!-- Data Grid -->
-        <Grid Grid.Row="1">
+        <Grid Grid.Row="2">
             <!-- Editable DataGrid -->
             <c:EditableDataGrid ResultView="{Binding CurrentView}"
                                 ColumnSettings="{Binding EditColumnSettings}"
@@ -147,7 +168,7 @@
         </Grid>
 
         <!-- Status Bar -->
-        <Panel Grid.Row="2">
+        <Panel Grid.Row="3">
             
             <!-- Success Status -->
             <Border Background="#D4EDDA"

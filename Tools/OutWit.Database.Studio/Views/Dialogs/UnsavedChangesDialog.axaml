@@ -1,0 +1,48 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        mc:Ignorable="d"
+        d:DesignWidth="430"
+        d:DesignHeight="170"
+        x:Class="OutWit.Database.Studio.Views.Dialogs.UnsavedChangesDialog"
+        Title="Unsaved changes"
+        Width="430"
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False">
+
+    <Grid RowDefinitions="Auto,Auto,Auto" Margin="20" >
+
+        <TextBlock Grid.Row="0"
+                   Name="HeaderText"
+                   FontWeight="SemiBold"
+                   FontSize="14"
+                   TextWrapping="Wrap"/>
+
+        <TextBlock Grid.Row="1"
+                   Margin="0,10,0,0"
+                   TextWrapping="Wrap"
+                   Text="The tab is closing. Apply the changes to the database, or discard them?"/>
+
+        <StackPanel Grid.Row="2"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="8"
+                    Margin="0,20,0,0">
+            <Button Name="CancelButton"
+                    Content="Keep open"
+                    IsCancel="True"
+                    AutomationProperties.AutomationId="UnsavedChangesCancel"/>
+            <Button Name="DiscardButton"
+                    Content="Discard changes"
+                    AutomationProperties.AutomationId="UnsavedChangesDiscard"/>
+            <Button Name="ApplyButton"
+                    Content="Apply"
+                    IsDefault="True"
+                    Classes="accent"
+                    AutomationProperties.AutomationId="UnsavedChangesApply"/>
+        </StackPanel>
+
+    </Grid>
+</Window>

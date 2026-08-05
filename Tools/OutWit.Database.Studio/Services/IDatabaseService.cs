@@ -116,5 +116,11 @@ public interface IDatabaseService : IDisposable
     /// </summary>
     Task<object?> ExecuteScalarAsync(string sql, CancellationToken ct = default);
 
+    /// <summary>
+    /// Runs a set of statements as one transaction: all of them, or none. Used by the table editor,
+    /// whose buffer of edits is one decision by the user and has to reach the database as one.
+    /// </summary>
+    Task<BatchResult> ExecuteBatchAsync(IReadOnlyList<string> statements, CancellationToken ct = default);
+
     #endregion
 }

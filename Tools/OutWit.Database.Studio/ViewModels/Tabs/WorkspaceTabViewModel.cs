@@ -61,9 +61,19 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
     }
 
     /// <summary>
-    /// Called before the tab is closed. Return false to cancel closing.
+    /// Whether the tab would close without anyone having to be asked. Used to decide whether a close
+    /// needs a question at all - never as the answer to one.
     /// </summary>
     public virtual bool CanClose() => true;
+
+    /// <summary>
+    /// Called before the tab is closed, and allowed to ask. Returns false to cancel the close.
+    ///
+    /// Separate from <see cref="CanClose"/> because a question needs a round trip to the user, and a
+    /// bool-returning method has nowhere to put one - which is how the TODO above the old
+    /// unconditional 'return true' stayed a TODO while edits were being discarded silently.
+    /// </summary>
+    public virtual Task<bool> ConfirmCloseAsync() => Task.FromResult(CanClose());
 
     /// <summary>
     /// Called when the tab is being closed.
@@ -78,7 +88,7 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
 
     protected void UpdateDisplayTitle()
     {
-        DisplayTitle = IsModified ? $"{Title} •" : Title;
+        DisplayTitle = IsModified ? $"{Title} â€¢" : Title;
     }
 
     #endregion

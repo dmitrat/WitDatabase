@@ -27,8 +27,11 @@ internal class FakeDatabaseService : IDatabaseService
     public Task<int> ExecuteNonQueryAsync(string sql, CancellationToken ct = default) => 
         Task.FromResult(0);
     
-    public Task<object?> ExecuteScalarAsync(string sql, CancellationToken ct = default) => 
+    public Task<object?> ExecuteScalarAsync(string sql, CancellationToken ct = default) =>
         Task.FromResult<object?>(null);
+
+    public Task<BatchResult> ExecuteBatchAsync(IReadOnlyList<string> statements, CancellationToken ct = default) =>
+        Task.FromResult(new BatchResult { FailedIndex = 0, ErrorMessage = "Not connected" });
     
     public Task<IReadOnlyList<TableInfo>> GetTablesAsync(CancellationToken ct = default) => 
         Task.FromResult<IReadOnlyList<TableInfo>>(Array.Empty<TableInfo>());
@@ -113,6 +116,37 @@ internal class FakeSettingsService : ISettingsService
     }
 
     #endregion
+}
+
+/// <summary>
+/// Answers the unsaved-changes question with a scripted decision, and records that it was asked.
+///
+/// "Was the user asked" is half of what B6 is about: a close that silently applies is as wrong as a
+/// close that silently discards, and only the count can tell them apart.
+/// </summary>
+internal sealed class ScriptedConfirmationService : IConfirmationService
+{
+    public ScriptedConfirmationService(UnsavedChangesDecision decision)
+    {
+        Decision = decision;
+    }
+
+    public UnsavedChangesDecision Decision { get; set; }
+
+    public int TimesAsked { get; private set; }
+
+    public int LastChangeCount { get; private set; }
+
+    public string? LastTitle { get; private set; }
+
+    public Task<UnsavedChangesDecision> AskAboutUnsavedChangesAsync(string title, int changeCount)
+    {
+        TimesAsked++;
+        LastTitle = title;
+        LastChangeCount = changeCount;
+
+        return Task.FromResult(Decision);
+    }
 }
 
 /// <summary>

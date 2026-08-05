@@ -73,9 +73,9 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     private void InitCommands()
     {
         NewQueryTabCommand = new RelayCommand(AddNewQueryTab);
-        CloseTabCommand = new RelayCommand<WorkspaceTabViewModel>(CloseTab);
-        CloseAllTabsCommand = new RelayCommand(CloseAllTabs);
-        CloseOtherTabsCommand = new RelayCommand<WorkspaceTabViewModel>(CloseOtherTabs);
+        CloseTabCommand = new RelayCommandAsync<WorkspaceTabViewModel>(CloseTabAsync);
+        CloseAllTabsCommand = new RelayCommandAsync(CloseAllTabsAsync);
+        CloseOtherTabsCommand = new RelayCommandAsync<WorkspaceTabViewModel>(CloseOtherTabsAsync);
         PinTabCommand = new RelayCommand<WorkspaceTabViewModel>(PinTab);
         UnpinTabCommand = new RelayCommand<WorkspaceTabViewModel>(UnpinTab);
         SaveTabCommand = new RelayCommandAsync(SaveCurrentTabAsync);
@@ -191,7 +191,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         Tabs.Insert(insertIndex, tab);
     }
 
-    private void CloseTab(WorkspaceTabViewModel? tab)
+    private async Task CloseTabAsync(WorkspaceTabViewModel? tab)
     {
         if (tab == null)
             return;
@@ -204,7 +204,9 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         if (Tabs.Count <= 1)
             return;
 
-        if (!tab.CanClose())
+        // ConfirmCloseAsync, not CanClose: a tab holding unapplied edits gets to ask before its
+        // buffer is thrown away, and OnClosed below disposes the DataTable that holds it.
+        if (!await tab.ConfirmCloseAsync())
             return;
 
         tab.PropertyChanged -= OnTabPropertyChanged;
@@ -225,11 +227,11 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         Logger.LogInformation("Closed tab: {Title}", tab.Title);
     }
 
-    private void CloseAllTabs()
+    private async Task CloseAllTabsAsync()
     {
         // Keep at least one tab
         var tabsToClose = Tabs.Where(t => !t.IsPinned).ToList();
-        
+
         // If all tabs would be closed, keep the selected one or the last one
         if (tabsToClose.Count == Tabs.Count)
         {
@@ -240,7 +242,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 
         foreach (var tab in tabsToClose)
         {
-            if (!tab.CanClose())
+            if (!await tab.ConfirmCloseAsync())
                 continue;
 
             tab.PropertyChanged -= OnTabPropertyChanged;
@@ -253,7 +255,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         Logger.LogInformation("Closed all unpinned tabs (kept at least one)");
     }
 
-    private void CloseOtherTabs(WorkspaceTabViewModel? keepTab)
+    private async Task CloseOtherTabsAsync(WorkspaceTabViewModel? keepTab)
     {
         if (keepTab == null)
             return;
@@ -262,7 +264,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 
         foreach (var tab in tabsToClose)
         {
-            if (!tab.CanClose())
+            if (!await tab.ConfirmCloseAsync())
                 continue;
 
             tab.PropertyChanged -= OnTabPropertyChanged;
@@ -273,6 +275,28 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         SelectedTab = keepTab;
 
         Logger.LogInformation("Closed other tabs, kept: {Title}", keepTab.Title);
+    }
+
+    /// <summary>
+    /// Asks every tab holding unapplied work, for the two things that end all of them at once:
+    /// leaving the application, and disconnecting the database. Returns false as soon as one says no,
+    /// and asks no further - the answer is already "stay".
+    ///
+    /// Deliberately asks BEFORE the connection goes away. A tab asked afterwards could only offer to
+    /// discard, since there is nothing left to apply the edits to.
+    /// </summary>
+    public async Task<bool> ConfirmCloseAllAsync()
+    {
+        foreach (var tab in Tabs.ToList())
+        {
+            if (tab.CanClose())
+                continue;
+
+            if (!await tab.ConfirmCloseAsync())
+                return false;
+        }
+
+        return true;
     }
 
     private void PinTab(WorkspaceTabViewModel? tab)
@@ -660,6 +684,12 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 
             foreach (var tab in tabsToClose)
             {
+                // The question belongs before the disconnect (CloseDatabaseAsync asks it), because by
+                // here there is no connection left to apply anything to. Saying so out loud rather
+                // than discarding in silence.
+                if (!tab.CanClose())
+                    Logger.LogWarning("Discarding unapplied changes in {Title}: the connection is gone", tab.Title);
+
                 tab.PropertyChanged -= OnTabPropertyChanged;
                 tab.OnClosed();
                 Tabs.Remove(tab);

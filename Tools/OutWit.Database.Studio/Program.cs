@@ -125,6 +125,11 @@ sealed class Program
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IExportService, ExportService>();
 
+        // The owner window is resolved when the question is asked, not now: the ViewModel graph is
+        // built before any window exists, and this singleton outlives every one of them.
+        services.AddSingleton<IConfirmationService>(
+            _ => new ConfirmationService(() => ViewModels.ApplicationViewModel.Instance.MainWindow));
+
         // Application ViewModel (main container)
         services.AddSingleton<ApplicationViewModel>();
 

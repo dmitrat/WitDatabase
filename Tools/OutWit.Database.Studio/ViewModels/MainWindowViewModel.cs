@@ -56,7 +56,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         ClearRecentFilesCommand = new RelayCommandAsync(ClearRecentFilesAsync);
         SettingsCommand = new RelayCommandAsync(ShowSettingsAsync);
         AboutCommand = new RelayCommandAsync(ShowAboutAsync);
-        ExitCommand = new RelayCommand(Exit);
+        ExitCommand = new RelayCommandAsync(ExitAsync);
     }
 
     #endregion
@@ -152,6 +152,14 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     {
         if (!CanCloseDatabase())
             return;
+
+        // Ask while there is still a connection to apply the edits to. Afterwards the only honest
+        // offer left would be to discard them.
+        if (!await ApplicationVm.WorkspaceTabsVm.ConfirmCloseAllAsync())
+        {
+            Logger.LogInformation("Disconnect cancelled: a tab has unapplied changes");
+            return;
+        }
 
         IsLoading = true;
         StatusText = "Disconnecting...";
@@ -290,9 +298,16 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         await AboutDialog.ShowAsync(mainWindow, aboutVm);
     }
 
-    private void Exit()
+    /// <summary>
+    /// File &gt; Exit. Goes through the single shutdown path, which is the same one the window's close
+    /// button takes: ask about unapplied work, save the window state in MainWindow.OnClosing, dispose
+    /// the service provider - and with it the connection holding the database's exclusive file lock.
+    ///
+    /// It used to be Environment.Exit(0), which does none of that: the process simply stops.
+    /// </summary>
+    private async Task ExitAsync()
     {
-        Environment.Exit(0);
+        await ApplicationVm.RequestShutdownAsync();
     }
 
     #endregion

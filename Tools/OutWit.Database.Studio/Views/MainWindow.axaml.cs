@@ -13,6 +13,16 @@ namespace OutWit.Database.Studio.Views;
 /// </summary>
 public partial class MainWindow : Window
 {
+    #region Fields
+
+    /// <summary>
+    /// Set once the tabs have been asked about unapplied work, so that the second pass through
+    /// OnClosing - and a close requested by File &gt; Exit, which asked already - does not ask twice.
+    /// </summary>
+    private bool m_closeConfirmed;
+
+    #endregion
+
     #region Constructors
 
     public MainWindow()
@@ -22,9 +32,13 @@ public partial class MainWindow : Window
             .ResetOwnerWindow(this);
 
         InitializeComponent();
-        
+
         Loaded += OnLoaded;
         Closing += OnClosing;
+
+        // File > Exit ends here rather than in Environment.Exit, so both ways out of Studio run the
+        // same close: window state saved, connection disposed, file lock released.
+        ApplicationViewModel.Instance.ShutdownRequested += OnShutdownRequested;
         ThemeToggleButton.Click += OnThemeToggleClick;
         
         if (Application.Current != null)
@@ -67,8 +81,30 @@ public partial class MainWindow : Window
         }
     }
 
+    private void OnShutdownRequested(object? sender, EventArgs e)
+    {
+        // RequestShutdownAsync has already asked the tabs.
+        m_closeConfirmed = true;
+        Close();
+    }
+
     private async void OnClosing(object? sender, WindowClosingEventArgs e)
     {
+        // The close button is the other way out, and it has to ask the same question. Closing cannot
+        // wait for an answer, so the first pass is cancelled and a second one is started once the
+        // answer is in.
+        if (!m_closeConfirmed)
+        {
+            e.Cancel = true;
+
+            if (!await ApplicationViewModel.Instance.WorkspaceTabsVm.ConfirmCloseAllAsync())
+                return;
+
+            m_closeConfirmed = true;
+            Close();
+            return;
+        }
+
         try
         {
             var state = WindowState == WindowState.Maximized ? "Maximized" : "Normal";
