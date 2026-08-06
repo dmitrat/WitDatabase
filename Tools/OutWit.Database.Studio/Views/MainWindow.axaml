@@ -7,6 +7,7 @@
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:workspace="clr-namespace:OutWit.Database.Studio.Views.Workspace"
         xmlns:services="using:OutWit.Database.Studio.Services"
+        xmlns:converters="using:OutWit.Database.Studio.Converters"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="OutWit.Database.Studio.Views.MainWindow"
         x:DataType="vm:ApplicationViewModel"
@@ -352,7 +353,16 @@
 		</Border>
 
 		<!-- Основной контент с разделителем -->
-		<Grid Grid.Row="2" ColumnDefinitions="250,Auto,*,Auto,320">
+		<!-- The last two columns take no width while the inspector is hidden: a collapsed control does
+		     not collapse its column, and 324 reserved pixels read as the window being off-centre. -->
+		<Grid Grid.Row="2">
+			<Grid.ColumnDefinitions>
+				<ColumnDefinition Width="250"/>
+				<ColumnDefinition Width="Auto"/>
+				<ColumnDefinition Width="*"/>
+				<ColumnDefinition Width="{Binding MainWindowVm.IsConnected, Converter={x:Static converters:PanelConverters.SplitterWidth}}"/>
+				<ColumnDefinition Width="{Binding MainWindowVm.IsConnected, Converter={x:Static converters:PanelConverters.InspectorWidth}}"/>
+			</Grid.ColumnDefinitions>
 			<!-- Обозреватель баз данных -->
 			<Border Grid.Column="0"
                     BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
