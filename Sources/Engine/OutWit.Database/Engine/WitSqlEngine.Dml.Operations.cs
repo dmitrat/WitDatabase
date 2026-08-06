@@ -76,10 +76,18 @@ public sealed partial class WitSqlEngine
 
         // First, try auto-increment primary key column
         var autoIncrementCol = table.Columns.FirstOrDefault(c => c.IsAutoIncrement);
+        var keyFromGenerator = false;
+
         if (autoIncrementCol != null && row.TryGetValue(autoIncrementCol.Name, out var pkValue) && !pkValue.IsNull)
         {
             rowId = pkValue.AsInt64();
             hasRowId = true;
+
+            // The value may have come from the generator rather than from the user: the statement
+            // layer fills an AUTOINCREMENT column in before the row gets here, and marks it so that
+            // the UNIQUE check is SKIPPED. That skip is the reason a counter behind the data
+            // destroys a row instead of raising, so the key is checked below either way.
+            keyFromGenerator = true;
         }
         // Then try _rowid column
         else if (row.TryGetValue(table.RowIdColumn, out var rowIdValue) && !rowIdValue.IsNull)
@@ -95,6 +103,23 @@ public sealed partial class WitSqlEngine
         }
 
         var key = SchemaCatalog.CreateRowKey(tableName, rowId);
+
+        // A generated key that lands on an existing row means the counter is behind the data, and
+        // writing over that row is the worst possible answer: the insert reports success and a row the
+        // user never touched is gone. An explicit key is already refused in this case - it goes through
+        // the UNIQUE check in the statement layer, which never sees a generated one.
+        //
+        // Renaming a table used to leave the counter behind and produce exactly this, but the guard is
+        // not about the rename: any counter that ends up behind the data reaches here, and the engine
+        // must not destroy a row on the way to finding out.
+        if ((!hasRowId || keyFromGenerator) && GetFromStore(key) != null)
+        {
+            throw new InvalidOperationException(
+                $"UNIQUE constraint failed: {tableName}.{autoIncrementCol?.Name ?? "_rowid"} "
+                + $"(duplicate value: {rowId}). The table's key counter is behind its rows; the insert "
+                + "was refused rather than overwriting one.");
+        }
+
         var value = table.SerializeRow(row);
 
         PutToStore(key, value);
