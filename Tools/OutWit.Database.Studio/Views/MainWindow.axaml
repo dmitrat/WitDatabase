@@ -567,6 +567,8 @@
 					<TextBlock AutomationProperties.AutomationId="StatusConnection"
 					           Text="{Binding MainWindowVm.ConnectionSummary}"
 					           FontSize="12"
+					           MaxWidth="440"
+					           TextTrimming="CharacterEllipsis"
 					           VerticalAlignment="Center"/>
 				</StackPanel>
 
@@ -581,23 +583,34 @@
 
 				<!-- What is happening. A long operation does not block the window: other tabs keep
 				     working and this is where it is stopped (WS-6). -->
-				<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
-				            HorizontalAlignment="Center" VerticalAlignment="Center">
-					<ProgressBar IsIndeterminate="True" Width="90" Height="3"
+				<!-- A Grid rather than a centred StackPanel: a StackPanel takes the width it wants and
+				     draws over its neighbours when it cannot have it, and the connection summary
+				     carries a full file path, so on a real database there is nothing left for this
+				     column. Found by running the application - "B-Tree" and "Autocommit" were being
+				     drawn on top of by the status text. -->
+				<Grid Grid.Column="2" ColumnDefinitions="Auto,*,Auto" ClipToBounds="True"
+				      VerticalAlignment="Center">
+					<ProgressBar Grid.Column="0" IsIndeterminate="True" Width="90" Height="3"
+					             Margin="0,0,8,0"
+					             VerticalAlignment="Center"
 					             IsVisible="{Binding WorkspaceTabsVm.IsExecuting}"/>
-					<TextBlock AutomationProperties.AutomationId="StatusActivity"
+					<TextBlock Grid.Column="1"
+					           AutomationProperties.AutomationId="StatusActivity"
 					           Text="{Binding MainWindowVm.StatusText}"
 					           FontSize="12"
+					           TextAlignment="Center"
 					           TextTrimming="CharacterEllipsis"
 					           VerticalAlignment="Center"/>
-					<Button AutomationProperties.AutomationId="StatusCancel" AutomationProperties.Name="Cancel"
+					<Button Grid.Column="2"
+					        AutomationProperties.AutomationId="StatusCancel" AutomationProperties.Name="Cancel"
 					        Content="Cancel"
 					        FontSize="11"
 					        Padding="8,0"
 					        Height="20"
+					        Margin="8,0,0,0"
 					        IsVisible="{Binding WorkspaceTabsVm.IsExecuting}"
 					        Command="{Binding WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand}"/>
-				</StackPanel>
+				</Grid>
 
 				<!-- Transaction. Autocommit is the quiet state; an open transaction is the one that is
 				     dangerous to forget, so it is the only one that will be highlighted (WS-26, stage 6). -->

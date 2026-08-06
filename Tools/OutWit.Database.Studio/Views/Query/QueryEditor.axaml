@@ -273,6 +273,8 @@
                                  numbers at all - so there is not even an estimate to label. -->
                             <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center"
                                        FontSize="11"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip.Tip="the plan is built without running the query, and this engine reports no row counts or costs"
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                                        Text="the plan is built without running the query, and this engine reports no row counts or costs"/>
 
@@ -291,6 +293,14 @@
                               Background="Transparent"
                               BorderThickness="0"
                               Margin="4">
+                        <!-- Open. A plan is only useful whole, and the node worth looking at - the
+                             scan - is always the deepest one. Found by running the application: the
+                             tree came up showing one word and a chevron. -->
+                        <TreeView.Styles>
+                            <Style Selector="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="True"/>
+                            </Style>
+                        </TreeView.Styles>
                         <TreeView.ItemTemplate>
                             <TreeDataTemplate ItemsSource="{Binding Children}">
                                 <StackPanel Spacing="1" Margin="0,2">
@@ -311,7 +321,7 @@
                                     <TextBlock Text="{Binding Warning}"
                                                FontSize="11"
                                                TextWrapping="Wrap"
-                                               MaxWidth="620"
+                                               MaxWidth="420"
                                                Margin="4,0,0,0"
                                                Foreground="#D9A441"
                                                IsVisible="{Binding Warning, Converter={x:Static ObjectConverters.IsNotNull}}"/>
@@ -330,7 +340,7 @@
             </TabItem>
 
             <!-- ================================ HISTORY ================================ -->
-            <TabItem Header="History">
+            <TabItem Header="History" IsSelected="{Binding IsHistorySelected, Mode=TwoWay}">
                 <Grid RowDefinitions="Auto,*,Auto">
 
                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="8">

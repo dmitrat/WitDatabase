@@ -123,6 +123,20 @@ public class QueryWorkspaceTests
             "the name is underlined, not one character of it");
         Assert.That(m_tab.ErrorSuggestion, Is.EqualTo("Orders"));
 
+        // The message and the underline have to agree about where. Found by running the application:
+        // the squiggle was under Ordres on line 4 while the message read "Line 1, column 1", because
+        // the message was written from the statement's own start before the name had been found.
+        Assert.That(m_tab.ErrorMessage, Does.Contain($"line {m_tab.ErrorLine}").IgnoreCase);
+        Assert.That(m_tab.ErrorMessage, Does.Contain($"column {m_tab.ErrorColumn + 1}"));
+
+        Assert.That(m_fixture.MainWindow.StatusText, Is.EqualTo(m_tab.ErrorMessage),
+            "and so does the status bar, which was a third answer - it had been handed the message " +
+            "before the position was corrected");
+
+        Assert.That(m_tab.ApplySuggestionCommand.CanExecute(null), Is.True,
+            "and the Replace button has to be pressable - it was grey, because a RelayCommand's " +
+            "CanExecute is not re-asked unless it is told to");
+
         // And the correction is an edit, not a remark.
         m_tab.ApplySuggestionCommand.Execute(null);
 
@@ -373,6 +387,31 @@ public class QueryWorkspaceTests
         Assert.That(m_tab.SqlText, Is.EqualTo(remembered.Text));
         Assert.That(m_tab.HasResults, Is.True,
             "bringing a query back puts the TEXT in the editor and runs nothing");
+    }
+
+    /// <summary>
+    /// Found by running the application: the panel was filled only by the Search button, so opening
+    /// the History tab showed a blank panel under a heading that promised a history. Every ViewModel
+    /// case here called Refresh itself - which is the one step a user does not take.
+    /// </summary>
+    [Test]
+    public async Task OpeningTheHistoryPanelFillsItTest()
+    {
+        m_tab.SqlText = "SELECT * FROM Customers;";
+        await m_tab.ExecuteSqlAsync(m_tab.SqlText);
+
+        Assert.That(m_tab.History, Is.Empty, "the control: nothing has asked for the history yet");
+
+        m_tab.IsHistorySelected = true;
+
+        // The refresh is started by the property change and awaited here, since nothing else can.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+
+        while (m_tab.History.Count == 0 && DateTime.UtcNow < deadline)
+            await Task.Delay(10);
+
+        Assert.That(m_tab.History, Is.Not.Empty,
+            "opening the panel is the request to see what is in it");
     }
 
     [Test]

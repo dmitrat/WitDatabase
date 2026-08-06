@@ -397,10 +397,41 @@ public partial class QueryTabViewModel : ISqlCompletionSource
             ErrorColumn = scriptLine == 1 ? scriptColumn + fragment.Column : scriptColumn;
             ErrorLength = error.Name.Length;
 
+            // The message was written before the name was found, from the statement's own start -
+            // so it said "line 1" while the underline was on line 2. Two answers to "where", one of
+            // them wrong, is worse than either alone: found by running the application. And the
+            // status bar was a THIRD, because it was given the message before this ran.
+            RewriteErrorPosition();
+
+            ApplicationVm.MainWindowVm.StatusText = ErrorMessage!;
+
             UpdateUnderline();
         }
 
         ErrorSuggestion = SqlDiagnostics.Nearest(error.Name, CandidatesFor(error.Kind));
+
+        (ApplySuggestionCommand as RelayCommand)?.RaiseCanExecuteChanged();
+    }
+
+    /// <summary>
+    /// Puts the position now known into the message, wherever the message names one. The rest of it -
+    /// "Statement 2 of 7", the engine's own words - is left exactly as it was.
+    /// </summary>
+    private void RewriteErrorPosition()
+    {
+        if (ErrorMessage == null)
+            return;
+
+        ErrorMessage = System.Text.RegularExpressions.Regex.Replace(
+            ErrorMessage,
+            @"[Ll]ine \d+, column \d+",
+            $"line {ErrorLine}, column {ErrorColumn + 1}",
+            System.Text.RegularExpressions.RegexOptions.None,
+            TimeSpan.FromSeconds(1));
+
+        // The first letter of a message is a capital, and the sentence may now start with "line".
+        if (ErrorMessage.StartsWith("line ", StringComparison.Ordinal))
+            ErrorMessage = "L" + ErrorMessage[1..];
     }
 
     private IEnumerable<string> CandidatesFor(string kind)
@@ -442,6 +473,8 @@ public partial class QueryTabViewModel : ISqlCompletionSource
         ErrorMessage = null;
         ErrorLine = 0;
         ErrorLength = 0;
+
+        (ApplySuggestionCommand as RelayCommand)?.RaiseCanExecuteChanged();
 
         CheckSyntaxNow();
     }
@@ -522,6 +555,17 @@ public partial class QueryTabViewModel : ISqlCompletionSource
 
     [Notify]
     public string? HistoryMessage { get; private set; }
+
+    /// <summary>
+    /// Whether the History panel is the one being looked at.
+    ///
+    /// It exists because opening the panel and finding it empty is what the application did: the list
+    /// was only filled by the Search button, so the first thing anybody saw was a blank panel under a
+    /// heading that promised a history. Found by running it - the ViewModel tests all called Refresh
+    /// themselves, which is exactly the step a user does not take.
+    /// </summary>
+    [Notify]
+    public bool IsHistorySelected { get; set; }
 
     /// <summary>
     /// The isolation the NEXT transaction opens at. Lives on the tab, as the design asks (WS-26); the

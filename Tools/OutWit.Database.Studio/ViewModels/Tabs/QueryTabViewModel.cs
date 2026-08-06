@@ -522,6 +522,10 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel
             // own previous run, and a keystroke must not wait for a parse.
             _ = CheckSyntaxAsync();
         }
+
+        // Opening the History panel is the request to see the history (3.7).
+        if (e.IsProperty((QueryTabViewModel vm) => vm.IsHistorySelected) && IsHistorySelected)
+            _ = RefreshHistoryAsync();
     }
 
     protected override void OnSessionStatusChanged(bool isConnected)
