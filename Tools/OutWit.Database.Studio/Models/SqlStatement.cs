@@ -22,7 +22,19 @@ public sealed record SqlParameter(string Name, object? Value);
 /// <see cref="SqlValueFormatter"/> keeps its job on the other side: showing a person the SQL for what
 /// they are about to do (WS-32), where a literal is exactly what should be shown.
 /// </summary>
-public sealed partial record SqlStatement(string Text, IReadOnlyList<SqlParameter> Parameters)
+/// <param name="ExpectedRows">
+/// How many rows this statement must affect, or null when it does not matter.
+///
+/// This is the whole mechanism behind WS-37, and it is the only one available: the engine has no
+/// optimistic concurrency of its own. A statement that names its row by primary key AND by the values
+/// it was read with affects one row if nothing has changed and - measured 2026-08-06 - <b>zero</b> if
+/// somebody else got there first. The count is the difference between "applied" and "applied to a row
+/// that is no longer the one the user was looking at".
+/// </param>
+public sealed partial record SqlStatement(
+    string Text,
+    IReadOnlyList<SqlParameter> Parameters,
+    int? ExpectedRows = null)
 {
     #region Constants
 

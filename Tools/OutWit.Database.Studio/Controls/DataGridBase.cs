@@ -70,6 +70,33 @@ public abstract partial class DataGridBase : DataGrid
     {
         ColumnReordered += OnColumnReordered;
         LayoutUpdated += OnLayoutUpdated;
+        Sorting += OnSorting;
+    }
+
+    /// <summary>
+    /// A click on a header asks the ENGINE to sort, and the grid does not sort what it is holding
+    /// (WS-30).
+    ///
+    /// This is what the DataGrid does by default, and it is the lie the decision is about: the grid
+    /// has one page of a table, so sorting it puts the largest of a THOUSAND rows at the top and
+    /// presents it as the largest of five thousand. Nobody notices until they page.
+    ///
+    /// When no command is bound - the query result grid, which holds the whole answer to a query -
+    /// the default sorting is left alone, because there the page IS the data.
+    /// </summary>
+    private void OnSorting(object? sender, DataGridColumnEventArgs e)
+    {
+        var command = SortCommand;
+
+        if (command == null)
+            return;
+
+        e.Handled = true;
+
+        var column = e.Column.Header?.ToString();
+
+        if (!string.IsNullOrEmpty(column) && command.CanExecute(column))
+            command.Execute(column);
     }
 
     #endregion
@@ -229,6 +256,14 @@ public abstract partial class DataGridBase : DataGrid
     /// </summary>
     private void ApplySavedSort()
     {
+        // Not when the sort belongs to the query (WS-30). This line re-sorted the PAGE by a column
+        // remembered from an earlier session, every time the columns were rebuilt - so a table opened
+        // ordered by its key came up in some other order, and each page was internally sorted and
+        // jointly meaningless. Found by running the application: rows arrived 12..1 under a footer
+        // that said "ordered by Id".
+        if (SortCommand != null)
+            return;
+
         if (ColumnSettings == null || string.IsNullOrEmpty(ColumnSettings.SortColumn))
             return;
 
@@ -342,6 +377,14 @@ public abstract partial class DataGridBase : DataGrid
     /// </summary>
     [StyledProperty]
     public GridColumnSettings? ColumnSettings { get; set; }
+
+    /// <summary>
+    /// Who sorts, when a header is clicked (WS-30). Bound by a grid that holds ONE PAGE of a table,
+    /// where sorting what is held would be sorting a sample; left null by one that holds a whole
+    /// result, where the page is the data and the built-in sorting is honest.
+    /// </summary>
+    [StyledProperty]
+    public System.Windows.Input.ICommand? SortCommand { get; set; }
 
     protected override Type StyleKeyOverride => typeof(DataGrid);
 

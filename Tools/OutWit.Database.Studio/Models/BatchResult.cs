@@ -31,6 +31,16 @@ public sealed class BatchResult
     public string? ErrorMessage { get; init; }
 
     /// <summary>
+    /// True when the set was refused because a statement matched no row - which, for a statement that
+    /// names its row by primary key AND by the values it was read with, means somebody else changed
+    /// that row first (WS-37).
+    ///
+    /// A separate answer from a failure, because it needs a different question put to the user: not
+    /// "it did not work" but "here is your value and here is the one in the database".
+    /// </summary>
+    public bool IsConflict { get; init; }
+
+    /// <summary>
     /// Nothing was asked for, so nothing failed. Committed on purpose: an empty set of edits is not
     /// an error, and the caller should not have to special-case it.
     /// </summary>

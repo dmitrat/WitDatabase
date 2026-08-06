@@ -469,21 +469,16 @@ public class SqlLayerTests
     {
         await using var studio = await StudioFixture.CreateAsync();
 
-        var editor = await studio.Workspace.OpenTableEditTabAsync(studio.Database, "Orders");
-        editor.PageSize = 2;
-        await editor.LoadDataAsync();
+        // Stage 7 moved the building of this into GridQuery, where Show SQL reads it from too, so the
+        // shapes are asked of that rather than of a private method through reflection.
+        var view = new GridView("Orders", [], null, false, "Id", 0, 2, null);
 
-        var build = typeof(TableEditTabViewModel).GetMethod("BuildSelectStatement",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Instance)!;
-
-        var firstPage = (SqlStatement)build.Invoke(editor, [3])!;
-
-        await StudioFixture.PressAsync(editor.NextPageCommand);
-
-        var secondPage = (SqlStatement)build.Invoke(editor, [3])!;
+        var firstPage = GridQuery.Page(view).Statement;
+        var secondPage = GridQuery.Page(view with { PageIndex = 1, Anchor = 2L }).Statement;
 
         Assert.Multiple(() =>
         {
+            Assert.That(GridQuery.PagingOf(view), Is.EqualTo(GridPaging.First));
             Assert.That(firstPage.Text, Does.Not.Contain("OFFSET"), "nothing to count past");
             Assert.That(firstPage.Text, Does.Not.Contain("WHERE"), "and nothing to compare");
             Assert.That(firstPage.Text, Does.Contain("LIMIT 3"), "one row more than the page shows");
@@ -493,6 +488,17 @@ public class SqlLayerTests
             Assert.That(secondPage.Parameters.Select(p => p.Name), Does.Contain("@anchor"),
                 "and the key is bound, not written in - a key can be a string");
         });
+
+        // And the tab really does page that way, which is what the shapes above are about.
+        var editor = await studio.Workspace.OpenTableEditTabAsync(studio.Database, "Orders");
+        editor.PageSize = 2;
+        await editor.LoadDataAsync();
+
+        Assert.That(editor.Paging, Is.EqualTo(GridPaging.First));
+
+        await StudioFixture.PressAsync(editor.NextPageCommand);
+
+        Assert.That(editor.Paging, Is.EqualTo(GridPaging.Keyset));
     }
 
     /// <summary>

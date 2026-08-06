@@ -207,7 +207,30 @@ public sealed partial class DatabaseSession
 
                 try
                 {
-                    affected += await command.ExecuteNonQueryAsync(ct);
+                    var rows = await command.ExecuteNonQueryAsync(ct);
+
+                    // A statement that says how many rows it must touch is asserting that the row it
+                    // was built from is still the row in the database (WS-37). Zero means it is not.
+                    if (statements[i].ExpectedRows is { } expected && rows != expected)
+                    {
+                        await transaction.RollbackAsync(ct);
+
+                        m_logger.LogWarning(
+                            "Batch of {Count} rolled back at statement {Index}: {Rows} rows affected, {Expected} expected",
+                            statements.Count, i + 1, rows, expected);
+
+                        return new BatchResult
+                        {
+                            Committed = false,
+                            IsConflict = true,
+                            FailedIndex = i,
+                            ErrorMessage = rows == 0
+                                ? "The row was changed or removed by another connection after it was read here."
+                                : $"The statement matched {rows} rows where exactly {expected} was expected."
+                        };
+                    }
+
+                    affected += rows;
                 }
                 catch (Exception ex)
                 {
@@ -273,7 +296,24 @@ public sealed partial class DatabaseSession
         {
             try
             {
-                affected += await ExecuteNonQueryAsync(statements[i], ct);
+                var rows = await ExecuteNonQueryAsync(statements[i], ct);
+
+                if (statements[i].ExpectedRows is { } expected && rows != expected)
+                {
+                    await ExecuteNonQueryAsync($"ROLLBACK TO SAVEPOINT {SAVEPOINT}", ct);
+
+                    return new BatchResult
+                    {
+                        Committed = false,
+                        IsConflict = true,
+                        FailedIndex = i,
+                        ErrorMessage = rows == 0
+                            ? "The row was changed or removed by another connection after it was read here."
+                            : $"The statement matched {rows} rows where exactly {expected} was expected."
+                    };
+                }
+
+                affected += rows;
             }
             catch (Exception ex)
             {
