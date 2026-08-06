@@ -51,6 +51,8 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
         m_logger = logger;
 
         DisplayName = DefaultDisplayName(Connection.FilePath);
+
+        Catalog = new SchemaCatalog(this);
     }
 
     #endregion
@@ -205,6 +207,8 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
     public Guid Id { get; } = Guid.NewGuid();
 
     public ConnectionInfo Connection { get; }
+
+    public ISchemaCatalog Catalog { get; }
 
     /// <summary>
     /// Set by <see cref="ConnectionManager"/> when the default collides with a session that is already

@@ -31,6 +31,7 @@
 		<KeyBinding Gesture="F5" Command="{Binding WorkspaceTabsVm.ExecuteCurrentStatementCommand}"/>
 		<KeyBinding Gesture="Ctrl+Shift+F5" Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"/>
 		<KeyBinding Gesture="Ctrl+Return" Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"/>
+		<KeyBinding Gesture="Ctrl+Shift+F" Command="{Binding WorkspaceTabsVm.SelectedQueryTab.FormatCommand}"/>
 		<KeyBinding Gesture="Ctrl+S" Command="{Binding WorkspaceTabsVm.SaveTabCommand}"/>
 		<KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding WorkspaceTabsVm.SaveTabAsCommand}"/>
 	</Window.KeyBindings>
@@ -317,11 +318,47 @@
 						        Command="{Binding WorkspaceTabsVm.ClearResultsCommand}"
 						        ToolTip.Tip="Clear the results"
 						        Height="24" Padding="10,0" Content="Clear" FontSize="12"/>
+						<Button AutomationProperties.AutomationId="ToolbarFormat" AutomationProperties.Name="Format"
+						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.FormatCommand}"
+						        ToolTip.Tip="Format the script (Ctrl+Shift+F)"
+						        Height="24" Padding="10,0" Content="Format" FontSize="12"/>
+						<Button AutomationProperties.AutomationId="ToolbarExplain" AutomationProperties.Name="Explain"
+						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.ShowPlanCommand}"
+						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
+						        ToolTip.Tip="Show the plan of the statement under the cursor"
+						        Height="24" Padding="10,0" Content="Plan" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarSaveQuery" AutomationProperties.Name="Save query"
 						        Command="{Binding WorkspaceTabsVm.SaveTabCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanSaveTab}"
 						        ToolTip.Tip="Save (Ctrl+S)"
 						        Height="24" Padding="10,0" Content="Save" FontSize="12"/>
+
+						<!-- The transaction is the connection's, and the toolbar is where it is decided
+						     (WS-26). Autocommit until somebody presses Begin. -->
+						<Border Width="1" Margin="4,4" Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+
+						<ComboBox AutomationProperties.AutomationId="ToolbarIsolation"
+						          AutomationProperties.Name="Isolation level"
+						          ItemsSource="{Binding WorkspaceTabsVm.SelectedQueryTab.Isolations}"
+						          SelectedItem="{Binding WorkspaceTabsVm.SelectedQueryTab.Isolation, Mode=TwoWay}"
+						          IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
+						          ToolTip.Tip="The isolation the next transaction opens at"
+						          Height="24" FontSize="12" MinWidth="130"/>
+						<Button AutomationProperties.AutomationId="ToolbarBeginTransaction" AutomationProperties.Name="Begin transaction"
+						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.BeginTransactionCommand}"
+						        IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
+						        ToolTip.Tip="Open a transaction on this connection"
+						        Height="24" Padding="10,0" Content="Begin" FontSize="12"/>
+						<Button AutomationProperties.AutomationId="ToolbarCommitTransaction" AutomationProperties.Name="Commit transaction"
+						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.CommitTransactionCommand}"
+						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
+						        ToolTip.Tip="Commit"
+						        Height="24" Padding="10,0" Content="Commit" FontSize="12"/>
+						<Button AutomationProperties.AutomationId="ToolbarRollbackTransaction" AutomationProperties.Name="Roll back transaction"
+						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.RollbackTransactionCommand}"
+						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
+						        ToolTip.Tip="Roll back"
+						        Height="24" Padding="10,0" Content="Rollback" FontSize="12"/>
 					</StackPanel>
 
 					<!-- Data tab -->
@@ -564,14 +601,20 @@
 
 				<!-- Transaction. Autocommit is the quiet state; an open transaction is the one that is
 				     dangerous to forget, so it is the only one that will be highlighted (WS-26, stage 6). -->
-				<TextBlock Grid.Column="3"
-				           AutomationProperties.AutomationId="StatusTransaction"
-				           Text="Transaction: none"
-				           Margin="12,0"
-				           FontSize="12"
-				           Opacity="0.65"
-				           VerticalAlignment="Center"
-				           IsVisible="{Binding MainWindowVm.IsConnected}"/>
+				<Border Grid.Column="3"
+				        Margin="12,4"
+				        Padding="8,1"
+				        CornerRadius="3"
+				        VerticalAlignment="Center"
+				        IsVisible="{Binding MainWindowVm.IsConnected}"
+				        Background="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction,
+				                     Converter={x:Static converters:PanelConverters.TransactionBrush}}">
+					<TextBlock AutomationProperties.AutomationId="StatusTransaction"
+					           Text="{Binding WorkspaceTabsVm.SelectedQueryTab.TransactionState,
+					                  FallbackValue='Autocommit', TargetNullValue='Autocommit'}"
+					           FontSize="12"
+					           VerticalAlignment="Center"/>
+				</Border>
 
 				<!-- Where the cursor is -->
 				<TextBlock Grid.Column="4"

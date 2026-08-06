@@ -40,12 +40,14 @@ public sealed class ApplicationViewModel
         ILogger<ApplicationViewModel> logger,
         IConfirmationService? confirmations = null,
         IDialogService? dialogs = null,
-        INotificationService? notifications = null)
+        INotificationService? notifications = null,
+        IQueryHistoryService? history = null)
     {
         Connections = connections;
         Settings = settingsService;
         Export = exportService;
         Logger = logger;
+        History = history ?? new NoQueryHistoryService();
         Confirmations = confirmations ?? new KeepUnsavedChangesService();
         Dialogs = dialogs ?? new NoDialogService();
         Notifications = notifications ?? new NotificationService(
@@ -162,6 +164,12 @@ public sealed class ApplicationViewModel
     /// still gets a list, which keeps every call site free of a null check.
     /// </summary>
     public INotificationService Notifications { get; }
+
+    /// <summary>
+    /// What has been run, kept between sessions (WS-29). Never null, and never load-bearing: a host
+    /// that supplies none - or a store that would not open - leaves every query working.
+    /// </summary>
+    public IQueryHistoryService History { get; }
 
     public ILogger<ApplicationViewModel> Logger { get; }
 

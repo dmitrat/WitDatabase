@@ -21,7 +21,7 @@ namespace OutWit.Database.Studio.ViewModels.Tabs;
 /// <summary>
 /// Represents a query editor tab with its content and state.
 /// </summary>
-public class QueryTabViewModel : WorkspaceTabViewModel
+public partial class QueryTabViewModel : WorkspaceTabViewModel
 {
     #region Fields
 
@@ -36,7 +36,10 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     {
         InitDefaults();
         InitCommands();
+        InitWorkspace();
         InitEvents();
+
+        UpdateTransactionState();
     }
 
     #endregion
@@ -86,7 +89,14 @@ public class QueryTabViewModel : WorkspaceTabViewModel
         m_executionCts?.Cancel();
         m_executionCts?.Dispose();
         m_executionCts = null;
-        
+
+        m_syntaxCts?.Cancel();
+        m_syntaxCts?.Dispose();
+        m_syntaxCts = null;
+
+        if (Session != null)
+            Session.TransactionChanged -= OnTransactionChanged;
+
         ResultData?.Dispose();
         ResultData = null;
         CurrentView = null;
@@ -177,6 +187,9 @@ public class QueryTabViewModel : WorkspaceTabViewModel
         ErrorMessage = null;
         ErrorLine = 0;
         ErrorColumn = 0;
+        ErrorLength = 0;
+        ErrorSuggestion = null;
+        ErrorName = null;
         Statements.Clear();
         DdlWasExecuted = false;
 
@@ -232,6 +245,12 @@ public class QueryTabViewModel : WorkspaceTabViewModel
                             SqlScript.Shorten(result.ErrorMessage), result.ErrorMessage);
 
                     ReportError(located, fragmentOffset, statement.Index + 1, split.Statements.Count);
+
+                    // A missing table or column carries no position at all, so it is found in the
+                    // text afterwards - and the nearest name this database does have is offered.
+                    LocateObjectError(result.ErrorMessage, statement, fragmentOffset);
+
+                    await RecordInHistoryAsync(sql, "error", 0);
                     return;
                 }
 
@@ -252,11 +271,15 @@ public class QueryTabViewModel : WorkspaceTabViewModel
             ApplicationVm.MainWindowVm.StatusText = split.Statements.Count == 1
                 ? $"Query executed successfully in {ExecutionTimeMs:F2}ms"
                 : $"{split.Statements.Count} statements executed in {ExecutionTimeMs:F2}ms";
+
+            await RecordInHistoryAsync(sql, "ok", TotalRowCount);
         }
         catch (OperationCanceledException)
         {
             ErrorMessage = $"Cancelled at statement {CurrentStatementNumber} of {StatementCount}";
             ApplicationVm.MainWindowVm.StatusText = "Query cancelled";
+
+            await RecordInHistoryAsync(sql, "cancelled", 0);
         }
         catch (Exception ex)
         {
@@ -269,6 +292,7 @@ public class QueryTabViewModel : WorkspaceTabViewModel
             IsExecuting = false;
             CurrentStatementNumber = 0;
             UpdateStatus();
+            UpdateTransactionState();
         }
     }
 
@@ -308,6 +332,9 @@ public class QueryTabViewModel : WorkspaceTabViewModel
 
         ErrorMessage = where + error.Message;
         ErrorDetail = error.Detail;
+        ErrorLength = 1;
+
+        UpdateUnderline();
 
         SetResultData(null);
 
@@ -488,16 +515,44 @@ public class QueryTabViewModel : WorkspaceTabViewModel
         {
             UpdateStatus();
         }
+
+        if (e.IsProperty((QueryTabViewModel vm) => vm.SqlText))
+        {
+            // The underline follows the text, on a delay (3.6). Fire and forget: the check cancels its
+            // own previous run, and a keystroke must not wait for a parse.
+            _ = CheckSyntaxAsync();
+        }
     }
 
     protected override void OnSessionStatusChanged(bool isConnected)
     {
         UpdateStatus();
+        UpdateTransactionState();
     }
 
     protected override void OnSessionChanged()
     {
         UpdateStatus();
+        UpdateTransactionState();
+        WatchTransaction();
+    }
+
+    /// <summary>
+    /// Follows the connection's transaction, which another tab of the same connection may have opened
+    /// or ended (WS-26).
+    /// </summary>
+    private void WatchTransaction()
+    {
+        if (Session == null)
+            return;
+
+        Session.TransactionChanged -= OnTransactionChanged;
+        Session.TransactionChanged += OnTransactionChanged;
+    }
+
+    private void OnTransactionChanged(object? sender, EventArgs e)
+    {
+        UpdateTransactionState();
     }
 
     #endregion

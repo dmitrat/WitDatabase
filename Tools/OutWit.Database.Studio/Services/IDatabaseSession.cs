@@ -155,6 +155,12 @@ public interface IDatabaseSession
     /// </summary>
     Task<long?> TryCountRowsAsync(string tableName, TimeSpan timeout, CancellationToken ct = default);
 
+    /// <summary>
+    /// The same schema, cached, for the one consumer that cannot await it: completion answers between
+    /// two keystrokes (WS-24). One per connection, living exactly as long as it.
+    /// </summary>
+    ISchemaCatalog Catalog { get; }
+
     #endregion
 
     #region Query

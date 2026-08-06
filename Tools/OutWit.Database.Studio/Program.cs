@@ -139,6 +139,18 @@ sealed class Program
         services.AddSingleton<IDialogService>(
             _ => new DialogService(() => ViewModels.ApplicationViewModel.Instance.MainWindow));
 
+        // The query history (WS-29), in a WitDatabase of Studio's own. It is opened on a background
+        // thread and never waited for: a store that will not open leaves every query working.
+        services.AddSingleton<IQueryHistoryService>(provider =>
+        {
+            var history = new QueryHistoryService(QueryHistoryService.DefaultPath(),
+                provider.GetRequiredService<ILogger<QueryHistoryService>>());
+
+            _ = history.InitializeAsync();
+
+            return history;
+        });
+
         // Application ViewModel (main container)
         services.AddSingleton<ApplicationViewModel>();
 
