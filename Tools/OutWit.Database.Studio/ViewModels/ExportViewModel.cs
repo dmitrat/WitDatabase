@@ -214,6 +214,11 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
             if (!ct.IsCancellationRequested)
             {
                 ApplicationVm.MainWindowVm.StatusText = $"Exported {RowsExported} rows to {Path.GetFileName(OutputPath)}";
+
+                ApplicationVm.Notifications.Information(
+                    $"Exported {RowsExported} rows",
+                    OutputPath,
+                    ApplicationVm.ActiveSession?.DisplayName);
                 Logger.LogInformation("Exported {RowCount} rows to {FilePath}", RowsExported, OutputPath);
                 DialogClosed?.Invoke(true);
             }

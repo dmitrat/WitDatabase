@@ -61,6 +61,7 @@ public partial class SqlEditor : TextEditor
     {
         TextChanged += OnEditorTextChanged;
         TextArea.SelectionChanged += OnSelectionChanged;
+        TextArea.Caret.PositionChanged += OnCaretChanged;
         
         if (Application.Current != null)
         {
@@ -155,6 +156,20 @@ public partial class SqlEditor : TextEditor
         UpdateSelectedText();
     }
 
+    /// <summary>
+    /// Where the caret is, for the status bar and for F5.
+    ///
+    /// F5 runs the statement the cursor is in (WS-25), and the only place that knows where the cursor
+    /// is, is the editor. Line and column are reported as a person counts them - both from 1 - which
+    /// is what the status bar shows; the offset is what the statement lookup uses.
+    /// </summary>
+    private void OnCaretChanged(object? sender, EventArgs e)
+    {
+        CaretOffsetInText = CaretOffset;
+        CaretLine = TextArea.Caret.Line;
+        CaretColumn = TextArea.Caret.Column;
+    }
+
     private void OnThemeChanged(object? sender, EventArgs e)
     {
         RefreshTheme();
@@ -169,6 +184,7 @@ public partial class SqlEditor : TextEditor
         base.OnDetachedFromVisualTree(e);
 
         TextArea.SelectionChanged -= OnSelectionChanged;
+        TextArea.Caret.PositionChanged -= OnCaretChanged;
 
         if (Application.Current != null)
         {
@@ -185,6 +201,19 @@ public partial class SqlEditor : TextEditor
 
     [StyledProperty]
     public new string? SelectedText { get; set; }
+
+    /// <summary>
+    /// The caret's position in the text, in characters. Named apart from AvaloniaEdit's own
+    /// CaretOffset, which is not a styled property and cannot be bound.
+    /// </summary>
+    [StyledProperty]
+    public int CaretOffsetInText { get; set; }
+
+    [StyledProperty]
+    public int CaretLine { get; set; }
+
+    [StyledProperty]
+    public int CaretColumn { get; set; }
 
     protected override Type StyleKeyOverride => typeof(TextEditor);
 

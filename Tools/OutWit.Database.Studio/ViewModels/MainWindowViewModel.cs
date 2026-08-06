@@ -41,6 +41,8 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     private void InitEvents()
     {
+        ApplicationVm.Notifications.Changed += OnNotificationsChanged;
+
         // Three events about the collection instead of one about the application. IsConnected here
         // means "there is a connection to act on", which is a question about the active session now.
         Connections.SessionOpened += OnSessionOpened;
@@ -61,6 +63,8 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         SettingsCommand = new RelayCommandAsync(ShowSettingsAsync);
         AboutCommand = new RelayCommandAsync(ShowAboutAsync);
         ExitCommand = new RelayCommandAsync(ExitAsync);
+        ShowNotificationsCommand = new RelayCommand(ShowNotifications);
+        HideNotificationsCommand = new RelayCommand(() => AreNotificationsVisible = false);
     }
 
     #endregion
@@ -378,9 +382,62 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     private void UpdateConnectionState()
     {
-        IsConnected = Connections.Active?.IsConnected == true;
-        CurrentConnection = Connections.Active?.Connection;
+        var session = Connections.Active;
+
+        IsConnected = session?.IsConnected == true;
+        CurrentConnection = session?.Connection;
         OpenConnectionCount = Connections.Sessions.Count;
+
+        // The left half of the status bar: which database, and what it is made of (1.5).
+        ConnectionSummary = session == null
+            ? string.Empty
+            : $"{session.DisplayName} - {session.Connection.FilePath}";
+
+        EngineSummary = session == null ? string.Empty : DescribeEngine(session);
+    }
+
+    /// <summary>
+    /// What the status bar says about the engine. Only what the connection actually knows: the store
+    /// it was opened with, whether it is encrypted, whether it is read-only. Page size and the
+    /// transaction model are read from the file by the Open dialog and are not carried on the session,
+    /// so they are not claimed here - a status bar that states something it has not been told is
+    /// worse than one that says less.
+    /// </summary>
+    private static string DescribeEngine(IDatabaseSession session)
+    {
+        var parts = new List<string>
+        {
+            session.Connection.StorageEngine.ToUpperInvariant() == "LSM" ? "LSM" : "B-Tree"
+        };
+
+        if (session.Connection.IsEncrypted)
+            parts.Add("encrypted");
+
+        if (session.IsReadOnly)
+            parts.Add("read-only");
+
+        return string.Join(" - ", parts);
+    }
+
+    private void ShowNotifications()
+    {
+        AreNotificationsVisible = !AreNotificationsVisible;
+
+        if (AreNotificationsVisible)
+            ApplicationVm.Notifications.MarkAllRead();
+
+        UpdateNotificationState();
+    }
+
+    private void UpdateNotificationState()
+    {
+        HasNotifications = ApplicationVm.Notifications.Notifications.Count > 0;
+        HasUnreadNotifications = ApplicationVm.Notifications.UnreadCount > 0;
+    }
+
+    private void OnNotificationsChanged(object? sender, EventArgs e)
+    {
+        UpdateNotificationState();
     }
 
     #endregion
@@ -401,6 +458,43 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public bool IsConnected { get; private set; }
+
+    /// <summary>
+    /// The connection shown in the status bar: its name and its path.
+    /// </summary>
+    [Notify]
+    public string ConnectionSummary { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// What that connection is made of, as far as the connection itself knows.
+    /// </summary>
+    [Notify]
+    public string EngineSummary { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// Where the cursor is in the selected query tab, the way a person counts: line and column from 1.
+    /// </summary>
+    public string CaretSummary => ApplicationVm.WorkspaceTabsVm.SelectedQueryTab is { } tab
+        ? $"Ln {tab.CaretLine}, Col {tab.CaretColumn}"
+        : string.Empty;
+
+    /// <summary>
+    /// Everything that has happened and did not need an answer (WS-7).
+    /// </summary>
+    public System.Collections.ObjectModel.ReadOnlyObservableCollection<Notification> Notifications =>
+        ApplicationVm.Notifications.Notifications;
+
+    [Notify]
+    public bool HasNotifications { get; private set; }
+
+    /// <summary>
+    /// The dot on the bell.
+    /// </summary>
+    [Notify]
+    public bool HasUnreadNotifications { get; private set; }
+
+    [Notify]
+    public bool AreNotificationsVisible { get; private set; }
 
     /// <summary>
     /// How many databases are open. One was the only possible answer until this stage.
@@ -439,6 +533,10 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand AboutCommand { get; private set; } = null!;
 
     public ICommand ExitCommand { get; private set; } = null!;
+
+    public ICommand ShowNotificationsCommand { get; private set; } = null!;
+
+    public ICommand HideNotificationsCommand { get; private set; } = null!;
 
     #endregion
 
