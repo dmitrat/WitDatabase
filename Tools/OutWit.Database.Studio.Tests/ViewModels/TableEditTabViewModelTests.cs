@@ -14,6 +14,7 @@ public class TableEditTabViewModelTests
 {
     #region Fields
 
+    private StudioFixture m_studio = null!;
     private ApplicationViewModel m_applicationVm = null!;
 
     #endregion
@@ -21,14 +22,17 @@ public class TableEditTabViewModelTests
     #region Setup
 
     [SetUp]
-    public void Setup()
+    public async Task Setup()
     {
-        var databaseService = new FakeDatabaseService();
-        m_applicationVm = new ApplicationViewModel(
-            databaseService,
-            new FakeSettingsService(),
-            new FakeExportService(),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ApplicationViewModel>.Instance);
+        m_studio = await StudioFixture.CreateAsync();
+
+        m_applicationVm = m_studio.App;
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await m_studio.DisposeAsync();
     }
 
     #endregion

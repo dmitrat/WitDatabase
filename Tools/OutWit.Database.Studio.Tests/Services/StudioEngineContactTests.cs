@@ -13,7 +13,7 @@ namespace OutWit.Database.Studio.Tests.Services;
 /// Instrument S - what Studio's dialogs actually build, and whether the dialog can open again what it
 /// just made.
 ///
-/// Every other fixture in this project drives a <see cref="FakeDatabaseService"/> that is permanently
+/// Written when every other fixture in this project drove a double that was permanently
 /// disconnected and answers every question with an empty collection, so no configuration a dialog can
 /// express has ever reached the engine. This one drives the REAL <see cref="ConnectionViewModel"/> - the
 /// same instance the dialog binds to - over a REAL <see cref="DatabaseService"/>, and asks the question
@@ -78,8 +78,8 @@ public class StudioEngineContactTests
 
         var app = new ApplicationViewModel(
             db,
-            new FakeSettingsService(),
-            new FakeExportService(),
+            new SettingsService(NullLogger<SettingsService>.Instance, Path.Combine(Path.GetTempPath(), "WitStudioTests", Guid.NewGuid().ToString("N"), "settings.json")),
+            new ExportService(),
             NullLogger<ApplicationViewModel>.Instance);
 
         return (app, app.ConnectionVm, db);

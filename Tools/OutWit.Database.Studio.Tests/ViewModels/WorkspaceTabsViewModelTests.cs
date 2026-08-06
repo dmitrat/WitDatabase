@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging.Abstractions;
+using OutWit.Common.MVVM.Commands;
 using OutWit.Database.Studio.Tests.Helpers;
 using OutWit.Database.Studio.ViewModels;
 using OutWit.Database.Studio.ViewModels.Tabs;
@@ -13,6 +14,7 @@ public class WorkspaceTabsViewModelTests
 {
     #region Fields
 
+    private StudioFixture m_studio = null!;
     private ApplicationViewModel m_appVm = null!;
     private WorkspaceTabsViewModel m_workspaceVm = null!;
 
@@ -21,15 +23,18 @@ public class WorkspaceTabsViewModelTests
     #region Setup
 
     [SetUp]
-    public void Setup()
+    public async Task Setup()
     {
-        m_appVm = new ApplicationViewModel(
-            new FakeDatabaseService(),
-            new FakeSettingsService(),
-            new FakeExportService(),
-            NullLogger<ApplicationViewModel>.Instance);
+        m_studio = await StudioFixture.CreateAsync();
 
+        m_appVm = m_studio.App;
         m_workspaceVm = m_appVm.WorkspaceTabsVm;
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await m_studio.DisposeAsync();
     }
 
     #endregion
@@ -54,6 +59,28 @@ public class WorkspaceTabsViewModelTests
     {
         // Not connected and no SQL text
         Assert.That(m_workspaceVm.CanExecuteQuery, Is.False);
+    }
+
+    /// <summary>
+    /// Closing became asynchronous when it started asking about unapplied work, and RelayCommandAsync
+    /// is 'async void'. A clean tab answers without suspending, so Execute happens to run to
+    /// completion inline - but relying on that is relying on an implementation detail of the thing
+    /// under test. Waiting is explicit here instead.
+    /// </summary>
+    private async Task CloseTabAsync(WorkspaceTabViewModel? tab)
+    {
+        var command = (RelayCommandAsync<WorkspaceTabViewModel>)m_workspaceVm.CloseTabCommand;
+
+        command.Execute(tab);
+
+        var deadline = DateTime.UtcNow.AddSeconds(30);
+        while (command.IsExecuting)
+        {
+            if (DateTime.UtcNow > deadline)
+                throw new TimeoutException("The close command did not complete within 30 seconds.");
+
+            await Task.Delay(5);
+        }
     }
 
     #endregion
@@ -82,33 +109,66 @@ public class WorkspaceTabsViewModelTests
     }
 
     [Test]
-    public void CloseTabRemovesTabTest()
+    public async Task CloseTabRemovesTabTest()
     {
         // Add a second tab
         m_workspaceVm.NewQueryTabCommand.Execute(null);
         var initialCount = m_workspaceVm.Tabs.Count;
         var tabToClose = m_workspaceVm.SelectedTab;
 
-        m_workspaceVm.CloseTabCommand.Execute(tabToClose);
+        await CloseTabAsync(tabToClose);
 
         Assert.That(m_workspaceVm.Tabs, Has.Count.EqualTo(initialCount - 1));
         Assert.That(m_workspaceVm.Tabs, Does.Not.Contain(tabToClose));
     }
 
     [Test]
-    public void CannotCloseLastTabTest()
+    public async Task CannotCloseLastTabTest()
     {
         // Ensure only one tab
         while (m_workspaceVm.Tabs.Count > 1)
         {
-            m_workspaceVm.CloseTabCommand.Execute(m_workspaceVm.Tabs.Last());
+            await CloseTabAsync(m_workspaceVm.Tabs.Last());
         }
 
         var lastTab = m_workspaceVm.SelectedTab;
-        m_workspaceVm.CloseTabCommand.Execute(lastTab);
+        await CloseTabAsync(lastTab);
 
         // Tab should still be there
         Assert.That(m_workspaceVm.Tabs, Has.Count.EqualTo(1));
+    }
+
+    /// <summary>
+    /// Redirected from QueryTabsViewModelTests when the legacy view model was deleted. Its two other
+    /// unique cases - CurrentSqlText and MarkCurrentTabAsModified - were not redirected: those members
+    /// exist only on the legacy type, nothing in the application calls them, and giving the surviving
+    /// view model an API purely to keep a test alive is how legacy grows back.
+    /// </summary>
+    [Test]
+    public void ClearResultsCommandClearsTheResultOfTheSelectedTabTest()
+    {
+        var tab = (QueryTabViewModel)m_workspaceVm.SelectedTab!;
+
+        tab.ErrorMessage = "Some error";
+        tab.RowsAffected = 10;
+        tab.ExecutionTimeMs = 100;
+
+        m_workspaceVm.ClearResultsCommand.Execute(null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(tab.ErrorMessage, Is.Null);
+            Assert.That(tab.RowsAffected, Is.Zero);
+            Assert.That(tab.ExecutionTimeMs, Is.Zero);
+        });
+    }
+
+    [Test]
+    public void CanExecuteQueryIsFalseWithoutSqlTextTest()
+    {
+        ((QueryTabViewModel)m_workspaceVm.SelectedTab!).SqlText = string.Empty;
+
+        Assert.That(m_workspaceVm.CanExecuteQuery, Is.False);
     }
 
     [Test]

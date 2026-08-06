@@ -13,6 +13,7 @@ public class DatabaseExplorerViewModelTests
 {
     #region Fields
 
+    private StudioFixture m_studio = null!;
     private ApplicationViewModel m_appVm = null!;
     private DatabaseExplorerViewModel m_explorerVm = null!;
 
@@ -21,15 +22,19 @@ public class DatabaseExplorerViewModelTests
     #region Setup
 
     [SetUp]
-    public void Setup()
+    public async Task Setup()
     {
-        m_appVm = new ApplicationViewModel(
-            new FakeDatabaseService(),
-            new FakeSettingsService(),
-            new FakeExportService(),
-            NullLogger<ApplicationViewModel>.Instance);
+        m_studio = await StudioFixture.CreateAsync();
+
+        m_appVm = m_studio.App;
 
         m_explorerVm = m_appVm.DatabaseExplorerVm;
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await m_studio.DisposeAsync();
     }
 
     #endregion

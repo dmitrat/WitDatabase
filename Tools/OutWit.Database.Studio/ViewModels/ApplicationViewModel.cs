@@ -59,11 +59,7 @@ public sealed class ApplicationViewModel
         ConnectionVm = new ConnectionViewModel(this);
         DatabaseExplorerVm = new DatabaseExplorerViewModel(this);
         
-        // Unified workspace tabs system
         WorkspaceTabsVm = new WorkspaceTabsViewModel(this);
-        
-        // Legacy ViewModel kept for backward compatibility with old tests
-        QueryTabsVm = new QueryTabsViewModel(this);
     }
 
     #endregion
@@ -117,16 +113,9 @@ public sealed class ApplicationViewModel
     public DatabaseExplorerViewModel DatabaseExplorerVm { get; private set; } = null!;
     
     /// <summary>
-    /// Unified workspace tabs system for Query, Edit, and Structure tabs.
+    /// The tabs of the workspace - query, data, structure.
     /// </summary>
     public WorkspaceTabsViewModel WorkspaceTabsVm { get; private set; } = null!;
-    
-    /// <summary>
-    /// Legacy query tabs ViewModel - kept for backward compatibility with tests.
-    /// Use WorkspaceTabsVm for new code.
-    /// </summary>
-    [Obsolete("Use WorkspaceTabsVm instead")]
-    public QueryTabsViewModel QueryTabsVm { get; private set; } = null!;
 
     #endregion
 

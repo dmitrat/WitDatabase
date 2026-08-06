@@ -12,6 +12,7 @@ public class AboutViewModelTests
 {
     #region Fields
 
+    private StudioFixture m_studio = null!;
     private ApplicationViewModel m_applicationVm = null!;
 
     #endregion
@@ -19,13 +20,17 @@ public class AboutViewModelTests
     #region Setup
 
     [SetUp]
-    public void Setup()
+    public async Task Setup()
     {
-        m_applicationVm = new ApplicationViewModel(
-            new FakeDatabaseService(),
-            new FakeSettingsService(),
-            new FakeExportService(),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ApplicationViewModel>.Instance);
+        m_studio = await StudioFixture.CreateAsync(connect: false);
+
+        m_applicationVm = m_studio.App;
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await m_studio.DisposeAsync();
     }
 
     #endregion
