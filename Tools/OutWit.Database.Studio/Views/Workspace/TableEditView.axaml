@@ -5,11 +5,12 @@
              xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
              xmlns:c="using:OutWit.Database.Studio.Controls"
+             xmlns:models="using:OutWit.Database.Studio.Models"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="OutWit.Database.Studio.Views.Workspace.TableEditView"
              x:DataType="tabs:TableEditTabViewModel">
 
-    <Grid RowDefinitions="Auto,Auto,*,Auto">
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto">
 
         <!-- Read-only banner: an explanation, not a row of mysteriously grey buttons (WS-35) -->
         <Border Grid.Row="0"
@@ -160,20 +161,138 @@
                         <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_ROLLBACK}"
                                   Width="16" Height="16"/>
                     </Button>
+
+                    <!-- WS-32, the other direction: what the buffer will send, BEFORE it is sent -
+                         which is the only moment at which it is worth reading. -->
+                    <Button AutomationProperties.AutomationId="TableEditShowChangesSql"
+                            AutomationProperties.Name="Show the SQL of the changes"
+                            Command="{Binding ShowChangesSqlCommand}"
+                            IsEnabled="{Binding HasChanges}"
+                            ToolTip.Tip="Show what will be sent, as a transaction"
+                            Height="32" Padding="10,0" FontSize="12"
+                            Content="SQL"/>
                 </StackPanel>
             </Grid>
         </Border>
 
+        <!-- The filter row (4.3). One box per column, joined with AND; anything that needs OR is what
+             Show SQL is for. Not aligned with the grid's columns: the DataGrid here is Avalonia's and
+             does not publish its column widths, and a row that ALMOST lines up is worse than one that
+             plainly does not. -->
+        <Border Grid.Row="2"
+                Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="8,4">
+            <Grid ColumnDefinitions="*,Auto,Auto">
+                <ScrollViewer Grid.Column="0" HorizontalScrollBarVisibility="Auto" VerticalScrollBarVisibility="Disabled">
+                    <ItemsControl ItemsSource="{Binding Filters}">
+                        <ItemsControl.ItemsPanel>
+                            <ItemsPanelTemplate>
+                                <StackPanel Orientation="Horizontal" Spacing="6"/>
+                            </ItemsPanelTemplate>
+                        </ItemsControl.ItemsPanel>
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:ColumnFilter">
+                                <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
+                                    <TextBlock Text="{Binding Column}"
+                                               FontSize="11"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                    <TextBox Text="{Binding Text, Mode=TwoWay}"
+                                             Width="110" Height="24"
+                                             FontSize="11"
+                                             Padding="4,0"
+                                             VerticalContentAlignment="Center"
+                                             PlaceholderText="filter"/>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+
+                <Button Grid.Column="1" Margin="6,0,0,0"
+                        AutomationProperties.AutomationId="TableEditApplyFilters"
+                        AutomationProperties.Name="Apply the filters"
+                        Content="Filter" Height="24" Padding="10,0" FontSize="11"
+                        Command="{Binding ApplyFiltersCommand}"/>
+                <Button Grid.Column="2" Margin="4,0,0,0"
+                        AutomationProperties.AutomationId="TableEditClearFilters"
+                        AutomationProperties.Name="Clear the filters"
+                        Content="Clear" Height="24" Padding="10,0" FontSize="11"
+                        Command="{Binding ClearFiltersCommand}"/>
+            </Grid>
+        </Border>
+
+        <!-- The conflict (WS-37): both values, and a choice - never "the transaction was rejected". -->
+        <Border Grid.Row="3"
+                Background="#3A2A1D"
+                BorderBrush="#8A5A2D"
+                BorderThickness="0,0,0,1"
+                Padding="10,6"
+                IsVisible="{Binding HasConflict}"
+                AutomationProperties.AutomationId="TableEditConflictBanner">
+            <StackPanel Spacing="6">
+                <TextBlock Text="{Binding ConflictSummary}"
+                           FontSize="12" TextWrapping="Wrap" Foreground="#F0C078"/>
+
+                <ItemsControl ItemsSource="{Binding ConflictColumns}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="models:ConflictedValue">
+                            <Grid ColumnDefinitions="140,*,*" Margin="0,1">
+                                <TextBlock Grid.Column="0" Text="{Binding Column}" FontSize="11" FontWeight="SemiBold"/>
+                                <TextBlock Grid.Column="1" FontSize="11" FontFamily="Consolas,monospace">
+                                    <Run Text="yours:"/><Run Text="{Binding Mine}"/>
+                                </TextBlock>
+                                <TextBlock Grid.Column="2" FontSize="11" FontFamily="Consolas,monospace">
+                                    <Run Text="in the database:"/><Run Text="{Binding Theirs}"/>
+                                </TextBlock>
+                            </Grid>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <StackPanel Orientation="Horizontal" Spacing="6">
+                    <Button AutomationProperties.AutomationId="TableEditReread"
+                            AutomationProperties.Name="Re-read the rows"
+                            Content="Re-read" Height="24" Padding="10,0" FontSize="11"
+                            Command="{Binding RereadCommand}"/>
+                    <Button AutomationProperties.AutomationId="TableEditOverwrite"
+                            AutomationProperties.Name="Apply over the other value"
+                            Content="Apply over" Height="24" Padding="10,0" FontSize="11"
+                            Command="{Binding OverwriteCommand}"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+
         <!-- Data Grid -->
-        <Grid Grid.Row="2">
+        <Grid Grid.Row="4">
             <!-- Editable DataGrid -->
             <c:EditableDataGrid ResultView="{Binding CurrentView}"
                                 ColumnSettings="{Binding EditColumnSettings}"
                                 SelectedRowView="{Binding SelectedRowView, Mode=TwoWay}"
                                 ColumnInfos="{Binding Columns}"
                                 CellEditedCommand="{Binding CellEditedCommand}"
+                                SortCommand="{Binding SortByCommand}"
                                 BorderThickness="0"
                                 Background="Transparent"/>
+
+            <!-- Nothing matched (4.7). Different from an empty table, and it offers something
+                 different: the way back is clearing the filter, not looking for the rows. -->
+            <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
+                        IsVisible="{Binding IsEmptyByFilter}">
+                <TextBlock Text="Nothing matches the filter"
+                           FontSize="15" HorizontalAlignment="Center"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                <TextBlock Text="{Binding ViewDescription}"
+                           FontSize="12" HorizontalAlignment="Center" TextAlignment="Center"
+                           MaxWidth="420" TextWrapping="Wrap"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+                <Button AutomationProperties.AutomationId="TableEditClearFiltersEmpty"
+                        AutomationProperties.Name="Clear the filters"
+                        Content="Clear the filter" HorizontalAlignment="Center"
+                        Command="{Binding ClearFiltersCommand}"/>
+            </StackPanel>
 
             <!-- Loading Overlay -->
             <Border Background="#80000000"
@@ -195,8 +314,62 @@
             </Border>
         </Grid>
 
+        <!-- The footer (4.1): what the view is doing, how the page is being reached, the total on
+             request, and the bridge to the editor (WS-32). -->
+        <Border Grid.Row="5"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="8,4">
+            <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+                <!-- Runs do not put spaces between themselves, which the first version of this footer
+                     read as "page0 ·12rows shown". One bound string per fact instead. -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
+                            AutomationProperties.AutomationId="TableEditPageSummary">
+                    <TextBlock Text="{Binding PageIndex, StringFormat='page {0}'}" FontSize="11"
+                               VerticalAlignment="Center"/>
+                    <TextBlock Text="·" FontSize="11" Opacity="0.5" VerticalAlignment="Center"/>
+                    <TextBlock Text="{Binding TotalRowCount, StringFormat='{}{0} rows shown'}" FontSize="11"
+                               VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="12,0"
+                            VerticalAlignment="Center">
+                    <TextBlock Text="of" FontSize="11" VerticalAlignment="Center" Opacity="0.7"/>
+                    <TextBlock Text="{Binding TotalRows, TargetNullValue='—'}" FontSize="11"
+                               VerticalAlignment="Center"/>
+                    <Button AutomationProperties.AutomationId="TableEditCountRows"
+                            AutomationProperties.Name="Count the rows"
+                            Content="count" Height="20" Padding="6,0" FontSize="10"
+                            IsVisible="{Binding TotalRows, Converter={x:Static ObjectConverters.IsNull}}"
+                            Command="{Binding CountRowsCommand}"/>
+                </StackPanel>
+
+                <TextBlock Grid.Column="2" Margin="12,0" VerticalAlignment="Center"
+                           FontSize="11" Opacity="0.75"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding ViewDescription}"
+                           Text="{Binding ViewDescription}"/>
+
+                <ComboBox Grid.Column="3"
+                          AutomationProperties.AutomationId="TableEditPageSize"
+                          AutomationProperties.Name="Rows per page"
+                          ItemsSource="{Binding PageSizes}"
+                          SelectedItem="{Binding PageSize, Mode=TwoWay}"
+                          Height="24" FontSize="11" MinWidth="80"
+                          ToolTip.Tip="Rows per page. Zero is everything, and everything can be a lot."/>
+
+                <Button Grid.Column="4" Margin="6,0,0,0"
+                        AutomationProperties.AutomationId="TableEditShowSql"
+                        AutomationProperties.Name="Show the SQL of this view"
+                        Content="Show SQL" Height="24" Padding="10,0" FontSize="11"
+                        ToolTip.Tip="Open this view as a SELECT in a query tab"
+                        Command="{Binding ShowViewSqlCommand}"/>
+            </Grid>
+        </Border>
+
         <!-- Status Bar -->
-        <Panel Grid.Row="3">
+        <Panel Grid.Row="6">
             
             <!-- Success Status -->
             <Border Background="#D4EDDA"

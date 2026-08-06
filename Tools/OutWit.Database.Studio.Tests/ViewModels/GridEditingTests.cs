@@ -297,6 +297,27 @@ public class GridEditingTests
     }
 
     /// <summary>
+    /// 4.7. An empty table and a filter that matches nothing look identical on screen and are not the
+    /// same thing: one has no rows, the other has rows the user cannot see.
+    /// </summary>
+    [Test]
+    public async Task NothingMatchingTheFilterIsItsOwnStateTest()
+    {
+        Assert.That(m_editor.IsEmptyByFilter, Is.False, "a table with rows in it is not empty");
+
+        m_editor.Filters.First(filter => filter.Column == "Total").Text = "> 999999";
+
+        await StudioFixture.PressAsync(m_editor.ApplyFiltersCommand);
+
+        Assert.That(m_editor.CurrentView!.Count, Is.Zero);
+        Assert.That(m_editor.IsEmptyByFilter, Is.True);
+
+        await StudioFixture.PressAsync(m_editor.ClearFiltersCommand);
+
+        Assert.That(m_editor.IsEmptyByFilter, Is.False);
+    }
+
+    /// <summary>
     /// WS-30. The proof that the sort is the engine's is that it reaches beyond the page: sorting a
     /// page of one client-side could never put the largest row on it.
     /// </summary>

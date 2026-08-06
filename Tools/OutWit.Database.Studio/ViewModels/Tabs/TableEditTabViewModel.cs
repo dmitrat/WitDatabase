@@ -69,7 +69,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         // Initialize column settings for the edit grid
         EditColumnSettings = new GridColumnSettings();
 
-        Filters = [];
+        Filters = [];  // one box per column, filled when the columns are known
         ConflictColumns = [];
         PageSizes = [200, DEFAULT_PAGE_SIZE, 5000, 0];
     }
@@ -199,10 +199,13 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             PrimaryKeyColumns = columns.Where(c => c.IsPrimaryKey).Select(c => c.Name).ToList();
 
             // A box per column, kept across reloads so that a refresh does not clear what was typed.
+            // Filled IN PLACE rather than replaced: the row is bound before the columns are known,
+            // and reassigning the collection leaves the view holding the empty one it started with.
             if (Filters.Count == 0)
-                Filters = columns
-                    .Select(column => new ColumnFilter(column.Name, column.DataType ?? ""))
-                    .ToList();
+            {
+                foreach (var column in columns)
+                    Filters.Add(new ColumnFilter(column.Name, column.DataType ?? ""));
+            }
 
             // WS-35. Without a primary key there is no condition that names one row: the old fallback
             // built a WHERE over every column, which two identical rows both satisfy - so editing one
@@ -1170,6 +1173,15 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         CanGoToNextPage = HasNextPage && !IsLoading && !HasChanges;
         CanGoToPreviousPage = HasPreviousPage && !IsLoading && !HasChanges;
 
+        // An empty table and a filter that matches nothing look identical and are not the same thing:
+        // one has no rows, the other has rows you cannot see, and the way out of the second is the
+        // filter (4.7).
+        // Filters is null until InitDefault runs, and the base constructor reaches here before it:
+        // Bind() raises OnSessionChanged from inside base(...), which is earlier than any field of
+        // this class exists.
+        IsEmptyByFilter = !IsLoading && TotalRowCount == 0
+            && Filters?.Any(filter => filter.IsActive) == true;
+
         PagingNote = !CanPageByKey && PageIndex > 0
             ? "This table has no single-column primary key, so pages are counted from the start of "
               + "the table: the further in you go, the longer it takes."
@@ -1323,6 +1335,13 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     public GridPaging Paging { get; private set; }
 
     /// <summary>
+    /// True when the page is empty BECAUSE of a filter, which is a different state from an empty
+    /// table and offers a different way out (4.7).
+    /// </summary>
+    [Notify]
+    public bool IsEmptyByFilter { get; private set; }
+
+    /// <summary>
     /// The filters and the sorting in words, for the footer: "2 filters: Total &gt; 100, Status
     /// contains ship · sorted by Total descending".
     /// </summary>
@@ -1333,7 +1352,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     /// One filter box per column (4.3). The boxes exist whether or not anything is typed in them, so
     /// that the row of them is part of the grid rather than something that appears.
     /// </summary>
-    public List<ColumnFilter> Filters { get; private set; } = null!;
+    public System.Collections.ObjectModel.ObservableCollection<ColumnFilter> Filters { get; private set; } = null!;
 
     [Notify]
     public string? SortColumn { get; private set; }
