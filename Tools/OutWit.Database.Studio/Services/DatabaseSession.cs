@@ -107,6 +107,10 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
     {
         if (m_connection != null)
         {
+            // Before the connection goes: an open transaction has to be decided by somebody, and the
+            // only honest answer here is the one that changes nothing (WS-26).
+            await DiscardTransactionAsync();
+
             await m_connection.CloseAsync();
             m_connection.Dispose();
             m_connection = null;

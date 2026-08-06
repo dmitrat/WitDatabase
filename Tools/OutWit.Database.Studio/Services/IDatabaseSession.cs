@@ -1,3 +1,4 @@
+using System.Data;
 using OutWit.Database.Studio.Models;
 
 namespace OutWit.Database.Studio.Services;
@@ -23,6 +24,13 @@ public interface IDatabaseSession
     /// Raised when THIS connection opens or closes. Never fires for another session.
     /// </summary>
     event EventHandler<bool>? StatusChanged;
+
+    /// <summary>
+    /// Raised when a manual transaction is opened, committed or rolled back on this connection
+    /// (WS-26). On the session rather than on the tab, because a transaction belongs to a CONNECTION:
+    /// two query tabs of the same database share one, and the second must not be told otherwise.
+    /// </summary>
+    event EventHandler? TransactionChanged;
 
     #endregion
 
@@ -182,6 +190,45 @@ public interface IDatabaseSession
     /// whose buffer of edits is one decision by the user and has to reach the database as one.
     /// </summary>
     Task<BatchResult> ExecuteBatchAsync(IReadOnlyList<SqlStatement> statements, CancellationToken ct = default);
+
+    #endregion
+
+    #region Transaction
+
+    /// <summary>
+    /// Whether a manual transaction is open on this connection (WS-26). Autocommit - every statement
+    /// on its own - is what a session does until someone opens one.
+    /// </summary>
+    bool HasOpenTransaction { get; }
+
+    /// <summary>
+    /// The isolation the open transaction was begun at, or the one the next will be begun at. Five
+    /// levels, defaulting to ReadCommitted, which is the engine's own default.
+    /// </summary>
+    IsolationLevel Isolation { get; set; }
+
+    /// <summary>
+    /// How many statements have been executed inside the open transaction. Shown next to the
+    /// transaction indicator: "open" alone does not tell anyone what is at stake in it.
+    /// </summary>
+    int TransactionStatementCount { get; }
+
+    /// <summary>
+    /// Opens a transaction at <see cref="Isolation"/>. Throws if one is already open - one connection
+    /// can hold one, and pretending otherwise is how two owners end up sharing a commit.
+    /// </summary>
+    Task BeginTransactionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Commits the open transaction. Does nothing when none is open, so that a toolbar that has just
+    /// been clicked twice does not throw at a person.
+    /// </summary>
+    Task CommitTransactionAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Rolls the open transaction back.
+    /// </summary>
+    Task RollbackTransactionAsync(CancellationToken ct = default);
 
     #endregion
 }

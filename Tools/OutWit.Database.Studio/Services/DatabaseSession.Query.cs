@@ -30,6 +30,8 @@ public sealed partial class DatabaseSession
             result = await ExecuteQueryInternalAsync(statement, ct);
             result.ExecutionTimeMs = sw.Elapsed.TotalMilliseconds;
 
+            CountInTransaction();
+
             m_logger.LogInformation(
                 "Query executed successfully in {Time}ms, {Rows} rows",
                 result.ExecutionTimeMs, result.RowsAffected);
@@ -80,14 +82,20 @@ public sealed partial class DatabaseSession
     /// <summary>
     /// Builds the command for a statement and binds its values. The binding is the whole point: the
     /// value goes to the engine as a value, so nothing a person typed can become syntax.
+    ///
+    /// The session's own manual transaction (WS-26) is attached when the caller names none. Measured
+    /// 2026-08-05: the provider applies the connection's open transaction to every command on it
+    /// anyway, so this changes no behaviour - it makes the code say what is happening.
     /// </summary>
     private WitDbCommand CreateCommand(SqlStatement statement, System.Data.Common.DbTransaction? transaction)
     {
         var command = m_connection!.CreateCommand();
         command.CommandText = statement.Text;
 
-        if (transaction != null)
-            command.Transaction = (WitDbTransaction)transaction;
+        var effective = transaction ?? m_transaction;
+
+        if (effective != null)
+            command.Transaction = (WitDbTransaction)effective;
 
         foreach (var parameter in statement.Parameters)
             command.Parameters.Add(new WitDbParameter(parameter.Name, parameter.Value ?? DBNull.Value));
@@ -142,7 +150,11 @@ public sealed partial class DatabaseSession
 
         using var command = CreateCommand(statement, transaction: null);
 
-        return await command.ExecuteNonQueryAsync(ct);
+        var affected = await command.ExecuteNonQueryAsync(ct);
+
+        CountInTransaction();
+
+        return affected;
     }
 
     public async Task<object?> ExecuteScalarAsync(string sql, CancellationToken ct = default)
@@ -171,6 +183,13 @@ public sealed partial class DatabaseSession
 
         if (statements.Count == 0)
             return BatchResult.Empty;
+
+        // A manual transaction may already be open on this connection (WS-26), and a connection holds
+        // exactly one - beginning a second throws. The buffer still has to be all-or-nothing, so it
+        // gets a savepoint of its own inside the user's transaction: the edits either all land in it,
+        // or all leave it, and what the user does with the transaction afterwards stays theirs.
+        if (m_transaction != null)
+            return await ExecuteBatchInSavepointAsync(statements, ct);
 
         var affected = 0;
 
@@ -234,6 +253,59 @@ public sealed partial class DatabaseSession
         {
             await transaction.DisposeAsync();
         }
+    }
+
+    /// <summary>
+    /// The same set of statements, applied inside a transaction somebody else opened. The savepoint is
+    /// what keeps the promise: released on success, rolled back to on failure, and in neither case is
+    /// the user's own transaction ended by the table editor.
+    /// </summary>
+    private async Task<BatchResult> ExecuteBatchInSavepointAsync(
+        IReadOnlyList<SqlStatement> statements, CancellationToken ct)
+    {
+        const string SAVEPOINT = "studio_batch";
+
+        var affected = 0;
+
+        await ExecuteNonQueryAsync($"SAVEPOINT {SAVEPOINT}", ct);
+
+        for (var i = 0; i < statements.Count; i++)
+        {
+            try
+            {
+                affected += await ExecuteNonQueryAsync(statements[i], ct);
+            }
+            catch (Exception ex)
+            {
+                await ExecuteNonQueryAsync($"ROLLBACK TO SAVEPOINT {SAVEPOINT}", ct);
+
+                m_logger.LogWarning(ex,
+                    "Batch of {Count} statements rolled back to a savepoint at statement {Index}, " +
+                    "inside the connection's open transaction", statements.Count, i + 1);
+
+                return new BatchResult
+                {
+                    Committed = false,
+                    FailedIndex = i,
+                    ErrorMessage = FormatErrorMessage(ex)
+                };
+            }
+        }
+
+        await ExecuteNonQueryAsync($"RELEASE SAVEPOINT {SAVEPOINT}", ct);
+
+        m_logger.LogInformation(
+            "Batch of {Count} statements applied inside the open transaction, {Rows} rows affected",
+            statements.Count, affected);
+
+        // Not "committed" in the sense the caller usually means: the rows are in the transaction, and
+        // whoever opened it decides. The table editor reads this as success, which is right - the
+        // edits are applied as far as this connection is concerned.
+        return new BatchResult
+        {
+            Committed = true,
+            RowsAffected = affected
+        };
     }
 
     #endregion
