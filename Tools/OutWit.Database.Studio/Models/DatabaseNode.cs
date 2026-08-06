@@ -72,6 +72,20 @@ public sealed partial class DatabaseNode : ModelBase
     public List<DatabaseNode> Children { get; set; } = [];
 
     /// <summary>
+    /// True while F2 is open on this row: the name is replaced by a box holding
+    /// <see cref="RenameText"/> until Enter or Escape.
+    /// </summary>
+    [Notify]
+    public bool IsRenaming { get; set; }
+
+    /// <summary>
+    /// What is in the rename box. Kept on the node rather than in the ViewModel so the tree can bind
+    /// it directly, and so a second node cannot pick up the first one's half-typed name.
+    /// </summary>
+    [Notify]
+    public string? RenameText { get; set; }
+
+    /// <summary>
     /// The right-hand side of the row: a column's type, a routine's return type, the number of
     /// objects in a folder. Whatever it is, it is read from the catalogue rather than guessed.
     /// </summary>

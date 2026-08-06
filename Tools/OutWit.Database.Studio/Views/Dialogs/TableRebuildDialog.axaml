@@ -1,0 +1,185 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
+        mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="620"
+        x:Class="OutWit.Database.Studio.Views.Dialogs.TableRebuildDialog"
+        x:DataType="vm:TableRebuildViewModel"
+        Title="Rebuild table"
+        Width="720" Height="620"
+        MinWidth="600" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+        <!-- Header -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16">
+            <StackPanel Spacing="4">
+                <TextBlock Text="{Binding Table, StringFormat='Rebuild table {0}'}"
+                           FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding RowCountText}" FontSize="12" Foreground="Gray"/>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Padding="16">
+            <StackPanel Spacing="14">
+
+                <!-- The report, once it has run. FIRST, not last: found in the running application,
+                     where the summary appeared below the fold and the one thing the dialog exists to
+                     say was the one thing off screen. -->
+                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="12"
+                        IsVisible="{Binding HasRun}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold"/>
+
+                        <StackPanel Spacing="4" IsVisible="{Binding HasRecovery}">
+                            <TextBlock Text="To get back to where this started:" FontSize="12"/>
+                            <ItemsControl ItemsSource="{Binding Recovery}">
+                                <ItemsControl.ItemTemplate>
+                                    <DataTemplate>
+                                        <TextBlock Text="{Binding}" TextWrapping="Wrap"
+                                                   FontFamily="Consolas,Courier New" FontSize="11"/>
+                                    </DataTemplate>
+                                </ItemsControl.ItemTemplate>
+                            </ItemsControl>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <!-- Values that will not survive the conversion -->
+                <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
+                        CornerRadius="4" Padding="12"
+                        IsVisible="{Binding HasCasualties}">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Values that will not survive the conversion"
+                                   FontWeight="SemiBold" Foreground="#856404"/>
+                        <ItemsControl ItemsSource="{Binding Casualties}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="#856404"/>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+                    </StackPanel>
+                </Border>
+
+                <!-- The steps -->
+                <ItemsControl ItemsSource="{Binding Steps}">
+                    <ItemsControl.ItemTemplate>
+                        <DataTemplate x:DataType="vm:RebuildStepViewModel">
+                            <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                    BorderThickness="0,0,0,1" Padding="0,8">
+                                <Grid ColumnDefinitions="28,*,Auto">
+                                    <TextBlock Grid.Column="0" Text="{Binding Number}"
+                                               FontWeight="SemiBold" VerticalAlignment="Top"/>
+
+                                    <StackPanel Grid.Column="1" Spacing="4">
+                                        <TextBlock Text="{Binding Title}" TextWrapping="Wrap"/>
+                                        <TextBlock Text="{Binding Sql}"
+                                                   FontFamily="Consolas,Courier New" FontSize="11"
+                                                   Foreground="Gray" TextWrapping="Wrap"
+                                                   IsVisible="{Binding $parent[Window].((vm:TableRebuildViewModel)DataContext).IsScriptVisible}"/>
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Column="2" Text="{Binding State}"
+                                               FontSize="11" Foreground="Gray" VerticalAlignment="Top"/>
+                                </Grid>
+                            </Border>
+                        </DataTemplate>
+                    </ItemsControl.ItemTemplate>
+                </ItemsControl>
+
+                <!-- What comes back, and what does not -->
+                <StackPanel Spacing="4" IsVisible="{Binding HasDependencies}">
+                    <TextBlock Text="These point at the table and will NOT be repaired:" FontWeight="SemiBold"/>
+                    <ItemsControl ItemsSource="{Binding Dependencies}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="Gray"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <StackPanel Spacing="4" IsVisible="{Binding HasLosses}">
+                    <TextBlock Text="What the rebuild cannot carry across:" FontWeight="SemiBold"/>
+                    <ItemsControl ItemsSource="{Binding Losses}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="Gray"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+
+                <!-- Make a copy first -->
+                <Border Background="#FDECEA" BorderBrush="#E57373" BorderThickness="1"
+                        CornerRadius="4" Padding="12">
+                    <TextBlock Text="{Binding BackupWarning}" TextWrapping="Wrap" Foreground="#8B2E2E"/>
+                </Border>
+
+                <!-- Why the button is grey. A disabled control with no explanation is exactly what
+                     this section is against. -->
+                <Border Background="#FDECEA" BorderBrush="#E57373" BorderThickness="1"
+                        CornerRadius="4" Padding="12"
+                        IsVisible="{Binding !IsArmed}">
+                    <TextBlock Text="{Binding NotArmedReason}" TextWrapping="Wrap" Foreground="#8B2E2E"/>
+                </Border>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- Error -->
+        <Border Grid.Row="2" Background="#FDECEA" BorderBrush="#E57373" BorderThickness="1"
+                Padding="12" Margin="16,0"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="#8B2E2E"/>
+        </Border>
+
+        <!-- Buttons -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
+                    <Button AutomationProperties.AutomationId="RebuildShowScript"
+                            Content="Show script"
+                            Command="{Binding ShowScriptCommand}"/>
+
+                    <Button AutomationProperties.AutomationId="RebuildToEditor"
+                            Content="To the editor"
+                            Command="{Binding SendToEditorCommand}"
+                            ToolTip.Tip="Puts the whole plan in a query tab, to be run by hand"/>
+                </StackPanel>
+
+                <Button Grid.Column="2"
+                        AutomationProperties.AutomationId="RebuildCancel"
+                        Content="Close"
+                        Command="{Binding CloseCommand}"
+                        Width="100" Margin="0,0,8,0"
+                        HorizontalContentAlignment="Center"/>
+
+                <Button Grid.Column="3"
+                        AutomationProperties.AutomationId="RebuildRun"
+                        Content="Rebuild"
+                        Command="{Binding RebuildCommand}"
+                        IsEnabled="{Binding CanRebuild}"
+                        Width="120"
+                        HorizontalContentAlignment="Center"
+                        Classes="accent"/>
+            </Grid>
+        </Border>
+
+    </Grid>
+
+</Window>

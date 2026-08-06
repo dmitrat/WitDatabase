@@ -20,7 +20,11 @@ public class AutomationSurfaceTests
 {
     #region Constants
 
-    private static readonly Regex INTERACTIVE = new(@"<(Button|MenuItem|ToggleButton)(\s[^>]*?)?(/?)>",
+    // RadioButton was added in stage 8, after the running application announced the structure tab's
+    // section strip as "Avalonia.Controls.StackPanel" - the same defect this guard exists for, in an
+    // element type it was not looking at. CheckBox and TabItem are still outside it; see the phase
+    // document.
+    private static readonly Regex INTERACTIVE = new(@"<(Button|MenuItem|ToggleButton|RadioButton)(\s[^>]*?)?(/?)>",
         RegexOptions.Singleline | RegexOptions.Compiled);
 
     #endregion

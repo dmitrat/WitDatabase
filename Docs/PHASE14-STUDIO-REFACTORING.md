@@ -20,7 +20,8 @@ Stages, from that plan:
 | 5 | The Explorer and the object inspector |
 | 6 | The query workspace |
 | 7 | The data grid |
-| 8–9 | The rest of the redesign: schema designer, dialogs |
+| 8 | The schema designer |
+| 9 | Dialogs, settings, language |
 | 10 | The Database tab, after the ADO.NET provider gains maintenance access (`WS-57`) |
 
 Releases while this runs are **dev tags only** - no eSigner signatures are spent until the interface
@@ -815,7 +816,259 @@ what decides the filter row: a bare word is `LIKE`, because "contains" is expect
 
 ---
 
+## Stage 8 - the schema designer
+
+Section 5, and the stage where the design and the engine disagreed most. The plan gives no readiness
+criterion for it, so this one was written first and everything below is measured against it:
+
+> **Every edit is text the user saw before it ran; nothing the engine will refuse is offered; and when
+> a sequence stops, the report names what is already in the database.**
+
+`SchemaDesignerTests` is one session of schema work in that order, and it was then driven through the
+shipping executable.
+
+### The matrix was re-measured before anything was built on it, and three of its claims were wrong
+
+Section 5.2 is a table of what this engine's `ALTER TABLE` will and will not do. It is the whole
+foundation of the designer, so it was executed rather than read. Six rounds of probes, ~120 statements,
+and the plan did not survive intact:
+
+| The plan says | Measured 2026-08-06 |
+|---|---|
+| `ALTER COLUMN … TYPE` is accepted but **does not rewrite the rows** | **False - it does rewrite them.** And the real problem is worse: a value that will not convert is silently replaced (`'not a number'` becomes `0`, an INTEGER becomes `01/01/0001`), and changing the type back does not bring it back. 5000 rows in 156 ms |
+| dropping a column takes its **keys and constraints** with it | **Half true.** The foreign key goes; the INDEX does not - it stays in the catalogue naming a column that no longer exists, and survives a reopen |
+| a trigger may have a `WHEN` condition | **True only with brackets.** `WHEN NEW.Total > 100` is a parse error; `WHEN (NEW.Total > 100)` is accepted. The parser's own message names `'('`, so the editor writes them |
+
+So **WS-40 stands, for a different reason than the one it was written with.** The designer still refuses
+to change a type in place - not because the change would miss the data, but because it reaches the data
+and destroys what it cannot convert, without a word.
+
+Everything else in the matrix held: `ADD COLUMN` (with `UNIQUE`, `CHECK`, `REFERENCES`, `DEFAULT` and
+computed), `DROP COLUMN`, `RENAME`, `SET`/`DROP DEFAULT`, `SET`/`DROP NOT NULL`, `ADD`/`DROP CONSTRAINT`
+are one statement each; adding a primary key is refused in those words; there is no syntax at all for
+moving a column (`FIRST`, `AFTER`, `MODIFY`, `CHANGE` are four parse errors); and there is no
+`ALTER VIEW`, no `ALTER TRIGGER`, no `REINDEX` and no `ALTER INDEX`.
+
+**The matrix lives in the code as data** (`SchemaCapabilities.Matrix`) and `SchemaMatrixTests` runs every
+row of it against a real database. A matrix nobody re-measures drifts away from the engine and starts
+promising things, which is the exact failure section 5 exists to prevent.
+
+### One rule Studio applies that the engine does not
+
+`ALTER TABLE t ADD COLUMN c INTEGER NOT NULL`, with no default, on a table that already has rows, is
+**accepted**. It leaves NULL in every existing row and then refuses every later write to that table -
+including an `UPDATE` of an unrelated column. Giving the column a default afterwards repairs new rows
+and leaves the NULLs. There is no way back short of a rebuild.
+
+The designer will not write that statement, and says why next to the row. On an empty table the same
+statement is allowed, because there the rule would be Studio's invention rather than the engine's
+behaviour - `OnAnEmptyTableNothingIsRefusedAsync` is the control.
+
+### Applying is not a transaction, and does not pretend to be (WS-42)
+
+Measured: `ADD COLUMN` and `CREATE TABLE` inside a transaction both **survive a ROLLBACK**. So the edit
+set runs statement by statement with no transaction, stops at the first refusal, and reports three
+states per statement - applied, failed, not reached.
+
+The sabotage is the argument: wrapping the set in a transaction and rolling back on failure makes the
+report say *"Applied 0 of 3"* while the two columns are **in the database**. That is what
+`ExecuteBatchAsync` would have given, and it is a promise the engine does not keep.
+
+### The rebuild does not rename, because renaming loses data (5.3)
+
+The design's four steps end with *"rename `Orders__new` to `Orders`"*. On this engine that step is
+destructive, and it took three rounds of controls to be sure of it:
+
+- after `ALTER TABLE … RENAME TO`, the table's key generator restarts at zero, and the next generated
+  `INSERT` lands on key 1 and **overwrites the row that is there** - silently, reporting one row
+  affected. On B-Tree and on LSM, and across a close and reopen;
+- a `RENAME COLUMN` does not do it, an `ADD COLUMN` does not do it, and an explicit duplicate key IS
+  refused with a `UNIQUE` violation - so it is the generated-key path that skips the check, and the
+  rename that leaves it pointing at an occupied key;
+- a `UNIQUE` index on the key column turns the overwrite back into a refusal.
+
+So the rebuild copies the rows **out** to a carrier, drops the original, creates it again under its own
+name and copies them back - measured to leave the generator correct, including after a reopen. It costs
+one more copy of the data and a window in which the table does not exist, which is why the plan says so.
+`ARebuiltTableStillGeneratesItsKeysAsync` is the control: with the design's rename put back, the rebuild
+plus one insert leaves **3 rows where there should be 4**.
+
+The plan also **counts what the conversion will destroy before it starts**. This engine's `CAST` never
+fails - `CAST('not a number' AS INTEGER)` is 0 and so is `CAST('3.9' AS INTEGER)` - so a rebuild that
+did not count them would be exactly as quiet as the `ALTER` it replaces. The count is a round trip:
+values that do not come back unchanged. In the executable, on two orders of 4812.50 and 1204.00, it
+reported one casualty, which is right.
+
+### The rebuild is planned, explained, and NOT run - a defect found in the executable
+
+**Running the rebuild from the dialog left the database unreadable. Twice, on two different databases.**
+
+The file is genuinely damaged: opened with nothing but the ADO.NET provider, outside Studio, it throws
+`InvalidDataException: Page 9 is not an overflow page` (and `Page 7` for the second) out of the schema
+catalogue's overflow chain. The reproduction is: create a database through the Create dialog, run a
+schema script, rebuild a table, leave through **File > Exit** (a clean exit - the first case was
+initially blamed on a killed process, and the second ruled that out), then reopen.
+
+**Fourteen controlled runs failed to reproduce it headlessly**, and they are what makes the report worth
+anything: the rebuild alone; with the trigger dropped first; with the index dropped first; with both;
+with an extra `ADD COLUMN` before it; the same statements typed by hand; over 2000 rows; with one and
+with four readers scanning the table throughout; with a second database open in the same process; and at
+page sizes 512, 1024, 4096 and 8192. All fourteen reopen correctly. And the control **without a
+rebuild** - same creation path, same script, same clean exit - reopens correctly too, which is what
+implicates the rebuild rather than anything around it.
+
+So the mechanism is not known, and the honest thing is not to run it:
+
+- the dialog still plans, counts the casualties, names the dependencies and shows the script;
+- the button is **not armed**, and says why on screen rather than being mysteriously grey;
+- **To the editor** puts the whole plan in a query tab, and running it there is measured to be safe.
+
+`TheRebuildDialogWillNotRunItYetAsync` pins that decision. When the cause is found, delete the test and
+arm the button. The two damaged files are kept in this session's scratchpad as evidence.
+
+### The index dialog offers what the engine does, and says what it buys (WS-43)
+
+Measured over 200 rows, so the ten-row threshold below which no index is considered is not what is being
+measured:
+
+| Offered | Accepted | Used by the planner |
+|---|---|---|
+| plain | yes | **yes** - `SEARCH TABLE … USING INDEX` |
+| `UNIQUE` | yes | yes, and it enforces uniqueness |
+| `INCLUDE` (covering) | yes | **yes** |
+| partial, `WHERE` | yes | **no** - a full scan either way |
+| `DESC` | yes | **no** - `ORDER BY … DESC LIMIT` still sorts the whole table |
+| by expression | yes | **no**, and the catalogue reports the column as `$expr0` |
+
+All six are offered, because all six are stored and a database is not read only by Studio. The two that
+buy nothing today say so next to the box: an option that quietly does nothing is worse than one that
+explains itself.
+
+`INFORMATION_SCHEMA.INDEXES` publishes nine columns and **none of them is the direction or the included
+columns**, so an index Studio recreates during a rebuild is the index the catalogue could describe, not
+necessarily the one that was there. The rebuild plan says that out loud.
+
+### The key warning, in three states (WS-44)
+
+A property of this engine rather than general advice: no index is created for a `PRIMARY KEY`, so a key
+whose values are supplied by hand makes every insert scan the table. The designer and the index dialog
+share the three states - AUTOINCREMENT needs nothing, a hand-set key with an index is fine, a hand-set
+key without one is warned about - and a table with no key at all is told what that costs.
+
+### The editors inside the language's boundary (WS-45)
+
+- a trigger body takes only `SELECT`, `INSERT`, `UPDATE`, `DELETE` and `MERGE`; the editor says so and
+  checks it with the parser before the engine is asked;
+- `SET NEW.column = …` does not parse, and the engine's message for it is
+  *"mismatched input 'NEW' expecting TRANSACTION"* - `SET` is being read as `SET TRANSACTION`. The
+  editor explains that instead of passing it on, and no template offers the shape;
+- `FOR EACH STATEMENT` is a parse error; **omitting the clause** is how a statement trigger is written,
+  and the catalogue then reports `ACTION_ORIENTATION = STATEMENT`;
+- there is no `ALTER TRIGGER`, so replacing one is a `DROP` and a `CREATE` - and the button says
+  "Drop and create", because it is not atomic and the old body is the only copy while it runs;
+- **a view whose body the catalogue cannot render is not offered for editing.** A `UNION` and a
+  subquery both come back with `VIEW_DEFINITION = NULL` - the phase-8 rule working as designed, the
+  renderer refusing to report a rendering that lost something. Editing a view means dropping and
+  creating it, and creating it from a body Studio does not have would destroy it.
+
+### Deferred from stage 5, and what they turned out to be
+
+- **F2 renames a table and nothing else.** `ALTER VIEW`, `ALTER INDEX` and `ALTER TRIGGER` do not exist
+  in this language, so there is no way to rename a view, an index or a trigger at all. The tree offers
+  it only where it works.
+- **TRUNCATE** is in the grammar and works.
+- **"Rebuild an index"** has no engine support - no `REINDEX`, no `ALTER INDEX`. It is a drop and a
+  create, and the menu item says that.
+- **Enabling or disabling a trigger** has no engine support either, so it is not offered.
+
+### How it was measured
+
+Five sabotages, each red in exactly the case that exists for it: the column dropped without its index;
+the NOT NULL refusal removed; a key column dropped like any other; the `WHEN` brackets removed (red in
+two cases - the text and the execution); and the edit set wrapped in a transaction, which produced the
+false *"Applied 0 of 3"* above.
+
+**And five defects came out of the running application that no ViewModel test could see:**
+
+1. the section strip said **"Columns 0"** over five rows - a computed property is read once when the
+   strip binds, which is before the table has been read;
+2. the object inspector went **stale** after every schema change - it is bound to the tree's selection
+   and nothing had told it the object underneath had changed;
+3. the columns grid **overlapped itself**: the name cut off, `CONSTRAINTS` and `CHANGE` running
+   together, and the drop button sitting on top of `AUTOINCREMENT`;
+4. the rebuild dialog's **report appeared below the fold** - the one thing the dialog exists to say was
+   the one thing off screen;
+5. the section strip announced as **`Avalonia.Controls.StackPanel`**, invisible to a screen reader.
+   That is the defect `AutomationSurfaceTests` exists for, in an element type it was not looking at:
+   the guard now covers `RadioButton` as well, which found three more in the export dialog. `CheckBox`
+   (12) and `TabItem` (7) are still outside it.
+
+And the sixth is the corruption above, which is the reason the rebuild is not armed.
+
+### Tests
+
+489 -> 549. `SchemaMatrixTests` (11), `TableRebuildTests` (11), `SchemaDesignerTests` (21),
+`SchemaDialogTests` (11), `ExplorerSchemaActionsTests` (6).
+
+### Left for later, deliberately
+
+- **The cause of the corruption.** It is the first thing to pick up: everything else in the rebuild is
+  built and tested behind the disarmed button.
+- **Sequences.** `CREATE SEQUENCE` takes a name and `START WITH` and nothing else - no `INCREMENT BY`,
+  no `MINVALUE`/`MAXVALUE`, no `CYCLE`, no `AS <type>`, though `INFORMATION_SCHEMA.SEQUENCES` publishes
+  all of them. `NEXTVAL('s')` works, `NEXT VALUE FOR s` does not. The editor 5.5 asks for is mostly
+  unbuildable, so it is not built.
+- The dependency dialog of 5.7 as a dialog: the dependencies are shown in the rebuild plan and the
+  index that would be orphaned is dropped with its column, but "delete this column?" does not yet stop
+  to list what goes with it.
+- `CheckBox` and `TabItem` in the automation guard.
+
+---
+
 ## Findings for the engine, not fixed here
+**A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
+class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner
+treats the call as if it were the bare column and seeks the literal in the index.
+
+| Table | Query | No index | With an ordinary index on the column |
+|---|---|---|---|
+| `V = -7` among 200 others | `WHERE ABS(V) = 7` | the row | **no rows** |
+| `Name = 'MIXEDCASE'` | `WHERE LOWER(Name) = 'mixedcase'` | the row | **no rows** |
+| the same | `WHERE UPPER(Name) = 'NAME42'` | the row | **no rows** |
+
+Controlled both ways: the answer is correct before the index is created, wrong after, correct again
+after `DROP INDEX`, on B-Tree and on LSM, and across a close and reopen. `V + 0 = -7` and `-V = 7` stay
+correct, so it is specifically a function CALL. Creating an index by expression does not help - the
+planner still picks the plain one. It is quiet on most data, because for values already lower-case or
+positive the raw value and the wrapped one are equal; it shows up the moment they are not. `EXPLAIN`
+names the index it is using.
+
+**`ALTER TABLE … RENAME TO` restarts the key generator, and the next generated INSERT overwrites a
+row.** Measured on both stores and across a reopen; a `RENAME COLUMN` and an `ADD COLUMN` do not do it,
+an explicit duplicate key is refused correctly, and a `UNIQUE` index on the key turns the overwrite into
+a refusal - so the generated-key path skips the check the explicit path makes. This is what decided the
+shape of the schema designer's rebuild.
+
+**`ADD COLUMN … NOT NULL` with no `DEFAULT` is accepted on a table that has rows**, leaves NULL in every
+one of them, and then refuses every later write to that table - including an `UPDATE` of an unrelated
+column. Studio refuses to write the statement.
+
+**`DROP COLUMN` leaves the index on that column in the catalogue**, over a column that no longer exists,
+and it survives a reopen. The foreign key on the column does go with it.
+
+**`ALTER COLUMN … TYPE` rewrites the rows and destroys what it cannot convert**, silently: a word
+becomes 0, an INTEGER becomes 01/01/0001, a narrowed `VARCHAR` keeps its long values and stops enforcing
+its length. Changing the type back does not bring anything back. `CAST` behaves the same way and never
+fails, so nothing in the language will tell a user what a conversion cost.
+
+**`INFORMATION_SCHEMA.COLUMNS.ORDINAL_POSITION` is 1 for every column** of every table, so the catalogue
+cannot say what order a table's columns are in.
+
+**A rebuild through Studio's designer left two database files unreadable** - see stage 8. Not
+reproducible headlessly in fourteen controlled runs; the files are damaged in the schema catalogue's
+overflow chain and the bare provider cannot open them either.
+
+
 
 **`UPDATE <table> SET <column that does not exist> = 'x'` is accepted.** Measured 2026-08-05 while
 looking for a violation the engine reliably refuses:

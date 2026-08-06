@@ -16,6 +16,7 @@ public partial class DatabaseExplorer : UserControl
         DataContext = ApplicationViewModel.Instance;
 
         DoubleTapped += OnDoubleTapped;
+        KeyDown += OnKeyDown;
     }
 
     #endregion
@@ -47,6 +48,59 @@ public partial class DatabaseExplorer : UserControl
                 explorer.SelectTop1000Command.Execute(null);
                 break;
         }
+    }
+
+    /// <summary>
+    /// F2 opens the rename box, deferred here from stage 5. Stage 4's lesson applies: a KeyBinding on
+    /// the window needs the event to bubble from a focused element, and the tree is one - so this
+    /// handler sits on the control that has the focus rather than on the shell.
+    /// </summary>
+    private void OnKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+    {
+        if (e.Key != Avalonia.Input.Key.F2)
+            return;
+
+        var explorer = ApplicationViewModel.Instance.DatabaseExplorerVm;
+
+        if (!explorer.CanRename)
+            return;
+
+        explorer.BeginRenameCommand.Execute(null);
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// Enter renames, Escape puts the old name back. Both close the box.
+    /// </summary>
+    private void RenameBox_KeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+    {
+        var explorer = ApplicationViewModel.Instance.DatabaseExplorerVm;
+
+        switch (e.Key)
+        {
+            case Avalonia.Input.Key.Enter:
+                explorer.CommitRenameCommand.Execute(null);
+                e.Handled = true;
+                break;
+
+            case Avalonia.Input.Key.Escape:
+                explorer.CancelRenameCommand.Execute(null);
+                e.Handled = true;
+                break;
+        }
+    }
+
+    /// <summary>
+    /// The caret goes into the box as it appears. Stage 4 found this the hard way with the command
+    /// palette: a box that is visible and not focused is a box the user has to click.
+    /// </summary>
+    private void RenameBox_Attached(object? sender, Avalonia.VisualTreeAttachmentEventArgs e)
+    {
+        if (sender is not TextBox box)
+            return;
+
+        box.Focus();
+        box.SelectAll();
     }
 
     #endregion

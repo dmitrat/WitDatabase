@@ -1,0 +1,148 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="620"
+        x:Class="OutWit.Database.Studio.Views.Dialogs.EditTriggerDialog"
+        x:DataType="vm:EditTriggerViewModel"
+        Title="Trigger"
+        Width="720" Height="620"
+        MinWidth="600" MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16">
+            <StackPanel Spacing="4">
+                <TextBlock Text="{Binding Table, StringFormat='Trigger on {0}'}"
+                           FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Text="There is no ALTER TRIGGER in this language: changing one drops it and creates it again."
+                           FontSize="12" Foreground="Gray"
+                           IsVisible="{Binding IsReplacing}"/>
+            </StackPanel>
+        </Border>
+
+        <ScrollViewer Grid.Row="1" Padding="16">
+            <StackPanel Spacing="14">
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Name" FontWeight="SemiBold"/>
+                    <TextBox AutomationProperties.AutomationId="TriggerName"
+                             Text="{Binding Name}" Width="360" HorizontalAlignment="Left"/>
+                </StackPanel>
+
+                <StackPanel Orientation="Horizontal" Spacing="16">
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="When" FontWeight="SemiBold"/>
+                        <ComboBox AutomationProperties.AutomationId="TriggerTiming"
+                                  ItemsSource="{Binding Timings}"
+                                  SelectedItem="{Binding Timing}" Width="140"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6">
+                        <TextBlock Text="Event" FontWeight="SemiBold"/>
+                        <ComboBox AutomationProperties.AutomationId="TriggerEvent"
+                                  ItemsSource="{Binding Events}"
+                                  SelectedItem="{Binding Event}" Width="140"/>
+                    </StackPanel>
+
+                    <StackPanel Spacing="6" VerticalAlignment="Bottom">
+                        <CheckBox AutomationProperties.AutomationId="TriggerForEachRow"
+                                  Content="FOR EACH ROW" IsChecked="{Binding ForEachRow}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Condition (optional)" FontWeight="SemiBold"/>
+                    <TextBox AutomationProperties.AutomationId="TriggerCondition"
+                             Text="{Binding Condition}"
+                             PlaceholderText="NEW.Total &gt; 100"
+                             FontFamily="Consolas,Courier New"/>
+                    <TextBlock Text="Written as WHEN (...) - the brackets are required by the grammar and Studio adds them."
+                               FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="Body" FontWeight="SemiBold"/>
+                    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1" CornerRadius="4" MinHeight="140">
+                        <TextBox AutomationProperties.AutomationId="TriggerBody"
+                                 Text="{Binding Body}"
+                                 AcceptsReturn="True" TextWrapping="NoWrap"
+                                 FontFamily="Consolas,Courier New" FontSize="13"
+                                 Padding="8" BorderThickness="0" Background="Transparent"
+                                 PlaceholderText="INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);"/>
+                    </Border>
+                    <TextBlock Text="{Binding LanguageNote}" FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <!-- What is wrong with it, before the engine is asked -->
+                <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
+                        CornerRadius="4" Padding="12"
+                        IsVisible="{Binding HasProblems}">
+                    <ItemsControl ItemsSource="{Binding Problems}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="#856404"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </Border>
+
+                <StackPanel Spacing="6">
+                    <TextBlock Text="What will run" FontWeight="SemiBold"/>
+                    <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                            CornerRadius="4" Padding="8">
+                        <TextBlock Text="{Binding GeneratedDdl}"
+                                   FontFamily="Consolas,Courier New" FontSize="12"
+                                   TextWrapping="Wrap"/>
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Background="#FDECEA" BorderBrush="#E57373" BorderThickness="1"
+                Padding="12" Margin="16,0"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="#8B2E2E"/>
+        </Border>
+
+        <Border Grid.Row="3"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <Button Grid.Column="0"
+                        AutomationProperties.AutomationId="TriggerToEditor"
+                        Content="To the editor"
+                        Command="{Binding SendToEditorCommand}"/>
+
+                <Button Grid.Column="2"
+                        AutomationProperties.AutomationId="TriggerCancel"
+                        Content="Cancel"
+                        Command="{Binding CancelCommand}"
+                        Width="100" Margin="0,0,8,0"
+                        HorizontalContentAlignment="Center"/>
+
+                <Button Grid.Column="3"
+                        AutomationProperties.AutomationId="TriggerSave"
+                        Content="{Binding SaveText}"
+                        Command="{Binding SaveCommand}"
+                        IsEnabled="{Binding IsValid}"
+                        Width="140"
+                        HorizontalContentAlignment="Center"
+                        Classes="accent"/>
+            </Grid>
+        </Border>
+
+    </Grid>
+
+</Window>

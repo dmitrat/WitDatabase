@@ -1,19 +1,75 @@
 using System.Collections.ObjectModel;
 using System.Collections.Specialized;
 using System.ComponentModel;
-using System.Text;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
+using OutWit.Common.Abstract;
 using OutWit.Common.Aspects;
 using OutWit.Common.MVVM.Commands;
 using OutWit.Common.MVVM.ViewModels;
 using OutWit.Common.Utils;
+using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
 
 namespace OutWit.Database.Studio.ViewModels;
 
 /// <summary>
-/// ViewModel for creating a new index.
+/// One column in the index being built, with the direction it is sorted in.
+/// </summary>
+public sealed class IndexColumnViewModel : NotifyPropertyChangedBase
+{
+    public IndexColumnViewModel(string expression, bool isDescending = false)
+    {
+        Expression = expression;
+        IsDescending = isDescending;
+    }
+
+    [Notify]
+    public string Expression { get; set; }
+
+    [Notify]
+    public bool IsDescending { get; set; }
+
+    public IndexColumn ToModel() => new(Expression, IsDescending);
+
+    public override string ToString() => IsDescending ? $"{Expression} DESC" : Expression;
+}
+
+/// <summary>
+/// The direction button's label: the word the column is sorted by, not an arrow nobody can read out
+/// loud.
+/// </summary>
+public sealed class DirectionConverter : Avalonia.Data.Converters.IValueConverter
+{
+    public static DirectionConverter Instance { get; } = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+        => value is true ? "DESC" : "ASC";
+
+    public object ConvertBack(object? value, Type targetType, object? parameter,
+        System.Globalization.CultureInfo culture)
+        => Avalonia.Data.BindingOperations.DoNothing;
+}
+
+/// <summary>
+/// The index dialog (WS-43), which offers what this engine actually does - and says which of those
+/// things the planner will use.
+///
+/// Measured 2026-08-06, over 200 rows so the ten-row threshold below which no index is considered is
+/// not what is being measured:
+///
+/// | offered | accepted | used by the planner |
+/// |---|---|---|
+/// | plain | yes | yes - SEARCH TABLE ... USING INDEX |
+/// | UNIQUE | yes | yes, and it enforces uniqueness |
+/// | INCLUDE (covering) | yes | yes |
+/// | partial, WHERE | yes | <b>no</b> - the plan is a full scan either way |
+/// | DESC | yes | <b>no</b> - ORDER BY ... DESC LIMIT still sorts the whole table |
+/// | by expression | yes | <b>no</b> - and the catalogue reports the column as $expr0 |
+///
+/// All six are offered, because all six are stored and a database is not only read by Studio. The two
+/// that buy nothing today say so next to the box rather than being hidden: an option that quietly does
+/// nothing is worse than one that explains itself.
 /// </summary>
 public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
 {
@@ -43,6 +99,7 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
         TableName = string.Empty;
         IsUnique = false;
         SelectedColumns = [];
+        IncludedColumns = [];
         FilterCondition = string.Empty;
         AvailableTables = [];
         AvailableColumns = [];
@@ -52,6 +109,7 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
     {
         PropertyChanged += OnPropertyChanged;
         SelectedColumns.CollectionChanged += OnCollectionChanged;
+        IncludedColumns.CollectionChanged += OnCollectionChanged;
     }
 
     private void InitCommands()
@@ -61,6 +119,13 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
         GenerateDdlCommand = new RelayCommand(GenerateDdl);
         CreateIndexCommand = new RelayCommandAsync(CreateIndexAsync);
         CancelCommand = new RelayCommand(Cancel);
+
+        AddColumnCommand = new RelayCommand<string>(AddColumn);
+        RemoveColumnCommand = new RelayCommand<IndexColumnViewModel>(RemoveColumn);
+        ToggleDirectionCommand = new RelayCommand<IndexColumnViewModel>(ToggleDirection);
+        AddIncludedCommand = new RelayCommand<string>(AddIncluded);
+        RemoveIncludedCommand = new RelayCommand<string>(name => IncludedColumns.Remove(name!));
+        SendToEditorCommand = new RelayCommand(SendToEditor);
     }
 
     #endregion
@@ -99,10 +164,130 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
         }
     }
 
+    /// <summary>
+    /// Opens the dialog on one table, with its columns and the warning about its key already worked
+    /// out - which is how the designer's "Create index" reaches it (WS-44).
+    /// </summary>
+    public async Task LoadForTableAsync(string tableName)
+    {
+        TableName = tableName;
+
+        await LoadTablesAsync();
+        await LoadColumnsAsync();
+        await UpdateKeyNoteAsync();
+
+        if (string.IsNullOrWhiteSpace(IndexName))
+            IndexName = $"IX_{tableName}_";
+
+        GenerateDdl();
+    }
+
+    /// <summary>
+    /// The one place on the screen that talks about the key, in three states (5.6): an AUTOINCREMENT
+    /// key needs no index, a hand-set key with an index is fine, a hand-set key without one degrades
+    /// every insert.
+    /// </summary>
+    private async Task UpdateKeyNoteAsync()
+    {
+        if (Database?.IsConnected != true || string.IsNullOrWhiteSpace(TableName))
+            return;
+
+        try
+        {
+            var columns = await Database!.GetColumnsAsync(TableName);
+            var indexes = await Database.GetTableIndexesAsync(TableName);
+
+            var keys = columns.Where(c => c.IsPrimaryKey).ToList();
+
+            if (keys.Count == 0)
+            {
+                KeyNote = $"{TableName} has no primary key.";
+                KeyNoteIsSevere = false;
+                return;
+            }
+
+            if (keys.All(k => k.IsAutoIncrement))
+            {
+                KeyNote = "The key is AUTOINCREMENT: the generator guarantees uniqueness, so an insert " +
+                          "does not scan and the key needs no index.";
+                KeyNoteIsSevere = false;
+                return;
+            }
+
+            var covered = keys.All(key => indexes.Any(index =>
+                index.Columns.FirstOrDefault()?.Equals(key.Name, StringComparison.OrdinalIgnoreCase) == true));
+
+            KeyNote = covered
+                ? "The key already has an index of its own."
+                : $"{TableName} has a primary key set by hand and no index on it: every insert scans the " +
+                  $"whole table to check uniqueness. A UNIQUE index on " +
+                  $"{string.Join(", ", keys.Select(k => k.Name))} removes that.";
+
+            KeyNoteIsSevere = !covered;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogDebug(ex, "Could not work out the key note for {Table}", TableName);
+        }
+    }
+
+    private void AddColumn(string? column)
+    {
+        if (string.IsNullOrWhiteSpace(column))
+            return;
+
+        SelectedColumns.Add(new IndexColumnViewModel(column));
+        GenerateDdl();
+    }
+
+    private void RemoveColumn(IndexColumnViewModel? column)
+    {
+        if (column == null)
+            return;
+
+        SelectedColumns.Remove(column);
+        GenerateDdl();
+    }
+
+    private void ToggleDirection(IndexColumnViewModel? column)
+    {
+        if (column == null)
+            return;
+
+        column.IsDescending = !column.IsDescending;
+
+        // The direction lives on an item INSIDE the collection, so neither the collection nor a
+        // property of this ViewModel has changed - the note about what the planner will do with it has
+        // to be asked for by hand, or it stays as it was.
+        UpdateStatus();
+        GenerateDdl();
+    }
+
+    private void AddIncluded(string? column)
+    {
+        if (string.IsNullOrWhiteSpace(column) || IncludedColumns.Contains(column))
+            return;
+
+        IncludedColumns.Add(column);
+        GenerateDdl();
+    }
+
     private void GenerateDdl()
     {
         GeneratedDdl = BuildCreateIndexSql();
-        Logger.LogInformation("Generated DDL for index {IndexName}", IndexName);
+    }
+
+    /// <summary>
+    /// Puts the statement in a query tab instead of running it - "В редактор" in the mock-up. The
+    /// dialog is a way to write DDL, not the only way to have it.
+    /// </summary>
+    private void SendToEditor()
+    {
+        var sql = BuildCreateIndexSql();
+
+        ApplicationVm.WorkspaceTabsVm.OpenQueryTab(sql, $"{IndexName} - DDL", Database);
+
+        ShouldCloseDialog(false);
     }
 
     private async Task CreateIndexAsync()
@@ -121,13 +306,14 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
             ApplicationVm.MainWindowVm.StatusText = $"Created index: {IndexName}";
             Logger.LogInformation("Created index: {IndexName}", IndexName);
 
+            await Database.Catalog.RefreshAsync();
             await ApplicationVm.DatabaseExplorerVm.RefreshAsync();
 
             ShouldCloseDialog(true);
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to create index: {ex.Message}";
+            ErrorMessage = $"Failed to create index: {ex.Message.Split('\n')[0]}";
             ApplicationVm.MainWindowVm.StatusText = "Error creating index";
             Logger.LogError(ex, "Failed to create index {IndexName}", IndexName);
         }
@@ -142,28 +328,17 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
         ShouldCloseDialog(false);
     }
 
-    private string BuildCreateIndexSql()
+    public string BuildCreateIndexSql() => DdlWriter.CreateIndex(ToDraft());
+
+    public IndexDraft ToDraft() => new()
     {
-        var sb = new StringBuilder();
-        
-        sb.Append("CREATE ");
-        if (IsUnique)
-            sb.Append("UNIQUE ");
-        
-        sb.Append($"INDEX {IndexName}");
-        sb.Append($" ON {TableName} (");
-        sb.Append(string.Join(", ", SelectedColumns));
-        sb.Append(')');
-
-        if (!string.IsNullOrWhiteSpace(FilterCondition))
-        {
-            sb.Append($" WHERE {FilterCondition}");
-        }
-
-        sb.Append(';');
-
-        return sb.ToString();
-    }
+        Name = IndexName,
+        Table = TableName,
+        Columns = SelectedColumns.Select(c => c.ToModel()).ToList(),
+        IsUnique = IsUnique,
+        FilterCondition = string.IsNullOrWhiteSpace(FilterCondition) ? null : FilterCondition,
+        IncludedColumns = IncludedColumns.ToList()
+    };
 
     #endregion
 
@@ -178,6 +353,27 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
         CanCreateIndex = hasIndexName && hasTableName && hasColumns && !IsCreating && Database?.IsConnected == true;
         CanGenerateDdl = hasIndexName && hasTableName && hasColumns;
         CanLoadColumns = hasTableName;
+
+        // The two options the engine stores and the planner does not use. Said here rather than
+        // hidden, and only when they are actually switched on.
+        PlannerNote = BuildPlannerNote();
+    }
+
+    private string? BuildPlannerNote()
+    {
+        var notes = new List<string>();
+
+        if (!string.IsNullOrWhiteSpace(FilterCondition))
+            notes.Add("a partial index is stored but this planner does not use it yet");
+
+        if (SelectedColumns.Any(c => c.IsDescending))
+            notes.Add("a sort direction is stored but this planner does not read an index in order");
+
+        if (SelectedColumns.Any(c => c.Expression.Contains('(')))
+            notes.Add("an index by expression is stored, but the planner does not match it and the " +
+                      "catalogue reports its column as $expr0");
+
+        return notes.Count == 0 ? null : string.Join("; ", notes) + ".";
     }
 
     #endregion
@@ -186,19 +382,25 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.IsProperty((CreateIndexViewModel vm) => vm.IndexName))
+        if (e.IsProperty((CreateIndexViewModel vm) => vm.IndexName) ||
+            e.IsProperty((CreateIndexViewModel vm) => vm.TableName) ||
+            e.IsProperty((CreateIndexViewModel vm) => vm.IsCreating) ||
+            e.IsProperty((CreateIndexViewModel vm) => vm.IsUnique) ||
+            e.IsProperty((CreateIndexViewModel vm) => vm.FilterCondition))
+        {
             UpdateStatus();
 
-        if (e.IsProperty((CreateIndexViewModel vm) => vm.TableName))
-            UpdateStatus();
-
-        if (e.IsProperty((CreateIndexViewModel vm) => vm.IsCreating))
-            UpdateStatus();
+            if (CanGenerateDdl)
+                GenerateDdl();
+        }
     }
 
     private void OnCollectionChanged(object? sender, NotifyCollectionChangedEventArgs e)
     {
         UpdateStatus();
+
+        if (CanGenerateDdl)
+            GenerateDdl();
     }
 
     #endregion
@@ -214,8 +416,18 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public bool IsUnique { get; set; }
 
+    /// <summary>
+    /// The key columns, in order, each with its direction.
+    /// </summary>
     [Notify]
-    public ObservableCollection<string> SelectedColumns { get; private set; } = null!;
+    public ObservableCollection<IndexColumnViewModel> SelectedColumns { get; private set; } = null!;
+
+    /// <summary>
+    /// Columns carried in the index without being part of its key - the covering index of WS-43, and
+    /// the one advanced option this planner does use.
+    /// </summary>
+    [Notify]
+    public ObservableCollection<string> IncludedColumns { get; private set; } = null!;
 
     [Notify]
     public string FilterCondition { get; set; } = null!;
@@ -228,6 +440,21 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public string? GeneratedDdl { get; set; }
+
+    /// <summary>
+    /// What the key of this table costs, in three states (WS-44).
+    /// </summary>
+    [Notify]
+    public string? KeyNote { get; private set; }
+
+    [Notify]
+    public bool KeyNoteIsSevere { get; private set; }
+
+    /// <summary>
+    /// What the chosen options will and will not buy from the planner.
+    /// </summary>
+    [Notify]
+    public string? PlannerNote { get; private set; }
 
     [Notify]
     public bool IsCreating { get; set; }
@@ -257,6 +484,18 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand CreateIndexCommand { get; private set; } = null!;
 
     public ICommand CancelCommand { get; private set; } = null!;
+
+    public ICommand AddColumnCommand { get; private set; } = null!;
+
+    public ICommand RemoveColumnCommand { get; private set; } = null!;
+
+    public ICommand ToggleDirectionCommand { get; private set; } = null!;
+
+    public ICommand AddIncludedCommand { get; private set; } = null!;
+
+    public ICommand RemoveIncludedCommand { get; private set; } = null!;
+
+    public ICommand SendToEditorCommand { get; private set; } = null!;
 
     #endregion
 

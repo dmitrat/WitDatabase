@@ -47,6 +47,11 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         ViewStructureCommand = new RelayCommandAsync(ViewStructureAsync);
         ViewDefinitionCommand = new RelayCommandAsync(ViewDefinitionAsync);
         DropObjectCommand = new RelayCommandAsync(DropObjectAsync);
+        RenameObjectCommand = new RelayCommandAsync<string>(RenameObjectAsync);
+        BeginRenameCommand = new RelayCommand(BeginRename);
+        CommitRenameCommand = new RelayCommandAsync(CommitRenameAsync);
+        CancelRenameCommand = new RelayCommand(CancelRename);
+        TruncateTableCommand = new RelayCommandAsync(TruncateTableAsync);
         CreateTableCommand = new RelayCommandAsync(CreateTableAsync);
         CreateViewCommand = new RelayCommandAsync(CreateViewAsync);
         CreateIndexCommand = new RelayCommandAsync(CreateIndexAsync);
@@ -240,6 +245,113 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         {
             ErrorMessage = $"Failed to drop {objectType.ToLower()}: {ex.Message}";
             Logger.LogError(ex, "Failed to drop {ObjectType}: {ObjectName}", objectType, objectName);
+        }
+    }
+
+    /// <summary>
+    /// F2, deferred here from stage 5.
+    ///
+    /// It is offered for a TABLE and for nothing else, because that is all the language has: measured
+    /// 2026-08-06, <c>ALTER TABLE t RENAME TO</c> works, and ALTER VIEW, ALTER INDEX and ALTER TRIGGER
+    /// do not exist at all - there is no way to rename a view, an index or a trigger on this engine
+    /// short of dropping it and creating it again.
+    ///
+    /// The name arrives as the command's parameter: the tree edits in place, and a rename with no new
+    /// name is a no-op rather than an error.
+    /// </summary>
+    private async Task RenameObjectAsync(string? newName)
+    {
+        var session = SelectedSession;
+
+        if (SelectedNode == null || session == null || !CanRename || string.IsNullOrWhiteSpace(newName))
+            return;
+
+        var oldName = SelectedNode.Name;
+
+        if (string.Equals(oldName, newName, StringComparison.Ordinal))
+            return;
+
+        try
+        {
+            await session.ExecuteNonQueryAsync(DdlWriter.RenameTable(oldName, newName));
+
+            SelectedNode = null;
+
+            await session.Catalog.RefreshAsync();
+            await RefreshAsync(session);
+
+            ApplicationVm.MainWindowVm.StatusText = $"Renamed {oldName} to {newName}";
+            Logger.LogInformation("Renamed table {Old} to {New}", oldName, newName);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to rename {oldName}: {ex.Message.Split('\n')[0]}";
+            Logger.LogError(ex, "Failed to rename {Old}", oldName);
+        }
+    }
+
+    /// <summary>
+    /// Opens the rename box on the selected row. F2 and the context menu both come here.
+    /// </summary>
+    private void BeginRename()
+    {
+        if (SelectedNode == null || !CanRename)
+            return;
+
+        SelectedNode.RenameText = SelectedNode.Name;
+        SelectedNode.IsRenaming = true;
+    }
+
+    private async Task CommitRenameAsync()
+    {
+        var node = SelectedNode;
+
+        if (node is not { IsRenaming: true })
+            return;
+
+        var newName = node.RenameText;
+        node.IsRenaming = false;
+
+        await RenameObjectAsync(newName);
+    }
+
+    private void CancelRename()
+    {
+        if (SelectedNode == null)
+            return;
+
+        SelectedNode.IsRenaming = false;
+        SelectedNode.RenameText = SelectedNode.Name;
+    }
+
+    /// <summary>
+    /// TRUNCATE, also deferred here from stage 5. It empties the table and cannot be undone - and on
+    /// this engine DDL is not rolled back, so there is no transaction to hide behind.
+    /// </summary>
+    private async Task TruncateTableAsync()
+    {
+        var session = SelectedSession;
+
+        if (SelectedNode == null || session == null || !CanTruncate)
+            return;
+
+        var table = SelectedNode.Name;
+
+        try
+        {
+            await session.ExecuteNonQueryAsync(DdlWriter.Truncate(table));
+
+            await RefreshAsync(session);
+
+            ApplicationVm.MainWindowVm.StatusText = $"Emptied {table}";
+            ApplicationVm.Notifications.Warning($"{table} was emptied", "TRUNCATE cannot be undone.");
+
+            Logger.LogInformation("Truncated {Table}", table);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = $"Failed to empty {table}: {ex.Message.Split('\n')[0]}";
+            Logger.LogError(ex, "Failed to truncate {Table}", table);
         }
     }
 
@@ -686,6 +798,11 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                                            or DatabaseNodeType.Index
                                            or DatabaseNodeType.Trigger
                                            or DatabaseNodeType.Sequence;
+
+        // Only a table. ALTER VIEW, ALTER INDEX and ALTER TRIGGER do not exist in this language, so
+        // F2 on any of those would be a button that cannot work.
+        CanRename = connected && nodeType == DatabaseNodeType.Table;
+        CanTruncate = connected && nodeType == DatabaseNodeType.Table;
     }
 
     #endregion
@@ -772,6 +889,15 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public bool CanDropObject { get; private set; }
 
+    /// <summary>
+    /// F2. True for a table only - nothing else in this language can be renamed.
+    /// </summary>
+    [Notify]
+    public bool CanRename { get; private set; }
+
+    [Notify]
+    public bool CanTruncate { get; private set; }
+
     #endregion
 
     #region Commands
@@ -789,6 +915,22 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand ViewDefinitionCommand { get; private set; } = null!;
 
     public ICommand DropObjectCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// Renames straight away, taking the new name as its parameter.
+    /// </summary>
+    public ICommand RenameObjectCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// F2: opens the box on the selected row.
+    /// </summary>
+    public ICommand BeginRenameCommand { get; private set; } = null!;
+
+    public ICommand CommitRenameCommand { get; private set; } = null!;
+
+    public ICommand CancelRenameCommand { get; private set; } = null!;
+
+    public ICommand TruncateTableCommand { get; private set; } = null!;
 
     public ICommand CreateTableCommand { get; private set; } = null!;
 
