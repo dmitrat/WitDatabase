@@ -676,6 +676,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         CurrentTabType = SelectedTab?.TabType;
 
         IsQueryTabSelected = SelectedTab is QueryTabViewModel;
+        SelectedQueryTab = SelectedTab as QueryTabViewModel;
         IsTableEditTabSelected = SelectedTab is TableEditTabViewModel;
         IsStructureTabSelected = SelectedTab is StructureTabViewModel;
     }
@@ -810,9 +811,14 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     public bool CanExecuteQuery { get; private set; }
 
     /// <summary>
-    /// Gets the currently selected query tab, if any.
+    /// The selected query tab, if the selected one is a query tab.
+    ///
+    /// A stored property rather than a cast of <see cref="SelectedTab"/>, because the contextual
+    /// toolbar binds through it (WS-8) and a computed getter raises no change notification - the
+    /// transaction buttons would go on pointing at the tab that was selected when the window opened.
     /// </summary>
-    public QueryTabViewModel? SelectedQueryTab => SelectedTab as QueryTabViewModel;
+    [Notify]
+    public QueryTabViewModel? SelectedQueryTab { get; private set; }
 
     /// <summary>
     /// Gets the currently selected table edit tab, if any.

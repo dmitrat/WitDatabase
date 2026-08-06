@@ -25,4 +25,14 @@ public static class PanelConverters
     /// </summary>
     public static readonly IValueConverter SplitterWidth =
         new FuncValueConverter<bool, GridLength>(connected => new GridLength(connected ? 4 : 0));
+
+    /// <summary>
+    /// The transaction indicator in the status bar (WS-26). Autocommit is the quiet state and gets no
+    /// colour at all; an open transaction is the one that is expensive to forget about, so it is the
+    /// only thing in the status bar that is ever highlighted.
+    /// </summary>
+    public static readonly IValueConverter TransactionBrush =
+        new FuncValueConverter<bool, Avalonia.Media.IBrush>(open => open
+            ? new Avalonia.Media.SolidColorBrush(Avalonia.Media.Color.FromArgb(0x60, 0xD9, 0xA4, 0x41))
+            : Avalonia.Media.Brushes.Transparent);
 }

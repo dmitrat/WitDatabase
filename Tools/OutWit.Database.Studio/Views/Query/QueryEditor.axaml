@@ -1,11 +1,10 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-             xmlns:models="using:OutWit.Database.Studio.Models"
              xmlns:c="using:OutWit.Database.Studio.Controls"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
-             xmlns:viewModels="clr-namespace:OutWit.Database.Studio.ViewModels"
+             xmlns:conv="using:OutWit.Database.Studio.Converters"
              xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
              x:Class="OutWit.Database.Studio.Views.Query.QueryEditor"
@@ -14,31 +13,54 @@
 
     <!-- No toolbar of its own: the toolbar belongs to the window frame and changes with the active
          tab (WS-8). Two panels of the same buttons is what this replaces. -->
-    <Grid RowDefinitions="*,Auto,*,Auto">
-        
-        <!-- SQL Editor -->
+    <Grid RowDefinitions="45*,Auto,55*">
+
+        <!-- SQL Editor. 45/55 by default: once the query is written, the result matters more (3.1) -->
         <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="8">
-            <c:SqlEditor SqlText="{Binding SqlText, Mode=TwoWay}"
-                         SelectedText="{Binding SelectedText, Mode=OneWayToSource}"
-                         CaretOffsetInText="{Binding CaretOffset, Mode=OneWayToSource}"
-                         CaretLine="{Binding CaretLine, Mode=OneWayToSource}"
-                         CaretColumn="{Binding CaretColumn, Mode=OneWayToSource}"/>
+            <Grid RowDefinitions="*,Auto">
+                <c:SqlEditor Grid.Row="0"
+                             SqlText="{Binding SqlText, Mode=TwoWay}"
+                             SelectedText="{Binding SelectedText, Mode=OneWayToSource}"
+                             CaretOffsetInText="{Binding CaretOffset, Mode=OneWayToSource}"
+                             CaretLine="{Binding CaretLine, Mode=OneWayToSource}"
+                             CaretColumn="{Binding CaretColumn, Mode=OneWayToSource}"
+                             UnderlineLine="{Binding UnderlineLine}"
+                             UnderlineColumn="{Binding UnderlineColumn}"
+                             UnderlineLength="{Binding UnderlineLength}"
+                             CompletionSource="{Binding}"/>
+
+                <!-- What is wrong with the text as it stands, before anything is sent (3.6) -->
+                <Border Grid.Row="1"
+                        Background="#3A1D1D"
+                        CornerRadius="3"
+                        Padding="8,4"
+                        Margin="0,4,0,0"
+                        IsVisible="{Binding SyntaxErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
+                                  Width="13" Height="13" Foreground="#E57373"/>
+                        <TextBlock Foreground="#E57373" VerticalAlignment="Center">
+                            <Run Text="{Binding SyntaxErrorMessage}"/>
+                            <Run Text=" · line"/>
+                            <Run Text="{Binding SyntaxErrorLine}"/>
+                        </TextBlock>
+                    </StackPanel>
+                </Border>
+            </Grid>
         </Border>
 
-        <!-- Splitter -->
         <GridSplitter Grid.Row="1"
                       Height="4"
                       HorizontalAlignment="Stretch"
                       Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"/>
 
-        <!-- Results Area -->
+        <!-- The four permanent tabs of the result panel (3.4) -->
         <TabControl Grid.Row="2"
                     Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
-            
-            <!-- Results Tab -->
-            <TabItem Header="Results">
+
+            <!-- ================================ RESULT ================================ -->
+            <TabItem Header="Result">
                 <Grid RowDefinitions="*,Auto">
-                    <!-- Custom Data Grid for Results -->
                     <c:ResultDataGrid Grid.Row="0"
                                       ResultView="{Binding CurrentView}"
                                       ColumnSettings="{Binding ResultColumnSettings}"
@@ -46,8 +68,7 @@
                                       BorderThickness="0"
                                       Background="Transparent"
                                       IsVisible="{Binding HasResults}">
-                        
-                        <!-- Context Menu -->
+
                         <c:ResultDataGrid.ContextMenu>
                             <ContextMenu>
                                 <MenuItem AutomationProperties.AutomationId="QueryEditorCopy" Header="Copy"
@@ -91,183 +112,300 @@
                                 </MenuItem>
                             </ContextMenu>
                         </c:ResultDataGrid.ContextMenu>
-                        
-                        <!-- Keyboard shortcuts -->
+
                         <c:ResultDataGrid.KeyBindings>
                             <KeyBinding Gesture="Ctrl+C" Command="{Binding CopyRowsCommand}"/>
                         </c:ResultDataGrid.KeyBindings>
-                        
+
                     </c:ResultDataGrid>
 
-                    <!-- Results info bar -->
                     <Border Grid.Row="1"
                             Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                             Padding="8"
                             IsVisible="{Binding HasResults}">
-                        <Grid ColumnDefinitions="Auto,*,Auto">
-                            <!-- Row count info -->
-                            <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
-                                <TextBlock VerticalAlignment="Center">
-                                    <Run Text="Total:"/>
-                                    <Run Text="{Binding TotalRowCount}" FontWeight="SemiBold"/>
-                                    <Run Text="rows"/>
-                                </TextBlock>
-                                
-                                <!-- Copy buttons -->
-                                <StackPanel Orientation="Horizontal" Spacing="4">
-                                    <Button AutomationProperties.AutomationId="QueryEditorCopySelectedRows" AutomationProperties.Name="Copy selected rows" Command="{Binding CopyRowsCommand}"
-                                            IsEnabled="{Binding CanCopyRows}"
-                                            Width="28" Height="28"
-                                            Padding="0"
-                                            ToolTip.Tip="Copy selected rows (Ctrl+C)">
-                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY}"
-                                                  Width="14" Height="14"/>
-                                    </Button>
-                                    <Button AutomationProperties.AutomationId="QueryEditorCopyAsINSERTStatements" AutomationProperties.Name="Copy as INSERT statements" Command="{Binding CopyRowsAsInsertCommand}"
-                                            IsEnabled="{Binding CanCopyRows}"
-                                            Width="28" Height="28"
-                                            Padding="0"
-                                            ToolTip.Tip="Copy as INSERT statements">
-                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}"
-                                                  Width="14" Height="14"/>
-                                    </Button>
-                                </StackPanel>
+                        <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
+                            <TextBlock VerticalAlignment="Center">
+                                <Run Text="Total:"/>
+                                <Run Text="{Binding TotalRowCount}" FontWeight="SemiBold"/>
+                                <Run Text="rows"/>
+                            </TextBlock>
+
+                            <TextBlock VerticalAlignment="Center">
+                                <Run Text="{Binding ExecutionTimeMs, StringFormat='{}{0:F2}'}"/>
+                                <Run Text="ms"/>
+                            </TextBlock>
+
+                            <StackPanel Orientation="Horizontal" Spacing="4">
+                                <Button AutomationProperties.AutomationId="QueryEditorCopySelectedRows"
+                                        AutomationProperties.Name="Copy selected rows"
+                                        Command="{Binding CopyRowsCommand}"
+                                        IsEnabled="{Binding CanCopyRows}"
+                                        Width="28" Height="28" Padding="0"
+                                        ToolTip.Tip="Copy selected rows (Ctrl+C)">
+                                    <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="14" Height="14"/>
+                                </Button>
+                                <Button AutomationProperties.AutomationId="QueryEditorCopyAsINSERTStatements"
+                                        AutomationProperties.Name="Copy as INSERT statements"
+                                        Command="{Binding CopyRowsAsInsertCommand}"
+                                        IsEnabled="{Binding CanCopyRows}"
+                                        Width="28" Height="28" Padding="0"
+                                        ToolTip.Tip="Copy as INSERT statements">
+                                    <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="14" Height="14"/>
+                                </Button>
                             </StackPanel>
-                        </Grid>
+                        </StackPanel>
                     </Border>
 
-                    <!-- No Results Message -->
+                    <!-- Zero rows is an answer, not an empty screen (3.4) -->
                     <StackPanel Grid.Row="0"
                                 HorizontalAlignment="Center"
                                 VerticalAlignment="Center"
                                 Spacing="8"
                                 IsVisible="{Binding !HasResults}">
                         <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
-                                  Width="48"
-                                  Height="48"
+                                  Width="42" Height="42"
                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
-                        <TextBlock Text="No results to display"
-                                   FontSize="16"
+                        <TextBlock Text="No rows"
+                                   FontSize="15"
+                                   HorizontalAlignment="Center"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                        <TextBlock Text="Execute a query to see results here"
+                        <TextBlock Text="Execute a query, or nothing matched the condition"
                                    FontSize="12"
+                                   HorizontalAlignment="Center"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
                     </StackPanel>
                 </Grid>
             </TabItem>
 
-            <!-- Messages Tab -->
+            <!-- ================================ MESSAGES ================================ -->
             <TabItem Header="Messages">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Margin="16" Spacing="8">
-                        
-                        <!-- Success Message -->
-                        <Border Background="#D4EDDA"
-                                BorderBrush="#C3E6CB"
-                                BorderThickness="1"
-                                CornerRadius="4"
-                                Padding="12"
-                                IsVisible="{Binding IsSuccess}">
-                            <StackPanel Spacing="4">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <PathIcon Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"
-                                              Width="16" Height="16"
-                                              Foreground="#155724"/>
-                                    <TextBlock Text="Query executed successfully"
-                                               FontWeight="SemiBold"
-                                               Foreground="#155724"/>
-                                </StackPanel>
-                                <TextBlock Foreground="#155724">
-                                    <Run Text="Rows affected:"/>
-                                    <Run Text="{Binding RowsAffected}" FontWeight="Bold"/>
-                                </TextBlock>
-                                <TextBlock Foreground="#155724">
-                                    <Run Text="Execution time:"/>
-                                    <Run Text="{Binding ExecutionTimeMs, StringFormat='{}{0:F2} ms'}" FontWeight="Bold"/>
-                                </TextBlock>
-                            </StackPanel>
-                        </Border>
+                    <StackPanel Margin="12" Spacing="8">
 
-                        <!-- Error Message -->
-                        <Border Background="#F8D7DA"
-                                BorderBrush="#F5C6CB"
+                        <!-- A line per statement of the script (WS-22) -->
+                        <ItemsControl ItemsSource="{Binding Statements}">
+                            <ItemsControl.ItemTemplate>
+                                <DataTemplate>
+                                    <Grid ColumnDefinitions="Auto,*,Auto" Margin="0,2">
+                                        <TextBlock Grid.Column="0"
+                                                   Margin="0,0,8,0"
+                                                   FontFamily="Consolas,monospace"
+                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
+                                            <Run Text="["/><Run Text="{Binding Number}"/><Run Text="]"/>
+                                        </TextBlock>
+                                        <TextBlock Grid.Column="1"
+                                                   Text="{Binding Summary}"
+                                                   TextTrimming="CharacterEllipsis"/>
+                                        <TextBlock Grid.Column="2" Margin="8,0,0,0"
+                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
+                                            <Run Text="{Binding RowsAffected}"/>
+                                            <Run Text="rows ·"/>
+                                            <Run Text="{Binding ExecutionTimeMs, StringFormat='{}{0:F2}'}"/>
+                                            <Run Text="ms"/>
+                                        </TextBlock>
+                                    </Grid>
+                                </DataTemplate>
+                            </ItemsControl.ItemTemplate>
+                        </ItemsControl>
+
+                        <!-- The failure, with the engine's full text where a person can go and read it (WS-11) -->
+                        <Border Background="#3A1D1D"
+                                BorderBrush="#5A2D2D"
                                 BorderThickness="1"
                                 CornerRadius="4"
                                 Padding="12"
                                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
-                            <StackPanel Spacing="4">
+                            <StackPanel Spacing="6">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                                              Width="16" Height="16"
-                                              Foreground="#721C24"/>
-                                    <TextBlock Text="Query execution failed"
+                                              Width="15" Height="15" Foreground="#E57373"/>
+                                    <TextBlock Text="{Binding ErrorMessage}"
+                                               TextWrapping="Wrap"
                                                FontWeight="SemiBold"
-                                               Foreground="#721C24"/>
+                                               Foreground="#E57373"/>
                                 </StackPanel>
-                                <TextBlock Text="{Binding ErrorMessage}"
-                                           TextWrapping="Wrap"
-                                           Foreground="#721C24"/>
+
+                                <!-- "Did you mean Orders?" - from the schema already loaded (3.6) -->
+                                <StackPanel Orientation="Horizontal" Spacing="8"
+                                            IsVisible="{Binding ErrorSuggestion, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                    <TextBlock VerticalAlignment="Center" Foreground="#E57373">
+                                        <Run Text="Did you mean"/>
+                                        <Run Text="{Binding ErrorSuggestion}" FontWeight="Bold"/>
+                                        <Run Text="?"/>
+                                    </TextBlock>
+                                    <Button AutomationProperties.AutomationId="QueryEditorApplySuggestion"
+                                            AutomationProperties.Name="Use the suggested name"
+                                            Content="Replace"
+                                            Padding="8,2"
+                                            Command="{Binding ApplySuggestionCommand}"/>
+                                </StackPanel>
+
+                                <Expander Header="What the engine said"
+                                          IsVisible="{Binding ErrorDetail, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                    <SelectableTextBlock Text="{Binding ErrorDetail}"
+                                                         TextWrapping="Wrap"
+                                                         FontFamily="Consolas,monospace"
+                                                         FontSize="11"/>
+                                </Expander>
                             </StackPanel>
                         </Border>
 
-                        <!-- No Messages -->
-                        <TextBlock Text="No messages"
+                        <TextBlock Text="Nothing has been executed in this tab yet"
                                    FontStyle="Italic"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                                   IsVisible="{Binding !HasMessages}"/>
+                                   IsVisible="{Binding !HasExecutionResult}"/>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>
+
+            <!-- ================================ PLAN ================================ -->
+            <TabItem Header="Plan">
+                <Grid RowDefinitions="Auto,*">
+
+                    <Border Grid.Row="0"
+                            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                            Padding="10,6">
+                        <Grid ColumnDefinitions="Auto,*,Auto">
+                            <TextBlock Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold"
+                                       Text="EXPLAIN"/>
+
+                            <!-- WS-28. Measured: this engine returns id, parent and detail and no
+                                 numbers at all - so there is not even an estimate to label. -->
+                            <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center"
+                                       FontSize="11"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip.Tip="the plan is built without running the query, and this engine reports no row counts or costs"
+                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       Text="the plan is built without running the query, and this engine reports no row counts or costs"/>
+
+                            <Button Grid.Column="2"
+                                    AutomationProperties.AutomationId="QueryEditorShowPlan"
+                                    AutomationProperties.Name="Explain the statement under the cursor"
+                                    Content="Explain"
+                                    Padding="10,3"
+                                    Command="{Binding ShowPlanCommand}"/>
+                        </Grid>
+                    </Border>
+
+                    <TreeView Grid.Row="1"
+                              AutomationProperties.AutomationId="QueryEditorPlanTree"
+                              ItemsSource="{Binding Plan.Roots}"
+                              Background="Transparent"
+                              BorderThickness="0"
+                              Margin="4">
+                        <!-- Open. A plan is only useful whole, and the node worth looking at - the
+                             scan - is always the deepest one. Found by running the application: the
+                             tree came up showing one word and a chevron. -->
+                        <TreeView.Styles>
+                            <Style Selector="TreeViewItem">
+                                <Setter Property="IsExpanded" Value="True"/>
+                            </Style>
+                        </TreeView.Styles>
+                        <TreeView.ItemTemplate>
+                            <TreeDataTemplate ItemsSource="{Binding Children}">
+                                <StackPanel Spacing="1" Margin="0,2">
+                                    <StackPanel Orientation="Horizontal" Spacing="8">
+                                        <Border CornerRadius="2" Padding="5,1"
+                                                Background="{Binding Kind, Converter={x:Static conv:PlanConverters.KindBrush}}">
+                                            <TextBlock Text="{Binding Operator}"
+                                                       FontFamily="Consolas,monospace"
+                                                       FontSize="12"/>
+                                        </Border>
+                                        <TextBlock Text="{Binding Columns}"
+                                                   FontSize="11"
+                                                   VerticalAlignment="Center"
+                                                   TextTrimming="CharacterEllipsis"
+                                                   MaxWidth="420"
+                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+                                    </StackPanel>
+                                    <TextBlock Text="{Binding Warning}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               MaxWidth="420"
+                                               Margin="4,0,0,0"
+                                               Foreground="#D9A441"
+                                               IsVisible="{Binding Warning, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                </StackPanel>
+                            </TreeDataTemplate>
+                        </TreeView.ItemTemplate>
+                    </TreeView>
+
+                    <TextBlock Grid.Row="1"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Text="{Binding PlanMessage}"
+                               IsVisible="{Binding PlanMessage, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                </Grid>
+            </TabItem>
+
+            <!-- ================================ HISTORY ================================ -->
+            <TabItem Header="History" IsSelected="{Binding IsHistorySelected, Mode=TwoWay}">
+                <Grid RowDefinitions="Auto,*,Auto">
+
+                    <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="8">
+                        <TextBox Grid.Column="0"
+                                 AutomationProperties.AutomationId="QueryEditorHistorySearch"
+                                 AutomationProperties.Name="Search the query history"
+                                 Text="{Binding HistorySearch, Mode=TwoWay}"
+                                 PlaceholderText="search the history"/>
+                        <Button Grid.Column="1" Margin="6,0,0,0"
+                                AutomationProperties.AutomationId="QueryEditorRefreshHistory"
+                                AutomationProperties.Name="Refresh the query history"
+                                Content="Search"
+                                Command="{Binding RefreshHistoryCommand}"/>
+                        <Button Grid.Column="2" Margin="6,0,0,0"
+                                AutomationProperties.AutomationId="QueryEditorClearHistory"
+                                AutomationProperties.Name="Clear the query history"
+                                Content="Clear"
+                                Command="{Binding ClearHistoryCommand}"/>
+                    </Grid>
+
+                    <ListBox Grid.Row="1"
+                             AutomationProperties.AutomationId="QueryEditorHistoryList"
+                             ItemsSource="{Binding History}"
+                             Background="Transparent"
+                             BorderThickness="0">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <StackPanel Spacing="2" Margin="0,3">
+                                    <TextBlock Text="{Binding Text}"
+                                               FontFamily="Consolas,monospace"
+                                               FontSize="12"
+                                               TextTrimming="CharacterEllipsis"/>
+                                    <TextBlock FontSize="11"
+                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
+                                        <Run Text="{Binding Status}"/>
+                                        <Run Text="·"/>
+                                        <Run Text="{Binding Rows}"/>
+                                        <Run Text="rows ·"/>
+                                        <Run Text="{Binding DurationMs, StringFormat='{}{0:F1}'}"/>
+                                        <Run Text="ms ·"/>
+                                        <Run Text="{Binding ExecutedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"/>
+                                        <Run Text="·"/>
+                                        <Run Text="{Binding Connection}"/>
+                                    </TextBlock>
+                                </StackPanel>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+
+                    <TextBlock Grid.Row="1"
+                               HorizontalAlignment="Center" VerticalAlignment="Center"
+                               TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Text="{Binding HistoryMessage}"
+                               IsVisible="{Binding HistoryMessage, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+
+                    <Border Grid.Row="2" Padding="8,4"
+                            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+                        <TextBlock FontSize="11"
+                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Text="Kept in a WitDatabase of Studio's own · 30 days or 5000 entries · connection strings and parameter values are never written"/>
+                    </Border>
+                </Grid>
+            </TabItem>
         </TabControl>
-        
-        <!-- Query Status Bar (like SSMS) -->
-        <Panel Grid.Row="3"
-               IsVisible="{Binding HasExecutionResult}">
-            
-            <!-- Success Status -->
-            <Border Background="#D4EDDA" 
-                    CornerRadius="2" 
-                    Padding="8,4"
-                    IsVisible="{Binding IsSuccess}">
-                <StackPanel Orientation="Horizontal" Spacing="12">
-                    <StackPanel Orientation="Horizontal" Spacing="6">
-                        <PathIcon Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"
-                                  Width="14" Height="14"
-                                  Foreground="#155724"/>
-                        <TextBlock Text="Query executed successfully"
-                                   Foreground="#155724"
-                                   VerticalAlignment="Center"/>
-                    </StackPanel>
-                    
-                    <TextBlock Foreground="#155724" VerticalAlignment="Center">
-                        <Run Text="{Binding RowsAffected}"/>
-                        <Run Text="rows affected"/>
-                    </TextBlock>
-                    
-                    <TextBlock Foreground="#155724" VerticalAlignment="Center">
-                        <Run Text="{Binding ExecutionTimeMs, StringFormat='{}{0:F2}'}"/>
-                        <Run Text="ms"/>
-                    </TextBlock>
-                </StackPanel>
-            </Border>
-            
-            <!-- Error Status -->
-            <Border Background="#F8D7DA" 
-                    CornerRadius="2" 
-                    Padding="8,4"
-                    IsVisible="{Binding !IsSuccess}">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                              Width="14" Height="14"
-                              Foreground="#721C24"/>
-                    <TextBlock Text="{Binding ErrorMessage}"
-                               Foreground="#721C24"
-                               VerticalAlignment="Center"
-                               TextTrimming="CharacterEllipsis"
-                               MaxWidth="800"/>
-                </StackPanel>
-            </Border>
-        </Panel>
     </Grid>
 
 </UserControl>

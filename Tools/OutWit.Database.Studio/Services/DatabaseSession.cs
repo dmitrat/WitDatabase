@@ -51,6 +51,8 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
         m_logger = logger;
 
         DisplayName = DefaultDisplayName(Connection.FilePath);
+
+        Catalog = new SchemaCatalog(this);
     }
 
     #endregion
@@ -107,6 +109,10 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
     {
         if (m_connection != null)
         {
+            // Before the connection goes: an open transaction has to be decided by somebody, and the
+            // only honest answer here is the one that changes nothing (WS-26).
+            await DiscardTransactionAsync();
+
             await m_connection.CloseAsync();
             m_connection.Dispose();
             m_connection = null;
@@ -201,6 +207,8 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
     public Guid Id { get; } = Guid.NewGuid();
 
     public ConnectionInfo Connection { get; }
+
+    public ISchemaCatalog Catalog { get; }
 
     /// <summary>
     /// Set by <see cref="ConnectionManager"/> when the default collides with a session that is already

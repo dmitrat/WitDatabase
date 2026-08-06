@@ -48,6 +48,42 @@ public class SqlEditorAutomationPeer : ControlAutomationPeer, IValueProvider
 
     protected override bool IsControlElementCore() => true;
 
+    /// <summary>
+    /// Where the caret is and what is wrong with the text, spoken (S10).
+    ///
+    /// The right pattern for this is <c>ITextProvider</c>, and <b>Avalonia 12 does not have one</b> -
+    /// its automation surface is IValue, IRange, IToggle, ISelection, IInvoke, IExpandCollapse and
+    /// IScroll, and nothing about text ranges. So the caret and the error cannot be exposed as
+    /// structure; help text is what a screen reader will read out, and it carries both.
+    ///
+    /// This is a smaller answer than the design asks for and it is the whole one available here.
+    /// </summary>
+    protected override string? GetHelpTextCore()
+    {
+        if (Owner is not SqlEditor editor)
+            return base.GetHelpTextCore();
+
+        var where = $"line {editor.CaretLine}, column {editor.CaretColumn}";
+
+        return editor.UnderlineLine > 0
+            ? $"{where}. An error is marked on line {editor.UnderlineLine}."
+            : where;
+    }
+
+    /// <summary>
+    /// Tells whoever is listening that the text or the caret moved. Without this a screen reader reads
+    /// the editor once and never again - which is what "has an automation peer" quietly meant before.
+    /// </summary>
+    public void NotifyTextChanged(string? oldValue, string? newValue)
+    {
+        RaisePropertyChangedEvent(ValuePatternIdentifiers.ValueProperty, oldValue, newValue);
+    }
+
+    public void NotifyCaretMoved()
+    {
+        RaisePropertyChangedEvent(AutomationElementIdentifiers.HelpTextProperty, null, GetHelpTextCore());
+    }
+
     #endregion
 
     #region IValueProvider

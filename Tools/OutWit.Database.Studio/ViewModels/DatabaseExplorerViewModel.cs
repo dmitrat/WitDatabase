@@ -334,6 +334,11 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                 IsExpanded = firstLoad || IsExpanded(expandedNodes, session, DatabaseNodeType.Database, session.DisplayName)
             };
 
+            // The completion catalogue is refreshed here and nowhere else (WS-24): this is the moment
+            // the application has already decided the schema may have changed, and a cache with its
+            // own opinion about that would be a second answer to a question already answered.
+            await session.Catalog.RefreshAsync();
+
             var tables = await session.GetTablesAsync();
             var views = await session.GetViewsAsync();
             var indexes = await session.GetIndexesAsync();

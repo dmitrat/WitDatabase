@@ -91,12 +91,19 @@ public sealed class StudioFixture : IAsyncDisposable
 
         Confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
 
+        // The real history service over a store inside the fixture's own folder - never the developer's
+        // own history, for the same reason SettingsService takes its path as a parameter.
+        History = new QueryHistoryService(
+            Path.Combine(root, "history", "history.witdb"),
+            NullLogger<QueryHistoryService>.Instance);
+
         App = new ApplicationViewModel(
             Connections,
             Settings,
             new ExportService(),
             NullLogger<ApplicationViewModel>.Instance,
-            Confirmations);
+            Confirmations,
+            history: History);
     }
 
     #endregion
@@ -110,7 +117,8 @@ public sealed class StudioFixture : IAsyncDisposable
     public static async Task<StudioFixture> CreateAsync(
         StudioStorage storage = StudioStorage.BTree,
         bool withSchema = true,
-        bool connect = true)
+        bool connect = true,
+        bool withHistory = false)
     {
         var root = Path.Combine(Path.GetTempPath(), "WitStudio", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
@@ -118,6 +126,10 @@ public sealed class StudioFixture : IAsyncDisposable
         var databasePath = PathFor(root, storage, "studio");
 
         var fixture = new StudioFixture(root, databasePath, storage);
+
+        // Off by default: the history is a second database, and most cases have nothing to do with it.
+        if (withHistory)
+            await fixture.History.InitializeAsync();
 
         if (connect)
         {
@@ -268,6 +280,12 @@ public sealed class StudioFixture : IAsyncDisposable
 
     public ScriptedConfirmationService Confirmations { get; }
 
+    /// <summary>
+    /// The real query history, over a store inside this fixture's folder (WS-29). Only opened when a
+    /// case asks for it with <c>withHistory</c>.
+    /// </summary>
+    public QueryHistoryService History { get; }
+
     public ApplicationViewModel App { get; }
 
     public MainWindowViewModel MainWindow => App.MainWindowVm;
@@ -286,6 +304,15 @@ public sealed class StudioFixture : IAsyncDisposable
 
     public async ValueTask DisposeAsync()
     {
+        try
+        {
+            await History.DisposeAsync();
+        }
+        catch
+        {
+            // the fixture is being torn down; a failure here must not mask the test's own result
+        }
+
         try
         {
             await Connections.CloseAllAsync();
