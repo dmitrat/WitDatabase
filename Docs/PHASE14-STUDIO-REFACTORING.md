@@ -16,7 +16,10 @@ Stages, from that plan:
 | 1 | Tests against the real engine; automation surface |
 | 2 | Multi-connection: `IConnectionManager` instead of one singleton connection |
 | 3 | The SQL layer: parameters, paging, script splitting |
-| 4–9 | The redesign itself: window frame, explorer, query workspace, grid, schema designer, dialogs |
+| 4 | The window frame |
+| 5 | The Explorer and the object inspector |
+| 6 | The query workspace |
+| 7–9 | The rest of the redesign: grid, schema designer, dialogs |
 | 10 | The Database tab, after the ADO.NET provider gains maintenance access (`WS-57`) |
 
 Releases while this runs are **dev tags only** - no eSigner signatures are spent until the interface
@@ -527,6 +530,191 @@ stage 8.
 
 ---
 
+## Stage 6 - the query workspace
+
+Section 3, and the largest stage of the phase. The plan gives no readiness criterion for it, so this
+one was written first and everything below is measured against it:
+
+> **One session of work with a query goes through from the first keystroke to the history, and every
+> step of it can be checked.** Completion from this database's schema; the mistake underlined where it
+> was written; the four panels filled; formatting that loses nothing; a transaction a person opens and
+> rolls back, with the rows to prove it; and a history that survives a restart.
+
+`QueryWorkspaceTests` is that session in order, over a real database, and the same session was then
+driven through the shipping executable.
+
+### Completion, from the schema the connection already has (WS-24)
+
+`SqlCompletion` reads **tokens**, not a syntax tree, and that is the whole reason it is its own thing:
+the text under a caret is half-written, so the parser refuses it, and `SqlScript` - the parser's
+answer, and the right one everywhere else - has nothing to say about `SELECT * FROM Ord`.
+
+- After `FROM`, `JOIN`, `INTO`, `UPDATE`: the objects of this database. After `alias.`: the columns of
+  exactly that table, resolved from the `FROM x a` in the same statement. **The control is that the
+  same caret after a different alias gives a different list** - `c.` offers `Email` and not `Total`,
+  `o.` the reverse.
+- The language comes from **`WitSql.xshd`, the file that colours it**, so the two cannot disagree. It
+  turned out to list a few words under two colours - `REPLACE` is both a keyword and a function there -
+  and the more specific answer wins.
+- Ordering is exact match, then this database's objects, then keywords, then functions. **Exact means
+  the characters as typed**: case-insensitively, typing `To` towards `Total` matched the keyword `TO`
+  (the one from `ROLLBACK TO SAVEPOINT`) and put it above the column.
+- The design asks for "by how often it is used in this database". No such measurement exists anywhere
+  in Studio, so inside a group the order is alphabetical and the code says so rather than inventing a
+  ranking.
+- A per-connection `SchemaCatalog` holds the names; columns are read the first time something asks and
+  kept. It is refreshed **where the tree is refreshed** and nowhere else - a cache with its own opinion
+  about when the schema changed would be a second answer to a question the application already answers.
+
+### The mistake, underlined where it was written (3.6)
+
+Two kinds, and they behave differently.
+
+- **Syntax**, as the text is typed: parsed after it has stood still for 400 ms, nothing sent to the
+  engine, and the first refusal underlined. This is stage 3's `SqlScript.Split` consumed rather than
+  anything new.
+- **Semantic**, at execution. The engine gives **no position at all** for these - measured:
+  `Table 'Ordres' not found`, `Column 'Totl' not found`, the name in quotes and nothing about where.
+  So Studio finds the name among the statement's own tokens, underlines it, and offers the nearest name
+  the catalogue does have. **Ordres → Orders is an edit, not a remark**: a Replace button applies it.
+- The control is that a failure which is *not* about a name in the text - a `NOT NULL` violation -
+  gets no suggestion.
+
+### The four panels (3.4)
+
+Result, Messages, Plan, History. Messages is a line per statement of the script - which is stage 3's
+`Statements` finally drawn - plus the failure, the suggestion, and the engine's full text behind an
+expander (`WS-11`).
+
+**Deliberately not done: a result tab per `SELECT`, and pinning.** They belong with the grid, which
+stage 7 rebuilds; a second result surface built on the current grid would be thrown away.
+
+### The plan, drawn as the tree it already is (WS-27, WS-28)
+
+`EXPLAIN` returns `id`, `parent`, `detail` - a tree that Studio has been showing as three columns of
+text. It is a tree now, and two shapes are marked in amber:
+
+| Marked | Why |
+|---|---|
+| a `SCAN TABLE` under a `FILTER` | an index turns it into a seek, and the panel says so |
+| a `SORT` under a `LIMIT` | the limit is not pushed into the sort - stage 3 measured 1,327 ms for a page of 200 rows out of 400,000 |
+
+The negative control is that a plain `SELECT * FROM t` gets a scan and **no mark**: reading a table the
+query asked for in full is not a finding, and a panel that marks every scan tells nobody anything.
+
+**The panel says less than the design asks for, because the engine gives less.** `WS-28` asks that an
+estimate not be passed off as a measurement, with row counts marked by a tilde. Measured 2026-08-06:
+this engine returns **no numbers of any kind** - no estimated rows, no cost, and, since `EXPLAIN`
+builds the plan without running it, no facts either. So there is nothing to mark with a tilde and every
+highlight is about the SHAPE of the plan. A test pins the three columns, and it will go red the day
+`EXPLAIN ANALYZE` arrives.
+
+**The first measurement of all this was wrong, and the reason is the instrument.** Run against the
+fixture's three-row `Orders`, `EXPLAIN` never once used an index - not for the indexed `CustomerId`,
+not for anything - and "this engine has no index access" was one sentence from being written down. The
+planner **refuses to consider an index below ten rows** (`MIN_ROWS_FOR_INDEX`). Every plan case now
+fills the table first, and the one that matters shows the scan becoming
+`SEARCH TABLE Orders USING INDEX IX_Orders_Total (=)` after a `CREATE INDEX` - which is what makes the
+advice worth giving at all.
+
+Still true at forty rows: **`WHERE Id = 7` on the primary key is a full scan**, because this engine
+creates no index for a `PRIMARY KEY`. That is the stage-5 inspector's finding, now visible in the plan.
+
+### Formatting through the parser's own serializer
+
+There is no rule engine and there is not going to be one: `WitSqlStatementSerializer` already renders a
+stored view or routine for the inspector, and formatting is that plus line breaks. The work is in what
+it **refuses**, and all three were measured rather than assumed:
+
+- **A statement with a comment in it is left exactly as written.** The grammar skips `--` and `/* */`
+  at the lexer, so a statement rebuilt from its tree comes back without them.
+- **DDL cannot be rendered at all** - the serializer throws `NotSupportedException` for `CREATE TABLE`,
+  `CREATE INDEX` and `EXPLAIN`. Those stay as they are, and the summary says so.
+- **Every rewrite is parsed again and re-serialized before it may replace anyone's text.** This is not
+  decorative: `WitSqlExpressionSerializer` renders a subquery as the literal text `SELECT ...` - one of
+  the two known causes in the engine's own `GrammarRoundTripTests` - so without the guard, formatting
+  `... WHERE CustomerId IN (SELECT Id FROM Customers)` would replace a working query with something
+  that is not SQL.
+
+### A transaction a person can hold (WS-26)
+
+Autocommit stays the default. What is new is that it can be turned off, and that Studio tells the truth
+about whose transaction it is: **the connection's**. `WitDbConnection` refuses the second with *"A
+transaction is already in progress"*, so two query tabs of one database share one, and both are told.
+Closing a connection rolls an open one back. All five isolation levels open and undo.
+
+The interaction that had to be designed rather than discovered: the table editor commits its buffer as
+one transaction, and a query tab of the same connection may already have one open. The buffer takes a
+**savepoint** inside it - released on success, rolled back to on failure - so the editor keeps its
+all-or-nothing promise without ever ending a transaction it did not open.
+
+### The history, in a WitDatabase of Studio's own (WS-29)
+
+The one place in the product where Studio is an ordinary consumer of the engine it ships with. Text,
+connection **name**, time, duration, rows, status; a repeat raises the existing entry and counts it;
+thirty days or five thousand entries. **The connection string and parameter values are never written**,
+and the case that says so reads the store file and searches it - with the positive control that the
+query itself *is* in there.
+
+The other side is honest and is why `IsAvailable` exists: a defect in the engine would break the
+history too, so a store that will not open leaves every query working and the panel says why. Reserved
+words cannot be column names here unless quoted - a column called `Text` or `Rows` is refused outright -
+so the schema avoids the question.
+
+### Accessibility (S10)
+
+The right pattern for a caret and a selection is `ITextProvider`, and **Avalonia 12 does not have
+one**: its automation surface is IValue, IRange, IToggle, ISelection, IInvoke, IExpandCollapse and
+IScroll, and nothing about text ranges. So the caret and the error cannot be exposed as structure. What
+is reachable is done: the peer's help text carries the caret position and any marked error, and the
+editor now raises a property-changed event when the text or the caret moves - without which a screen
+reader reads the editor once and never again, which is what "has an automation peer" quietly meant
+before.
+
+### How it was measured
+
+Eight sabotages, in two rounds:
+
+| Sabotage | Result |
+|---|---|
+| no rollback when the connection closes | **green** - the engine discards an uncommitted transaction anyway, so the case was pinning the engine. It now also asserts the session's own answer, which does go red |
+| the table editor's batch ignores the open transaction | 2 red |
+| no rollback to the savepoint | 1 red |
+| statements not counted against the transaction | 1 red |
+| the formatter's comment guard removed | 1 red - and the "no comment is lost" control stayed **green**, because all four of its comments were OUTSIDE a statement. Widened with two inside one; then 2 red |
+| the round-trip guard removed | 1 red, the subquery case |
+| aliases not resolved in completion | 4 red |
+| keywords offered where a table belongs | 1 red |
+| the missing name not located in the text | 1 red |
+| a tab not following its connection's transaction | 3 red |
+
+**And in the executable, which found five defects the ViewModel tests could not:**
+
+- **the status bar drew on top of itself** - the middle section was a centred `StackPanel`, which takes
+  the width it wants and overlaps its neighbours when it cannot have it; the connection summary carries
+  a full file path, so on a real database there was nothing left for it;
+- **opening the History panel showed nothing** - the list was filled only by the Search button, and
+  every ViewModel case called Refresh itself, which is the one step a user does not take;
+- **the message and the underline disagreed about where the error was**, and the status bar was a third
+  answer, because it had been handed the message before the position was corrected;
+- **the Replace button for a suggested name was grey** - a `RelayCommand` does not re-ask `CanExecute`
+  unless it is told to, and the suggestion appears after the command is built;
+- **the plan tree came up collapsed**, showing one word and a chevron.
+
+Then the whole criterion was driven through the shipping application: completion offering this
+database's tables after `FROM`; a syntax error underlined as it was typed; `Custmers` underlined on its
+own name with *"Did you mean Customers?"* and the replacement applied; Format turning a one-line query
+into four; `Begin` → `INSERT` → `Rollback` leaving 2 rows, with the amber *"Transaction open · 1
+statement"* chip while it was open; the plan tree marking both the scan under the filter and the sort
+under the limit; and the history **surviving a restart of the process**.
+
+### Tests
+
+368 → 450. `TransactionControlTests` (15), `SqlFormatterTests` (12), `SqlCompletionTests` (17),
+`QueryHistoryTests` (9), `QueryPlanTests` (8), `QueryWorkspaceTests` (21).
+
+---
+
 ## Findings for the engine, not fixed here
 
 **`UPDATE <table> SET <column that does not exist> = 'x'` is accepted.** Measured 2026-08-05 while
@@ -573,6 +761,17 @@ capability. Studio now shows routines in the tree because of this (WS-21); the m
 `mismatched input 'Blob'` - because `BLOB` lexes as a keyword and is not accepted where a column name
 is expected. Found while probing the BLOB path; a client cannot work around it and a user with such a
 column in another database cannot import it.
+
+**Amended in stage 6:** the refusal is of the **unquoted** name. `CREATE TABLE Q ([Text] VARCHAR(10),
+[Rows] INTEGER)` is accepted, and `"x"`, `[x]` and `` `x` `` are all identifiers in the lexer. So there
+is a workaround after all - it is that every consumer has to know to quote, and an import from another
+database still fails unless it does.
+
+**The planner will not consider an index below ten rows.** `MIN_ROWS_FOR_INDEX = 10` in
+`QueryPlanner.Sources.Indexes`: with fewer, `FindBestIndex` is never called and every access is a scan.
+Reasonable as a rule and worth knowing about as a **measurement hazard** - it is what made the first
+pass at the plan panel conclude that this engine has no index access at all. Any benchmark or probe
+about index behaviour on a small fixture is measuring the threshold, not the engine.
 
 ---
 
