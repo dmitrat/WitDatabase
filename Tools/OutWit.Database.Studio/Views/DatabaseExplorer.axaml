@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -28,7 +28,7 @@
                            FontSize="14"
                            VerticalAlignment="Center"/>
                 
-                <Button Grid.Column="1"
+                <Button AutomationProperties.AutomationId="DatabaseExplorerRefresh" AutomationProperties.Name="Refresh" Grid.Column="1"
                         Command="{Binding DatabaseExplorerVm.RefreshCommand}"
                         ToolTip.Tip="Refresh"
                         Width="32"
@@ -74,22 +74,22 @@
                     <TreeView.ContextMenu>
                         <ContextMenu>
                             <!-- Create actions -->
-                            <MenuItem Header="Create">
-                                <MenuItem Header="Create Table..."
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreate" Header="Create">
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateTable" Header="Create Table..."
                                           Command="{Binding DatabaseExplorerVm.CreateTableCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 
-                                <MenuItem Header="Create View..."
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateView" Header="Create View..."
                                           Command="{Binding DatabaseExplorerVm.CreateViewCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.DB_VIEW}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 
-                                <MenuItem Header="Create Index..."
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateIndex" Header="Create Index..."
                                           Command="{Binding DatabaseExplorerVm.CreateIndexCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.DB_INDEX}"/>
@@ -100,18 +100,18 @@
                             <Separator/>
                             
                             <!-- Select data submenu -->
-                            <MenuItem Header="Select Data"
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectData" Header="Select Data"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanBrowseData}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"/>
                                 </MenuItem.Icon>
-                                <MenuItem Header="Select Top 100"
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectTop100" Header="Select Top 100"
                                           Command="{Binding DatabaseExplorerVm.SelectTop100Command}"/>
-                                <MenuItem Header="Select Top 1000"
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectTop1000" Header="Select Top 1000"
                                           Command="{Binding DatabaseExplorerVm.SelectTop1000Command}"/>
                             </MenuItem>
                             
-                            <MenuItem Header="Edit Data..."
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerEditData" Header="Edit Data..."
                                       Command="{Binding DatabaseExplorerVm.EditDataCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanEditData}">
                                 <MenuItem.Icon>
@@ -119,7 +119,7 @@
                                 </MenuItem.Icon>
                             </MenuItem>
                             
-                            <MenuItem Header="View Structure..."
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerViewStructure" Header="View Structure..."
                                       Command="{Binding DatabaseExplorerVm.ViewStructureCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanViewStructure}">
                                 <MenuItem.Icon>
@@ -127,7 +127,7 @@
                                 </MenuItem.Icon>
                             </MenuItem>
                             
-                            <MenuItem Header="View Definition"
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerViewDefinition" Header="View Definition"
                                       Command="{Binding DatabaseExplorerVm.ViewDefinitionCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanViewDefinition}">
                                 <MenuItem.Icon>
@@ -137,7 +137,7 @@
                             
                             <Separator/>
                             
-                            <MenuItem Header="Refresh"
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerRefresh2" Header="Refresh"
                                       Command="{Binding DatabaseExplorerVm.RefreshCommand}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.MENU_REFRESH}"/>
@@ -146,7 +146,7 @@
                             
                             <Separator/>
                             
-                            <MenuItem Header="Drop..."
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerDrop" Header="Drop..."
                                       Command="{Binding DatabaseExplorerVm.DropObjectCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanDropObject}">
                                 <MenuItem.Icon>

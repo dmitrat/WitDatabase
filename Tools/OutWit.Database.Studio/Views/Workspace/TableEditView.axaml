@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -79,7 +79,7 @@
 
                 <!-- Actions -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
-                    <Button Command="{Binding RefreshCommand}"
+                    <Button AutomationProperties.AutomationId="TableEditRefreshData" AutomationProperties.Name="Refresh data" Command="{Binding RefreshCommand}"
                             IsEnabled="{Binding CanRefresh}"
                             ToolTip.Tip="Refresh data"
                             Width="32" Height="32"
@@ -92,7 +92,7 @@
                                Fill="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                Margin="4,4"/>
 
-                    <Button Command="{Binding AddRowCommand}"
+                    <Button AutomationProperties.AutomationId="TableEditAddNewRow" AutomationProperties.Name="Add new row" Command="{Binding AddRowCommand}"
                             IsEnabled="{Binding CanAddRow}"
                             ToolTip.Tip="Add new row"
                             Width="32" Height="32"
@@ -101,7 +101,7 @@
                                   Width="16" Height="16"/>
                     </Button>
 
-                    <Button Command="{Binding DeleteRowCommand}"
+                    <Button AutomationProperties.AutomationId="TableEditDeleteSelectedRow" AutomationProperties.Name="Delete selected row" Command="{Binding DeleteRowCommand}"
                             IsEnabled="{Binding CanDeleteRow}"
                             ToolTip.Tip="Delete selected row"
                             Width="32" Height="32"
@@ -114,7 +114,7 @@
                                Fill="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                Margin="4,4"/>
 
-                    <Button Command="{Binding CommitCommand}"
+                    <Button AutomationProperties.AutomationId="TableEditCommitChanges" AutomationProperties.Name="Commit changes" Command="{Binding CommitCommand}"
                             IsEnabled="{Binding CanCommit}"
                             ToolTip.Tip="Commit changes"
                             Width="32" Height="32"
@@ -124,7 +124,7 @@
                                   Width="16" Height="16"/>
                     </Button>
 
-                    <Button Command="{Binding RollbackCommand}"
+                    <Button AutomationProperties.AutomationId="TableEditDiscardChanges" AutomationProperties.Name="Discard changes" Command="{Binding RollbackCommand}"
                             IsEnabled="{Binding CanRollback}"
                             ToolTip.Tip="Discard changes"
                             Width="32" Height="32"

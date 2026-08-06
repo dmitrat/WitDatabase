@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -108,7 +108,7 @@
                              Text="{Binding OutputPath}"
                              Watermark="Select output file..."
                              IsReadOnly="True"/>
-                    <Button Grid.Column="1"
+                    <Button AutomationProperties.AutomationId="ExportBrowse" Grid.Column="1"
                             Content="Browse..."
                             Command="{Binding BrowseCommand}"
                             IsEnabled="{Binding !IsExporting}"
@@ -137,13 +137,13 @@
 
         <!-- Buttons -->
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="0,20,0,0">
-            <Button Grid.Column="1"
+            <Button AutomationProperties.AutomationId="ExportCancel" Grid.Column="1"
                     Content="Cancel"
                     Command="{Binding CancelCommand}"
                     Width="80"
                     Margin="0,0,8,0"
                     IsVisible="{Binding !IsExporting}"/>
-            <Button Grid.Column="2"
+            <Button AutomationProperties.AutomationId="ExportExport" Grid.Column="2"
                     Content="Export"
                     Command="{Binding ExportCommand}"
                     IsEnabled="{Binding CanExport}"
@@ -188,7 +188,7 @@
                 </TextBlock>
                 
                 <!-- Cancel Button -->
-                <Button Content="Cancel Export"
+                <Button AutomationProperties.AutomationId="ExportCancelExport" Content="Cancel Export"
                         Command="{Binding CancelExportCommand}"
                         HorizontalAlignment="Center"
                         Width="120"

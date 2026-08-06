@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:OutWit.Database.Studio.ViewModels"
         xmlns:views="using:OutWit.Database.Studio.Views"
@@ -29,8 +29,8 @@
 		<Grid Grid.Row="0" ColumnDefinitions="*,Auto">
 			<!-- Menu -->
 			<Menu Grid.Column="0">
-				<MenuItem Header="_File">
-					<MenuItem Header="_New Query Tab"
+				<MenuItem AutomationProperties.AutomationId="MainWindowFile" Header="_File">
+					<MenuItem AutomationProperties.AutomationId="MainWindowNewQueryTab" Header="_New Query Tab"
 					          Command="{Binding WorkspaceTabsVm.NewQueryTabCommand}"
 					          InputGesture="Ctrl+N">
 						<MenuItem.Icon>
@@ -40,14 +40,14 @@
 
 					<Separator />
 
-					<MenuItem Header="New _Database..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowNewDatabase" Header="New _Database..."
 					          Command="{Binding MainWindowVm.NewDatabaseCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_NEW_DATABASE}" />
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem Header="_Open Database..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowOpenDatabase" Header="_Open Database..."
 					          Command="{Binding MainWindowVm.OpenDatabaseCommand}"
 					          InputGesture="Ctrl+O">
 						<MenuItem.Icon>
@@ -55,7 +55,7 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem Header="_Close Database"
+					<MenuItem AutomationProperties.AutomationId="MainWindowCloseDatabase" Header="_Close Database"
 					          Command="{Binding MainWindowVm.CloseDatabaseCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_CLOSE_DATABASE}" />
@@ -64,7 +64,7 @@
 
 					<Separator />
 
-					<MenuItem Header="_Save Query"
+					<MenuItem AutomationProperties.AutomationId="MainWindowSaveQuery" Header="_Save Query"
 					          Command="{Binding WorkspaceTabsVm.SaveTabCommand}"
 					          InputGesture="Ctrl+S">
 						<MenuItem.Icon>
@@ -72,7 +72,7 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem Header="Save Query _As..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowSaveQueryAs" Header="Save Query _As..."
 					          Command="{Binding WorkspaceTabsVm.SaveTabAsCommand}"
 					          InputGesture="Ctrl+Shift+S">
 						<MenuItem.Icon>
@@ -82,7 +82,7 @@
 
 					<Separator />
 
-					<MenuItem x:Name="RecentFilesMenu"
+					<MenuItem AutomationProperties.AutomationId="MainWindowRecentFilesMenu" x:Name="RecentFilesMenu"
 					          Header="Recent Files"
 					          IsEnabled="{Binding MainWindowVm.HasRecentFiles}">
 						<MenuItem.Icon>
@@ -90,13 +90,13 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem Header="Clear Recent Files"
+					<MenuItem AutomationProperties.AutomationId="MainWindowClearRecentFiles" Header="Clear Recent Files"
 					          Command="{Binding MainWindowVm.ClearRecentFilesCommand}"
 					          IsEnabled="{Binding MainWindowVm.HasRecentFiles}"/>
 
 					<Separator />
 
-					<MenuItem Header="E_xit"
+					<MenuItem AutomationProperties.AutomationId="MainWindowEXit" Header="E_xit"
 					          Command="{Binding MainWindowVm.ExitCommand}"
 					          InputGesture="Alt+F4">
 						<MenuItem.Icon>
@@ -105,19 +105,19 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem Header="_Edit">
-					<MenuItem Header="_Copy" InputGesture="Ctrl+C">
+				<MenuItem AutomationProperties.AutomationId="MainWindowEdit" Header="_Edit">
+					<MenuItem AutomationProperties.AutomationId="MainWindowCopy" Header="_Copy" InputGesture="Ctrl+C">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_COPY}" />
 						</MenuItem.Icon>
 					</MenuItem>
-					<MenuItem Header="_Paste" InputGesture="Ctrl+V">
+					<MenuItem AutomationProperties.AutomationId="MainWindowPaste" Header="_Paste" InputGesture="Ctrl+V">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_PASTE}" />
 						</MenuItem.Icon>
 					</MenuItem>
 					<Separator/>
-					<MenuItem Header="_Settings..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowSettings" Header="_Settings..."
 					          Command="{Binding MainWindowVm.SettingsCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_ABOUT}" />
@@ -125,8 +125,8 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem Header="_Query">
-					<MenuItem Header="_Execute"
+				<MenuItem AutomationProperties.AutomationId="MainWindowQuery" Header="_Query">
+					<MenuItem AutomationProperties.AutomationId="MainWindowExecute" Header="_Execute"
 					          Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
 					          InputGesture="F5">
 						<MenuItem.Icon>
@@ -134,7 +134,7 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem Header="Execute _Selection"
+					<MenuItem AutomationProperties.AutomationId="MainWindowExecuteSelection" Header="Execute _Selection"
 					          Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"
 					          InputGesture="Ctrl+Enter">
 						<MenuItem.Icon>
@@ -144,7 +144,7 @@
 
 					<Separator />
 
-					<MenuItem Header="_Clear Results"
+					<MenuItem AutomationProperties.AutomationId="MainWindowClearResults" Header="_Clear Results"
 					          Command="{Binding WorkspaceTabsVm.ClearResultsCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.QUERY_CLEAR}" />
@@ -153,7 +153,7 @@
 
 					<Separator />
 
-					<MenuItem Header="Close _Tab"
+					<MenuItem AutomationProperties.AutomationId="MainWindowCloseTab" Header="Close _Tab"
 					          Command="{Binding WorkspaceTabsVm.CloseTabCommand}"
 					          CommandParameter="{Binding WorkspaceTabsVm.SelectedTab}"
 					          InputGesture="Ctrl+W">
@@ -162,7 +162,7 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem Header="Close _All Tabs"
+					<MenuItem AutomationProperties.AutomationId="MainWindowCloseAllTabs" Header="Close _All Tabs"
 					          Command="{Binding WorkspaceTabsVm.CloseAllTabsCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.TAB_CLOSE}" />
@@ -170,8 +170,8 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem Header="_View">
-					<MenuItem Header="_Refresh"
+				<MenuItem AutomationProperties.AutomationId="MainWindowView" Header="_View">
+					<MenuItem AutomationProperties.AutomationId="MainWindowRefresh" Header="_Refresh"
 					          Command="{Binding MainWindowVm.RefreshCommand}"
 					          InputGesture="F5">
 						<MenuItem.Icon>
@@ -180,15 +180,15 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem Header="_Tools">
-					<MenuItem Header="_Export..."
+				<MenuItem AutomationProperties.AutomationId="MainWindowTools" Header="_Tools">
+					<MenuItem AutomationProperties.AutomationId="MainWindowExport" Header="_Export..."
 					          Command="{Binding MainWindowVm.ExportCommand}"
 					          IsEnabled="{Binding MainWindowVm.IsConnected}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_EXPORT}" />
 		                </MenuItem.Icon>
 					</MenuItem>
-					<MenuItem Header="_Import..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowImport" Header="_Import..."
 					          Command="{Binding MainWindowVm.ImportCommand}"
 					          IsEnabled="{Binding MainWindowVm.IsConnected}">
 						<MenuItem.Icon>
@@ -197,8 +197,8 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem Header="_Help">
-					<MenuItem Header="_About"
+				<MenuItem AutomationProperties.AutomationId="MainWindowHelp" Header="_Help">
+					<MenuItem AutomationProperties.AutomationId="MainWindowAbout" Header="_About"
 					          Command="{Binding MainWindowVm.AboutCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_ABOUT}" />
@@ -208,7 +208,7 @@
 			</Menu>
 
 			<!-- Theme Toggle Button (right side) -->
-			<Button Grid.Column="1"
+			<Button AutomationProperties.AutomationId="MainWindowThemeToggleButton" AutomationProperties.Name="Toggle Dark/Light Theme" Grid.Column="1"
 			        x:Name="ThemeToggleButton"
 			        ToolTip.Tip="Toggle Dark/Light Theme"
 			        Background="Transparent"
@@ -279,7 +279,7 @@
 
 							<!-- Action Buttons -->
 							<StackPanel Spacing="12" Margin="0,16,0,0">
-								<Button Command="{Binding MainWindowVm.NewDatabaseCommand}"
+								<Button AutomationProperties.AutomationId="WelcomeNewDatabase" AutomationProperties.Name="New database" Command="{Binding MainWindowVm.NewDatabaseCommand}"
 								        Width="180"
 								        HorizontalContentAlignment="Left"
 								        Padding="16,10">
@@ -290,7 +290,7 @@
 									</StackPanel>
 								</Button>
 								
-								<Button Command="{Binding MainWindowVm.OpenDatabaseCommand}"
+								<Button AutomationProperties.AutomationId="WelcomeOpenDatabase" AutomationProperties.Name="Open database" Command="{Binding MainWindowVm.OpenDatabaseCommand}"
 								        Width="180"
 								        HorizontalContentAlignment="Left"
 								        Padding="16,10"
@@ -341,7 +341,7 @@
 								<StackPanel x:Name="RecentFilesList" Spacing="4"/>
 							</ScrollViewer>
 							
-							<Button Content="Clear Recent"
+							<Button AutomationProperties.AutomationId="MainWindowClearRecent" Content="Clear Recent"
 							        Command="{Binding MainWindowVm.ClearRecentFilesCommand}"
 							        Classes="hyperlink"
 							        HorizontalAlignment="Left"

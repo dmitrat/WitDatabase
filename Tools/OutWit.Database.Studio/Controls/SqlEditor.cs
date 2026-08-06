@@ -78,6 +78,16 @@ public partial class SqlEditor : TextEditor
         ApplyThemeColors();
     }
 
+    /// <summary>
+    /// TextEditor has no automation peer of its own, so without this the editor is not an element at
+    /// all - invisible to screen readers, and unreachable by UI automation, which is what made the
+    /// application impossible to drive end to end. See <see cref="SqlEditorAutomationPeer"/>.
+    /// </summary>
+    protected override Avalonia.Automation.Peers.AutomationPeer OnCreateAutomationPeer()
+    {
+        return new SqlEditorAutomationPeer(this);
+    }
+
     private void ApplyThemeColors()
     {
         var bgColor = SqlEditorTheme.BackgroundColor;
