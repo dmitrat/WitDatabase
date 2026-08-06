@@ -1,0 +1,84 @@
+{
+  "Common.Ok": "ОК",
+  "Common.Cancel": "Отмена",
+  "Common.Close": "Закрыть",
+  "Common.Apply": "Применить",
+  "Common.Browse": "Выбрать…",
+  "Common.File": "Файл…",
+  "Common.Folder": "Папка…",
+  "Common.Back": "Назад",
+  "Common.Next": "Далее",
+  "Common.Remove": "Убрать",
+  "Common.Add": "Добавить",
+  "Common.Duplicate": "Дублировать",
+  "Common.Properties": "Свойства…",
+  "Common.Copy": "Копировать",
+  "Common.ShowSql": "Показать SQL",
+  "Common.ConnectionString": "Строка подключения…",
+  "Common.Yes": "Да",
+  "Common.No": "Нет",
+
+  "Dialog.Open.Title": "Открыть базу данных",
+  "Dialog.Open.Path": "Путь",
+  "Dialog.Open.PathHint": "База на B-Tree — это файл, база на LSM — папка. Кнопки выбирают то и другое.",
+  "Dialog.Open.Password": "Пароль",
+  "Dialog.Open.NameAndLabel": "Имя и метка",
+  "Dialog.Open.ColourHint": "Цвет красит корешки вкладок этого подключения — так видно, куда уйдёт запрос.",
+  "Dialog.Open.ReadOnly": "Только чтение",
+  "Dialog.Open.Connect": "Подключить",
+  "Dialog.Open.NotFound": "Файла нет по этому пути. Чтобы завести новую базу, используйте «Создать базу».",
+  "Dialog.Open.NotADatabaseFolder": "В папке нет базы WitDatabase: не найдено ни манифеста, ни SSTable.",
+  "Dialog.Open.WrongPassword": "Не удалось расшифровать: неверный пароль или файл повреждён.",
+
+  "Dialog.Create.Title": "Создать базу данных",
+  "Dialog.Create.Storage": "ХРАНИЛИЩЕ",
+  "Dialog.Create.Encryption": "ШИФРОВАНИЕ",
+  "Dialog.Create.Algorithm": "Алгоритм",
+  "Dialog.Create.NoEncryption": "Без шифрования",
+  "Dialog.Create.Password": "Пароль",
+  "Dialog.Create.PasswordAgain": "Повторите пароль",
+  "Dialog.Create.PasswordHint": "Пароль восстановить нельзя: ключ выводится из него, копии не хранится нигде.",
+  "Dialog.Create.Create": "Создать базу",
+  "Dialog.Create.DatabaseFile": "Файл базы",
+  "Dialog.Create.DatabaseFolder": "Папка базы",
+  "Dialog.Create.BTree": "B-Tree",
+  "Dialog.Create.BTreeHint": "Один файл. Хорошо читает, ровно работает под смешанной нагрузкой.",
+  "Dialog.Create.Lsm": "LSM",
+  "Dialog.Create.LsmHint": "Папка с SSTable. Для потока вставок в таблицы без вторичных индексов.",
+  "Dialog.Create.InMemory": "В памяти",
+  "Dialog.Create.InMemoryHint": "Исчезает при закрытии подключения. Для проб и обучения.",
+  "Dialog.Create.InMemoryWarning": "Данные исчезнут при закрытии подключения. Сохранить их можно только экспортом.",
+  "Dialog.Create.FileHint": "Выбран B-Tree, поэтому спрашивается файл.",
+  "Dialog.Create.FolderHint": "Выбран LSM, поэтому спрашивается пустая папка.",
+  "Dialog.Create.PasswordsDiffer": "Пароли не совпадают.",
+
+  "Language.Name": "Русский",
+  "Status.Elapsed": "{0} мс",
+  "Status.Size": "{0} МБ",
+
+  "Count.Rows": {
+    "one": "{0} строка",
+    "few": "{0} строки",
+    "many": "{0} строк"
+  },
+  "Count.Columns": {
+    "one": "{0} колонка",
+    "few": "{0} колонки",
+    "many": "{0} колонок"
+  },
+  "Count.Statements": {
+    "one": "{0} стейтмент",
+    "few": "{0} стейтмента",
+    "many": "{0} стейтментов"
+  },
+  "Count.Connections": {
+    "one": "{0} подключение",
+    "few": "{0} подключения",
+    "many": "{0} подключений"
+  },
+  "Count.Tables": {
+    "one": "{0} таблица",
+    "few": "{0} таблицы",
+    "many": "{0} таблиц"
+  }
+}

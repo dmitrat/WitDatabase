@@ -1,0 +1,79 @@
+{
+  "Common.Ok": "OK",
+  "Common.Cancel": "Cancel",
+  "Common.Close": "Close",
+  "Common.Apply": "Apply",
+  "Common.Browse": "Browse…",
+  "Common.File": "File…",
+  "Common.Folder": "Folder…",
+  "Common.Back": "Back",
+  "Common.Next": "Next",
+  "Common.Remove": "Remove",
+  "Common.Add": "Add",
+  "Common.Duplicate": "Duplicate",
+  "Common.Properties": "Properties…",
+  "Common.Copy": "Copy",
+  "Common.ShowSql": "Show SQL",
+  "Common.ConnectionString": "Connection string…",
+  "Common.Yes": "Yes",
+  "Common.No": "No",
+
+  "Dialog.Open.Title": "Open database",
+  "Dialog.Open.Path": "Path",
+  "Dialog.Open.PathHint": "A B-Tree database is a file, an LSM database is a folder. The buttons pick either.",
+  "Dialog.Open.Password": "Password",
+  "Dialog.Open.NameAndLabel": "Name and label",
+  "Dialog.Open.ColourHint": "The colour marks the tabs of this connection, so it is visible where a query will go.",
+  "Dialog.Open.ReadOnly": "Read only",
+  "Dialog.Open.Connect": "Connect",
+  "Dialog.Open.NotFound": "There is no file at this path. To start a new database, use Create database.",
+  "Dialog.Open.NotADatabaseFolder": "There is no WitDatabase in this folder: no manifest and no SSTable.",
+  "Dialog.Open.WrongPassword": "Could not decrypt: wrong password, or the file is damaged.",
+
+  "Dialog.Create.Title": "Create database",
+  "Dialog.Create.Storage": "STORAGE",
+  "Dialog.Create.Encryption": "ENCRYPTION",
+  "Dialog.Create.Algorithm": "Algorithm",
+  "Dialog.Create.NoEncryption": "No encryption",
+  "Dialog.Create.Password": "Password",
+  "Dialog.Create.PasswordAgain": "Repeat password",
+  "Dialog.Create.PasswordHint": "A password cannot be recovered: the key is derived from it and no copy is kept anywhere.",
+  "Dialog.Create.Create": "Create database",
+  "Dialog.Create.DatabaseFile": "Database file",
+  "Dialog.Create.DatabaseFolder": "Database folder",
+  "Dialog.Create.BTree": "B-Tree",
+  "Dialog.Create.BTreeHint": "One file. Reads well and behaves evenly under a mixed load.",
+  "Dialog.Create.Lsm": "LSM",
+  "Dialog.Create.LsmHint": "A folder of SSTables. For a stream of inserts into tables with no secondary index.",
+  "Dialog.Create.InMemory": "In memory",
+  "Dialog.Create.InMemoryHint": "Disappears when the connection closes. For trying things out.",
+  "Dialog.Create.InMemoryWarning": "The data will disappear when the connection closes. The only way to keep it is to export it.",
+  "Dialog.Create.FileHint": "B-Tree was chosen, so a file is asked for.",
+  "Dialog.Create.FolderHint": "LSM was chosen, so an empty folder is asked for.",
+  "Dialog.Create.PasswordsDiffer": "The two passwords are not the same.",
+
+  "Language.Name": "English",
+  "Status.Elapsed": "{0} ms",
+  "Status.Size": "{0} MB",
+
+  "Count.Rows": {
+    "one": "{0} row",
+    "other": "{0} rows"
+  },
+  "Count.Columns": {
+    "one": "{0} column",
+    "other": "{0} columns"
+  },
+  "Count.Statements": {
+    "one": "{0} statement",
+    "other": "{0} statements"
+  },
+  "Count.Connections": {
+    "one": "{0} connection",
+    "other": "{0} connections"
+  },
+  "Count.Tables": {
+    "one": "{0} table",
+    "other": "{0} tables"
+  }
+}

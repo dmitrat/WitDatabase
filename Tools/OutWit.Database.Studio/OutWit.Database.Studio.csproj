@@ -31,6 +31,23 @@
   <ItemGroup>
     <EmbeddedResource Include="Syntax\WitSql.xshd" />
     <EmbeddedResource Include="Syntax\WitSqlLight.xshd" />
+
+    <!-- Both string catalogues are embedded rather than shipped as satellite assemblies: Studio is
+         packed for three platforms, and a satellite that fails to arrive turns the interface English
+         with no error anywhere.
+
+         LogicalName and WithCulture are NOT decoration. MSBuild reads the ".en" and ".ru" in a file
+         name as a CULTURE and strips it, so both files came out as the single manifest resource
+         "…Resources.Strings.json" - one silently overwriting the other, and neither reachable under
+         the name it was asked for. Measured: GetManifestResourceNames listed the two xshd files and
+         nothing else. Naming them by culture is exactly what invites the satellite machinery this
+         choice exists to avoid. -->
+    <EmbeddedResource Include="Resources\Strings.en.json"
+                      LogicalName="OutWit.Database.Studio.Resources.Strings.en.json"
+                      WithCulture="false" />
+    <EmbeddedResource Include="Resources\Strings.ru.json"
+                      LogicalName="OutWit.Database.Studio.Resources.Strings.ru.json"
+                      WithCulture="false" />
   </ItemGroup>
 
   <ItemGroup>
