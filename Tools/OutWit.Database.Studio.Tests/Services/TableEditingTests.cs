@@ -238,9 +238,9 @@ public class TableEditingTests
 
         var result = await db.ExecuteBatchAsync(
         [
-            "INSERT INTO Probe (Id, Name) VALUES (1, 'first')",
-            "INSERT INTO Probe (Id, Name) VALUES (2, 'second')",
-            "UPDATE Probe SET WHERE Id = 1"
+            SqlStatement.Of("INSERT INTO Probe (Id, Name) VALUES (1, 'first')"),
+            SqlStatement.Of("INSERT INTO Probe (Id, Name) VALUES (2, 'second')"),
+            SqlStatement.Of("UPDATE Probe SET WHERE Id = 1")
         ]);
 
         var rows = await ReadAsync(db, "SELECT Id, Name FROM Probe", "Id", "Name");
@@ -273,8 +273,8 @@ public class TableEditingTests
 
         var result = await db.ExecuteBatchAsync(
         [
-            "INSERT INTO Probe (Id, Name) VALUES (1, 'first')",
-            "INSERT INTO Probe (Id, Name) VALUES (2, 'second')"
+            SqlStatement.Of("INSERT INTO Probe (Id, Name) VALUES (1, 'first')"),
+            SqlStatement.Of("INSERT INTO Probe (Id, Name) VALUES (2, 'second')")
         ]);
 
         var rows = await ReadAsync(db, "SELECT Id, Name FROM Probe", "Id", "Name");

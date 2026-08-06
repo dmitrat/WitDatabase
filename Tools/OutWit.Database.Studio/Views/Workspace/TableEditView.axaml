@@ -79,6 +79,34 @@
 
                 <!-- Actions -->
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
+                    <!-- Pages (WS-31). The table used to be read with a bare LIMIT and no way to see
+                         the second page at all; these are plain buttons until the grid is redesigned. -->
+                    <Button AutomationProperties.AutomationId="TableEditPreviousPage" AutomationProperties.Name="Previous page" Command="{Binding PreviousPageCommand}"
+                            IsEnabled="{Binding CanGoToPreviousPage}"
+                            ToolTip.Tip="Previous page"
+                            Height="32" MinWidth="32"
+                            Padding="8,0"
+                            Content="&lt;"/>
+
+                    <TextBlock VerticalAlignment="Center"
+                               Foreground="Gray"
+                               FontSize="12"
+                               ToolTip.Tip="{Binding PagingNote}">
+                        <Run Text="page"/>
+                        <Run Text="{Binding PageIndex}"/>
+                    </TextBlock>
+
+                    <Button AutomationProperties.AutomationId="TableEditNextPage" AutomationProperties.Name="Next page" Command="{Binding NextPageCommand}"
+                            IsEnabled="{Binding CanGoToNextPage}"
+                            ToolTip.Tip="Next page"
+                            Height="32" MinWidth="32"
+                            Padding="8,0"
+                            Content="&gt;"/>
+
+                    <Rectangle Width="1"
+                               Fill="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                               Margin="4,4"/>
+
                     <Button AutomationProperties.AutomationId="TableEditRefreshData" AutomationProperties.Name="Refresh data" Command="{Binding RefreshCommand}"
                             IsEnabled="{Binding CanRefresh}"
                             ToolTip.Tip="Refresh data"

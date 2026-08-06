@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using OutWit.Database.AdoNet;
 using OutWit.Database.Studio.Models;
 using System.Diagnostics;
 
@@ -12,7 +13,12 @@ public sealed partial class DatabaseSession
 {
     #region Query Execution
 
-    public async Task<QueryResult> ExecuteQueryAsync(string sql, CancellationToken ct = default)
+    public Task<QueryResult> ExecuteQueryAsync(string sql, CancellationToken ct = default)
+    {
+        return ExecuteQueryAsync(SqlStatement.Of(sql), ct);
+    }
+
+    public async Task<QueryResult> ExecuteQueryAsync(SqlStatement statement, CancellationToken ct = default)
     {
         EnsureConnected();
 
@@ -21,7 +27,7 @@ public sealed partial class DatabaseSession
 
         try
         {
-            result = await ExecuteQueryInternalAsync(sql, ct);
+            result = await ExecuteQueryInternalAsync(statement, ct);
             result.ExecutionTimeMs = sw.Elapsed.TotalMilliseconds;
 
             m_logger.LogInformation(
@@ -42,12 +48,23 @@ public sealed partial class DatabaseSession
         return result;
     }
 
-    private async Task<QueryResult> ExecuteQueryInternalAsync(string sql, CancellationToken ct)
+    private async Task<QueryResult> ExecuteQueryInternalAsync(SqlStatement statement, CancellationToken ct)
     {
-        using var command = m_connection!.CreateCommand();
-        command.CommandText = sql;
+        using var command = CreateCommand(statement, transaction: null);
 
         using var reader = await command.ExecuteReaderAsync(ct);
+
+        // A statement that returns no columns returned no rows either - it changed some. Counting the
+        // rows of an empty table for an INSERT is how "312 rows inserted" used to be reported as 0.
+        if (reader.FieldCount == 0)
+        {
+            return new QueryResult
+            {
+                Data = null,
+                RowsAffected = Math.Max(reader.RecordsAffected, 0),
+                ReturnedRows = false
+            };
+        }
 
         var dataTable = CreateDataTableFromReader(reader);
         await PopulateDataTableAsync(dataTable, reader, ct);
@@ -55,8 +72,27 @@ public sealed partial class DatabaseSession
         return new QueryResult
         {
             Data = dataTable,
-            RowsAffected = dataTable.Rows.Count
+            RowsAffected = dataTable.Rows.Count,
+            ReturnedRows = true
         };
+    }
+
+    /// <summary>
+    /// Builds the command for a statement and binds its values. The binding is the whole point: the
+    /// value goes to the engine as a value, so nothing a person typed can become syntax.
+    /// </summary>
+    private WitDbCommand CreateCommand(SqlStatement statement, System.Data.Common.DbTransaction? transaction)
+    {
+        var command = m_connection!.CreateCommand();
+        command.CommandText = statement.Text;
+
+        if (transaction != null)
+            command.Transaction = (WitDbTransaction)transaction;
+
+        foreach (var parameter in statement.Parameters)
+            command.Parameters.Add(new WitDbParameter(parameter.Name, parameter.Value ?? DBNull.Value));
+
+        return command;
     }
 
     private static System.Data.DataTable CreateDataTableFromReader(System.Data.Common.DbDataReader reader)
@@ -95,12 +131,16 @@ public sealed partial class DatabaseSession
         dataTable.AcceptChanges();
     }
 
-    public async Task<int> ExecuteNonQueryAsync(string sql, CancellationToken ct = default)
+    public Task<int> ExecuteNonQueryAsync(string sql, CancellationToken ct = default)
+    {
+        return ExecuteNonQueryAsync(SqlStatement.Of(sql), ct);
+    }
+
+    public async Task<int> ExecuteNonQueryAsync(SqlStatement statement, CancellationToken ct = default)
     {
         EnsureConnected();
 
-        using var command = m_connection!.CreateCommand();
-        command.CommandText = sql;
+        using var command = CreateCommand(statement, transaction: null);
 
         return await command.ExecuteNonQueryAsync(ct);
     }
@@ -109,8 +149,7 @@ public sealed partial class DatabaseSession
     {
         EnsureConnected();
 
-        using var command = m_connection!.CreateCommand();
-        command.CommandText = sql;
+        using var command = CreateCommand(SqlStatement.Of(sql), transaction: null);
 
         return await command.ExecuteScalarAsync(ct);
     }
@@ -126,7 +165,7 @@ public sealed partial class DatabaseSession
     /// Everything here is typed as the ADO.NET base classes - DbTransaction, DbCommand - so this
     /// exercises the drop-in surface a consumer has, not the provider's own type.
     /// </summary>
-    public async Task<BatchResult> ExecuteBatchAsync(IReadOnlyList<string> statements, CancellationToken ct = default)
+    public async Task<BatchResult> ExecuteBatchAsync(IReadOnlyList<SqlStatement> statements, CancellationToken ct = default)
     {
         EnsureConnected();
 
@@ -141,14 +180,11 @@ public sealed partial class DatabaseSession
         {
             for (var i = 0; i < statements.Count; i++)
             {
-                using System.Data.Common.DbCommand command = m_connection.CreateCommand();
-
-                // Measured 2026-08-05: leaving this unset changes nothing, because the provider
-                // applies the connection's open transaction to every command on it. Set anyway - that
-                // is the ADO.NET contract, and a consumer reading this code should not have to know
-                // the provider's habits.
-                command.Transaction = transaction;
-                command.CommandText = statements[i];
+                // Measured 2026-08-05: leaving the transaction unset changes nothing, because the
+                // provider applies the connection's open transaction to every command on it. Set
+                // anyway - that is the ADO.NET contract, and a consumer reading this code should not
+                // have to know the provider's habits.
+                using System.Data.Common.DbCommand command = CreateCommand(statements[i], transaction);
 
                 try
                 {

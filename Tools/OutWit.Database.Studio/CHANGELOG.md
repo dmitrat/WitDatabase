@@ -11,6 +11,12 @@ built and released under dev tags only, and is not a supported version. Full det
 
 ### Added
 
+- **A script is executed one statement at a time**, and each reports what it did. An error names the
+  statement and the line it is on, in the coordinates of the editor - including when only a selection
+  was executed. A script that does not parse is refused whole rather than applied halfway.
+- **A table is read a page at a time**, with Previous and Next in the editor's toolbar. Where the
+  table has a single-column primary key the next page starts from the last row seen; where it does
+  not, the editor says why paging deeper is slow instead of leaving it unexplained.
 - **More than one database can be open at a time.** *Open Database* and the recent files list add a
   connection instead of replacing the one that is open; the explorer grows a root per connection.
 
@@ -26,6 +32,14 @@ built and released under dev tags only, and is not a supported version. Full det
 
 ### Fixed
 
+- **Values written by the table editor keep their precision.** Edits were built by writing the value
+  into the statement as text, and a date was written to whole seconds - so a time with milliseconds
+  came back without them. Values are now bound to the statement instead of written into it, which also
+  removes the case where a value of an unexpected type was written with no quoting at all and read as
+  a column name.
+- **An error message says what happened instead of what the engine would have accepted.** A parse
+  error carried the whole set of expected tokens - over a thousand characters - into the status bar.
+  The first sentence is shown; the rest is kept for the details.
 - **The password of an encrypted database is no longer written to the log file.** `DatabaseService`
   logged the whole connection string - which carries `;Password=…` - on every connection attempt and
   again on every failure. Harmless until 2.0 added a file log, and from that release on the password

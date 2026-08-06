@@ -1,4 +1,5 @@
 using System.Collections;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Data;
 using System.Windows.Input;
@@ -46,6 +47,8 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     {
         // Initialize column settings for result grid
         ResultColumnSettings = new GridColumnSettings();
+
+        Statements = [];
     }
 
     private void InitCommands()
@@ -110,7 +113,17 @@ public class QueryTabViewModel : WorkspaceTabViewModel
         await ExecuteSqlAsync(sql);
     }
 
-    private async Task ExecuteSqlAsync(string sql)
+    /// <summary>
+    /// Runs the text as a SCRIPT: cut into statements by the parser and executed one at a time
+    /// (WS-22). One command for the whole text is what this replaces, and it could report only one
+    /// outcome for seven statements, no progress, and an error whose line number was of no use once
+    /// the text had been sent somewhere else.
+    ///
+    /// A failure stops the run. The statements before it have already reached the database - each is
+    /// its own transaction unless the script opened one - and saying which they were is the reason
+    /// <see cref="Statements"/> exists.
+    /// </summary>
+    public async Task ExecuteSqlAsync(string sql)
     {
         // The session this tab belongs to, never the one selected in the tree (WS-3).
         var session = Session;
@@ -125,33 +138,87 @@ public class QueryTabViewModel : WorkspaceTabViewModel
 
         IsExecuting = true;
         ErrorMessage = null;
+        ErrorLine = 0;
+        ErrorColumn = 0;
+        Statements.Clear();
+        DdlWasExecuted = false;
+
         m_executionCts?.Dispose();
         m_executionCts = new CancellationTokenSource();
 
+        var split = SqlScript.Split(sql);
+
+        // The offset of the fragment inside the tab's own text: executing a SELECTION means the
+        // parser counts from the start of the selection, and an error found there still has to be
+        // shown where the user is looking.
+        var fragmentOffset = FragmentOffset(sql);
+
+        if (!split.IsSuccess)
+        {
+            var first = split.Errors[0];
+            ReportError(first, fragmentOffset);
+            IsExecuting = false;
+            UpdateStatus();
+            return;
+        }
+
+        StatementCount = split.Statements.Count;
+
         try
         {
-            var result = await session.ExecuteQueryAsync(sql, m_executionCts.Token);
-
-            if (!string.IsNullOrEmpty(result.ErrorMessage))
+            foreach (var statement in split.Statements)
             {
-                ErrorMessage = result.ErrorMessage;
-                SetResultData(null);
-            }
-            else
-            {
-                SetResultData(result.Data);
-                RowsAffected = result.RowsAffected;
+                CurrentStatementNumber = statement.Index + 1;
+
+                var result = await session.ExecuteQueryAsync(
+                    SqlStatement.Of(statement.Text), m_executionCts.Token);
+
+                var outcome = new StatementOutcome
+                {
+                    Number = statement.Index + 1,
+                    Summary = statement.Summary,
+                    RowsAffected = result.RowsAffected,
+                    ReturnedRows = result.ReturnedRows,
+                    ExecutionTimeMs = result.ExecutionTimeMs,
+                    ErrorMessage = result.ErrorMessage == null ? null : SqlScript.Shorten(result.ErrorMessage)
+                };
+
+                Statements.Add(outcome);
+                ExecutionTimeMs = Statements.Sum(s => s.ExecutionTimeMs);
+
+                if (!string.IsNullOrEmpty(result.ErrorMessage))
+                {
+                    // Where in the TAB, not where in the statement: the engine counts from the start
+                    // of whatever it was given, which here is one statement of many.
+                    var located = SqlScript.ErrorFor(statement, result.ErrorMessage)
+                        ?? new SqlError(statement.Line, statement.Column,
+                            SqlScript.Shorten(result.ErrorMessage), result.ErrorMessage);
+
+                    ReportError(located, fragmentOffset, statement.Index + 1, split.Statements.Count);
+                    return;
+                }
+
+                if (result.ReturnedRows)
+                {
+                    SetResultData(result.Data);
+                    RowsAffected = result.RowsAffected;
+                }
+                else
+                {
+                    RowsAffected = result.RowsAffected;
+                }
+
+                if (statement.ChangesSchema)
+                    DdlWasExecuted = true;
             }
 
-            ExecutionTimeMs = result.ExecutionTimeMs;
-            
-            ApplicationVm.MainWindowVm.StatusText = string.IsNullOrEmpty(ErrorMessage)
+            ApplicationVm.MainWindowVm.StatusText = split.Statements.Count == 1
                 ? $"Query executed successfully in {ExecutionTimeMs:F2}ms"
-                : $"Query failed: {ErrorMessage}";
+                : $"{split.Statements.Count} statements executed in {ExecutionTimeMs:F2}ms";
         }
         catch (OperationCanceledException)
         {
-            ErrorMessage = "Query execution cancelled";
+            ErrorMessage = $"Cancelled at statement {CurrentStatementNumber} of {StatementCount}";
             ApplicationVm.MainWindowVm.StatusText = "Query cancelled";
         }
         catch (Exception ex)
@@ -163,8 +230,52 @@ public class QueryTabViewModel : WorkspaceTabViewModel
         finally
         {
             IsExecuting = false;
+            CurrentStatementNumber = 0;
             UpdateStatus();
         }
+    }
+
+    /// <summary>
+    /// Where the executed fragment begins inside the tab's text, as a line and a column. Executing
+    /// the whole text gives (0, 0); executing a selection gives wherever the selection starts.
+    /// </summary>
+    private (int Line, int Column) FragmentOffset(string fragment)
+    {
+        var text = SqlText ?? string.Empty;
+
+        if (string.IsNullOrEmpty(text) || ReferenceEquals(text, fragment))
+            return (0, 0);
+
+        var index = text.IndexOf(fragment, StringComparison.Ordinal);
+
+        if (index < 0)
+            return (0, 0);
+
+        var before = text[..index];
+        var line = before.Count(c => c == '\n');
+        var lastBreak = before.LastIndexOf('\n');
+
+        return (line, index - (lastBreak + 1));
+    }
+
+    private void ReportError(SqlError error, (int Line, int Column) fragment, int number = 0, int total = 0)
+    {
+        // The fragment's own offset is added last, so a selection three screens down underlines the
+        // line the user is looking at rather than the third line of the file.
+        ErrorLine = error.Line + fragment.Line;
+        ErrorColumn = error.Line == 1 ? error.Column + fragment.Column : error.Column;
+
+        var where = number > 0 && total > 1
+            ? $"Statement {number} of {total}, line {ErrorLine}, column {ErrorColumn + 1}: "
+            : $"Line {ErrorLine}, column {ErrorColumn + 1}: ";
+
+        ErrorMessage = where + error.Message;
+        ErrorDetail = error.Detail;
+
+        SetResultData(null);
+
+        ApplicationVm.MainWindowVm.StatusText = ErrorMessage;
+        Logger.LogWarning("Execution failed at line {Line}: {Message}", ErrorLine, error.Message);
     }
 
     private void StopQuery()
@@ -387,10 +498,50 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     public DataView? CurrentView { get; set; }
 
     /// <summary>
-    /// Error message from query execution.
+    /// Error message from query execution, with the position it happened at.
     /// </summary>
     [Notify]
     public string? ErrorMessage { get; set; }
+
+    /// <summary>
+    /// The engine's message in full. The short form goes in front of the user; this is what the
+    /// Messages tab shows, because the expected-token set of a parse error runs to 1,595 characters
+    /// and none of it belongs in a status bar (WS-11).
+    /// </summary>
+    [Notify]
+    public string? ErrorDetail { get; set; }
+
+    /// <summary>
+    /// Where the failure is, in the coordinates of THIS TAB - 1-based line, 0-based column. The
+    /// engine reports a position inside the statement it was given, which for the sixth statement of
+    /// a script is never the line the user wrote it on.
+    /// </summary>
+    [Notify]
+    public int ErrorLine { get; set; }
+
+    [Notify]
+    public int ErrorColumn { get; set; }
+
+    /// <summary>
+    /// What each statement of the script did, in order. A script is executed one statement at a time
+    /// (WS-22), and this is the record of it.
+    /// </summary>
+    public ObservableCollection<StatementOutcome> Statements { get; private set; } = null!;
+
+    /// <summary>
+    /// Which statement is running, 1-based, or 0 when nothing is.
+    /// </summary>
+    [Notify]
+    public int CurrentStatementNumber { get; set; }
+
+    [Notify]
+    public int StatementCount { get; set; }
+
+    /// <summary>
+    /// True when the script changed the schema, so that whoever owns the tree knows to reload it.
+    /// </summary>
+    [Notify]
+    public bool DdlWasExecuted { get; set; }
 
     /// <summary>
     /// Number of rows affected by the query.

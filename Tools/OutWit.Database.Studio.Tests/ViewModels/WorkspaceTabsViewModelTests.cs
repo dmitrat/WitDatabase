@@ -199,38 +199,4 @@ public class WorkspaceTabsViewModelTests
     }
 
     #endregion
-
-    #region DDL Detection Tests
-
-    [Test]
-    [TestCase("CREATE TABLE t (id INT)", true)]
-    [TestCase("DROP TABLE t", true)]
-    [TestCase("ALTER TABLE t ADD COLUMN x INT", true)]
-    [TestCase("TRUNCATE TABLE t", true)]
-    [TestCase("RENAME TABLE t TO t2", true)]
-    [TestCase("SELECT * FROM t", false)]
-    [TestCase("INSERT INTO t VALUES (1)", false)]
-    [TestCase("UPDATE t SET x = 1", false)]
-    [TestCase("DELETE FROM t", false)]
-    [TestCase("-- comment\nCREATE TABLE t (id INT)", true)]
-    [TestCase("/* block comment */\nDROP TABLE t", true)]
-    [TestCase("-- comment\n-- another\nALTER TABLE t ADD x INT", true)]
-    [TestCase("/* multi\nline\ncomment */CREATE TABLE t (id INT)", true)]
-    [TestCase("  \n  \t  CREATE TABLE t (id INT)", true)]
-    [TestCase("", false)]
-    [TestCase("   ", false)]
-    [TestCase("-- only comment", false)]
-    public void IsDdlStatementTest(string sql, bool expected)
-    {
-        // Use reflection to test private method
-        var method = typeof(WorkspaceTabsViewModel).GetMethod(
-            "IsDdlStatement",
-            System.Reflection.BindingFlags.NonPublic | System.Reflection.BindingFlags.Static);
-
-        var result = (bool)method!.Invoke(null, [sql])!;
-
-        Assert.That(result, Is.EqualTo(expected), $"SQL: {sql}");
-    }
-
-    #endregion
 }

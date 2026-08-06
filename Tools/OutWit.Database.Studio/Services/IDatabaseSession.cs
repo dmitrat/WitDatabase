@@ -132,9 +132,20 @@ public interface IDatabaseSession
     Task<QueryResult> ExecuteQueryAsync(string sql, CancellationToken ct = default);
 
     /// <summary>
+    /// Executes a statement with values bound to it. The values never pass through the language, so
+    /// a quote in one cannot break the statement and a semicolon in one cannot run anything.
+    /// </summary>
+    Task<QueryResult> ExecuteQueryAsync(SqlStatement statement, CancellationToken ct = default);
+
+    /// <summary>
     /// Executes a non-query SQL statement (INSERT, UPDATE, DELETE).
     /// </summary>
     Task<int> ExecuteNonQueryAsync(string sql, CancellationToken ct = default);
+
+    /// <summary>
+    /// The same, with values bound.
+    /// </summary>
+    Task<int> ExecuteNonQueryAsync(SqlStatement statement, CancellationToken ct = default);
 
     /// <summary>
     /// Executes a scalar query.
@@ -145,7 +156,7 @@ public interface IDatabaseSession
     /// Runs a set of statements as one transaction: all of them, or none. Used by the table editor,
     /// whose buffer of edits is one decision by the user and has to reach the database as one.
     /// </summary>
-    Task<BatchResult> ExecuteBatchAsync(IReadOnlyList<string> statements, CancellationToken ct = default);
+    Task<BatchResult> ExecuteBatchAsync(IReadOnlyList<SqlStatement> statements, CancellationToken ct = default);
 
     #endregion
 }
