@@ -663,8 +663,31 @@ jobs:
           else
             TAG="studio-v${{ github.event.inputs.version || '0.0.0-dev' }}"
           fi
+
+          VERSION="${TAG#studio-v}"
+
+          # A version carrying a pre-release suffix - 3.0.0-dev.1, 2.1.0-beta, 2.1.0-rc.2 - is never
+          # the repository's Latest. This has to be derived from the TAG, not from the dispatch input:
+          # on a tag push that input does not exist, so it evaluated to 'false' and make_latest to
+          # 'true' - an internal dev build, unsigned on Windows because the signing gate correctly
+          # skips '-dev', would have been presented as the current release and displaced 2.0.0.
+          #
+          # Same shape as the signing gate one job up, and the same rule: the safe answer is the
+          # default, and only an explicit public tag opts out of it.
+          case "$VERSION" in
+            *-*) PRE=true ;;
+            *)   PRE=false ;;
+          esac
+
+          # The dispatch input can only make a run MORE cautious, never less.
+          if [[ "${{ github.event.inputs.prerelease }}" == "true" ]]; then
+            PRE=true
+          fi
+
           echo "tag=$TAG" >> "$GITHUB_OUTPUT"
-          echo "name=WitDatabase Studio ${TAG#studio-v}" >> "$GITHUB_OUTPUT"
+          echo "name=WitDatabase Studio $VERSION" >> "$GITHUB_OUTPUT"
+          echo "prerelease=$PRE" >> "$GITHUB_OUTPUT"
+          echo "Release $TAG - prerelease=$PRE, latest=$([[ "$PRE" == "true" ]] && echo false || echo true)"
 
       - name: Create GitHub Release
         uses: softprops/action-gh-release@v2
@@ -672,10 +695,10 @@ jobs:
           tag_name: ${{ steps.name.outputs.tag }}
           name: ${{ steps.name.outputs.name }}
           draft: false
-          prerelease: ${{ github.event.inputs.prerelease == 'true' }}
+          prerelease: ${{ steps.name.outputs.prerelease }}
           # A real (non-prerelease) Studio release becomes the repository's Latest. Nothing is
           # displaced by that: the engine ships to NuGet and publishes no GitHub releases.
-          make_latest: ${{ github.event.inputs.prerelease == 'true' && 'false' || 'true' }}
+          make_latest: ${{ steps.name.outputs.prerelease == 'true' && 'false' || 'true' }}
           files: release-files/*
           generate_release_notes: true
           fail_on_unmatched_files: true
