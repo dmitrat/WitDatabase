@@ -39,7 +39,8 @@ public sealed class ApplicationViewModel
         IExportService exportService,
         ILogger<ApplicationViewModel> logger,
         IConfirmationService? confirmations = null,
-        IDialogService? dialogs = null)
+        IDialogService? dialogs = null,
+        INotificationService? notifications = null)
     {
         Connections = connections;
         Settings = settingsService;
@@ -47,6 +48,8 @@ public sealed class ApplicationViewModel
         Logger = logger;
         Confirmations = confirmations ?? new KeepUnsavedChangesService();
         Dialogs = dialogs ?? new NoDialogService();
+        Notifications = notifications ?? new NotificationService(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<NotificationService>.Instance);
 
         InitViewModels();
     }
@@ -60,8 +63,11 @@ public sealed class ApplicationViewModel
         MainWindowVm = new MainWindowViewModel(this);
         ConnectionVm = new ConnectionViewModel(this);
         DatabaseExplorerVm = new DatabaseExplorerViewModel(this);
-        
+
         WorkspaceTabsVm = new WorkspaceTabsViewModel(this);
+
+        // Last: it reads the other view models to build its list of commands.
+        PaletteVm = new CommandPaletteViewModel(this);
     }
 
     #endregion
@@ -119,6 +125,11 @@ public sealed class ApplicationViewModel
     /// </summary>
     public WorkspaceTabsViewModel WorkspaceTabsVm { get; private set; } = null!;
 
+    /// <summary>
+    /// Ctrl+K: objects and commands in one list (WS-9).
+    /// </summary>
+    public CommandPaletteViewModel PaletteVm { get; private set; } = null!;
+
     #endregion
 
     #region Properties
@@ -139,6 +150,12 @@ public sealed class ApplicationViewModel
     public ISettingsService Settings { get; }
 
     public IExportService Export { get; }
+
+    /// <summary>
+    /// Things that happened and did not need an answer (WS-7). Never null: a host that supplies none
+    /// still gets a list, which keeps every call site free of a null check.
+    /// </summary>
+    public INotificationService Notifications { get; }
 
     public ILogger<ApplicationViewModel> Logger { get; }
 

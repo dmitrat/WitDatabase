@@ -18,9 +18,32 @@ namespace OutWit.Database.Studio.ViewModels;
 /// </summary>
 public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 {
+    #region Constants
+
+    /// <summary>
+    /// How many closed query tabs are remembered for Ctrl+Shift+T.
+    /// </summary>
+    public const int CLOSED_TAB_CAPACITY = 10;
+
+    #endregion
+
     #region Fields
 
     private int m_nextQueryNumber = 1;
+
+    /// <summary>
+    /// The query tabs that have been closed, newest first, so that Ctrl+Shift+T can bring one back.
+    ///
+    /// The text of a query is usually its only copy - nothing on disk, nothing in a history yet - and
+    /// closing the wrong tab is one keystroke away from closing the right one.
+    /// </summary>
+    private readonly List<ClosedTab> m_closedTabs = [];
+
+    /// <summary>
+    /// What is kept about a closed tab. Not the tab itself: it has been disposed, and its result set
+    /// belongs to a connection that may since have gone.
+    /// </summary>
+    private sealed record ClosedTab(string Title, string SqlText, string? FilePath, Guid ConnectionId);
 
     #endregion
 
@@ -60,6 +83,8 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     private void InitCommands()
     {
         NewQueryTabCommand = new RelayCommand(AddNewQueryTab);
+        ReopenClosedTabCommand = new RelayCommand(ReopenClosedTab, () => m_closedTabs.Count > 0);
+        ExecuteCurrentStatementCommand = new RelayCommandAsync(ExecuteCurrentStatementAsync);
         CloseTabCommand = new RelayCommandAsync<WorkspaceTabViewModel>(CloseTabAsync);
         CloseAllTabsCommand = new RelayCommandAsync(CloseAllTabsAsync);
         CloseOtherTabsCommand = new RelayCommandAsync<WorkspaceTabViewModel>(CloseOtherTabsAsync);
@@ -186,6 +211,51 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         Tabs.Insert(insertIndex, tab);
     }
 
+    /// <summary>
+    /// Brings back the most recently closed query tab, in its own connection if that connection is
+    /// still open (WS-3: it does not adopt another one).
+    /// </summary>
+    private void ReopenClosedTab()
+    {
+        if (m_closedTabs.Count == 0)
+            return;
+
+        var closed = m_closedTabs[0];
+        m_closedTabs.RemoveAt(0);
+
+        var session = Connections.Find(closed.ConnectionId);
+
+        var tab = new QueryTabViewModel(ApplicationVm, session)
+        {
+            Title = closed.Title,
+            SqlText = closed.SqlText,
+            FilePath = closed.FilePath,
+            IsModified = false
+        };
+
+        tab.PropertyChanged += OnTabPropertyChanged;
+
+        AddTab(tab);
+        SelectedTab = tab;
+
+        Logger.LogInformation("Reopened closed tab: {Title}", tab.Title);
+    }
+
+    /// <summary>
+    /// Remembers a query tab's text before it goes.
+    /// </summary>
+    private void RememberClosed(WorkspaceTabViewModel tab)
+    {
+        if (tab is not QueryTabViewModel query || string.IsNullOrWhiteSpace(query.SqlText))
+            return;
+
+        m_closedTabs.Insert(0, new ClosedTab(
+            query.Title, query.SqlText, query.FilePath, query.Session?.Id ?? Guid.Empty));
+
+        while (m_closedTabs.Count > CLOSED_TAB_CAPACITY)
+            m_closedTabs.RemoveAt(m_closedTabs.Count - 1);
+    }
+
     private async Task CloseTabAsync(WorkspaceTabViewModel? tab)
     {
         if (tab == null)
@@ -203,6 +273,8 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         // buffer is thrown away, and OnClosed below disposes the DataTable that holds it.
         if (!await tab.ConfirmCloseAsync())
             return;
+
+        RememberClosed(tab);
 
         tab.PropertyChanged -= OnTabPropertyChanged;
         tab.OnClosed();
@@ -342,6 +414,34 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     #endregion
 
     #region Query Execution
+
+    /// <summary>
+    /// F5: the statement under the cursor of the selected tab (WS-25).
+    /// </summary>
+    private async Task ExecuteCurrentStatementAsync()
+    {
+        if (SelectedTab is not QueryTabViewModel queryTab)
+            return;
+
+        if (string.IsNullOrWhiteSpace(queryTab.SqlText) || !IsRunnable(queryTab))
+            return;
+
+        IsExecuting = true;
+        CurrentExecutingTab = queryTab;
+
+        try
+        {
+            await queryTab.ExecuteCurrentStatementAsync();
+
+            if (queryTab.DdlWasExecuted && queryTab.Session != null)
+                await ApplicationVm.DatabaseExplorerVm.RefreshAsync(queryTab.Session);
+        }
+        finally
+        {
+            IsExecuting = false;
+            CurrentExecutingTab = null;
+        }
+    }
 
     private async Task ExecuteQueryAsync()
     {
@@ -571,8 +671,13 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         CanSaveTab = isQueryTab && hasSqlText;
         CanExecuteQuery = isQueryTab && hasSqlText && !IsExecuting && isConnected;
 
-        // Current tab type for UI
+        // Current tab type for UI. The contextual toolbar is built from these: it belongs to the
+        // active tab and changes with it (WS-8), rather than being one panel of everything.
         CurrentTabType = SelectedTab?.TabType;
+
+        IsQueryTabSelected = SelectedTab is QueryTabViewModel;
+        IsTableEditTabSelected = SelectedTab is TableEditTabViewModel;
+        IsStructureTabSelected = SelectedTab is StructureTabViewModel;
     }
 
     #endregion
@@ -677,6 +782,18 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public WorkspaceTabType? CurrentTabType { get; private set; }
 
+    /// <summary>
+    /// Which toolbar the frame should be showing (WS-8).
+    /// </summary>
+    [Notify]
+    public bool IsQueryTabSelected { get; private set; }
+
+    [Notify]
+    public bool IsTableEditTabSelected { get; private set; }
+
+    [Notify]
+    public bool IsStructureTabSelected { get; private set; }
+
     [Notify]
     public bool CanCloseTab { get; private set; }
 
@@ -712,6 +829,16 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     #region Commands
 
     public ICommand NewQueryTabCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// Ctrl+Shift+T. Brings back the last closed query tab with its text.
+    /// </summary>
+    public ICommand ReopenClosedTabCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// F5. The whole script is <see cref="ExecuteQueryCommand"/>, on Ctrl+Shift+F5.
+    /// </summary>
+    public ICommand ExecuteCurrentStatementCommand { get; private set; } = null!;
 
     public ICommand CloseTabCommand { get; private set; } = null!;
 

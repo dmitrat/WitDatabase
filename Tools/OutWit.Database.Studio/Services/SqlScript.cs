@@ -11,8 +11,20 @@ namespace OutWit.Database.Studio.Services;
 /// <param name="Text">The statement's own text, ready to send on its own.</param>
 /// <param name="Line">1-based line of the script where the statement starts.</param>
 /// <param name="Column">0-based column of the script where the statement starts.</param>
-public sealed record SqlStatementSpan(int Index, string Text, int Line, int Column, bool ChangesSchema)
+public sealed record SqlStatementSpan(int Index, string Text, int Line, int Column, bool ChangesSchema,
+    int Offset = 0)
 {
+    /// <summary>
+    /// One past the last character of the statement, in the script.
+    /// </summary>
+    public int End => Offset + Text.Length;
+
+    /// <summary>
+    /// Whether a caret at this offset is inside the statement. The end is included: a caret sitting
+    /// just after the last character is still in the statement a person is looking at.
+    /// </summary>
+    public bool Contains(int offset) => offset >= Offset && offset <= End;
+
     /// <summary>
     /// A short label for a list of statements: the first line, cut to something readable.
     /// </summary>
@@ -125,10 +137,34 @@ public static class SqlScript
                 continue;
 
             spans.Add(new SqlStatementSpan(spans.Count, text, statements[i].Line, statements[i].Column,
-                ChangesSchema(statements[i])));
+                ChangesSchema(statements[i]), start));
         }
 
         return new SqlScriptSplit(spans, []);
+    }
+
+    /// <summary>
+    /// The statement the caret is in, or the last one that starts before it when the caret is in the
+    /// whitespace between two - which is where a caret ends up after pressing Enter at the end of a
+    /// statement.
+    ///
+    /// This is what F5 runs (WS-25): the statement under the cursor, not the whole script. A person
+    /// with a forty-line script and a cursor in the middle of it means one of them, and running all
+    /// forty because the cursor happened to be somewhere is not a mistake that can be undone.
+    /// </summary>
+    public static SqlStatementSpan? At(SqlScriptSplit split, int offset)
+    {
+        if (split.Statements.Count == 0)
+            return null;
+
+        foreach (var statement in split.Statements)
+        {
+            if (statement.Contains(offset))
+                return statement;
+        }
+
+        return split.Statements.LastOrDefault(statement => statement.Offset <= offset)
+            ?? split.Statements[0];
     }
 
     /// <summary>

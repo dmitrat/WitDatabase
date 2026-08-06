@@ -6,29 +6,42 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:workspace="clr-namespace:OutWit.Database.Studio.Views.Workspace"
+        xmlns:services="using:OutWit.Database.Studio.Services"
         mc:Ignorable="d" d:DesignWidth="1200" d:DesignHeight="800"
         x:Class="OutWit.Database.Studio.Views.MainWindow"
         x:DataType="vm:ApplicationViewModel"
         Title="{Binding MainWindowVm.Title}"
         Width="1200"
-        Height="800">
+        Height="800"
+        MinWidth="900"
+        MinHeight="560">
 
-	<!-- Keyboard Shortcuts -->
+	<!-- Keyboard (1.7). Ctrl+N used to open a query TAB, which no other application means by it;
+	     it now creates a database and the tab is Ctrl+T. F5 no longer means two things at once -
+	     it runs the statement under the cursor (WS-25) and refreshing the schema is Ctrl+R. -->
 	<Window.KeyBindings>
-		<KeyBinding Gesture="Ctrl+N" Command="{Binding WorkspaceTabsVm.NewQueryTabCommand}"/>
+		<KeyBinding Gesture="Ctrl+K" Command="{Binding PaletteVm.OpenCommand}"/>
+		<KeyBinding Gesture="Ctrl+T" Command="{Binding WorkspaceTabsVm.NewQueryTabCommand}"/>
+		<KeyBinding Gesture="Ctrl+Shift+T" Command="{Binding WorkspaceTabsVm.ReopenClosedTabCommand}"/>
 		<KeyBinding Gesture="Ctrl+W" Command="{Binding WorkspaceTabsVm.CloseTabCommand}" CommandParameter="{Binding WorkspaceTabsVm.SelectedTab}"/>
+		<KeyBinding Gesture="Ctrl+N" Command="{Binding MainWindowVm.NewDatabaseCommand}"/>
 		<KeyBinding Gesture="Ctrl+O" Command="{Binding MainWindowVm.OpenDatabaseCommand}"/>
-		<KeyBinding Gesture="F5" Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"/>
+		<KeyBinding Gesture="Ctrl+R" Command="{Binding MainWindowVm.RefreshCommand}"/>
+		<KeyBinding Gesture="F5" Command="{Binding WorkspaceTabsVm.ExecuteCurrentStatementCommand}"/>
+		<KeyBinding Gesture="Ctrl+Shift+F5" Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"/>
 		<KeyBinding Gesture="Ctrl+Return" Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"/>
 		<KeyBinding Gesture="Ctrl+S" Command="{Binding WorkspaceTabsVm.SaveTabCommand}"/>
 		<KeyBinding Gesture="Ctrl+Shift+S" Command="{Binding WorkspaceTabsVm.SaveTabAsCommand}"/>
 	</Window.KeyBindings>
 
-	<Grid RowDefinitions="Auto,*,Auto">
-		<!-- Menu Bar with Theme Toggle -->
-		<Grid Grid.Row="0" ColumnDefinitions="*,Auto">
+	<!-- Five zones (1.1): title bar, contextual toolbar, connections + workspace, status bar.
+	     The palette and the notification list sit on top of all of it. -->
+	<Grid RowDefinitions="Auto,Auto,*,Auto">
+		<!-- A. Title bar (1.2): menu, command palette, notifications, theme, 38 px -->
+		<Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Height="38"
+		      Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
 			<!-- Menu -->
-			<Menu Grid.Column="0">
+			<Menu Grid.Column="0" VerticalAlignment="Center">
 				<MenuItem AutomationProperties.AutomationId="MainWindowFile" Header="_File">
 					<MenuItem AutomationProperties.AutomationId="MainWindowNewQueryTab" Header="_New Query Tab"
 					          Command="{Binding WorkspaceTabsVm.NewQueryTabCommand}"
@@ -207,24 +220,139 @@
 				</MenuItem>
 			</Menu>
 
-			<!-- Theme Toggle Button (right side) -->
-			<Button AutomationProperties.AutomationId="MainWindowThemeToggleButton" AutomationProperties.Name="Toggle Dark/Light Theme" Grid.Column="1"
-			        x:Name="ThemeToggleButton"
-			        ToolTip.Tip="Toggle Dark/Light Theme"
-			        Background="Transparent"
-			        BorderThickness="0"
-			        Padding="12,6"
-			        Margin="0,0,8,0"
-			        VerticalAlignment="Center">
-				<StackPanel Orientation="Horizontal" Spacing="6">
-					<PathIcon x:Name="ThemeIcon" Width="16" Height="16"/>
-					<TextBlock x:Name="ThemeText" VerticalAlignment="Center" FontSize="12"/>
-				</StackPanel>
+			<!-- Command palette entry (WS-9). Always in the middle, always in the same place. -->
+			<Button AutomationProperties.AutomationId="MainWindowCommandPalette"
+			        AutomationProperties.Name="Go to object or command"
+			        Grid.Column="1"
+			        Command="{Binding PaletteVm.OpenCommand}"
+			        HorizontalAlignment="Center"
+			        VerticalAlignment="Center"
+			        MinWidth="320"
+			        Height="24"
+			        Padding="10,0"
+			        Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+			        BorderThickness="1"
+			        CornerRadius="6">
+				<Grid ColumnDefinitions="Auto,*,Auto">
+					<PathIcon Grid.Column="0" Data="{x:Static ui:StudioIcons.COMMON_SEARCH}"
+					          Width="12" Height="12" Opacity="0.6"/>
+					<TextBlock Grid.Column="1" Text="Go to object or command"
+					           Margin="8,0" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
+					<TextBlock Grid.Column="2" Text="Ctrl+K" FontSize="11" Opacity="0.45"
+					           VerticalAlignment="Center"/>
+				</Grid>
 			</Button>
+
+			<!-- Right cluster: notifications, theme -->
+			<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
+				<Button AutomationProperties.AutomationId="MainWindowNotifications"
+				        AutomationProperties.Name="Notifications"
+				        ToolTip.Tip="Notifications"
+				        Background="Transparent"
+				        BorderThickness="0"
+				        Padding="10,4"
+				        Command="{Binding MainWindowVm.ShowNotificationsCommand}">
+					<Panel>
+						<PathIcon Data="{x:Static ui:StudioIcons.COMMON_BELL}" Width="16" Height="16"/>
+						<Ellipse Width="7" Height="7"
+						         Fill="{DynamicResource SystemAccentColor}"
+						         HorizontalAlignment="Right" VerticalAlignment="Top"
+						         Margin="0,-2,-3,0"
+						         IsVisible="{Binding MainWindowVm.HasUnreadNotifications}"/>
+					</Panel>
+				</Button>
+
+				<Button AutomationProperties.AutomationId="MainWindowThemeToggleButton" AutomationProperties.Name="Toggle Dark/Light Theme"
+				        x:Name="ThemeToggleButton"
+				        ToolTip.Tip="Toggle Dark/Light Theme"
+				        Background="Transparent"
+				        BorderThickness="0"
+				        Padding="12,6"
+				        Margin="0,0,8,0"
+				        VerticalAlignment="Center">
+					<StackPanel Orientation="Horizontal" Spacing="6">
+						<PathIcon x:Name="ThemeIcon" Width="16" Height="16"/>
+						<TextBlock x:Name="ThemeText" VerticalAlignment="Center" FontSize="12"/>
+					</StackPanel>
+				</Button>
+			</StackPanel>
 		</Grid>
 
+		<!-- B. Contextual toolbar (WS-8): belongs to the active tab and changes with it. The chip on
+		     the right is the connection the tab runs in - the one thing that answers "where is this
+		     DELETE going" (WS-3). -->
+		<Border Grid.Row="1" Height="36"
+		        IsVisible="{Binding MainWindowVm.IsConnected}"
+		        Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+		        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+		        BorderThickness="0,1,0,1"
+		        Padding="8,0">
+			<Grid ColumnDefinitions="*,Auto">
+				<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+					<!-- Query tab -->
+					<StackPanel Orientation="Horizontal" Spacing="4"
+					            IsVisible="{Binding WorkspaceTabsVm.IsQueryTabSelected}">
+						<Button AutomationProperties.AutomationId="ToolbarExecute" AutomationProperties.Name="Execute"
+						        Command="{Binding WorkspaceTabsVm.ExecuteCurrentStatementCommand}"
+						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
+						        ToolTip.Tip="Execute the statement under the cursor (F5)"
+						        Height="24" Padding="10,0" Content="Execute" FontSize="12"/>
+						<Button AutomationProperties.AutomationId="ToolbarExecuteScript" AutomationProperties.Name="Execute script"
+						        Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
+						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
+						        ToolTip.Tip="Execute the whole script (Ctrl+Shift+F5)"
+						        Height="24" Padding="10,0" Content="Script" FontSize="12"/>
+						<Button AutomationProperties.AutomationId="ToolbarExecuteSelection" AutomationProperties.Name="Execute selection"
+						        Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"
+						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
+						        ToolTip.Tip="Execute the selection (Ctrl+Enter)"
+						        Height="24" Padding="10,0" Content="Selection" FontSize="12"/>
+						<Button AutomationProperties.AutomationId="ToolbarStop" AutomationProperties.Name="Stop"
+						        Command="{Binding WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand}"
+						        IsEnabled="{Binding WorkspaceTabsVm.IsExecuting}"
+						        ToolTip.Tip="Stop (Esc)"
+						        Height="24" Padding="10,0" Content="Stop" FontSize="12"/>
+						<Button AutomationProperties.AutomationId="ToolbarClearResults" AutomationProperties.Name="Clear results"
+						        Command="{Binding WorkspaceTabsVm.ClearResultsCommand}"
+						        ToolTip.Tip="Clear the results"
+						        Height="24" Padding="10,0" Content="Clear" FontSize="12"/>
+						<Button AutomationProperties.AutomationId="ToolbarSaveQuery" AutomationProperties.Name="Save query"
+						        Command="{Binding WorkspaceTabsVm.SaveTabCommand}"
+						        IsEnabled="{Binding WorkspaceTabsVm.CanSaveTab}"
+						        ToolTip.Tip="Save (Ctrl+S)"
+						        Height="24" Padding="10,0" Content="Save" FontSize="12"/>
+					</StackPanel>
+
+					<!-- Data tab -->
+					<StackPanel Orientation="Horizontal" Spacing="4"
+					            IsVisible="{Binding WorkspaceTabsVm.IsTableEditTabSelected}">
+						<TextBlock Text="Table data" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
+					</StackPanel>
+
+					<!-- Structure tab -->
+					<StackPanel Orientation="Horizontal" Spacing="4"
+					            IsVisible="{Binding WorkspaceTabsVm.IsStructureTabSelected}">
+						<TextBlock Text="Object structure" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
+					</StackPanel>
+				</StackPanel>
+
+				<!-- The connection chip of the ACTIVE TAB -->
+				<Border Grid.Column="1"
+				        IsVisible="{Binding WorkspaceTabsVm.SelectedTab.ConnectionName, Converter={x:Static ObjectConverters.IsNotNull}}"
+				        Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+				        CornerRadius="999"
+				        Padding="10,2"
+				        VerticalAlignment="Center">
+					<TextBlock AutomationProperties.AutomationId="ToolbarConnectionChip"
+					           Text="{Binding WorkspaceTabsVm.SelectedTab.ConnectionName}"
+					           FontSize="11"
+					           VerticalAlignment="Center"/>
+				</Border>
+			</Grid>
+		</Border>
+
 		<!-- Основной контент с разделителем -->
-		<Grid Grid.Row="1" ColumnDefinitions="250,Auto,*">
+		<Grid Grid.Row="2" ColumnDefinitions="250,Auto,*">
 			<!-- Обозреватель баз данных -->
 			<Border Grid.Column="0"
                     BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
@@ -358,44 +486,171 @@
 			</Grid>
 		</Grid>
 
-		<!-- Статус-бар -->
-		<Border Grid.Row="2"
+		<!-- E. Status bar (1.5). Left: where we are. Middle: what is happening right now, and a way
+		     to stop it (WS-6). Right: where the cursor is. -->
+		<Border Grid.Row="3"
                 Background="{DynamicResource SystemControlBackgroundChromeMediumBrush}"
                 BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                 BorderThickness="0,1,0,0"
-                Padding="8,4">
-			<Grid ColumnDefinitions="*,Auto,Auto">
-				<TextBlock Grid.Column="0"
-                           Text="{Binding MainWindowVm.StatusText}"
-                           VerticalAlignment="Center" />
-
-				<TextBlock Grid.Column="1"
-                           VerticalAlignment="Center"
-                           Margin="16,0,0,0"
-                           Text="{Binding MainWindowVm.IsConnected, StringFormat='Connected: {0}'}"/>
-
-				<StackPanel Grid.Column="2"
-				            Orientation="Horizontal"
-				            Spacing="8"
-				            Margin="16,0,0,0"
+                Padding="8,2"
+                MinHeight="25">
+			<Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
+				<!-- Where we are -->
+				<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
 				            IsVisible="{Binding MainWindowVm.IsConnected}">
 					<PathIcon Data="{x:Static ui:StudioIcons.COMMON_BULLET}"
 					          Width="8" Height="8"
 					          Foreground="LimeGreen"
 					          VerticalAlignment="Center"/>
-					<TextBlock IsVisible="{Binding MainWindowVm.CurrentConnection.IsEncrypted}"
-					           ToolTip.Tip="Database is encrypted"
-					           Foreground="Orange"
-					           FontWeight="Bold"
-					           VerticalAlignment="Center">
-						<TextBlock.Text>ENC</TextBlock.Text>
-					</TextBlock>
-					<TextBlock Text="{Binding MainWindowVm.CurrentConnection.FilePath}"
-                               VerticalAlignment="Center"
-                               Foreground="Gray"/>
+					<TextBlock AutomationProperties.AutomationId="StatusConnection"
+					           Text="{Binding MainWindowVm.ConnectionSummary}"
+					           FontSize="12"
+					           VerticalAlignment="Center"/>
 				</StackPanel>
+
+				<TextBlock Grid.Column="1"
+				           AutomationProperties.AutomationId="StatusEngine"
+				           Text="{Binding MainWindowVm.EngineSummary}"
+				           Margin="12,0,0,0"
+				           FontSize="12"
+				           Opacity="0.65"
+				           VerticalAlignment="Center"
+				           IsVisible="{Binding MainWindowVm.IsConnected}"/>
+
+				<!-- What is happening. A long operation does not block the window: other tabs keep
+				     working and this is where it is stopped (WS-6). -->
+				<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8"
+				            HorizontalAlignment="Center" VerticalAlignment="Center">
+					<ProgressBar IsIndeterminate="True" Width="90" Height="3"
+					             IsVisible="{Binding WorkspaceTabsVm.IsExecuting}"/>
+					<TextBlock AutomationProperties.AutomationId="StatusActivity"
+					           Text="{Binding MainWindowVm.StatusText}"
+					           FontSize="12"
+					           TextTrimming="CharacterEllipsis"
+					           VerticalAlignment="Center"/>
+					<Button AutomationProperties.AutomationId="StatusCancel" AutomationProperties.Name="Cancel"
+					        Content="Cancel"
+					        FontSize="11"
+					        Padding="8,0"
+					        Height="20"
+					        IsVisible="{Binding WorkspaceTabsVm.IsExecuting}"
+					        Command="{Binding WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand}"/>
+				</StackPanel>
+
+				<!-- Transaction. Autocommit is the quiet state; an open transaction is the one that is
+				     dangerous to forget, so it is the only one that will be highlighted (WS-26, stage 6). -->
+				<TextBlock Grid.Column="3"
+				           AutomationProperties.AutomationId="StatusTransaction"
+				           Text="Transaction: none"
+				           Margin="12,0"
+				           FontSize="12"
+				           Opacity="0.65"
+				           VerticalAlignment="Center"
+				           IsVisible="{Binding MainWindowVm.IsConnected}"/>
+
+				<!-- Where the cursor is -->
+				<TextBlock Grid.Column="4"
+				           AutomationProperties.AutomationId="StatusCaret"
+				           Text="{Binding MainWindowVm.CaretSummary}"
+				           FontSize="12"
+				           Opacity="0.65"
+				           VerticalAlignment="Center"
+				           IsVisible="{Binding WorkspaceTabsVm.IsQueryTabSelected}"/>
 			</Grid>
 		</Border>
+
+		<!-- The command palette (WS-9), over everything. -->
+		<Border Grid.Row="0" Grid.RowSpan="4"
+		        IsVisible="{Binding PaletteVm.IsOpen}"
+		        Background="#80000000">
+			<Border Width="560"
+			        VerticalAlignment="Top"
+			        Margin="0,80,0,0"
+			        CornerRadius="9"
+			        Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+			        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+			        BorderThickness="1"
+			        Padding="8">
+				<StackPanel Spacing="6">
+					<TextBox AutomationProperties.AutomationId="PaletteQuery"
+					         AutomationProperties.Name="Palette query"
+					         x:Name="PaletteQueryBox"
+					         Text="{Binding PaletteVm.Query, Mode=TwoWay}"
+					         Watermark="Go to object or command"
+					         FontSize="14"
+					         BorderThickness="0"/>
+
+					<ListBox AutomationProperties.AutomationId="PaletteItems"
+					         ItemsSource="{Binding PaletteVm.Items}"
+					         SelectedItem="{Binding PaletteVm.SelectedItem, Mode=TwoWay}"
+					         MaxHeight="320"
+					         Background="Transparent"
+					         BorderThickness="0">
+						<ListBox.ItemTemplate>
+							<DataTemplate x:DataType="vm:PaletteItem">
+								<Grid ColumnDefinitions="*,Auto">
+									<TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="13"/>
+									<TextBlock Grid.Column="1" Text="{Binding Subtitle}" FontSize="11"
+									           Opacity="0.55" Margin="12,0,0,0"/>
+								</Grid>
+							</DataTemplate>
+						</ListBox.ItemTemplate>
+					</ListBox>
+				</StackPanel>
+			</Border>
+		</Border>
+
+		<!-- The notification list (WS-7): what happened, when nobody had to be asked anything. -->
+		<Border Grid.Row="0" Grid.RowSpan="4"
+		        IsVisible="{Binding MainWindowVm.AreNotificationsVisible}"
+		        Background="Transparent">
+			<Border Width="420"
+			        MaxHeight="360"
+			        HorizontalAlignment="Right"
+			        VerticalAlignment="Top"
+			        Margin="0,38,8,0"
+			        CornerRadius="9"
+			        Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
+			        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+			        BorderThickness="1"
+			        Padding="8">
+				<Grid RowDefinitions="Auto,*,Auto">
+					<TextBlock Grid.Row="0" Text="Notifications" FontWeight="SemiBold" FontSize="12"
+					           Margin="4,2,0,6"/>
+
+					<ScrollViewer Grid.Row="1">
+						<ItemsControl AutomationProperties.AutomationId="NotificationList"
+						              ItemsSource="{Binding MainWindowVm.Notifications}">
+							<ItemsControl.ItemTemplate>
+								<DataTemplate x:DataType="services:Notification">
+									<Border Padding="6,4" Margin="0,0,0,4"
+									        Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+									        CornerRadius="5">
+										<StackPanel Spacing="2">
+											<TextBlock Text="{Binding Title}" FontSize="12"/>
+											<TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.6"
+											           TextWrapping="Wrap"
+											           IsVisible="{Binding Detail, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+										</StackPanel>
+									</Border>
+								</DataTemplate>
+							</ItemsControl.ItemTemplate>
+						</ItemsControl>
+					</ScrollViewer>
+
+					<TextBlock Grid.Row="1" Text="Nothing has happened yet"
+					           FontSize="12" Opacity="0.5" Margin="4,8"
+					           IsVisible="{Binding !MainWindowVm.HasNotifications}"/>
+
+					<Button AutomationProperties.AutomationId="NotificationsClose"
+					        AutomationProperties.Name="Close notifications"
+					        Grid.Row="2" Content="Close" FontSize="11" HorizontalAlignment="Right"
+					        Margin="0,6,0,0"
+					        Command="{Binding MainWindowVm.HideNotificationsCommand}"/>
+				</Grid>
+			</Border>
+		</Border>
+
 	</Grid>
 
 </Window>

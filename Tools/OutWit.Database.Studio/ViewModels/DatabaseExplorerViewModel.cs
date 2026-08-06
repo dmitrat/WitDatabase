@@ -369,6 +369,12 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             ErrorMessage = $"Failed to load schema: {ex.Message}";
             ApplicationVm.MainWindowVm.StatusText = "Error loading schema";
             Logger.LogError(ex, "Failed to refresh the branch of {Connection}", session.DisplayName);
+
+            // Reloading the tree is something Studio does on its own, after a DDL statement or a
+            // drop. A failure in it has no dialog to belong to, and the status bar is overwritten by
+            // whatever happens next (WS-7).
+            ApplicationVm.Notifications.Error("The schema could not be reloaded", ex.Message,
+                session.DisplayName);
         }
         finally
         {

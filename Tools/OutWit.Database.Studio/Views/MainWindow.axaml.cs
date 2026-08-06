@@ -35,10 +35,15 @@ public partial class MainWindow : Window
 
         Loaded += OnLoaded;
         Closing += OnClosing;
+        KeyDown += OnWindowKeyDown;
 
         // File > Exit ends here rather than in Environment.Exit, so both ways out of Studio run the
         // same close: window state saved, connection disposed, file lock released.
         ApplicationViewModel.Instance.ShutdownRequested += OnShutdownRequested;
+
+        // The palette is a text prompt: opening it without putting the caret in the box means the
+        // first thing typed goes nowhere.
+        ApplicationViewModel.Instance.PaletteVm.PropertyChanged += OnPaletteChanged;
         ThemeToggleButton.Click += OnThemeToggleClick;
         
         if (Application.Current != null)
@@ -79,6 +84,84 @@ public partial class MainWindow : Window
         {
             // Use defaults on error
         }
+    }
+
+    /// <summary>
+    /// The keys the palette needs while it is open, and Escape everywhere else.
+    ///
+    /// A KeyBinding cannot do this: the palette's own text box swallows Enter and the arrows, and
+    /// Escape has to mean two different things depending on what is happening. Handled here, before
+    /// the focused control sees them.
+    /// </summary>
+    private void OnWindowKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
+    {
+        var app = ApplicationViewModel.Instance;
+
+        // Ctrl+K is handled here rather than only as a KeyBinding: a KeyBinding needs the event to
+        // bubble from a focused element, and the welcome screen has nothing focusable on it - the
+        // palette then cannot be opened from the one screen where it is most useful. Measured by
+        // pressing it: nothing happened, while Escape - handled here - worked.
+        if (e.Key == Avalonia.Input.Key.K && e.KeyModifiers == Avalonia.Input.KeyModifiers.Control)
+        {
+            app.PaletteVm.OpenCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        if (app.PaletteVm.IsOpen)
+        {
+            switch (e.Key)
+            {
+                case Avalonia.Input.Key.Escape:
+                    app.PaletteVm.CloseCommand.Execute(null);
+                    e.Handled = true;
+                    return;
+
+                case Avalonia.Input.Key.Enter:
+                    app.PaletteVm.AcceptCommand.Execute(null);
+                    e.Handled = true;
+                    return;
+
+                case Avalonia.Input.Key.Down:
+                    app.PaletteVm.MoveDownCommand.Execute(null);
+                    e.Handled = true;
+                    return;
+
+                case Avalonia.Input.Key.Up:
+                    app.PaletteVm.MoveUpCommand.Execute(null);
+                    e.Handled = true;
+                    return;
+            }
+
+            return;
+        }
+
+        if (e.Key != Avalonia.Input.Key.Escape)
+            return;
+
+        // Escape stops a running query (1.7) and closes the notification list. Neither is destructive,
+        // so neither asks.
+        if (app.MainWindowVm.AreNotificationsVisible)
+        {
+            app.MainWindowVm.HideNotificationsCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        if (app.WorkspaceTabsVm.IsExecuting && app.WorkspaceTabsVm.CurrentExecutingTab != null)
+        {
+            app.WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand.Execute(null);
+            e.Handled = true;
+        }
+    }
+
+    private void OnPaletteChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
+    {
+        if (e.PropertyName != nameof(ViewModels.CommandPaletteViewModel.IsOpen))
+            return;
+
+        if (ApplicationViewModel.Instance.PaletteVm.IsOpen)
+            Avalonia.Threading.Dispatcher.UIThread.Post(() => PaletteQueryBox.Focus());
     }
 
     private void OnShutdownRequested(object? sender, EventArgs e)

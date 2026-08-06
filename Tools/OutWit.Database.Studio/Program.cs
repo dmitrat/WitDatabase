@@ -126,6 +126,10 @@ sealed class Program
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IExportService, ExportService>();
 
+        // The notification centre (WS-7). One list for the whole application, and it writes every
+        // entry to the log as well, so a trimmed list never loses what happened.
+        services.AddSingleton<INotificationService, NotificationService>();
+
         // The owner window is resolved when the question is asked, not now: the ViewModel graph is
         // built before any window exists, and this singleton outlives every one of them.
         services.AddSingleton<IConfirmationService>(

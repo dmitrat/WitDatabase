@@ -391,6 +391,19 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
                     : $"Imported {RowsImported} rows into {SelectedTable}";
                 
                 ApplicationVm.MainWindowVm.StatusText = statusMsg;
+
+                // Also a notification (WS-7): an import can take minutes, and by the time it ends
+                // the user is looking at another tab. The status bar keeps only the last thing that
+                // happened; this keeps all of them.
+                if (RowsFailed > 0)
+                {
+                    ApplicationVm.Notifications.Warning(statusMsg,
+                        $"{RowsFailed} rows were refused", session.DisplayName);
+                }
+                else
+                {
+                    ApplicationVm.Notifications.Information(statusMsg, connection: session.DisplayName);
+                }
                 Logger.LogInformation("Imported {RowCount} rows into {TableName}, {FailedCount} failed", 
                     RowsImported, SelectedTable, RowsFailed);
                 

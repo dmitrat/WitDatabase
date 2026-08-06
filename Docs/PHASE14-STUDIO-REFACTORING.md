@@ -388,6 +388,68 @@ keyword - is now a case over the parser.
 
 ---
 
+## Stage 4 - the window frame
+
+The first stage whose result is something to look at. Five zones (1.1): a title bar that holds the
+menu, a contextual toolbar that belongs to the active tab, the connections panel, the workspace, and a
+status bar that says four different things depending on what is happening.
+
+### What is in the frame now
+
+- **The title bar (1.2)** holds the menu, the command palette entry in the middle - always in the same
+  place - and, on the right, notifications and the theme toggle. The custom chrome and the macOS
+  `NativeMenu` variant are NOT done: they cannot be verified here, and a window frame that is wrong on
+  a platform nobody can run is worse than a system one that works everywhere.
+- **The contextual toolbar (WS-8)** changes completely with the type of the active tab, and its right
+  edge is the **connection chip**: the one thing in the window that answers "where is this DELETE
+  going" (WS-3). The query editor's own toolbar is gone - two panels of the same buttons is what this
+  replaces.
+- **The command palette (WS-9)**, on Ctrl+K: commands and every object of every open connection in one
+  list, each object saying which database it is in. It is also the missing search in the object tree.
+- **The status bar (1.5)**: connection and engine on the left, what is running in the middle with a
+  progress bar and Cancel (WS-6), the transaction state and the caret position on the right.
+- **Notifications (WS-7)**: a bounded, newest-first list behind the bell, with a dot when something is
+  unread. Every entry is also written to the log, which is what makes trimming the list safe. Wired to
+  the three things that happen with no dialog to belong to: an import finishing, an export finishing,
+  and a background schema reload failing.
+- **The keyboard (1.7)**: `Ctrl+K` palette, `F5` the statement under the cursor (WS-25),
+  `Ctrl+Shift+F5` the whole script, `Ctrl+Enter` the selection, `Esc` stop, `Ctrl+T` new tab,
+  `Ctrl+Shift+T` reopen the last closed one, `Ctrl+R` refresh. **`Ctrl+N` no longer opens a query tab**
+  - it creates a database, which is what every other application means by it - and F5 no longer means
+  two things at once.
+
+**F5 is the payoff of stage 3.** "The statement under the cursor" needs to know where statements start
+and end, which is what `SqlScript.Split` already returns; the caret comes from the editor, which
+gained three bound properties for it.
+
+### How it was measured
+
+`WindowFrameTests` - 17 cases over the real ViewModel graph and a real database. Then the fix was
+removed, twice:
+
+| Sabotage | Result |
+|---|---|
+| the palette's object entries stop naming their connection | two cases red: the one that reads the subtitle, and the one that goes to an object of the *second* connection |
+| F5 runs the first statement instead of the one at the caret | the F5 case red - one row written, from the wrong statement |
+
+**And in the executable, which found two defects the tests could not.** Both are about focus, and
+neither exists at the ViewModel level:
+
+- **Ctrl+K did nothing on the welcome screen.** A `KeyBinding` on the window needs the event to bubble
+  from a focused element, and that screen has nothing focusable on it - so the palette could not be
+  opened from the one screen where it is most useful. Escape, handled in the window's own `KeyDown`,
+  worked; Ctrl+K is handled there now too.
+- **The palette opened without the caret in its box**, so the first thing typed went nowhere.
+
+Both were found by pressing the keys in the shipping application, and neither could have been found by
+a test of the ViewModel: the command works either way.
+
+### Tests
+
+338 -> 355.
+
+---
+
 ## Findings for the engine, not fixed here
 
 **`UPDATE <table> SET <column that does not exist> = 'x'` is accepted.** Measured 2026-08-05 while

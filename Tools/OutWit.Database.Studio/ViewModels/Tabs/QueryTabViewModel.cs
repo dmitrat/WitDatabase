@@ -55,6 +55,7 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     {
         ExecuteQueryCommand = new RelayCommandAsync(ExecuteQueryAsync);
         ExecuteSelectionCommand = new RelayCommandAsync(ExecuteSelectionAsync);
+        ExecuteCurrentStatementCommand = new RelayCommandAsync(ExecuteCurrentStatementAsync);
         StopQueryCommand = new RelayCommand(StopQuery);
         ClearResultsCommand = new RelayCommand(ClearResults);
         CopyRowsCommand = new RelayCommandAsync(CopyRowsAsync);
@@ -114,6 +115,42 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     }
 
     /// <summary>
+    /// F5: the statement the cursor is in, and only that one (WS-25).
+    ///
+    /// The alternative - F5 runs everything - is the shape of a mistake that cannot be undone: a
+    /// cursor left in the middle of a script of forty statements is not a request to run forty. If
+    /// the text has only one statement the two are the same thing, which is the common case and the
+    /// reason nobody notices the difference until the day it matters.
+    /// </summary>
+    public async Task ExecuteCurrentStatementAsync()
+    {
+        var text = SqlText ?? string.Empty;
+
+        if (string.IsNullOrWhiteSpace(text))
+            return;
+
+        var split = SqlScript.Split(text);
+
+        if (!split.IsSuccess)
+        {
+            // The whole text does not parse: report it where it is, exactly as running it would.
+            await ExecuteSqlAsync(text);
+            return;
+        }
+
+        var statement = SqlScript.At(split, Math.Clamp(CaretOffset, 0, text.Length));
+
+        if (statement == null)
+            return;
+
+        CurrentStatementText = statement.Text;
+
+        // The origin is known here, so it is passed rather than searched for: two identical
+        // statements in one script would otherwise both be found at the position of the first.
+        await ExecuteSqlAsync(statement.Text, (statement.Line - 1, statement.Column));
+    }
+
+    /// <summary>
     /// Runs the text as a SCRIPT: cut into statements by the parser and executed one at a time
     /// (WS-22). One command for the whole text is what this replaces, and it could report only one
     /// outcome for seven statements, no progress, and an error whose line number was of no use once
@@ -123,7 +160,7 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     /// its own transaction unless the script opened one - and saying which they were is the reason
     /// <see cref="Statements"/> exists.
     /// </summary>
-    public async Task ExecuteSqlAsync(string sql)
+    public async Task ExecuteSqlAsync(string sql, (int Line, int Column)? origin = null)
     {
         // The session this tab belongs to, never the one selected in the tree (WS-3).
         var session = Session;
@@ -151,7 +188,7 @@ public class QueryTabViewModel : WorkspaceTabViewModel
         // The offset of the fragment inside the tab's own text: executing a SELECTION means the
         // parser counts from the start of the selection, and an error found there still has to be
         // shown where the user is looking.
-        var fragmentOffset = FragmentOffset(sql);
+        var fragmentOffset = origin ?? FragmentOffset(sql);
 
         if (!split.IsSuccess)
         {
@@ -474,6 +511,29 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     public string SqlText { get; set; } = string.Empty;
 
     /// <summary>
+    /// Where the caret is in <see cref="SqlText"/>, in characters. Written by the editor; read by
+    /// F5 to find the statement under the cursor.
+    /// </summary>
+    [Notify]
+    public int CaretOffset { get; set; }
+
+    /// <summary>
+    /// The same position for a person: 1-based line and 1-based column, as the status bar shows it.
+    /// </summary>
+    [Notify]
+    public int CaretLine { get; set; } = 1;
+
+    [Notify]
+    public int CaretColumn { get; set; } = 1;
+
+    /// <summary>
+    /// The text of the statement F5 last ran. Kept so that what happened can be told from what was
+    /// asked for.
+    /// </summary>
+    [Notify]
+    public string? CurrentStatementText { get; set; }
+
+    /// <summary>
     /// Currently selected text in the SQL editor.
     /// </summary>
     [Notify]
@@ -622,6 +682,11 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     public ICommand ExecuteQueryCommand { get; private set; } = null!;
 
     public ICommand ExecuteSelectionCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// F5 (WS-25). <see cref="ExecuteQueryCommand"/> is the whole script, on Ctrl+Shift+F5.
+    /// </summary>
+    public ICommand ExecuteCurrentStatementCommand { get; private set; } = null!;
 
     public ICommand StopQueryCommand { get; private set; } = null!;
 

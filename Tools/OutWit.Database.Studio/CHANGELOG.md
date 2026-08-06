@@ -11,6 +11,17 @@ built and released under dev tags only, and is not a supported version. Full det
 
 ### Added
 
+- **A command palette on Ctrl+K.** Commands and the objects of every open database in one list, each
+  object saying which database it is in. It is also the search the object tree never had.
+- **A toolbar that belongs to the active tab**, with the tab's connection named on its right edge -
+  the one place in the window that answers "which database will this run against".
+- **A status bar that says what is happening**: the connection and its engine, the query that is
+  running with a way to stop it, and where the cursor is.
+- **A notification list** behind the bell in the title bar, for the things that used to flash through
+  the status bar and be gone: an import or export finishing, a schema reload failing.
+- **F5 runs the statement the cursor is in**, not the whole script; the whole script is
+  Ctrl+Shift+F5. **Ctrl+N now creates a database** rather than a query tab, which is Ctrl+T, and a
+  closed query tab comes back with Ctrl+Shift+T.
 - **A script is executed one statement at a time**, and each reports what it did. An error names the
   statement and the line it is on, in the coordinates of the editor - including when only a selection
   was executed. A script that does not parse is refused whole rather than applied halfway.
