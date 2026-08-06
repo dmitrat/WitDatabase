@@ -197,13 +197,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         var createTableVm = new CreateTableViewModel(ApplicationVm);
 
-        var dialog = new CreateTableDialog { DataContext = createTableVm };
+        var result = await ApplicationVm.Dialogs.ShowCreateTableAsync(createTableVm);
 
-        createTableVm.ShouldCloseDialog += success => { dialog.Close(success); };
-
-        var result = await dialog.ShowDialog<bool?>(ApplicationVm.MainWindow!);
-        
-        if (result == true)
+        if (result)
             Logger.LogInformation("Table created successfully");
     }
 
@@ -214,13 +210,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         var createViewVm = new CreateViewViewModel(ApplicationVm);
 
-        var dialog = new CreateViewDialog { DataContext = createViewVm };
+        var result = await ApplicationVm.Dialogs.ShowCreateViewAsync(createViewVm);
 
-        createViewVm.ShouldCloseDialog += success => { dialog.Close(success); };
-
-        var result = await dialog.ShowDialog<bool?>(ApplicationVm.MainWindow!);
-        
-        if (result == true)
+        if (result)
             Logger.LogInformation("View created successfully");
     }
 
@@ -234,13 +226,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         // Load tables on dialog open
         createIndexVm.LoadTablesCommand.Execute(null);
         
-        var dialog = new CreateIndexDialog { DataContext = createIndexVm };
+        var result = await ApplicationVm.Dialogs.ShowCreateIndexAsync(createIndexVm);
 
-        createIndexVm.ShouldCloseDialog += success => { dialog.Close(success); };
-
-        var result = await dialog.ShowDialog<bool?>(ApplicationVm.MainWindow!);
-        
-        if (result == true)
+        if (result)
             Logger.LogInformation("Index created successfully");
     }
 

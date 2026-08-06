@@ -546,31 +546,21 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         if (SelectedTab is not QueryTabViewModel queryTab)
             return;
 
-        if (ApplicationVm.MainWindow == null)
-            return;
-
-        var storageProvider = ApplicationVm.MainWindow.StorageProvider;
-
-        var saveOptions = new FilePickerSaveOptions
-        {
-            Title = "Save Query As",
-            DefaultExtension = ".sql",
-            SuggestedFileName = $"{queryTab.Title}.sql",
-            FileTypeChoices =
+        var filePath = await ApplicationVm.Dialogs.SaveFileAsync(
+            "Save Query As",
+            suggestedFileName: $"{queryTab.Title}.sql",
+            defaultExtension: ".sql",
+            filters:
             [
-                new FilePickerFileType("SQL Files") { Patterns = ["*.sql", "*.witsql"] },
-                new FilePickerFileType("All Files") { Patterns = ["*.*"] }
-            ]
-        };
+                new FileFilter("SQL Files", ["*.sql", "*.witsql"]),
+                new FileFilter("All Files", ["*.*"])
+            ]);
 
-        var file = await storageProvider.SaveFilePickerAsync(saveOptions);
-
-        if (file == null)
+        if (string.IsNullOrEmpty(filePath))
             return;
 
         try
         {
-            var filePath = file.Path.LocalPath;
             await File.WriteAllTextAsync(filePath, queryTab.SqlText);
 
             queryTab.FilePath = filePath;

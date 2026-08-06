@@ -84,17 +84,10 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task BrowseFileAsync()
     {
-        if (ApplicationVm.MainWindow == null)
-            return;
-
-        var storageProvider = ApplicationVm.MainWindow.StorageProvider;
-
         if (IsNewDatabase)
-            await CreateNewDatabaseAsync(storageProvider);
-        
+            await CreateNewDatabaseAsync();
         else
-            await OpenExistingDatabaseAsync(storageProvider);
-        
+            await OpenExistingDatabaseAsync();
     }
 
     /// <summary>
@@ -104,20 +97,11 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     private async Task BrowseFolderAsync()
     {
-        if (ApplicationVm.MainWindow == null)
+        var folderPath = await Dialogs.OpenFolderAsync("Open LSM Database Folder");
+
+        if (string.IsNullOrEmpty(folderPath))
             return;
 
-        var folders = await ApplicationVm.MainWindow.StorageProvider.OpenFolderPickerAsync(
-            new FolderPickerOpenOptions
-            {
-                Title = "Open LSM Database Folder",
-                AllowMultiple = false
-            });
-
-        if (folders.Count <= 0)
-            return;
-
-        var folderPath = folders[0].Path.LocalPath;
         ConnectionInfo.FilePath = folderPath;
 
         ApplyAutoDetectedSettings(folderPath);
@@ -125,32 +109,17 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         UpdateStatus();
     }
 
-    private async Task OpenExistingDatabaseAsync(IStorageProvider storageProvider)
+    private async Task OpenExistingDatabaseAsync()
     {
-        // For open database - use Open dialog
-        var openOptions = new FilePickerOpenOptions
-        {
-            Title = "Open Database",
-            AllowMultiple = false,
-            FileTypeFilter =
-            [
-                new FilePickerFileType("WitDatabase Files")
-                {
-                    Patterns = ["*.witdb", "*.db"]
-                },
-                new FilePickerFileType("All Files")
-                {
-                    Patterns = ["*.*"]
-                }
-            ]
-        };
+        var filePath = await Dialogs.OpenFileAsync("Open Database",
+        [
+            new FileFilter("WitDatabase Files", ["*.witdb", "*.db"]),
+            new FileFilter("All Files", ["*.*"])
+        ]);
 
-        IReadOnlyList<IStorageFile> files = await storageProvider.OpenFilePickerAsync(openOptions);
-
-        if (files.Count <= 0)
+        if (string.IsNullOrEmpty(filePath))
             return;
 
-        var filePath = files[0].Path.LocalPath;
         ConnectionInfo.FilePath = filePath;
 
         ApplyAutoDetectedSettings(filePath);
@@ -207,50 +176,33 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         }
     }
 
-    private async Task CreateNewDatabaseAsync(IStorageProvider storageProvider)
+    private async Task CreateNewDatabaseAsync()
     {
         // A B-Tree database is a file and an LSM database is a folder, so the two are picked with
         // different pickers (WS-48). Asking for a file and then making a folder out of its parent is
         // what put an abandoned database in the user's Documents.
         if (SelectedStorageEngine == "lsm")
         {
-            var folders = await storageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
-            {
-                Title = "Create LSM Database In Folder",
-                AllowMultiple = false
-            });
+            var folder = await Dialogs.OpenFolderAsync("Create LSM Database In Folder");
 
-            if (folders.Count > 0)
-                ConnectionInfo.FilePath = folders[0].Path.LocalPath;
+            if (!string.IsNullOrEmpty(folder))
+                ConnectionInfo.FilePath = folder;
 
             return;
         }
 
-        // For new database - use Save dialog
-        var saveOptions = new FilePickerSaveOptions
-        {
-            Title = "Create New Database",
-            DefaultExtension = ".witdb",
-            SuggestedFileName = "database.witdb",
-            FileTypeChoices =
+        var filePath = await Dialogs.SaveFileAsync(
+            "Create New Database",
+            suggestedFileName: "database.witdb",
+            defaultExtension: ".witdb",
+            filters:
             [
-                new FilePickerFileType("WitDatabase Files")
-                {
-                    Patterns = ["*.witdb"]
-                },
-                new FilePickerFileType("All Files")
-                {
-                    Patterns = ["*.*"]
-                }
-            ]
-        };
+                new FileFilter("WitDatabase Files", ["*.witdb"]),
+                new FileFilter("All Files", ["*.*"])
+            ]);
 
-        var file = await storageProvider.SaveFilePickerAsync(saveOptions);
-            
-        if (file != null)
-        {
-            ConnectionInfo.FilePath = file.Path.LocalPath;
-        }
+        if (!string.IsNullOrEmpty(filePath))
+            ConnectionInfo.FilePath = filePath;
     }
 
     /// <summary>
@@ -422,9 +374,13 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         CloseDialog();
     }
 
+    /// <summary>
+    /// Asks whoever is showing this ViewModel to close it. The ViewModel used to hold the Window and
+    /// call Close() on it, which is why it could not be exercised without Avalonia.
+    /// </summary>
     private void CloseDialog()
     {
-        Dialog?.Close();
+        CloseRequested?.Invoke(this, EventArgs.Empty);
     }
 
     #region Event Handlers
@@ -481,16 +437,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         // Reset to defaults for Create dialog
         InitDefault();
 
-        Dialog = new CreateDatabaseDialog
-        {
-            DataContext = this
-        };
-        
-        await Dialog.ShowDialog(ApplicationVm.MainWindow!);
-
-        Dialog = null;
-
-        return DialogResult;
+        return await Dialogs.ShowCreateDatabaseAsync(this);
     }
 
     public async Task<bool> ShowOpenDialogAsync()
@@ -501,16 +448,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
         InitDefault();
 
-        Dialog = new OpenDatabaseDialog
-        {
-            DataContext = this
-        };
-
-        await Dialog.ShowDialog(ApplicationVm.MainWindow!);
-
-        Dialog = null;
-
-        return DialogResult;
+        return await Dialogs.ShowOpenDatabaseAsync(this);
     }
 
     #endregion
@@ -571,7 +509,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public bool CanConnect { get; set; }
 
-    private Window? Dialog { get; set; }
+    /// <summary>Raised when the dialog showing this ViewModel should close.</summary>
+    public event EventHandler? CloseRequested;
 
     #endregion
 
@@ -590,6 +529,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     #region Services
 
     public IDatabaseService Database => ApplicationVm.Database;
+
+    public IDialogService Dialogs => ApplicationVm.Dialogs;
 
     public ISettingsService Settings => ApplicationVm.Settings;
 

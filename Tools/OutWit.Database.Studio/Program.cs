@@ -130,6 +130,10 @@ sealed class Program
         services.AddSingleton<IConfirmationService>(
             _ => new ConfirmationService(() => ViewModels.ApplicationViewModel.Instance.MainWindow));
 
+        // The only place in Studio that is allowed to construct a window.
+        services.AddSingleton<IDialogService>(
+            _ => new DialogService(() => ViewModels.ApplicationViewModel.Instance.MainWindow));
+
         // Application ViewModel (main container)
         services.AddSingleton<ApplicationViewModel>();
 
