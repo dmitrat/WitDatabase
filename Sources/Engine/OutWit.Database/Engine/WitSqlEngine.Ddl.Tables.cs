@@ -222,6 +222,25 @@ public sealed partial class WitSqlEngine
             cachedDefaultValue = evaluator.Evaluate(defaultExpression, new WitSqlRow([], []));
         }
 
+        // A NOT NULL column with nothing to put in the rows that already exist cannot be added.
+        //
+        // It used to be accepted: every existing row got NULL in a column declared NOT NULL, and from
+        // then on the engine refused every write to the table - including an UPDATE of an unrelated
+        // column - because the row it was handed violated the constraint. Giving the column a default
+        // afterwards repairs new rows and leaves the NULLs, so there was no way back short of
+        // rebuilding the table. This is what PostgreSql answers too.
+        //
+        // The rows are asked rather than the row-count cache: on this engine the counter is separate
+        // state that can disagree with the rows, and refusing an ALTER on a table that is actually
+        // empty would be its own defect.
+        if (!column.Nullable && column.ResolveDefault() is null && !column.IsComputed && HasAnyRow(tableName))
+        {
+            throw new InvalidOperationException(
+                $"Cannot add NOT NULL column '{column.Name}' to table '{tableName}': it already has "
+                + "rows and there is nothing to put in them. Give the column a DEFAULT, or add it as "
+                + "nullable and fill it in.");
+        }
+
         // Migrate existing rows - append new column value
         var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
         var rowsToUpdate = new List<(long rowId, WitSqlValue[] newValues)>();
@@ -348,6 +367,17 @@ public sealed partial class WitSqlEngine
         var colOrdinal = table.GetOrdinal(columnName);
         if (colOrdinal < 0) return;
 
+        // An index cannot outlive a column it is built on. The catalogue already drops the foreign
+        // keys and named constraints on the column; the indexes used to stay, naming a column that no
+        // longer existed, and survive a reopen. They go through DropIndex rather than being removed
+        // from the catalogue, because the entries in storage have to go with them - a dropped index
+        // that keeps its entries is adopted by the next index created under the same name.
+        foreach (var index in m_schema.GetTableIndexes(tableName).ToList())
+        {
+            if (index.Columns.Any(c => c.Equals(columnName, StringComparison.OrdinalIgnoreCase)))
+                DropIndex(index.Name);
+        }
+
         // Read and transform with the CURRENT definition, then re-serialize with the POST-drop one.
         // SerializeValuesArray takes each value's type from Columns[i] positionally, so writing the
         // shortened value array against the pre-drop column list shifted every type after the
@@ -429,6 +459,21 @@ public sealed partial class WitSqlEngine
             var newValues = existingRow.Values.ToArray();
             if (!newValues[columnIndex].IsNull)
             {
+                // A text value that does not read as the new type is REFUSED rather than converted.
+                //
+                // The converter goes through AsInt64/AsDouble/AsDateTime, and those answer a failed
+                // parse with a default: 'not a number' became 0 and so did '3.9', the row was written
+                // back, and changing the type again did not bring anything back. Nothing raised, so a
+                // column could be emptied of meaning by one accepted statement. PostgreSql refuses the
+                // same statement - "invalid input syntax" - and so does this now.
+                if (!CanReadAs(newValues[columnIndex], newType, out var reason))
+                {
+                    throw new InvalidOperationException(
+                        $"Cannot change the type of '{tableName}.{columnName}' to {newType}: {reason} "
+                        + "Nothing was changed. Convert the values first, or rebuild the table with a "
+                        + "CAST you can see.");
+                }
+
                 newValues[columnIndex] = WitTypeConverter.Convert(newValues[columnIndex], newType);
             }
             rowsToUpdate.Add((rowId, newValues));
@@ -1046,6 +1091,65 @@ public sealed partial class WitSqlEngine
             var key = SchemaCatalog.CreateRowKey(tableName, rowId);
             PutToStore(key, writeDefinition.SerializeValuesArray(values));
         }
+    }
+
+    /// <summary>
+    /// Whether a stored value can be read as the new type without being replaced by a default.
+    /// </summary>
+    /// <remarks>
+    /// Only TEXT is checked, and deliberately: every other conversion this engine performs is defined
+    /// - a decimal narrowed to an integer truncates, which is a conversion and not a loss of meaning -
+    /// while a string that is not a number has nothing to become, and answering 0 for it is how a
+    /// column full of data turned into a column full of zeroes.
+    /// </remarks>
+    private static bool CanReadAs(WitSqlValue value, WitDataType target, out string reason)
+    {
+        reason = string.Empty;
+
+        if (value.Type != WitSqlType.Text)
+            return true;
+
+        var text = value.AsString();
+
+        var readable = target.ToSqlType() switch
+        {
+            WitSqlType.Integer => long.TryParse(text, out _),
+            WitSqlType.Real => double.TryParse(text, System.Globalization.NumberStyles.Float,
+                System.Globalization.CultureInfo.InvariantCulture, out _),
+            WitSqlType.Decimal => decimal.TryParse(text, System.Globalization.NumberStyles.Number,
+                System.Globalization.CultureInfo.InvariantCulture, out _),
+            WitSqlType.Boolean => bool.TryParse(text, out _) || text is "0" or "1",
+            WitSqlType.DateTime or WitSqlType.DateOnly or WitSqlType.TimeOnly or WitSqlType.DateTimeOffset =>
+                DateTime.TryParse(text, System.Globalization.CultureInfo.InvariantCulture,
+                    System.Globalization.DateTimeStyles.None, out _),
+            WitSqlType.Guid => Guid.TryParse(text, out _),
+            _ => true
+        };
+
+        if (!readable)
+            reason = $"the value '{Shorten(text)}' is not a valid {target}.";
+
+        return readable;
+    }
+
+    private static string Shorten(string text) => text.Length <= 40 ? text : text[..37] + "...";
+
+    /// <summary>
+    /// Whether the table holds any row at all, asked by looking for one.
+    /// </summary>
+    /// <remarks>
+    /// Never through the row-count cache: on this engine that is separate state which can disagree
+    /// with the rows - a crash leaves the two apart - and a DDL refusal decided by a stale number
+    /// would refuse an ALTER on an empty table or allow one on a full table.
+    /// </remarks>
+    private bool HasAnyRow(string tableName)
+    {
+        var prefix = SchemaCatalog.GetTableDataPrefix(tableName);
+
+        foreach (var _ in ScanStore(prefix, GetNextPrefix(prefix)))
+            return true;
+
+        return false;
     }
 
     private static byte[] GetNextPrefix(byte[] prefix)

@@ -1,7 +1,9 @@
 # Known issues
 
 Defects found by using WitDatabase as a real application backend, not by unit
-testing it. They come from **WitAnalytics** (`dmitrat/WitAnalytics`), which ships
+testing it. They come from two applications.
+
+The first is **WitAnalytics** (`dmitrat/WitAnalytics`), which ships
 two EF Core providers — PostgreSql for production and WitDatabase as a
 portability proof-of-concept and test backend — and runs the *same* query and
 migration suite against both. Everything below is a case where PostgreSql passes
@@ -242,6 +244,218 @@ map enum CLR properties, so this pattern is common wherever a stored code has to
 be presented as a name.
 
 ---
+
+---
+
+## Found by WitDatabase Studio, 2026-08-06
+
+The second source of entries in this document, and the same kind: an application
+using the engine rather than a suite testing it. **Studio's schema designer**
+(phase 14 stage 8) had to be built against what `ALTER TABLE` actually does, so
+its whole surface was executed — roughly 120 statements over six rounds — and
+what came back was six defects, five of them data-integrity.
+
+Each is reproduced by a test in the engine's own suite, named below, and every
+one of those tests was run against the unfixed engine first.
+
+| # | Area | Severity | Status | One line |
+|---|------|----------|--------|----------|
+| [4](#4-a-function-over-an-indexed-column-returns-the-wrong-rows) | Query planner | **Blocker** | **FIXED** | Creating an index changes the answer of a query |
+| [5](#5-rename-to-restarts-the-key-generator-and-the-next-insert-overwrites-a-row) | DDL + row ids | **Blocker** | **FIXED** | A renamed table's next INSERT destroys a row |
+| [6](#6-alter-column--type-destroys-the-values-it-cannot-convert) | DDL | **Blocker** | **FIXED** | A column of text becomes a column of zeroes |
+| [7](#7-add-column--not-null-with-no-default-closes-a-table-for-writing) | DDL | Major | **FIXED** | An accepted ALTER makes every later write fail |
+| [8](#8-drop-column-leaves-the-index-on-that-column-behind) | DDL + catalogue | Major | **FIXED** | An index over a column that no longer exists |
+| [9](#9-ordinal_position-is-1-for-every-column) | INFORMATION_SCHEMA | Minor | **FIXED** | The catalogue cannot say what order columns are in |
+| [10](#10-a-table-rebuild-through-studio-left-two-files-unreadable) | Storage | **Blocker** | **open — not reproduced headlessly** | A rebuilt database cannot be opened again |
+
+---
+
+## 4. A function over an indexed column returns the wrong rows
+
+> **FIXED.** `Optimizers/OptimizerQuery.cs`. Regression tests:
+> `AuditVerification/IndexedFunctionPredicateTests` — 8 cases, 4 of which fail
+> against the unfixed engine.
+
+`WHERE ABS(V) = 7` over a table holding `V = -7` answered with the row while
+there was no index, and with **nothing** once an ordinary index on `V` existed.
+`DROP INDEX` made the answer right again. The same with `LOWER` and `UPPER` over
+a text column; `V + 0 = -7` and `-V = 7` stayed correct throughout, so it is
+specifically a function **call**.
+
+**Cause.** `TryExtractPredicate` records a predicate written around a call — say
+`LOWER(S) = 'x'` — with the column **inside** the call, `S`, plus the expression
+text. `FindMatchingPredicate` then matched on the column name first, so a plain
+index on `S` answered it by seeking `'x'` among the raw values. Three more sites
+matched the same way (`CountMatchedLeadingColumns`, `CollectCompositeSeekValues`,
+`TryOptimizeForBetween`); all four now share one rule: a plain index column
+answers only a predicate about the bare column, and a column indexed BY an
+expression answers only a predicate about that same expression.
+
+**Why it stayed quiet.** Where the raw value already equals the wrapped one — a
+lower-case name, a positive number — the wrong seek finds the right row. It shows
+up the moment they differ, and `EXPLAIN` names the index it is using.
+
+Measured over 200 rows, above `MIN_ROWS_FOR_INDEX`, on B-Tree and on LSM, and
+across a close and reopen.
+
+---
+
+## 5. `RENAME TO` restarts the key generator, and the next INSERT overwrites a row
+
+> **FIXED.** `Schema/SchemaCatalog.Tables.cs` and
+> `Engine/WitSqlEngine.Dml.Operations.cs`. Regression tests:
+> `AuditVerification/RenamedTableKeyGeneratorTests` — 7 cases, 5 of which fail
+> against the unfixed engine.
+
+After `ALTER TABLE R RENAME TO R2`, a table holding keys 1 and 2 answered the
+next generated INSERT with key **1** and wrote over the row that was there —
+silently, reporting one row affected. Reproduced on both stores and across a
+reopen.
+
+**Cause, two halves.** The generator is persisted under a key built from the
+table NAME, and `RenameTable` carried the definition, the indexes and the row
+count across but not the counter — so the renamed table had none, which reads as
+zero. (The mirror image was found by the test written for the first half: a table
+later created under the OLD name inherited the orphaned counter and started at 3.)
+The second half is that a generated key is trusted: the statement layer fills an
+AUTOINCREMENT column in and marks it so the UNIQUE check is skipped, which is why
+an explicit duplicate was refused correctly while a generated one was not.
+
+**Fix.** The rename moves the counter, old record deleted; and a generated key
+that lands on an existing row is refused rather than written. The extra check is
+one point lookup per insert — interleaved measurements, four runs each way, gave
+2.420 / 2.307 / 2.215 / 2.204 ms per row with it and 2.212 / 2.239 / 2.270 /
+2.213 without, so it does not show above the spread.
+
+---
+
+## 6. `ALTER COLUMN … TYPE` destroys the values it cannot convert
+
+> **FIXED.** `Engine/WitSqlEngine.Ddl.Tables.cs`. Regression tests:
+> `AuditVerification/AlterColumnTypeDataLossTests` — 8 cases, 3 of which fail
+> against the unfixed engine.
+
+A `VARCHAR` column holding `'not a number'` became a column holding `0`, with no
+error; `'3.9'` became `0` too, and an integer read as a DATETIME became
+`01/01/0001`. Changing the type back brought nothing back — the rows had been
+rewritten. One accepted statement could empty a column of its meaning.
+
+**Cause.** The conversion goes through `AsInt64` and its neighbours, and those
+answer a failed parse with a default: `long.TryParse(text, out var v) ? v : 0`.
+That is a reasonable rule for an expression and a destructive one for a rewrite of
+stored data.
+
+**Fix.** A text value that does not read as the new type is refused, naming the
+value, before anything is written — which is what PostgreSql answers for the same
+statement. The narrowing conversions are deliberately still allowed: a decimal
+read as an integer truncates, which is a defined conversion rather than a value
+with nothing to become.
+
+`CAST` behaves the same way and is **not** changed here: it is an expression, its
+result is not stored, and changing what `AsInt64` does to a bad parse would reach
+every comparison in the engine. It is why Studio's rebuild counts the values that
+will not survive before it converts anything.
+
+---
+
+## 7. `ADD COLUMN … NOT NULL` with no DEFAULT closes a table for writing
+
+> **FIXED.** `Engine/WitSqlEngine.Ddl.Tables.cs`. Regression tests:
+> `AuditVerification/AlterTableColumnFindingsTests`.
+
+On a table that already had rows the statement was **accepted**. Every existing
+row got NULL in a column declared NOT NULL, and from then on the engine refused
+every write to that table — including an `UPDATE` of an unrelated column, because
+the row it was handed violated the constraint. Giving the column a default
+afterwards repairs new rows and leaves the NULLs; there was no way back short of
+rebuilding the table.
+
+**Fix.** Refused, with a message that says a DEFAULT would work — again what
+PostgreSql answers. The rows are asked rather than the row-count cache, which on
+this engine is separate state that can disagree with them. On an **empty** table
+the same statement is still accepted, and there is a test for that: refusing there
+would be a rule the engine invented.
+
+**The refusal broke nothing.** Engine 2342, ADO.NET 1016, EF Core 544 — no test
+anywhere depended on the old permissiveness.
+
+---
+
+## 8. `DROP COLUMN` leaves the index on that column behind
+
+> **FIXED.** `Engine/WitSqlEngine.Ddl.Tables.cs`. Regression tests:
+> `AuditVerification/AlterTableColumnFindingsTests`.
+
+The catalogue went on listing an index over a column that no longer existed, and
+it survived a reopen. The foreign keys and named constraints on the column did go
+with it — only the indexes stayed.
+
+**Fix.** They are dropped through `DropIndex`, not removed from the catalogue,
+because the entries in storage have to go too: a dropped index that keeps its
+entries is adopted by the next index created under the same name (issue in
+`DroppedIndexStorageTests`, fixed earlier).
+
+---
+
+## 9. `ORDINAL_POSITION` is 1 for every column
+
+> **FIXED.** `Schema/SchemaCatalog.Tables.cs`. Regression tests:
+> `AuditVerification/ColumnOrdinalPositionTests` — 5 cases, 3 of which fail
+> against the unfixed engine.
+
+`INFORMATION_SCHEMA.COLUMNS` published `ORDINAL_POSITION = 1` for every column of
+every table, so ordering by it — which is what the column is for — left the
+columns in whatever order the catalogue happened to return.
+
+**Cause.** Only `ADD COLUMN` and `DROP COLUMN` numbered the columns. `CREATE
+TABLE` left every one of them at the default zero, and the view publishes
+`Ordinal + 1`.
+
+---
+
+## 10. A table rebuild through Studio left two files unreadable
+
+> **OPEN.** Reproduced twice in the shipping application; **not reproduced in
+> sixteen controlled runs outside it**. Studio's rebuild is disarmed because of
+> this — it plans the work and hands the script to the query editor rather than
+> running it.
+
+Create a database through Studio's Create dialog, run a schema script, rebuild a
+table through the designer, leave through **File > Exit**, reopen: the file cannot
+be opened, by Studio or by anything else.
+
+```
+System.IO.InvalidDataException: Page 9 is not an overflow page
+   at PageManagerOverflow.GetOverflowInfo(UInt32 firstPage)
+   at PageManagerOverflow.ReadOverflow(UInt32 firstPage)
+   at BTree.CollectPageEntries(...)
+   at MvccKeyValueStore.GetRecordAsOf(...)
+   at SchemaCatalog.GetSchemaRecord(...)
+   at SchemaCatalog.LoadSchema()
+```
+
+So a schema record's overflow chain points at a page that is no longer an
+overflow page — freed and reused while something still referenced it. The second
+file failed identically at page 7.
+
+**What has been ruled out.** Sixteen runs, each reopening the file afterwards, all
+correct: the rebuild alone; without the trigger; without the index; without
+either; with an extra `ADD COLUMN` before it; the same statements typed by hand;
+over 2000 rows; with one and with four readers scanning the table throughout;
+with a second database open in the process; at page sizes 512, 1024, 4096 and
+8192; through the engine directly and through the ADO.NET provider; and with the
+catalogue being read by four connections while the rebuild ran. The control
+**without** a rebuild — same creation path, same script, same clean exit —
+reopens correctly, which is what implicates the rebuild rather than anything
+around it.
+
+The instrument was checked rather than assumed: `SharedDatabase.Release` disposes
+the database when the last lease goes and `Acquire` builds a new one with a fresh
+`SchemaCatalog`, so those sixteen reopens really did re-read the file.
+
+**Evidence kept.** Both damaged files are held from the session that produced
+them; they are the fastest way in for whoever picks this up — the chain can be
+walked from the page manager to find which record points at the freed page.
 
 ## Verifying a fix
 

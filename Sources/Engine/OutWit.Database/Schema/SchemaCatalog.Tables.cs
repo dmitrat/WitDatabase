@@ -38,7 +38,13 @@ public sealed partial class SchemaCatalog
             if (m_tables.ContainsKey(table.Name))
                 throw new InvalidOperationException($"Table '{table.Name}' already exists");
 
-            m_tables[table.Name] = table;
+            // Number the columns as they were declared. Nothing did, so every column of every table
+            // created by CREATE TABLE kept the default zero and INFORMATION_SCHEMA.COLUMNS published
+            // ORDINAL_POSITION = 1 for all of them - the catalogue could not say what order a table's
+            // columns are in. ADD COLUMN and DROP COLUMN have always numbered them; only the creation
+            // path did not.
+            m_tables[table.Name] = table.With(x => x.Columns,
+                table.Columns.Select((column, ordinal) => column.With(x => x.Ordinal, ordinal)).ToList());
             m_tableRowCounts[table.Name] = 0; // Initialize row count to 0
             SaveTableRowCount(table.Name, 0, transaction: null); // Persist initial row count
             SaveSchema();
@@ -122,6 +128,19 @@ public sealed partial class SchemaCatalog
             {
                 m_tableRowCounts.Remove(oldName);
                 m_tableRowCounts[newName] = count;
+            }
+
+            // And the key generator with it. It is persisted under a key built from the table NAME, so
+            // leaving it behind gives the renamed table a counter of zero - and the next generated
+            // INSERT then lands on key 1 and OVERWRITES the row that is there, silently. It also
+            // leaves the old name holding a counter that a later table created under that name would
+            // inherit, which is the same defect pointing the other way.
+            if (m_tableRowIds.TryGetValue(oldName, out var lastRowId))
+            {
+                DeleteTableRowId(oldName);
+
+                m_tableRowIds[newName] = lastRowId;
+                SaveTableRowId(newName, lastRowId, transaction: null);
             }
 
             SaveSchema();
