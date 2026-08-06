@@ -1,4 +1,5 @@
 using Microsoft.Extensions.Logging;
+using OutWit.Database.Studio.Models;
 using System.Text;
 
 namespace OutWit.Database.Studio.Services;
@@ -151,7 +152,7 @@ public sealed partial class DatabaseSession
     private static string BuildTableDefinition(
         string tableName,
         IReadOnlyList<Models.ColumnInfo> columns,
-        List<ForeignKeyInfo> foreignKeys)
+        IReadOnlyList<ForeignKeyInfo> foreignKeys)
     {
         var sb = new StringBuilder();
         sb.AppendLine($"CREATE TABLE \"{tableName}\" (");
@@ -181,7 +182,7 @@ public sealed partial class DatabaseSession
 
     private static string BuildColumnDefinition(
         Models.ColumnInfo col,
-        List<ForeignKeyInfo> foreignKeys,
+        IReadOnlyList<ForeignKeyInfo> foreignKeys,
         ref bool hasAutoIncrementPk,
         List<string> pkColumns)
     {
@@ -225,7 +226,7 @@ public sealed partial class DatabaseSession
             colDef += $" COLLATE {col.Collation}";
 
         // Foreign key reference (inline for single column)
-        var fk = foreignKeys.FirstOrDefault(f => f.ColumnName == col.Name);
+        var fk = foreignKeys.FirstOrDefault(f => f.FromColumn == col.Name);
         if (fk != null)
         {
             colDef += BuildForeignKeyClause(fk);
@@ -244,7 +245,7 @@ public sealed partial class DatabaseSession
 
     private static string BuildForeignKeyClause(ForeignKeyInfo fk)
     {
-        var clause = $" REFERENCES \"{fk.ReferencedTable}\"(\"{fk.ReferencedColumn}\")";
+        var clause = $" REFERENCES \"{fk.ToTable}\"(\"{fk.ToColumn}\")";
         
         if (!string.IsNullOrEmpty(fk.OnDelete) && fk.OnDelete != "NO ACTION")
             clause += $" ON DELETE {fk.OnDelete}";
@@ -291,7 +292,13 @@ public sealed partial class DatabaseSession
 
     #region Foreign Keys
 
-    private async Task<List<ForeignKeyInfo>> GetForeignKeysAsync(string tableName, CancellationToken ct)
+    /// <summary>
+    /// The foreign keys of a table, with their rules, for writing the table's DDL out.
+    ///
+    /// Public because the object inspector asks the same question (2.5), and two readers of the same
+    /// catalogue view is how a client starts disagreeing with itself.
+    /// </summary>
+    public async Task<IReadOnlyList<ForeignKeyInfo>> GetForeignKeysAsync(string tableName, CancellationToken ct = default)
     {
         var foreignKeys = new List<ForeignKeyInfo>();
 
@@ -319,9 +326,11 @@ public sealed partial class DatabaseSession
             {
                 foreignKeys.Add(new ForeignKeyInfo
                 {
-                    ColumnName = reader.GetString(0),
-                    ReferencedTable = reader.GetString(1),
-                    ReferencedColumn = reader.GetString(2),
+                    ConstraintName = string.Empty,
+                    FromTable = tableName,
+                    FromColumn = reader.GetString(0),
+                    ToTable = reader.GetString(1),
+                    ToColumn = reader.GetString(2),
                     OnDelete = reader.IsDBNull(3) ? null : reader.GetString(3),
                     OnUpdate = reader.IsDBNull(4) ? null : reader.GetString(4)
                 });
@@ -333,15 +342,6 @@ public sealed partial class DatabaseSession
         }
 
         return foreignKeys;
-    }
-
-    private sealed class ForeignKeyInfo
-    {
-        public string ColumnName { get; init; } = string.Empty;
-        public string ReferencedTable { get; init; } = string.Empty;
-        public string ReferencedColumn { get; init; } = string.Empty;
-        public string? OnDelete { get; init; }
-        public string? OnUpdate { get; init; }
     }
 
     #endregion

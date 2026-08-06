@@ -71,12 +71,77 @@ public sealed partial class DatabaseNode : ModelBase
     /// </summary>
     public List<DatabaseNode> Children { get; set; } = [];
 
+    /// <summary>
+    /// The right-hand side of the row: a column's type, a routine's return type, the number of
+    /// objects in a folder. Whatever it is, it is read from the catalogue rather than guessed.
+    /// </summary>
+    [Notify]
+    public string? Detail { get; set; }
+
+    /// <summary>
+    /// How many rows the table has, once it is known (WS-16). Null while unknown.
+    /// </summary>
+    [Notify]
+    public long? RowCount { get; set; }
+
+    /// <summary>
+    /// Whether the count is still being waited for, arrived, or gave up. The tree never blocks on it:
+    /// names are clickable immediately and numbers arrive as they come (2.2).
+    /// </summary>
+    [Notify]
+    public RowCountState CountState { get; set; }
+
+    /// <summary>
+    /// For a column node: part of the primary key.
+    /// </summary>
+    public bool IsPrimaryKey { get; set; }
+
+    /// <summary>
+    /// For a column node: part of a foreign key.
+    /// </summary>
+    public bool IsForeignKey { get; set; }
+
+    /// <summary>
+    /// For a column node: declared NOT NULL.
+    /// </summary>
+    public bool IsRequired { get; set; }
+
+    /// <summary>
+    /// The table a column belongs to - a column node needs it to be acted on.
+    /// </summary>
+    public string? ParentName { get; set; }
+
+    /// <summary>
+    /// Whether the children have been loaded. A table's columns are read when it is first expanded:
+    /// reading the columns of ninety tables to draw a tree nobody has opened is a query per table for
+    /// nothing (2.2).
+    /// </summary>
+    public bool ChildrenLoaded { get; set; }
+
     #endregion
 }
 
 /// <summary>
 /// Types of nodes in the database tree.
 /// </summary>
+/// <summary>
+/// What is known about a table's row count.
+/// </summary>
+public enum RowCountState
+{
+    /// <summary>Nothing has been asked yet.</summary>
+    Unknown,
+
+    /// <summary>The count is running.</summary>
+    Counting,
+
+    /// <summary>The count came back.</summary>
+    Counted,
+
+    /// <summary>The count did not finish in time and was cancelled - the table is not blocked by it.</summary>
+    TimedOut
+}
+
 public enum DatabaseNodeType
 {
     Database,
@@ -89,5 +154,12 @@ public enum DatabaseNodeType
     TriggersFolder,
     Trigger,
     SequencesFolder,
-    Sequence
+    Sequence,
+
+    /// <summary>A column of a table or a view - the tree shows them now (WS-15).</summary>
+    Column,
+
+    /// <summary>The sixth folder: functions and procedures (WS-21).</summary>
+    RoutinesFolder,
+    Routine
 }

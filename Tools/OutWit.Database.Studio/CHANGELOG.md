@@ -11,6 +11,19 @@ built and released under dev tags only, and is not a supported version. Full det
 
 ### Added
 
+- **A table opens into its columns in the tree**, with its key and its foreign keys marked and the
+  type of each column beside it - no tab needed to answer the commonest question about a schema.
+- **Functions and procedures have a folder.** The engine has had them for a while; the tree has been
+  saying the database has none.
+- **Row counts appear next to tables** once they are known. They are asked for in the background with
+  a deadline, so a table too large to count never blocks the tree.
+- **A filter over every open database**, showing the path to each match and holding its result until
+  it is cleared.
+- **An object inspector** on the right: columns, indexes, what a table points at and what points at
+  it, and the definition the catalogue actually holds. It also says which columns can be reached
+  through an index - including when a primary key has none, which on this engine is what makes
+  inserting rows with explicit keys slow down as a table grows.
+- **A double click opens a table's data** rather than its structure.
 - **A command palette on Ctrl+K.** Commands and the objects of every open database in one list, each
   object saying which database it is in. It is also the search the object tree never had.
 - **A toolbar that belongs to the active tab**, with the tab's connection named on its right edge -

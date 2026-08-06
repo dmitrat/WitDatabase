@@ -450,6 +450,83 @@ a test of the ViewModel: the command works either way.
 
 ---
 
+## Stage 5 - the Explorer and the object inspector
+
+The tree stops being a list of names, and the panel the frame reserved in stage 4 is filled in.
+
+### What the tree does now
+
+- **A table opens into its columns** (WS-15), read the first time it is opened rather than for every
+  table at load: the primary key and the foreign keys are marked, the type is on the right, and a
+  NOT NULL column is named in bold. This is the most frequent question anyone asks of a schema, and
+  it needed a tab before.
+- **A sixth folder: routines** (WS-21). The engine has had functions and procedures since phase 9d and
+  the tree has never shown them - which reads, to a user, as the database not having any.
+- **Row counts arrive on their own** (WS-16, 2.2). The tree is built from names and is usable at once;
+  the counts follow, each with a two-second deadline, and one that misses it is reported as unknown
+  rather than waited for. `TryCountRowsAsync` never throws - the pass over ninety tables must not end
+  on the first one that is cancelled.
+- **Every folder keeps its place with a count**, including an empty one at zero: a node that
+  disappears breaks the muscle memory of everyone who knew where it was.
+- **A double click opens the DATA** of a table, not its structure (WS-19). Looking at data is what
+  people come to a database tool for, by an order of magnitude; the structure stays on the menu.
+
+### The filter, which is not the palette (WS-17)
+
+A filter narrows the tree across every open connection, shows the path to each match - "sales /
+Tables / Orders" - counts what it found, and stays until it is cleared. The palette from stage 4 is
+the other tool: one jump, and gone. Columns that have been loaded are matched too, because the name of
+a column is often all anyone remembers of a schema.
+
+### The inspector (WS-18)
+
+The right panel follows the selection and says what the object is without opening a tab: the row count
+and the columns, the indexes, what the table points at and what points at it, and the definition **as
+the catalogue holds it** rather than a reconstruction from the columns - or, where the database is
+older than format 9.0.0 and the catalogue holds no text, the sentence explaining why there is nothing
+to show.
+
+**The part that knows the engine** is `DATA ACCESS`: which columns can be reached through an index and
+which cannot. It exists because this engine does **not** create an index for a `PRIMARY KEY`, so a
+table can have a key and no index on it - and inserting rows with explicit keys then degrades sharply.
+The inspector says so in the panel, from the catalogue, before anyone notices the slowdown.
+
+### How it was measured
+
+`ExplorerTests`, 13 cases over a real database. Two sabotages, each caught by exactly one case: a
+filter that looks only at the first connection, and an index that is treated as covering any column it
+mentions rather than the one it leads with.
+
+**Two of the cases had to be rewritten because they were races, and the whole suite is what exposed
+them.** Both passed when run alone and failed in the full run: one asserted that no row count had
+arrived by the time the refresh returned - true only on a fast machine - and the other asked for a
+count with a deadline of zero against a count this engine answers instantly. They now assert the two
+ends (a usable tree, then correct counts) and a *cancelled* count rather than a timed-out one. A test
+of where a background task happens to be is not a test of anything.
+
+**In the executable:** a database created through the dialog, a script run to build a schema, and then
+the tree showing six folders with their counts, `Customers 1` / `Orders 1` filled in by the background
+pass, and the inspector on `Orders` showing 3 columns, the key, `IX_Orders_CustomerId`,
+`Orders.CustomerId -> Customers.Id`, the real `CREATE TABLE`, and the warning that the primary key has
+no index of its own.
+
+**A defect of my own, found the same way:** the inspector panel was not in the window at all. The
+script that was supposed to add it printed "inspector panel added" and had matched nothing - it never
+checked. The tests passed throughout, because they drive the ViewModel. A script that reports success
+without verifying is a lie told in a convincing voice.
+
+### Left for later stages
+
+The context-menu matrix of 2.4 beyond the double click, renaming (F2), rebuilding an index, TRUNCATE
+and enabling or disabling a trigger: they are schema-changing actions and belong with the designer in
+stage 8.
+
+### Tests
+
+355 -> 368.
+
+---
+
 ## Findings for the engine, not fixed here
 
 **`UPDATE <table> SET <column that does not exist> = 'x'` is accepted.** Measured 2026-08-05 while
@@ -481,6 +558,16 @@ Three things would each help on their own: a top-N limit pushed into the sort, a
 when the ordering is the primary key, and a seek for a primary-key range predicate. Any consumer that
 pages a table wants them; Studio pays for the absence with a linear cost per page and says so in its
 own interface rather than hiding it.
+
+**`CREATE FUNCTION` and `CREATE PROCEDURE` work, and two `[Ignore]`d engine tests say they do not.**
+`OutWit.Database.Tests/AuditVerification/DropInGapsEngineTests` carries two suppressed cases whose
+reason reads *"CREATE FUNCTION does not parse... neither exists anywhere in the stack"* - written
+2026-07-29, before phase 9d built the routine subsystem. Measured 2026-08-06 against the shipping
+engine: `CREATE FUNCTION AddOne(x INTEGER) RETURNS INTEGER AS BEGIN RETURN x + 1; END` is **accepted**,
+and the routine appears in `INFORMATION_SCHEMA.ROUTINES` with its definition. The suppressed tests omit
+the `AS`, which is what the grammar requires - so they are pinning a syntax mistake as a missing
+capability. Studio now shows routines in the tree because of this (WS-21); the markers themselves are
+`Sources/**` and this phase does not touch them.
 
 **A column may not be named after a type keyword.** `CREATE TABLE T (..., Blob BLOB)` is refused -
 `mismatched input 'Blob'` - because `BLOB` lexes as a keyword and is not accepted where a column name
