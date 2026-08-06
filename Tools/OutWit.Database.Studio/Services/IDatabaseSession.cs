@@ -3,40 +3,65 @@ using OutWit.Database.Studio.Models;
 namespace OutWit.Database.Studio.Services;
 
 /// <summary>
-/// Service for database operations using ADO.NET.
+/// One open database connection, and everything that can be asked of it.
+///
+/// This is what <c>IDatabaseService</c> used to be, minus the part that made multi-connection
+/// impossible: a session is created FOR a connection and lives exactly as long as it, so there is no
+/// ConnectAsync here and no CurrentConnection to change underneath a caller. Opening and closing
+/// belong to <see cref="IConnectionManager"/>, which owns the collection they would otherwise
+/// invalidate.
+///
+/// <see cref="StatusChanged"/> is the session's own event. The application used to have ONE, raised by
+/// the single service and listened to by four ViewModels, so disconnecting anything closed everyone's
+/// tabs (WS-13).
 /// </summary>
-public interface IDatabaseService : IDisposable
+public interface IDatabaseSession
 {
     #region Events
 
     /// <summary>
-    /// Raised when the connection status changes.
+    /// Raised when THIS connection opens or closes. Never fires for another session.
     /// </summary>
-    event EventHandler<bool>? ConnectionStatusChanged;
+    event EventHandler<bool>? StatusChanged;
 
     #endregion
 
-    #region Connection
+    #region Identity
 
     /// <summary>
-    /// Connects to a database.
+    /// Identifies the session for as long as it exists. Tree nodes carry it rather than a reference,
+    /// so a node cannot keep a closed session alive.
     /// </summary>
-    Task<bool> ConnectAsync(ConnectionInfo connection, CancellationToken ct = default);
+    Guid Id { get; }
 
     /// <summary>
-    /// Disconnects from the current database.
+    /// What the session was opened with. A copy: the dialog goes on editing its own instance after
+    /// the connection is made.
     /// </summary>
-    Task DisconnectAsync();
+    ConnectionInfo Connection { get; }
 
     /// <summary>
-    /// Gets whether the service is currently connected to a database.
+    /// The name shown on the connection's root in the tree and on the tabs that belong to it. Unique
+    /// among the open sessions, because two databases in different folders can have the same name.
+    /// </summary>
+    string DisplayName { get; }
+
+    /// <summary>
+    /// Which of the six connection colours this session was given (WS-3). Repetition is allowed; the
+    /// colour is a hint, not an identity.
+    /// </summary>
+    int ColorIndex { get; }
+
+    /// <summary>
+    /// Whether the connection is open.
     /// </summary>
     bool IsConnected { get; }
 
     /// <summary>
-    /// Gets the current connection information.
+    /// Whether the connection was opened read-only (WS-10). A property of the connection, so every
+    /// tab that belongs to it inherits the answer.
     /// </summary>
-    ConnectionInfo? CurrentConnection { get; }
+    bool IsReadOnly { get; }
 
     #endregion
 

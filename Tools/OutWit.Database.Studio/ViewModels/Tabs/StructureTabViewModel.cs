@@ -18,8 +18,9 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 {
     #region Constructors
 
-    public StructureTabViewModel(ApplicationViewModel applicationVm, string objectName, DatabaseNodeType objectType)
-        : base(applicationVm)
+    public StructureTabViewModel(ApplicationViewModel applicationVm, IDatabaseSession session,
+        string objectName, DatabaseNodeType objectType)
+        : base(applicationVm, session)
     {
         ObjectName = objectName;
         ObjectType = objectType;
@@ -42,7 +43,6 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
-        Database.ConnectionStatusChanged += OnConnectionStatusChanged;
     }
 
     private void InitCommands()
@@ -64,7 +64,11 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         _ => StudioIcons.PATH_DB_TABLE
     };
 
-    public override string? UniqueId => $"structure:{ObjectType}:{ObjectName}";
+    /// <summary>
+    /// Keyed by connection as well as by object, for the same reason the editor is: two databases can
+    /// both have a table called Orders.
+    /// </summary>
+    public override string? UniqueId => $"structure:{Session?.Id}:{ObjectType}:{ObjectName}";
 
     #endregion
 
@@ -75,7 +79,10 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     /// </summary>
     public async Task LoadStructureAsync()
     {
-        if (!Database.IsConnected)
+        // This object belongs to one connection: the one the tab was opened in (WS-3).
+        var session = Session;
+
+        if (session?.IsConnected != true)
             return;
 
         IsLoading = true;
@@ -86,15 +93,15 @@ public class StructureTabViewModel : WorkspaceTabViewModel
             switch (ObjectType)
             {
                 case DatabaseNodeType.Table:
-                    await LoadTableStructureAsync();
+                    await LoadTableStructureAsync(session);
                     break;
 
                 case DatabaseNodeType.View:
-                    await LoadViewStructureAsync();
+                    await LoadViewStructureAsync(session);
                     break;
 
                 case DatabaseNodeType.Index:
-                    await LoadIndexStructureAsync();
+                    await LoadIndexStructureAsync(session);
                     break;
 
                 default:
@@ -114,24 +121,24 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         }
     }
 
-    private async Task LoadTableStructureAsync()
+    private async Task LoadTableStructureAsync(IDatabaseSession session)
     {
-        var columns = await Database.GetColumnsAsync(ObjectName);
+        var columns = await session.GetColumnsAsync(ObjectName);
         Columns = columns.ToList();
 
         ApplicationVm.MainWindowVm.StatusText = $"Loaded {columns.Count} columns from table \"{ObjectName}\"";
         Logger.LogInformation("Loaded structure for table {Name}: {Count} columns", ObjectName, columns.Count);
     }
 
-    private async Task LoadViewStructureAsync()
+    private async Task LoadViewStructureAsync(IDatabaseSession session)
     {
-        var columns = await Database.GetColumnsAsync(ObjectName);
+        var columns = await session.GetColumnsAsync(ObjectName);
         Columns = columns.ToList();
 
         // Load view definition
         try
         {
-            var result = await Database.ExecuteQueryAsync(
+            var result = await session.ExecuteQueryAsync(
                 $"SELECT VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_NAME = '{ObjectName.Replace("'", "''")}'");
 
             if (string.IsNullOrEmpty(result.ErrorMessage) && result.Data != null && result.Data.Rows.Count > 0)
@@ -148,7 +155,7 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         Logger.LogInformation("Loaded structure for view {Name}: {Count} columns", ObjectName, columns.Count);
     }
 
-    private async Task LoadIndexStructureAsync()
+    private async Task LoadIndexStructureAsync(IDatabaseSession session)
     {
         var indexLiteral = "'" + ObjectName.Replace("'", "''") + "'";
 
@@ -166,7 +173,7 @@ public class StructureTabViewModel : WorkspaceTabViewModel
             "WHERE i.INDEX_NAME = " + indexLiteral + " " +
             "ORDER BY i.ORDINAL_POSITION";
 
-        var result = await Database.ExecuteQueryAsync(sql);
+        var result = await session.ExecuteQueryAsync(sql);
 
         if (string.IsNullOrEmpty(result.ErrorMessage) && result.Data != null && result.Data.Rows.Count > 0)
         {
@@ -208,7 +215,7 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         }
 
         // Fallback to PRAGMA
-        var pragmaResult = await Database.ExecuteQueryAsync(
+        var pragmaResult = await session.ExecuteQueryAsync(
             $"PRAGMA index_info(\"{ObjectName.Replace("\"", "\"\"")}\")");
 
         if (!string.IsNullOrEmpty(pragmaResult.ErrorMessage) || pragmaResult.Data == null)
@@ -245,7 +252,7 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
     private void UpdateStatus()
     {
-        CanRefresh = !IsLoading && Database.IsConnected;
+        CanRefresh = !IsLoading && Session?.IsConnected == true;
     }
 
     #endregion
@@ -258,7 +265,12 @@ public class StructureTabViewModel : WorkspaceTabViewModel
             UpdateStatus();
     }
 
-    private void OnConnectionStatusChanged(object? sender, bool isConnected)
+    protected override void OnSessionStatusChanged(bool isConnected)
+    {
+        UpdateStatus();
+    }
+
+    protected override void OnSessionChanged()
     {
         UpdateStatus();
     }
@@ -357,8 +369,6 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     #endregion
 
     #region Services
-
-    private IDatabaseService Database => ApplicationVm.Database;
 
     private ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

@@ -36,8 +36,8 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     #region Constructors
 
-    public TableEditTabViewModel(ApplicationViewModel applicationVm, string tableName)
-        : base(applicationVm)
+    public TableEditTabViewModel(ApplicationViewModel applicationVm, IDatabaseSession session, string tableName)
+        : base(applicationVm, session)
     {
         TableName = tableName;
         Title = $"{tableName} - Edit";
@@ -63,7 +63,6 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
-        Database.ConnectionStatusChanged += OnConnectionStatusChanged;
     }
 
     private void InitCommands()
@@ -85,7 +84,11 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     public override string IconPath => StudioIcons.PATH_DB_TABLE;
 
-    public override string? UniqueId => $"edit:{TableName}";
+    /// <summary>
+    /// The connection is part of the identity: the same table name in two databases is two different
+    /// tables, and a tab keyed on the name alone would hand one database's user the other's rows.
+    /// </summary>
+    public override string? UniqueId => $"edit:{Session?.Id}:{TableName}";
 
     /// <summary>
     /// The number of edits waiting in the buffer: rows deleted, rows changed, rows added. Named in the
@@ -158,12 +161,14 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     private async Task LoadColumnsAsync()
     {
-        if (string.IsNullOrWhiteSpace(TableName) || !Database.IsConnected)
+        var session = Session;
+
+        if (string.IsNullOrWhiteSpace(TableName) || session?.IsConnected != true)
             return;
 
         try
         {
-            var columns = await Database.GetColumnsAsync(TableName);
+            var columns = await session.GetColumnsAsync(TableName);
             Columns = columns.ToList();
             PrimaryKeyColumns = columns.Where(c => c.IsPrimaryKey).Select(c => c.Name).ToList();
 
@@ -185,7 +190,9 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     private async Task LoadTableDataAsync()
     {
-        if (string.IsNullOrWhiteSpace(TableName) || !Database.IsConnected)
+        var session = Session;
+
+        if (string.IsNullOrWhiteSpace(TableName) || session?.IsConnected != true)
             return;
 
         IsLoading = true;
@@ -196,7 +203,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         {
             // Build SQL with ORDER BY if primary keys exist
             var sql = BuildSelectStatement();
-            var result = await Database.ExecuteQueryAsync(sql);
+            var result = await session.ExecuteQueryAsync(sql);
 
             if (!string.IsNullOrEmpty(result.ErrorMessage))
             {
@@ -321,6 +328,18 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         if (EditableData == null || string.IsNullOrWhiteSpace(TableName) || m_originalData == null)
             return;
 
+        // The buffer goes to the connection this tab was opened in, and to no other. If that
+        // connection has been closed the buffer stays where it is: it is unapplied work, and the
+        // honest thing is to say so rather than to apply it somewhere else (WS-3, WS-13).
+        var session = Session;
+
+        if (session?.IsConnected != true)
+        {
+            SetErrorStatus($"Nothing was applied: the connection this tab belongs to "
+                + $"({ConnectionName ?? "unknown"}) is closed.");
+            return;
+        }
+
         if (IsReadOnly)
         {
             SetErrorStatus(ReadOnlyReason ?? "This table cannot be edited.");
@@ -347,7 +366,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
                 return;
             }
 
-            var result = await Database.ExecuteBatchAsync(statements);
+            var result = await session.ExecuteBatchAsync(statements);
 
             if (!result.Committed)
             {
@@ -646,9 +665,9 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         IsModified = HasChanges;
         CanCommit = HasChanges && !IsLoading && !IsReadOnly;
         CanRollback = HasChanges && !IsLoading;
-        CanAddRow = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Database.IsConnected && !IsReadOnly;
+        CanAddRow = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Session?.IsConnected == true && !IsReadOnly;
         CanDeleteRow = SelectedRowView != null && !IsLoading && !IsReadOnly;
-        CanRefresh = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Database.IsConnected;
+        CanRefresh = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Session?.IsConnected == true;
         
         // Status bar states
         HasError = !string.IsNullOrEmpty(ErrorMessage);
@@ -693,13 +712,14 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             UpdateStatus();
     }
 
-    private void OnConnectionStatusChanged(object? sender, bool isConnected)
+    protected override void OnSessionStatusChanged(bool isConnected)
     {
-        if (!isConnected)
-        {
-            // Tab should be closed by WorkspaceTabsViewModel
-        }
+        // The tab is closed by WorkspaceTabsViewModel when ITS connection closes - and only then.
+        UpdateStatus();
+    }
 
+    protected override void OnSessionChanged()
+    {
         UpdateStatus();
     }
 
@@ -867,8 +887,6 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     #endregion
 
     #region Services
-
-    private IDatabaseService Database => ApplicationVm.Database;
 
     private ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

@@ -69,12 +69,12 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task LoadTablesAsync()
     {
-        if (!Database.IsConnected)
+        if (Database?.IsConnected != true)
             return;
 
         try
         {
-            var tables = await Database.GetTablesAsync();
+            var tables = await Database!.GetTablesAsync();
             AvailableTables = tables.Select(t => t.Name).ToList();
         }
         catch (Exception ex)
@@ -85,12 +85,12 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task LoadColumnsAsync()
     {
-        if (!Database.IsConnected || string.IsNullOrWhiteSpace(TableName))
+        if (Database?.IsConnected != true || string.IsNullOrWhiteSpace(TableName))
             return;
 
         try
         {
-            var columns = await Database.GetColumnsAsync(TableName);
+            var columns = await Database!.GetColumnsAsync(TableName);
             AvailableColumns = columns.Select(c => c.Name).ToList();
         }
         catch (Exception ex)
@@ -116,7 +116,7 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
         try
         {
             var sql = BuildCreateIndexSql();
-            await Database.ExecuteNonQueryAsync(sql);
+            await Database!.ExecuteNonQueryAsync(sql);
 
             ApplicationVm.MainWindowVm.StatusText = $"Created index: {IndexName}";
             Logger.LogInformation("Created index: {IndexName}", IndexName);
@@ -175,7 +175,7 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
         var hasTableName = !string.IsNullOrWhiteSpace(TableName);
         var hasColumns = SelectedColumns.Count > 0;
 
-        CanCreateIndex = hasIndexName && hasTableName && hasColumns && !IsCreating && Database.IsConnected;
+        CanCreateIndex = hasIndexName && hasTableName && hasColumns && !IsCreating && Database?.IsConnected == true;
         CanGenerateDdl = hasIndexName && hasTableName && hasColumns;
         CanLoadColumns = hasTableName;
     }
@@ -262,7 +262,12 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Services
 
-    public IDatabaseService Database => ApplicationVm.Database;
+    /// <summary>
+    /// The active connection - the one selected in the tree. These dialogs act on what the user is
+    /// looking at; an open tab does not (WS-3). Null when nothing is open, which every caller here
+    /// already had to handle as "not connected".
+    /// </summary>
+    public IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

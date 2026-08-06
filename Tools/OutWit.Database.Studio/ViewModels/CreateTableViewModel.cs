@@ -134,7 +134,7 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
         try
         {
             var sql = BuildCreateTableSql();
-            await Database.ExecuteNonQueryAsync(sql);
+            await Database!.ExecuteNonQueryAsync(sql);
 
             ApplicationVm.MainWindowVm.StatusText = $"Created table: {TableName}";
             Logger.LogInformation("Created table: {TableName}", TableName);
@@ -226,7 +226,7 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
         var hasTableName = !string.IsNullOrWhiteSpace(TableName);
         var hasColumns = Columns.Count > 0;
 
-        CanCreateTable = hasTableName && hasColumns && !IsCreating && Database.IsConnected;
+        CanCreateTable = hasTableName && hasColumns && !IsCreating && Database?.IsConnected == true;
         CanGenerateDdl = hasTableName && hasColumns;
         CanRemoveColumn = SelectedColumn != null && Columns.Count > 1;
     }
@@ -304,7 +304,12 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Services
 
-    public IDatabaseService Database => ApplicationVm.Database;
+    /// <summary>
+    /// The active connection - the one selected in the tree. These dialogs act on what the user is
+    /// looking at; an open tab does not (WS-3). Null when nothing is open, which every caller here
+    /// already had to handle as "not connected".
+    /// </summary>
+    public IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

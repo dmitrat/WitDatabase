@@ -35,13 +35,17 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         Title = "WitDatabase Studio";
         StatusText = "Ready";
         CurrentConnection = null;
-        IsConnected = Database.IsConnected;
+        IsConnected = Connections.Active?.IsConnected == true;
         RecentFiles = new ObservableCollection<RecentFileItem>();
     }
 
     private void InitEvents()
     {
-        Database.ConnectionStatusChanged += OnDatabaseServiceConnectionStatusChanged;
+        // Three events about the collection instead of one about the application. IsConnected here
+        // means "there is a connection to act on", which is a question about the active session now.
+        Connections.SessionOpened += OnSessionOpened;
+        Connections.SessionClosed += OnSessionClosed;
+        Connections.ActiveChanged += OnActiveSessionChanged;
     }
 
     private void InitCommands()
@@ -129,50 +133,60 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         var result = await ApplicationVm.ConnectionVm.ShowCreateDialogAsync();
         Logger.LogInformation("ShowCreateDialogAsync returned: {Result}", result);
 
-        if (!result || ApplicationVm.ConnectionVm.SelectedConnection == null)
+        if (!result || ApplicationVm.ConnectionVm.OpenedSession == null)
         {
             Logger.LogInformation("Dialog cancelled or no connection selected");
             return;
         }
 
-        await LoadSchemaAfterConnectionAsync(ApplicationVm.ConnectionVm.SelectedConnection);
+        await LoadSchemaAfterConnectionAsync(ApplicationVm.ConnectionVm.OpenedSession);
     }
 
     private async void OpenDatabaseAsync()
     {
         var result = await ApplicationVm.ConnectionVm.ShowOpenDialogAsync();
 
-        if (!result || ApplicationVm.ConnectionVm.SelectedConnection == null)
+        if (!result || ApplicationVm.ConnectionVm.OpenedSession == null)
             return;
 
-        await LoadSchemaAfterConnectionAsync(ApplicationVm.ConnectionVm.SelectedConnection);
+        // Not a replacement: an open database stays open, with its tabs and its branch of the tree.
+        await LoadSchemaAfterConnectionAsync(ApplicationVm.ConnectionVm.OpenedSession);
     }
 
+    /// <summary>
+    /// Closes ONE connection - the active one - and only its tabs (WS-13). This used to close the
+    /// application's single connection, which took every tab of every database with it.
+    /// </summary>
     private async void CloseDatabaseAsync()
     {
-        if (!CanCloseDatabase())
+        var session = Connections.Active;
+
+        if (session == null || !CanCloseDatabase())
             return;
 
         // Ask while there is still a connection to apply the edits to. Afterwards the only honest
-        // offer left would be to discard them.
-        if (!await ApplicationVm.WorkspaceTabsVm.ConfirmCloseAllAsync())
+        // offer left would be to discard them. Only the tabs of THIS connection are asked - the
+        // others are not being closed.
+        if (!await ApplicationVm.WorkspaceTabsVm.ConfirmCloseSessionAsync(session))
         {
             Logger.LogInformation("Disconnect cancelled: a tab has unapplied changes");
             return;
         }
 
         IsLoading = true;
-        StatusText = "Disconnecting...";
+        StatusText = $"Disconnecting from {session.DisplayName}...";
 
         try
         {
-            await Database.DisconnectAsync();
-            CurrentConnection = null;
-            StatusText = "Disconnected";
+            await Connections.CloseAsync(session);
 
-            ApplicationVm.DatabaseExplorerVm.Nodes.Clear();
+            CurrentConnection = Connections.Active?.Connection;
+            StatusText = Connections.HasSessions
+                ? $"Disconnected from {session.DisplayName}"
+                : "Disconnected";
 
-            Logger.LogInformation("Disconnected from database");
+            Logger.LogInformation("Disconnected from {Name}, {Count} connections left",
+                session.DisplayName, Connections.Sessions.Count);
         }
         catch (Exception ex)
         {
@@ -197,6 +211,11 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     {
         return IsConnected && !IsLoading;
     }
+
+    /// <summary>
+    /// Whether a second, third, nth database can be opened. Always, now.
+    /// </summary>
+    public bool CanOpenDatabase => !IsLoading;
 
     private async Task ExportAsync()
     {
@@ -235,20 +254,24 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
             return;
         }
 
-        if (IsConnected)
-        {
-            CloseDatabaseAsync();
-        }
-
+        // Nothing is closed first. Opening a recent file used to call CloseDatabaseAsync - an
+        // 'async void' method - without awaiting it, and then connect over the top of the close.
         var connection = new ConnectionInfo { FilePath = filePath };
-        
+
         IsLoading = true;
         StatusText = $"Connecting to {Path.GetFileName(filePath)}...";
 
         try
         {
-            await Database.ConnectAsync(connection);
-            await LoadSchemaAfterConnectionAsync(connection);
+            var session = await Connections.OpenAsync(connection);
+
+            if (session == null)
+            {
+                StatusText = $"Failed to open {Path.GetFileName(filePath)}";
+                return;
+            }
+
+            await LoadSchemaAfterConnectionAsync(session);
         }
         catch (Exception ex)
         {
@@ -299,27 +322,29 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Connection Flow
 
-    private async Task LoadSchemaAfterConnectionAsync(ConnectionInfo connection)
+    private async Task LoadSchemaAfterConnectionAsync(IDatabaseSession session)
     {
         IsLoading = true;
         StatusText = "Loading database schema...";
 
         try
         {
-            CurrentConnection = connection;
-            StatusText = $"Connected to {CurrentConnection.FilePath}";
+            CurrentConnection = session.Connection;
+            StatusText = $"Connected to {session.Connection.FilePath}";
 
             // Add to recent files
-            if (!string.IsNullOrEmpty(connection.FilePath))
+            if (!string.IsNullOrEmpty(session.Connection.FilePath))
             {
-                await Settings.AddRecentFileAsync(connection.FilePath);
+                await Settings.AddRecentFileAsync(session.Connection.FilePath);
                 var settings = await Settings.LoadAsync();
                 LoadRecentFiles(settings);
             }
 
-            await ApplicationVm.DatabaseExplorerVm.RefreshAsync();
+            // This connection's branch only: the others are already loaded and reloading them would
+            // throw away counts and expanded state nobody asked to lose.
+            await ApplicationVm.DatabaseExplorerVm.RefreshAsync(session);
 
-            Logger.LogInformation("Database schema loaded for: {FilePath}", CurrentConnection.FilePath);
+            Logger.LogInformation("Database schema loaded for: {FilePath}", session.Connection.FilePath);
         }
         catch (Exception ex)
         {
@@ -336,9 +361,26 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Event Handlers
 
-    private void OnDatabaseServiceConnectionStatusChanged(object? sender, bool isConnected)
+    private void OnSessionOpened(object? sender, SessionEventArgs e)
     {
-        IsConnected = isConnected;
+        UpdateConnectionState();
+    }
+
+    private void OnSessionClosed(object? sender, SessionEventArgs e)
+    {
+        UpdateConnectionState();
+    }
+
+    private void OnActiveSessionChanged(object? sender, SessionEventArgs? e)
+    {
+        UpdateConnectionState();
+    }
+
+    private void UpdateConnectionState()
+    {
+        IsConnected = Connections.Active?.IsConnected == true;
+        CurrentConnection = Connections.Active?.Connection;
+        OpenConnectionCount = Connections.Sessions.Count;
     }
 
     #endregion
@@ -359,6 +401,12 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public bool IsConnected { get; private set; }
+
+    /// <summary>
+    /// How many databases are open. One was the only possible answer until this stage.
+    /// </summary>
+    [Notify]
+    public int OpenConnectionCount { get; private set; }
 
     [Notify]
     public ObservableCollection<RecentFileItem> RecentFiles { get; private set; } = null!;
@@ -396,7 +444,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Services
 
-    public IDatabaseService Database => ApplicationVm.Database;
+    public IConnectionManager Connections => ApplicationVm.Connections;
 
     public ISettingsService Settings => ApplicationVm.Settings;
 

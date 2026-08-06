@@ -53,20 +53,21 @@ public class TableEditingTests
 
     #region Harness
 
-    private static (ApplicationViewModel App, DatabaseService Db) NewStudio()
+    private static (ApplicationViewModel App, ConnectionManager Connections) NewStudio()
     {
-        var db = new DatabaseService(NullLogger<DatabaseService>.Instance);
+        var connections = new ConnectionManager(NullLoggerFactory.Instance,
+            NullLogger<ConnectionManager>.Instance);
 
         var app = new ApplicationViewModel(
-            db,
+            connections,
             new SettingsService(NullLogger<SettingsService>.Instance, Path.Combine(Path.GetTempPath(), "WitStudioTests", Guid.NewGuid().ToString("N"), "settings.json")),
             new ExportService(),
             NullLogger<ApplicationViewModel>.Instance);
 
-        return (app, db);
+        return (app, connections);
     }
 
-    private async Task<DatabaseService> ConnectAsync(DatabaseService db, string name)
+    private async Task<IDatabaseSession> ConnectAsync(ConnectionManager connections, string name)
     {
         var path = Path.Combine(m_root, $"{name}.witdb");
 
@@ -76,10 +77,10 @@ public class TableEditingTests
             await connection.CloseAsync();
         }
 
-        var connected = await db.ConnectAsync(new ConnectionInfo { FilePath = path });
-        Assert.That(connected, Is.True, "setup: the database did not open");
+        var session = await connections.OpenAsync(new ConnectionInfo { FilePath = path });
+        Assert.That(session, Is.Not.Null, "setup: the database did not open");
 
-        return db;
+        return session!;
     }
 
     private static async Task PressCommitAsync(TableEditTabViewModel editor)
@@ -103,7 +104,7 @@ public class TableEditingTests
     /// state that can disagree with the rows.
     /// </summary>
     private static async Task<List<(object Key, object Value)>> ReadAsync(
-        DatabaseService db, string sql, string keyColumn, string valueColumn)
+        IDatabaseSession db, string sql, string keyColumn, string valueColumn)
     {
         var result = await db.ExecuteQueryAsync(sql);
 
@@ -136,15 +137,15 @@ public class TableEditingTests
     [Test]
     public async Task AnEditSetWithOneRefusedStatementAppliesNothingTest()
     {
-        var (app, db) = NewStudio();
-        await ConnectAsync(db, "atomic");
+        var (app, connections) = NewStudio();
+        var db = await ConnectAsync(connections, "atomic");
 
         await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(8) NOT NULL)");
         await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'one')");
         await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (2, 'two')");
         await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (3, 'three')");
 
-        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync("Probe");
+        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync(db, "Probe");
 
         Assert.That(editor.EditableData!.Rows.Count, Is.EqualTo(3), "setup: the editor loaded the wrong rows");
 
@@ -177,8 +178,8 @@ public class TableEditingTests
                 "and has to be told what stopped it");
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -189,15 +190,15 @@ public class TableEditingTests
     [Test]
     public async Task ControlAnEditSetWithNothingRefusedIsAppliedWholeTest()
     {
-        var (app, db) = NewStudio();
-        await ConnectAsync(db, "atomic-control");
+        var (app, connections) = NewStudio();
+        var db = await ConnectAsync(connections, "atomic-control");
 
         await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(8) NOT NULL)");
         await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'one')");
         await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (2, 'two')");
         await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (3, 'three')");
 
-        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync("Probe");
+        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync(db, "Probe");
 
         EditCell(editor, 0, "Name", "ONE");
         editor.SelectedRowView = new DataView(editor.EditableData!)[2];
@@ -218,8 +219,8 @@ public class TableEditingTests
             Assert.That(editor.ErrorMessage, Is.Null.Or.Empty);
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -230,8 +231,8 @@ public class TableEditingTests
     [Test]
     public async Task ExecuteBatchAppliesNothingWhenAStatementFailsTest()
     {
-        var (_, db) = NewStudio();
-        await ConnectAsync(db, "batch");
+        var (_, connections) = NewStudio();
+        var db = await ConnectAsync(connections, "batch");
 
         await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(20))");
 
@@ -254,8 +255,8 @@ public class TableEditingTests
                 "the two accepted inserts must have been rolled back with the refused statement");
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -265,8 +266,8 @@ public class TableEditingTests
     [Test]
     public async Task ControlExecuteBatchCommitsWhenEveryStatementSucceedsTest()
     {
-        var (_, db) = NewStudio();
-        await ConnectAsync(db, "batch-control");
+        var (_, connections) = NewStudio();
+        var db = await ConnectAsync(connections, "batch-control");
 
         await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(20))");
 
@@ -284,8 +285,8 @@ public class TableEditingTests
             Assert.That(rows, Has.Count.EqualTo(2), "CONTROL: a clean batch has to reach the database");
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -300,14 +301,14 @@ public class TableEditingTests
     [Test]
     public async Task DeletingARowReachesTheDatabaseTest()
     {
-        var (app, db) = NewStudio();
-        await ConnectAsync(db, "delete-row");
+        var (app, connections) = NewStudio();
+        var db = await ConnectAsync(connections, "delete-row");
 
         await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(20))");
         await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'one')");
         await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (2, 'two')");
 
-        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync("Probe");
+        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync(db, "Probe");
 
         editor.SelectedRowView = new DataView(editor.EditableData!)[1];
         editor.DeleteRowCommand.Execute(null);
@@ -325,8 +326,8 @@ public class TableEditingTests
             Assert.That(Convert.ToInt32(rows[0].Key), Is.EqualTo(1), "and it has to be the right one");
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     #endregion
@@ -344,14 +345,14 @@ public class TableEditingTests
     [Test]
     public async Task ATableWithoutAPrimaryKeyOpensForViewingOnlyTest()
     {
-        var (app, db) = NewStudio();
-        await ConnectAsync(db, "no-pk");
+        var (app, connections) = NewStudio();
+        var db = await ConnectAsync(connections, "no-pk");
 
         await db.ExecuteNonQueryAsync("CREATE TABLE Logs (Message VARCHAR(20), Level VARCHAR(10))");
         await db.ExecuteNonQueryAsync("INSERT INTO Logs (Message, Level) VALUES ('same', 'INFO')");
         await db.ExecuteNonQueryAsync("INSERT INTO Logs (Message, Level) VALUES ('same', 'INFO')");
 
-        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync("Logs");
+        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync(db, "Logs");
 
         Assert.That(editor.EditableData!.Rows.Count, Is.EqualTo(2), "setup: two indistinguishable rows");
 
@@ -374,8 +375,8 @@ public class TableEditingTests
             "nothing may be written for a table whose rows cannot be addressed - and the old fallback "
             + "would have changed BOTH of these");
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -385,14 +386,14 @@ public class TableEditingTests
     [Test]
     public async Task ControlWithAPrimaryKeyOnlyTheEditedRowChangesTest()
     {
-        var (app, db) = NewStudio();
-        await ConnectAsync(db, "with-pk");
+        var (app, connections) = NewStudio();
+        var db = await ConnectAsync(connections, "with-pk");
 
         await db.ExecuteNonQueryAsync("CREATE TABLE Logs (Id INTEGER PRIMARY KEY, Message VARCHAR(20))");
         await db.ExecuteNonQueryAsync("INSERT INTO Logs (Id, Message) VALUES (1, 'same')");
         await db.ExecuteNonQueryAsync("INSERT INTO Logs (Id, Message) VALUES (2, 'same')");
 
-        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync("Logs");
+        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync(db, "Logs");
 
         Assert.That(editor.IsReadOnly, Is.False, "CONTROL: this table can be addressed row by row");
 
@@ -409,8 +410,8 @@ public class TableEditingTests
                 + "WHERE clause failed to guarantee");
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     #endregion

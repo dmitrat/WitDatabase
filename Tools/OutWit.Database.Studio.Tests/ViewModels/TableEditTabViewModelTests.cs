@@ -43,7 +43,7 @@ public class TableEditTabViewModelTests
     public void InitializationSetsTableNameTest()
     {
         // Arrange & Act
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.TableName, Is.EqualTo("Users"));
@@ -53,7 +53,7 @@ public class TableEditTabViewModelTests
     public void InitializationSetsTitleTest()
     {
         // Arrange & Act
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.Title, Does.Contain("Users"));
@@ -64,7 +64,7 @@ public class TableEditTabViewModelTests
     public void InitialStateHasNoChangesTest()
     {
         // Arrange & Act
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.HasChanges, Is.False);
@@ -76,7 +76,7 @@ public class TableEditTabViewModelTests
     public void UniqueIdIncludesTableNameTest()
     {
         // Arrange & Act
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.UniqueId, Does.Contain("Users"));
@@ -91,7 +91,7 @@ public class TableEditTabViewModelTests
     public void IsDefaultStateIsTrueInitiallyTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert - Initially no error and no success message means default state
         // Note: IsDefaultState is computed based on HasError and LastOperationSuccess
@@ -103,7 +103,7 @@ public class TableEditTabViewModelTests
     public void HasErrorIsTrueWhenErrorMessageExistsTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Act
         viewModel.ErrorMessage = "Some error";
@@ -116,7 +116,7 @@ public class TableEditTabViewModelTests
     public void StatusMessageInitiallyNullTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.StatusMessage, Is.Null);
@@ -130,7 +130,7 @@ public class TableEditTabViewModelTests
     public void LoadDataCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.LoadDataCommand, Is.Not.Null);
@@ -140,7 +140,7 @@ public class TableEditTabViewModelTests
     public void RefreshCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.RefreshCommand, Is.Not.Null);
@@ -150,7 +150,7 @@ public class TableEditTabViewModelTests
     public void AddRowCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.AddRowCommand, Is.Not.Null);
@@ -160,7 +160,7 @@ public class TableEditTabViewModelTests
     public void DeleteRowCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.DeleteRowCommand, Is.Not.Null);
@@ -170,7 +170,7 @@ public class TableEditTabViewModelTests
     public void CommitCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.CommitCommand, Is.Not.Null);
@@ -180,7 +180,7 @@ public class TableEditTabViewModelTests
     public void RollbackCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.RollbackCommand, Is.Not.Null);
@@ -190,7 +190,7 @@ public class TableEditTabViewModelTests
     public void CellEditedCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.CellEditedCommand, Is.Not.Null);
@@ -204,7 +204,7 @@ public class TableEditTabViewModelTests
     public void TabTypeIsTableEditTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.TabType, Is.EqualTo(WorkspaceTabType.TableEdit));
@@ -218,7 +218,7 @@ public class TableEditTabViewModelTests
     public void TotalRowCountDefaultsToZeroTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.TotalRowCount, Is.EqualTo(0));
@@ -228,7 +228,7 @@ public class TableEditTabViewModelTests
     public void IsLoadingDefaultsToFalseTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.IsLoading, Is.False);
@@ -238,7 +238,7 @@ public class TableEditTabViewModelTests
     public void ColumnsInitializedToEmptyListTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.Columns, Is.Not.Null);
@@ -249,7 +249,7 @@ public class TableEditTabViewModelTests
     public void PrimaryKeyColumnsInitializedToEmptyListTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Assert
         Assert.That(viewModel.PrimaryKeyColumns, Is.Not.Null);
@@ -264,7 +264,7 @@ public class TableEditTabViewModelTests
     public void OnClosedClearsDataTest()
     {
         // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, "Users");
+        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
 
         // Act
         viewModel.OnClosed();

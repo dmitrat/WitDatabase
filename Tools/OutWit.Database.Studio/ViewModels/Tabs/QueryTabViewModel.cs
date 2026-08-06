@@ -30,8 +30,8 @@ public class QueryTabViewModel : WorkspaceTabViewModel
 
     #region Constructors
 
-    public QueryTabViewModel(ApplicationViewModel applicationViewModel)
-        : base(applicationViewModel)
+    public QueryTabViewModel(ApplicationViewModel applicationViewModel, IDatabaseSession? session)
+        : base(applicationViewModel, session)
     {
         InitDefaults();
         InitCommands();
@@ -65,7 +65,6 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
-        Database.ConnectionStatusChanged += OnConnectionStatusChanged;
     }
 
     #endregion
@@ -113,9 +112,14 @@ public class QueryTabViewModel : WorkspaceTabViewModel
 
     private async Task ExecuteSqlAsync(string sql)
     {
-        if (!Database.IsConnected)
+        // The session this tab belongs to, never the one selected in the tree (WS-3).
+        var session = Session;
+
+        if (session == null || !session.IsConnected)
         {
-            ErrorMessage = "Not connected to database";
+            ErrorMessage = ConnectionName == null
+                ? "Not connected to database"
+                : $"The connection this tab belongs to ({ConnectionName}) is closed.";
             return;
         }
 
@@ -126,7 +130,7 @@ public class QueryTabViewModel : WorkspaceTabViewModel
 
         try
         {
-            var result = await Database.ExecuteQueryAsync(sql, m_executionCts.Token);
+            var result = await session.ExecuteQueryAsync(sql, m_executionCts.Token);
 
             if (!string.IsNullOrEmpty(result.ErrorMessage))
             {
@@ -311,7 +315,7 @@ public class QueryTabViewModel : WorkspaceTabViewModel
         IsSuccess = string.IsNullOrEmpty(ErrorMessage);
         HasMessages = !string.IsNullOrEmpty(ErrorMessage) || RowsAffected > 0;
         HasExecutionResult = HasMessages || ExecutionTimeMs > 0;
-        CanExecuteQuery = Database.IsConnected && !IsExecuting && !string.IsNullOrWhiteSpace(SqlText);
+        CanExecuteQuery = Session?.IsConnected == true && !IsExecuting && !string.IsNullOrWhiteSpace(SqlText);
 
         var selectedCount = SelectedRows?.Count ?? 0;
         CanCopyRows = HasResults && (selectedCount > 0 || CurrentView?.Count > 0);
@@ -338,7 +342,12 @@ public class QueryTabViewModel : WorkspaceTabViewModel
         }
     }
 
-    private void OnConnectionStatusChanged(object? sender, bool isConnected)
+    protected override void OnSessionStatusChanged(bool isConnected)
+    {
+        UpdateStatus();
+    }
+
+    protected override void OnSessionChanged()
     {
         UpdateStatus();
     }
@@ -482,8 +491,6 @@ public class QueryTabViewModel : WorkspaceTabViewModel
     #endregion
 
     #region Services
-
-    private IDatabaseService Database => ApplicationVm.Database;
 
     private IExportService Export => ApplicationVm.Export;
 

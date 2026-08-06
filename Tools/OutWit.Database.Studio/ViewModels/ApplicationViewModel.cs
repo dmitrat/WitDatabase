@@ -34,14 +34,14 @@ public sealed class ApplicationViewModel
     #region Constructors
 
     public ApplicationViewModel(
-        IDatabaseService databaseService,
+        IConnectionManager connections,
         ISettingsService settingsService,
         IExportService exportService,
         ILogger<ApplicationViewModel> logger,
         IConfirmationService? confirmations = null,
         IDialogService? dialogs = null)
     {
-        Database = databaseService;
+        Connections = connections;
         Settings = settingsService;
         Export = exportService;
         Logger = logger;
@@ -123,7 +123,18 @@ public sealed class ApplicationViewModel
 
     #region Properties
 
-    public IDatabaseService Database { get; }
+    /// <summary>
+    /// Every open connection. There used to be a single <c>Database</c> service here, which is why a
+    /// tab could only run against whatever Studio was connected to last.
+    /// </summary>
+    public IConnectionManager Connections { get; }
+
+    /// <summary>
+    /// The connection the user is looking at: where a new tab is opened, where the object dialogs
+    /// create their objects, where export and import read and write. An open tab does NOT use this -
+    /// it runs in the session it belongs to (WS-3).
+    /// </summary>
+    public IDatabaseSession? ActiveSession => Connections.Active;
 
     public ISettingsService Settings { get; }
 

@@ -16,7 +16,7 @@ namespace OutWit.Database.Studio.Tests.Services;
 /// Written when every other fixture in this project drove a double that was permanently
 /// disconnected and answers every question with an empty collection, so no configuration a dialog can
 /// express has ever reached the engine. This one drives the REAL <see cref="ConnectionViewModel"/> - the
-/// same instance the dialog binds to - over a REAL <see cref="DatabaseService"/>, and asks the question
+/// same instance the dialog binds to - over a REAL <see cref="ConnectionManager"/>, and asks the question
 /// a user asks: I filled this dialog in, put data in, and came back. Is it there?
 ///
 /// The file picker is the only thing replaced, and it is replaced by what its bindings write:
@@ -69,20 +69,36 @@ public class StudioEngineContactTests
     #region Harness
 
     /// <summary>
-    /// Builds the real ViewModel graph over a real DatabaseService. Nothing here is a test double
+    /// Builds the real ViewModel graph over a real ConnectionManager. Nothing here is a test double
     /// except the settings and export services, which the connection path does not touch.
     /// </summary>
-    private static (ApplicationViewModel App, ConnectionViewModel Vm, DatabaseService Db) NewStudio()
+    private static (ApplicationViewModel App, ConnectionViewModel Vm, ConnectionManager Connections) NewStudio()
     {
-        var db = new DatabaseService(NullLogger<DatabaseService>.Instance);
+        var connections = new ConnectionManager(NullLoggerFactory.Instance,
+            NullLogger<ConnectionManager>.Instance);
 
         var app = new ApplicationViewModel(
-            db,
+            connections,
             new SettingsService(NullLogger<SettingsService>.Instance, Path.Combine(Path.GetTempPath(), "WitStudioTests", Guid.NewGuid().ToString("N"), "settings.json")),
             new ExportService(),
             NullLogger<ApplicationViewModel>.Instance);
 
-        return (app, app.ConnectionVm, db);
+        return (app, app.ConnectionVm, connections);
+    }
+
+    /// <summary>
+    /// The connection the dialog just opened. There is no "the connection" any more - the manager
+    /// holds a collection - so these cases ask about the active one, which is the one the dialog made.
+    /// </summary>
+    private static IDatabaseSession Session(ConnectionManager connections)
+    {
+        return connections.Active
+            ?? throw new InvalidOperationException("nothing is open: the connection attempt failed");
+    }
+
+    private static bool IsConnected(ConnectionManager connections)
+    {
+        return connections.Active?.IsConnected == true;
     }
 
     /// <summary>
@@ -149,7 +165,7 @@ public class StudioEngineContactTests
             .ToArray();
     }
 
-    private static async Task WriteProbeRowsAsync(DatabaseService db)
+    private static async Task WriteProbeRowsAsync(IDatabaseSession db)
     {
         await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
 
@@ -161,7 +177,7 @@ public class StudioEngineContactTests
     /// Reads the rows back by scanning them. Never asks for a count - on this engine a count is
     /// separate state that can disagree with the rows.
     /// </summary>
-    private static async Task<(int Rows, string? Error)> ReadProbeRowsAsync(DatabaseService db)
+    private static async Task<(int Rows, string? Error)> ReadProbeRowsAsync(IDatabaseSession db)
     {
         var result = await db.ExecuteQueryAsync("SELECT Id, Name FROM Probe");
 
@@ -230,13 +246,13 @@ public class StudioEngineContactTests
         await PressConnectAsync(createVm);
 
         var createConnectionString = SafeConnectionString(createVm);
-        var created = createDb.IsConnected;
+        var created = IsConnected(createDb);
         var createError = createVm.ErrorMessage;
 
         if (created)
-            await WriteProbeRowsAsync(createDb);
+            await WriteProbeRowsAsync(Session(createDb));
 
-        await createDb.DisconnectAsync();
+        await createDb.CloseAllAsync();
         createDb.Dispose();
 
         var filesOnDisk = Listing(caseDirectory);
@@ -259,16 +275,16 @@ public class StudioEngineContactTests
         await PressConnectAsync(openVm);
 
         var reopenConnectionString = SafeConnectionString(openVm);
-        var reopened = openDb.IsConnected;
+        var reopened = IsConnected(openDb);
         var reopenError = openVm.ErrorMessage;
 
         var rows = -1;
         string? readError = null;
 
         if (reopened)
-            (rows, readError) = await ReadProbeRowsAsync(openDb);
+            (rows, readError) = await ReadProbeRowsAsync(Session(openDb));
 
-        await openDb.DisconnectAsync();
+        await openDb.CloseAllAsync();
         openDb.Dispose();
 
         var trip = new RoundTrip(
@@ -346,7 +362,7 @@ public class StudioEngineContactTests
         var garbage = Path.Combine(m_root, "garbage.witdb");
         await File.WriteAllTextAsync(garbage, "this is not a database, it is a text file");
 
-        var (_, vm, db) = NewStudio();
+        var (_, vm, connections) = NewStudio();
 
         vm.IsNewDatabase = false;
         vm.ConnectionInfo.FilePath = garbage;
@@ -355,14 +371,14 @@ public class StudioEngineContactTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(db.IsConnected, Is.False,
+            Assert.That(IsConnected(connections), Is.False,
                 "NEGATIVE CONTROL FAILED - the instrument reports a connection to a text file, so it "
                 + "cannot tell success from failure.");
             Assert.That(vm.ErrorMessage, Is.Not.Null.And.Not.Empty,
                 "the dialog reported no error for a file it could not open");
         });
 
-        db.Dispose();
+        connections.Dispose();
     }
 
     #endregion
@@ -385,7 +401,7 @@ public class StudioEngineContactTests
     {
         var absent = Path.Combine(m_root, "no-such-directory", "absent.witdb");
 
-        var (_, vm, db) = NewStudio();
+        var (_, vm, connections) = NewStudio();
 
         vm.IsNewDatabase = false;
         vm.ConnectionInfo.FilePath = absent;
@@ -394,14 +410,14 @@ public class StudioEngineContactTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(db.IsConnected, Is.False, "a database that does not exist must not open");
+            Assert.That(IsConnected(connections), Is.False, "a database that does not exist must not open");
             Assert.That(vm.ErrorMessage, Does.Contain("not found"),
                 "the dialog must say which file it could not find");
             Assert.That(File.Exists(absent), Is.False,
                 "and it must not have created the file it refused to open");
         });
 
-        db.Dispose();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -554,7 +570,7 @@ public class StudioEngineContactTests
         var metaExisted = File.Exists(meta);
         var walExisted = File.Exists(wal);
 
-        var (_, vm, db) = NewStudio();
+        var (_, vm, connections) = NewStudio();
 
         vm.IsNewDatabase = true;
         vm.StorageType = 1;
@@ -581,12 +597,12 @@ public class StudioEngineContactTests
         {
             Assert.That(appeared, Is.False,
                 $"nothing may be written into the working directory ({working})");
-            Assert.That(db.IsConnected, Is.False, "the combination is refused, not quietly reinterpreted");
+            Assert.That(IsConnected(connections), Is.False, "the combination is refused, not quietly reinterpreted");
             Assert.That(vm.ErrorMessage, Is.Not.Null.And.Contains("LSM"),
                 "and the refusal says which of the two choices cannot be had");
         });
 
-        db.Dispose();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -601,7 +617,7 @@ public class StudioEngineContactTests
     [Test]
     public async Task InMemoryConnectsToTheDatabaseItWillUseTest()
     {
-        var (_, vm, db) = NewStudio();
+        var (_, vm, connections) = NewStudio();
 
         vm.IsNewDatabase = true;
         vm.StorageType = 1;
@@ -609,10 +625,10 @@ public class StudioEngineContactTests
 
         await PressConnectAsync(vm);
 
-        Assert.That(db.IsConnected, Is.True, $"create: {vm.ErrorMessage}");
+        Assert.That(IsConnected(connections), Is.True, $"create: {vm.ErrorMessage}");
 
-        await WriteProbeRowsAsync(db);
-        var (rows, readError) = await ReadProbeRowsAsync(db);
+        await WriteProbeRowsAsync(Session(connections));
+        var (rows, readError) = await ReadProbeRowsAsync(Session(connections));
 
         Assert.Multiple(() =>
         {
@@ -620,8 +636,8 @@ public class StudioEngineContactTests
             Assert.That(rows, Is.EqualTo(PROBE_ROWS), $"read: {readError}");
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     #endregion
@@ -637,9 +653,10 @@ public class StudioEngineContactTests
     /// databases required restarting the application.
     ///
     /// Found by driving the shipping executable, NOT by this fixture, and that is the lesson: every
-    /// other case here builds a fresh DatabaseService, while the application registers ONE as a
-    /// singleton and reuses it for every open. An instrument that gives each case a clean service
-    /// cannot see a defect that only exists on the second use of a dirty one.
+    /// other case here builds a fresh service, while the application registers ONE as a singleton and
+    /// reuses it for every open. An instrument that gives each case a clean service cannot see a defect
+    /// that only exists on the second use of a dirty one. This case still uses ONE manager for both
+    /// opens, for exactly that reason.
     ///
     /// Both databases exist here, so the defect is about the second open and not about the first
     /// database being absent - that was isolated by running the same switch between two databases
@@ -659,6 +676,12 @@ public class StudioEngineContactTests
     /// This test asserts the EVENT STREAM rather than IsConnected, because IsConnected was correct
     /// throughout and asserting it is what made the first version of this test pass against the
     /// defect.
+    ///
+    /// REWRITTEN for stage 2, and the assertion is stronger than it was. Opening a second database no
+    /// longer closes the first: each connection has its own session with its own status event, so the
+    /// first session must hear [true] and NOTHING else while the second one opens (WS-3, WS-13). The
+    /// old expectation - true, false, true - described a defect one level up from S1: switching
+    /// databases instead of adding one.
     /// </summary>
     [Test]
     public async Task OpeningASecondDatabaseKeepsEveryViewInStepTest()
@@ -671,41 +694,56 @@ public class StudioEngineContactTests
         await CreateOnDiskAsync(first);
         await CreateOnDiskAsync(second);
 
-        // One service and one ViewModel for the whole session - what Program.cs registers.
-        var (_, vm, db) = NewStudio();
-
-        // This is what MainWindowViewModel and DatabaseExplorerViewModel bind to.
-        var observed = new List<bool>();
-        db.ConnectionStatusChanged += (_, connected) => observed.Add(connected);
+        // One manager and one ViewModel for the whole session - what Program.cs registers.
+        var (app, vm, connections) = NewStudio();
 
         vm.IsNewDatabase = false;
         vm.ConnectionInfo.FilePath = first;
         await PressConnectAsync(vm);
 
-        Assert.That(db.IsConnected, Is.True,
+        Assert.That(IsConnected(connections), Is.True,
             $"the first open must succeed for this case to mean anything: {vm.ErrorMessage}");
 
-        await db.ExecuteNonQueryAsync("CREATE TABLE First (Id INTEGER PRIMARY KEY)");
+        var firstSession = Session(connections);
+
+        // This is what the first database's own views bind to now.
+        var observedFirst = new List<bool>();
+        firstSession.StatusChanged += (_, connected) => observedFirst.Add(connected);
+
+        await firstSession.ExecuteNonQueryAsync("CREATE TABLE First (Id INTEGER PRIMARY KEY)");
 
         // The user picks File -> Open Database again.
         vm.ConnectionInfo.FilePath = second;
         await PressConnectAsync(vm);
 
+        var secondSession = Session(connections);
+
+        var rowsInFirst = await firstSession.ExecuteQueryAsync("SELECT * FROM First");
+
         TestContext.Out.WriteLine(
-            $"status events the interface received: [{string.Join(", ", observed)}]");
+            $"the first connection heard: [{string.Join(", ", observedFirst)}]; "
+            + $"{connections.Sessions.Count} connections open");
 
         Assert.Multiple(() =>
         {
-            Assert.That(db.IsConnected, Is.True,
-                "the service is connected to the second database");
+            Assert.That(connections.Sessions, Has.Count.EqualTo(2),
+                "opening a second database ADDS a connection");
 
-            Assert.That(observed[^1], Is.True,
-                "the last status the interface hears must agree with the service");
+            Assert.That(secondSession, Is.Not.SameAs(firstSession),
+                "and it is a different connection, not the same one pointed elsewhere");
 
-            // connected -> disconnected -> connected. The middle one is real: the first database is
-            // genuinely closed before the second opens, and the views should see that.
-            Assert.That(observed, Is.EqualTo(new[] { true, false, true }).AsCollection,
-                "the interface must be told about the second connection");
+            Assert.That(firstSession.IsConnected, Is.True,
+                "the first database is still open");
+
+            Assert.That(observedFirst, Is.Empty,
+                "the first connection heard nothing at all: it did not close, and it is not the "
+                + "one that opened");
+
+            Assert.That(rowsInFirst.ErrorMessage, Is.Null.Or.Empty,
+                "and it can still be read - the table created in it is still its own");
+
+            Assert.That(app.MainWindowVm.IsConnected, Is.True,
+                "the interface must agree with the service");
         });
     }
 
@@ -717,7 +755,7 @@ public class StudioEngineContactTests
     [Test]
     public async Task ReopeningTheDialogClearsTheErrorFromTheLastAttemptTest()
     {
-        var (_, vm, db) = NewStudio();
+        var (_, vm, connections) = NewStudio();
 
         vm.IsNewDatabase = false;
         vm.ConnectionInfo.FilePath = Path.Combine(m_root, "absent.witdb");
@@ -733,7 +771,7 @@ public class StudioEngineContactTests
         Assert.That(vm.ErrorMessage, Is.Null,
             "a freshly opened dialog must not show the previous attempt's error");
 
-        db.Dispose();
+        connections.Dispose();
     }
 
     #endregion
@@ -756,7 +794,7 @@ public class StudioEngineContactTests
         var path = Path.Combine(m_root, "editor.witdb");
         await CreateOnDiskAsync(path);
 
-        var (app, vm, db) = NewStudio();
+        var (app, vm, connections) = NewStudio();
 
         var confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
         app.Confirmations = confirmations;
@@ -765,14 +803,14 @@ public class StudioEngineContactTests
         vm.ConnectionInfo.FilePath = path;
         await PressConnectAsync(vm);
 
-        Assert.That(db.IsConnected, Is.True, $"setup: {vm.ErrorMessage}");
+        Assert.That(IsConnected(connections), Is.True, $"setup: {vm.ErrorMessage}");
 
-        await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
-        await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
+        await Session(connections).ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
+        await Session(connections).ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
 
         // A second tab has to exist: CloseTab refuses to close the last one.
         var workspace = app.WorkspaceTabsVm;
-        var editor = await workspace.OpenTableEditTabAsync("Probe");
+        var editor = await workspace.OpenTableEditTabAsync(Session(connections), "Probe");
 
         Assert.That(editor.EditableData, Is.Not.Null, "the editor loaded no data");
         Assert.That(editor.EditableData!.Rows.Count, Is.EqualTo(1));
@@ -802,13 +840,13 @@ public class StudioEngineContactTests
             Assert.That(editor.HasChanges, Is.True);
         });
 
-        var result = await db.ExecuteQueryAsync("SELECT Name FROM Probe");
+        var result = await Session(connections).ExecuteQueryAsync("SELECT Name FROM Probe");
 
         Assert.That(result.Data!.Rows[0]["Name"], Is.EqualTo("original"),
             "Cancel writes nothing: the edit is still only in the buffer");
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -825,7 +863,7 @@ public class StudioEngineContactTests
         var path = Path.Combine(m_root, $"editor-{decision}.witdb");
         await CreateOnDiskAsync(path);
 
-        var (app, vm, db) = NewStudio();
+        var (app, vm, connections) = NewStudio();
 
         var confirmations = new ScriptedConfirmationService(decision);
         app.Confirmations = confirmations;
@@ -834,13 +872,13 @@ public class StudioEngineContactTests
         vm.ConnectionInfo.FilePath = path;
         await PressConnectAsync(vm);
 
-        Assert.That(db.IsConnected, Is.True, $"setup: {vm.ErrorMessage}");
+        Assert.That(IsConnected(connections), Is.True, $"setup: {vm.ErrorMessage}");
 
-        await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
-        await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
+        await Session(connections).ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
+        await Session(connections).ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
 
         var workspace = app.WorkspaceTabsVm;
-        var editor = await workspace.OpenTableEditTabAsync("Probe");
+        var editor = await workspace.OpenTableEditTabAsync(Session(connections), "Probe");
 
         var rowView = new System.Data.DataView(editor.EditableData!)[0];
         rowView.Row["Name"] = "edited-and-applied";
@@ -856,12 +894,12 @@ public class StudioEngineContactTests
             Assert.That(workspace.Tabs, Does.Not.Contain(editor), "the answer allowed the close");
         });
 
-        var result = await db.ExecuteQueryAsync("SELECT Name FROM Probe");
+        var result = await Session(connections).ExecuteQueryAsync("SELECT Name FROM Probe");
 
         Assert.That(result.Data!.Rows[0]["Name"], Is.EqualTo(expected));
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -874,7 +912,7 @@ public class StudioEngineContactTests
         var path = Path.Combine(m_root, "editor-clean.witdb");
         await CreateOnDiskAsync(path);
 
-        var (app, vm, db) = NewStudio();
+        var (app, vm, connections) = NewStudio();
 
         var confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
         app.Confirmations = confirmations;
@@ -883,11 +921,11 @@ public class StudioEngineContactTests
         vm.ConnectionInfo.FilePath = path;
         await PressConnectAsync(vm);
 
-        await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
-        await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
+        await Session(connections).ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
+        await Session(connections).ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
 
         var workspace = app.WorkspaceTabsVm;
-        var editor = await workspace.OpenTableEditTabAsync("Probe");
+        var editor = await workspace.OpenTableEditTabAsync(Session(connections), "Probe");
 
         Assert.That(editor.HasChanges, Is.False, "nothing was edited");
 
@@ -900,8 +938,8 @@ public class StudioEngineContactTests
             Assert.That(workspace.Tabs, Does.Not.Contain(editor));
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -918,18 +956,18 @@ public class StudioEngineContactTests
         var path = Path.Combine(m_root, "editor-control.witdb");
         await CreateOnDiskAsync(path);
 
-        var (app, vm, db) = NewStudio();
+        var (app, vm, connections) = NewStudio();
 
         vm.IsNewDatabase = false;
         vm.ConnectionInfo.FilePath = path;
         await PressConnectAsync(vm);
 
-        Assert.That(db.IsConnected, Is.True, $"setup: {vm.ErrorMessage}");
+        Assert.That(IsConnected(connections), Is.True, $"setup: {vm.ErrorMessage}");
 
-        await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
-        await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
+        await Session(connections).ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
+        await Session(connections).ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
 
-        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync("Probe");
+        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync(Session(connections), "Probe");
 
         var rowView = new System.Data.DataView(editor.EditableData!)[0];
         rowView.Row["Name"] = "committed";
@@ -949,14 +987,14 @@ public class StudioEngineContactTests
             await Task.Delay(10);
         }
 
-        var result = await db.ExecuteQueryAsync("SELECT Name FROM Probe");
+        var result = await Session(connections).ExecuteQueryAsync("SELECT Name FROM Probe");
 
         Assert.That(result.Data, Is.Not.Null);
         Assert.That(result.Data!.Rows[0]["Name"], Is.EqualTo("committed"),
             "CONTROL FAILED - the editor cannot save at all, so the case above is not about lost work.");
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     #endregion
@@ -979,7 +1017,7 @@ public class StudioEngineContactTests
     [Test]
     public void TheOpenPathNamesOnlyWhatTheUserActuallyChoosesTest()
     {
-        var (_, vm, db) = NewStudio();
+        var (_, vm, connections) = NewStudio();
 
         vm.IsNewDatabase = false;
         vm.ConnectionInfo.FilePath = Path.Combine(m_root, "settings.witdb");
@@ -1001,7 +1039,7 @@ public class StudioEngineContactTests
             Assert.That(connectionString, Does.Not.Contain("CacheSize"));
         });
 
-        db.Dispose();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -1032,7 +1070,7 @@ public class StudioEngineContactTests
             await seed.CloseAsync();
         }
 
-        var (_, vm, db) = NewStudio();
+        var (_, vm, connections) = NewStudio();
 
         vm.IsNewDatabase = false;
         vm.UseAutoDetectedSettings = true;
@@ -1046,15 +1084,15 @@ public class StudioEngineContactTests
 
         await PressConnectAsync(vm);
 
-        Assert.That(db.IsConnected, Is.True, $"the LSM database must open: {vm.ErrorMessage}");
+        Assert.That(IsConnected(connections), Is.True, $"the LSM database must open: {vm.ErrorMessage}");
 
-        var (rows, error) = await ReadProbeRowsAsync(db);
+        var (rows, error) = await ReadProbeRowsAsync(Session(connections));
 
         Assert.That(error, Is.Null, "reading back from the reopened LSM database failed");
         Assert.That(rows, Is.EqualTo(1), "the row written before the close must come back");
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -1065,12 +1103,12 @@ public class StudioEngineContactTests
     [Test]
     public void TheOpenDialogOffersAFolderPickerTest()
     {
-        var (_, vm, db) = NewStudio();
+        var (_, vm, connections) = NewStudio();
 
         Assert.That(vm.BrowseFolderCommand, Is.Not.Null,
             "the Open dialog must offer a folder route, or an LSM database cannot be selected");
 
-        db.Dispose();
+        connections.Dispose();
     }
 
     #endregion

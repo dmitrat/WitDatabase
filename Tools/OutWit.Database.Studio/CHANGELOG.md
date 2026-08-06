@@ -9,6 +9,21 @@ Studio is being refactored and redesigned. This section collects what has landed
 built and released under dev tags only, and is not a supported version. Full detail:
 `/Docs/PHASE14-STUDIO-REFACTORING.md`.
 
+### Added
+
+- **More than one database can be open at a time.** *Open Database* and the recent files list add a
+  connection instead of replacing the one that is open; the explorer grows a root per connection.
+
+### Changed
+
+- **A tab belongs to the connection it was opened in and runs there**, whatever is selected in the
+  tree. Selecting in the tree moves the focus - where a new tab is opened, where an object is created,
+  where export and import work - not the target of a tab that is already open.
+- **Disconnecting closes the tabs of that connection only.** It used to close every data and structure
+  tab of every database, because the connection status was one event for the whole application.
+- **A query tab whose connection is closed keeps its text.** It says which connection it belonged to
+  when asked to run, and will not quietly run against another one.
+
 ### Fixed
 
 - **The password of an encrypted database is no longer written to the log file.** `DatabaseService`

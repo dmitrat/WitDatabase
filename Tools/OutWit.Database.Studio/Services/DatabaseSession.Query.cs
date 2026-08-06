@@ -6,9 +6,9 @@ namespace OutWit.Database.Studio.Services;
 
 
 /// <summary>
-/// Query execution methods for DatabaseService.
+/// Query execution methods for DatabaseSession.
 /// </summary>
-public sealed partial class DatabaseService
+public sealed partial class DatabaseSession
 {
     #region Query Execution
 

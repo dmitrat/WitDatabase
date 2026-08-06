@@ -87,7 +87,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestTable",
-            NodeType = DatabaseNodeType.Table
+            NodeType = DatabaseNodeType.Table,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanBrowseData, Is.True);
@@ -99,7 +100,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestView",
-            NodeType = DatabaseNodeType.View
+            NodeType = DatabaseNodeType.View,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanBrowseData, Is.True);
@@ -111,7 +113,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestIndex",
-            NodeType = DatabaseNodeType.Index
+            NodeType = DatabaseNodeType.Index,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanBrowseData, Is.False);
@@ -135,7 +138,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestTable",
-            NodeType = DatabaseNodeType.Table
+            NodeType = DatabaseNodeType.Table,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanViewStructure, Is.True);
@@ -147,7 +151,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestView",
-            NodeType = DatabaseNodeType.View
+            NodeType = DatabaseNodeType.View,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanViewStructure, Is.True);
@@ -159,7 +164,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestIndex",
-            NodeType = DatabaseNodeType.Index
+            NodeType = DatabaseNodeType.Index,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanViewStructure, Is.True);
@@ -171,7 +177,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestTrigger",
-            NodeType = DatabaseNodeType.Trigger
+            NodeType = DatabaseNodeType.Trigger,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanViewStructure, Is.False);
@@ -187,7 +194,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestTable",
-            NodeType = DatabaseNodeType.Table
+            NodeType = DatabaseNodeType.Table,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanViewDefinition, Is.True);
@@ -199,7 +207,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestView",
-            NodeType = DatabaseNodeType.View
+            NodeType = DatabaseNodeType.View,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanViewDefinition, Is.True);
@@ -211,7 +220,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestTrigger",
-            NodeType = DatabaseNodeType.Trigger
+            NodeType = DatabaseNodeType.Trigger,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanViewDefinition, Is.True);
@@ -223,7 +233,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestIndex",
-            NodeType = DatabaseNodeType.Index
+            NodeType = DatabaseNodeType.Index,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanViewDefinition, Is.True);
@@ -235,7 +246,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestSequence",
-            NodeType = DatabaseNodeType.Sequence
+            NodeType = DatabaseNodeType.Sequence,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanViewDefinition, Is.False);
@@ -259,7 +271,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestTable",
-            NodeType = DatabaseNodeType.Table
+            NodeType = DatabaseNodeType.Table,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanDropObject, Is.True);
@@ -271,7 +284,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestView",
-            NodeType = DatabaseNodeType.View
+            NodeType = DatabaseNodeType.View,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanDropObject, Is.True);
@@ -283,7 +297,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestIndex",
-            NodeType = DatabaseNodeType.Index
+            NodeType = DatabaseNodeType.Index,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanDropObject, Is.True);
@@ -295,7 +310,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "TestDatabase",
-            NodeType = DatabaseNodeType.Database
+            NodeType = DatabaseNodeType.Database,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanDropObject, Is.False);
@@ -307,7 +323,8 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = new DatabaseNode
         {
             Name = "Tables",
-            NodeType = DatabaseNodeType.TablesFolder
+            NodeType = DatabaseNodeType.TablesFolder,
+            ConnectionId = m_studio.Database.Id
         };
 
         Assert.That(m_explorerVm.CanDropObject, Is.False);
@@ -331,7 +348,8 @@ public class DatabaseExplorerViewModelTests
         var node = new DatabaseNode
         {
             Name = "TestNode",
-            NodeType = DatabaseNodeType.Table
+            NodeType = DatabaseNodeType.Table,
+            ConnectionId = m_studio.Database.Id
         };
 
         m_explorerVm.SelectedNode = node;
@@ -345,6 +363,35 @@ public class DatabaseExplorerViewModelTests
         m_explorerVm.SelectedNode = null;
 
         Assert.That(m_explorerVm.SelectedNode, Is.Null);
+    }
+
+    /// <summary>
+    /// CONTROL for every case above. They all attach the node to an open connection; without this one,
+    /// "the command is offered" would pass for a tree that offers commands on nodes belonging to a
+    /// connection that no longer exists - which is exactly what a node left over from a closed
+    /// database is.
+    /// </summary>
+    [Test]
+    public void ANodeWhoseConnectionIsGoneOffersNothingTest()
+    {
+        var orphan = new DatabaseNode
+        {
+            Name = "TestTable",
+            NodeType = DatabaseNodeType.Table,
+            ConnectionId = Guid.NewGuid()
+        };
+
+        m_explorerVm.SelectedNode = orphan;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_explorerVm.SessionFor(orphan), Is.Null, "the connection cannot be resolved");
+            Assert.That(m_explorerVm.CanBrowseData, Is.False);
+            Assert.That(m_explorerVm.CanEditData, Is.False);
+            Assert.That(m_explorerVm.CanViewStructure, Is.False);
+            Assert.That(m_explorerVm.CanViewDefinition, Is.False);
+            Assert.That(m_explorerVm.CanDropObject, Is.False);
+        });
     }
 
     #endregion

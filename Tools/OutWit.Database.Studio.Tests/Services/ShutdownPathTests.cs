@@ -57,17 +57,18 @@ public class ShutdownPathTests
 
     #region Harness
 
-    private static (ApplicationViewModel App, DatabaseService Db) NewStudio()
+    private static (ApplicationViewModel App, ConnectionManager Connections) NewStudio()
     {
-        var db = new DatabaseService(NullLogger<DatabaseService>.Instance);
+        var connections = new ConnectionManager(NullLoggerFactory.Instance,
+            NullLogger<ConnectionManager>.Instance);
 
         var app = new ApplicationViewModel(
-            db,
+            connections,
             new SettingsService(NullLogger<SettingsService>.Instance, Path.Combine(Path.GetTempPath(), "WitStudioTests", Guid.NewGuid().ToString("N"), "settings.json")),
             new ExportService(),
             NullLogger<ApplicationViewModel>.Instance);
 
-        return (app, db);
+        return (app, connections);
     }
 
     private static async Task PressExitAsync(MainWindowViewModel vm)
@@ -90,7 +91,7 @@ public class ShutdownPathTests
     /// Connects to a real database with one row, opens the editor on it and edits a cell exactly as
     /// the grid does, leaving the tab dirty.
     /// </summary>
-    private async Task<ApplicationViewModel> WithADirtyEditorAsync(DatabaseService db, ApplicationViewModel app, string name)
+    private async Task<ApplicationViewModel> WithADirtyEditorAsync(ConnectionManager connections, ApplicationViewModel app, string name)
     {
         var path = Path.Combine(m_root, $"{name}.witdb");
 
@@ -100,13 +101,13 @@ public class ShutdownPathTests
             await connection.CloseAsync();
         }
 
-        var connected = await db.ConnectAsync(new ConnectionInfo { FilePath = path });
-        Assert.That(connected, Is.True, "setup: the database did not open");
+        var session = await connections.OpenAsync(new ConnectionInfo { FilePath = path });
+        Assert.That(session, Is.Not.Null, "setup: the database did not open");
 
-        await db.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
-        await db.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
+        await session!.ExecuteNonQueryAsync("CREATE TABLE Probe (Id INTEGER PRIMARY KEY, Name VARCHAR(50))");
+        await session.ExecuteNonQueryAsync("INSERT INTO Probe (Id, Name) VALUES (1, 'original')");
 
-        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync("Probe");
+        var editor = await app.WorkspaceTabsVm.OpenTableEditTabAsync(session, "Probe");
 
         var rowView = new System.Data.DataView(editor.EditableData!)[0];
         rowView.Row["Name"] = "edited-but-never-saved";
@@ -124,7 +125,7 @@ public class ShutdownPathTests
     [Test]
     public async Task ExitRequestsShutdownRatherThanEndingTheProcessTest()
     {
-        var (app, db) = NewStudio();
+        var (app, connections) = NewStudio();
 
         var requested = 0;
         app.ShutdownRequested += (_, _) => requested++;
@@ -135,18 +136,18 @@ public class ShutdownPathTests
             "Exit must ask the host to close the window - the path that saves state and disposes the "
             + "connection - rather than ending the process itself");
 
-        db.Dispose();
+        connections.Dispose();
     }
 
     [Test]
     public async Task ExitWithUnappliedChangesCanBeCancelledTest()
     {
-        var (app, db) = NewStudio();
+        var (app, connections) = NewStudio();
 
         var confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
         app.Confirmations = confirmations;
 
-        await WithADirtyEditorAsync(db, app, "exit-cancel");
+        await WithADirtyEditorAsync(connections, app, "exit-cancel");
 
         var requested = 0;
         app.ShutdownRequested += (_, _) => requested++;
@@ -159,19 +160,19 @@ public class ShutdownPathTests
             Assert.That(requested, Is.Zero, "the answer was Cancel: Studio stays open");
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     [Test]
     public async Task ExitAfterDiscardingUnappliedChangesGoesAheadTest()
     {
-        var (app, db) = NewStudio();
+        var (app, connections) = NewStudio();
 
         var confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Discard);
         app.Confirmations = confirmations;
 
-        await WithADirtyEditorAsync(db, app, "exit-discard");
+        await WithADirtyEditorAsync(connections, app, "exit-discard");
 
         var requested = 0;
         app.ShutdownRequested += (_, _) => requested++;
@@ -184,8 +185,8 @@ public class ShutdownPathTests
             Assert.That(requested, Is.EqualTo(1), "the answer allowed the exit");
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -195,7 +196,7 @@ public class ShutdownPathTests
     [Test]
     public async Task ControlLeavingWithNothingUnappliedAsksNothingTest()
     {
-        var (app, db) = NewStudio();
+        var (app, connections) = NewStudio();
 
         var confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
         app.Confirmations = confirmations;
@@ -205,7 +206,7 @@ public class ShutdownPathTests
         Assert.That(confirmations.TimesAsked, Is.Zero,
             "CONTROL: with no unapplied work there is nothing to ask about");
 
-        db.Dispose();
+        connections.Dispose();
     }
 
     /// <summary>
@@ -215,12 +216,12 @@ public class ShutdownPathTests
     [Test]
     public async Task DisconnectingWithUnappliedChangesCanBeCancelledTest()
     {
-        var (app, db) = NewStudio();
+        var (app, connections) = NewStudio();
 
         var confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
         app.Confirmations = confirmations;
 
-        await WithADirtyEditorAsync(db, app, "disconnect-cancel");
+        await WithADirtyEditorAsync(connections, app, "disconnect-cancel");
 
         var command = (OutWit.Common.MVVM.Commands.RelayCommand)app.MainWindowVm.CloseDatabaseCommand;
         command.Execute(null);
@@ -231,12 +232,12 @@ public class ShutdownPathTests
         Assert.Multiple(() =>
         {
             Assert.That(confirmations.TimesAsked, Is.EqualTo(1));
-            Assert.That(db.IsConnected, Is.True,
+            Assert.That(connections.Active?.IsConnected, Is.True,
                 "the answer was Cancel: the connection - and with it the chance to apply - stays");
         });
 
-        await db.DisconnectAsync();
-        db.Dispose();
+        await connections.CloseAllAsync();
+        connections.Dispose();
     }
 
     #endregion

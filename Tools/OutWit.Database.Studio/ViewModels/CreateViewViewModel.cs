@@ -66,7 +66,7 @@ public class CreateViewViewModel : ViewModelBase<ApplicationViewModel>
         try
         {
             var sql = $"CREATE VIEW {ViewName} AS\n{SelectStatement}";
-            await Database.ExecuteNonQueryAsync(sql);
+            await Database!.ExecuteNonQueryAsync(sql);
 
             ApplicationVm.MainWindowVm.StatusText = $"Created view: {ViewName}";
             Logger.LogInformation("Created view: {ViewName}", ViewName);
@@ -102,7 +102,7 @@ public class CreateViewViewModel : ViewModelBase<ApplicationViewModel>
         CanCreateView = !string.IsNullOrWhiteSpace(ViewName)
                                && !string.IsNullOrWhiteSpace(SelectStatement)
                                && !IsCreating
-                               && Database.IsConnected;
+                               && Database?.IsConnected == true;
     }
 
     #endregion
@@ -152,7 +152,12 @@ public class CreateViewViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Services
 
-    public IDatabaseService Database => ApplicationVm.Database;
+    /// <summary>
+    /// The active connection - the one selected in the tree. These dialogs act on what the user is
+    /// looking at; an open tab does not (WS-3). Null when nothing is open, which every caller here
+    /// already had to handle as "not connected".
+    /// </summary>
+    public IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

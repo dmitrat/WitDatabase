@@ -83,26 +83,64 @@ public class StudioFixtureTests
     }
 
     /// <summary>
-    /// The application keeps ONE DatabaseService alive for its whole run, and phase 13's worst defect
-    /// only existed on the second use of a dirty one. The fixture has to reproduce that lifetime, not
-    /// a cleaner one.
+    /// The application keeps ONE ConnectionManager alive for its whole run, and phase 13's worst
+    /// defect only existed on the second use of a dirty service. The fixture has to reproduce that
+    /// lifetime, not a cleaner one.
     /// </summary>
     [Test]
-    public async Task TheFixtureReusesOneServiceAcrossConnectionsTest()
+    public async Task TheFixtureReusesOneManagerAcrossConnectionsTest()
     {
         await using var studio = await StudioFixture.CreateAsync();
 
-        var statuses = new List<bool>();
-        studio.Database.ConnectionStatusChanged += (_, connected) => statuses.Add(connected);
+        var events = new List<string>();
+        studio.Connections.SessionOpened += (_, e) => events.Add($"opened:{e.Session.DisplayName}");
+        studio.Connections.SessionClosed += (_, e) => events.Add($"closed:{e.Session.DisplayName}");
 
-        await studio.Database.DisconnectAsync();
-        await studio.ConnectAsync();
+        var first = studio.Database;
+        await studio.Connections.CloseAsync(first);
+
+        var second = await studio.OpenAnotherAsync("second", withSchema: false);
 
         Assert.Multiple(() =>
         {
-            Assert.That(studio.Database.IsConnected, Is.True);
-            Assert.That(statuses, Is.EqualTo(new[] { false, true }),
+            Assert.That(second.IsConnected, Is.True);
+            Assert.That(first.IsConnected, Is.False, "the first one really was closed");
+            Assert.That(second, Is.Not.SameAs(first), "and the second is a session of its own");
+
+            Assert.That(events, Is.EqualTo(new[] { "closed:studio", "opened:second" }).AsCollection,
                 "the views bind to this event stream - it has to describe what actually happened");
+
+            Assert.That(studio.Connections.Sessions, Is.EqualTo(new[] { second }).AsCollection);
+            Assert.That(studio.Connections.Active, Is.SameAs(second));
+        });
+    }
+
+    /// <summary>
+    /// The fixture's second database has to be a DIFFERENT database, or every multi-connection case
+    /// above it would pass by accident. Written before anything was built on it.
+    /// </summary>
+    [Test]
+    public async Task TheFixtureOpensTwoIndependentDatabasesTest()
+    {
+        await using var studio = await StudioFixture.CreateAsync();
+
+        var first = studio.Database;
+        var second = await studio.OpenAnotherAsync("second");
+
+        await first.ExecuteNonQueryAsync("INSERT INTO Customers (Name, Email) VALUES ('only in first', NULL)");
+
+        Assert.Multiple(async () =>
+        {
+            Assert.That(studio.Connections.Sessions, Has.Count.EqualTo(2));
+            Assert.That(second.Connection.FilePath, Is.Not.EqualTo(first.Connection.FilePath));
+            Assert.That(second.DisplayName, Is.Not.EqualTo(first.DisplayName),
+                "two connections must be tellable apart in the interface");
+
+            Assert.That(await studio.CountRowsAsync("Customers", first),
+                Is.EqualTo(StudioFixture.CUSTOMER_COUNT + 1));
+            Assert.That(await studio.CountRowsAsync("Customers", second),
+                Is.EqualTo(StudioFixture.CUSTOMER_COUNT),
+                "CONTROL: the write went into one database and not into the other");
         });
     }
 

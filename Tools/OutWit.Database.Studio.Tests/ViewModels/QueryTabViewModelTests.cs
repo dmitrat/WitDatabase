@@ -42,7 +42,7 @@ public class QueryTabViewModelTests
     public void InitialStateHasDefaultValuesTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Assert
         Assert.That(viewModel.TotalRowCount, Is.EqualTo(0));
@@ -56,7 +56,7 @@ public class QueryTabViewModelTests
     public void TitleCanBeSetTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         
         // Act
         viewModel.Title = "Query 1";
@@ -69,7 +69,7 @@ public class QueryTabViewModelTests
     public void SqlTextDefaultsToEmptyTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Assert
         Assert.That(viewModel.SqlText, Is.EqualTo(string.Empty));
@@ -83,7 +83,7 @@ public class QueryTabViewModelTests
     public void SetResultDataWithNullClearsResultsTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Act
         viewModel.SetResultData(null);
@@ -103,7 +103,7 @@ public class QueryTabViewModelTests
     public void ClearResultsClearsAllDataTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         viewModel.ErrorMessage = "Some error";
         viewModel.RowsAffected = 10;
         viewModel.ExecutionTimeMs = 100;
@@ -129,7 +129,7 @@ public class QueryTabViewModelTests
     public void DisplayTitleShowsModificationIndicatorTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         viewModel.Title = "Query 1";
         viewModel.IsModified = false;
 
@@ -151,7 +151,7 @@ public class QueryTabViewModelTests
     public void CanCopyRowsIsFalseWhenNoResultsTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Assert
         Assert.That(viewModel.CanCopyRows, Is.False);
@@ -165,7 +165,7 @@ public class QueryTabViewModelTests
     public void CopyRowsCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Assert
         Assert.That(viewModel.CopyRowsCommand, Is.Not.Null);
@@ -175,7 +175,7 @@ public class QueryTabViewModelTests
     public void CopyRowsAsInsertCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Assert
         Assert.That(viewModel.CopyRowsAsInsertCommand, Is.Not.Null);
@@ -185,7 +185,7 @@ public class QueryTabViewModelTests
     public void CopyRowsAsCsvCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Assert
         Assert.That(viewModel.CopyRowsAsCsvCommand, Is.Not.Null);
@@ -195,7 +195,7 @@ public class QueryTabViewModelTests
     public void CopyAllRowsCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Assert
         Assert.That(viewModel.CopyAllRowsCommand, Is.Not.Null);
@@ -205,7 +205,7 @@ public class QueryTabViewModelTests
     public void CopyAllRowsAsInsertCommandIsNotNullTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Assert
         Assert.That(viewModel.CopyAllRowsAsInsertCommand, Is.Not.Null);
@@ -219,7 +219,7 @@ public class QueryTabViewModelTests
     public void SetResultDataWithEmptyTableSetsZeroRowCountTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         var dataTable = new System.Data.DataTable();
         dataTable.Columns.Add("Id", typeof(int));
 
@@ -236,7 +236,7 @@ public class QueryTabViewModelTests
     public void SetResultDataWithRowsSetsCorrectCountTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         var dataTable = new System.Data.DataTable();
         dataTable.Columns.Add("Id", typeof(int));
         dataTable.Rows.Add(1);
@@ -261,7 +261,7 @@ public class QueryTabViewModelTests
     public void IsSuccessIsTrueWhenNoErrorMessageTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         viewModel.ErrorMessage = null;
 
         // Assert
@@ -272,7 +272,7 @@ public class QueryTabViewModelTests
     public void IsSuccessIsFalseWhenErrorMessageExistsTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         viewModel.ErrorMessage = "Error occurred";
 
         // Assert
@@ -283,7 +283,7 @@ public class QueryTabViewModelTests
     public void HasMessagesIsTrueWhenRowsAffectedGreaterThanZeroTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         viewModel.RowsAffected = 5;
 
         // Assert
@@ -294,7 +294,7 @@ public class QueryTabViewModelTests
     public void HasMessagesIsTrueWhenErrorMessageExistsTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         viewModel.ErrorMessage = "Error";
 
         // Assert
@@ -309,7 +309,7 @@ public class QueryTabViewModelTests
     public void HasExecutionResultIsFalseInitiallyTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Assert
         Assert.That(viewModel.HasExecutionResult, Is.False);
@@ -319,7 +319,7 @@ public class QueryTabViewModelTests
     public void HasExecutionResultIsTrueAfterSuccessfulQueryTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         var dataTable = new System.Data.DataTable();
         dataTable.Columns.Add("Id", typeof(int));
         dataTable.Rows.Add(1);
@@ -336,7 +336,7 @@ public class QueryTabViewModelTests
     public void HasExecutionResultIsTrueWhenErrorExistsTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
 
         // Act
         viewModel.ErrorMessage = "Some error";
@@ -349,7 +349,7 @@ public class QueryTabViewModelTests
     public void HasExecutionResultIsFalseAfterClearResultsTest()
     {
         // Arrange
-        var viewModel = new QueryTabViewModel(m_applicationVm);
+        var viewModel = new QueryTabViewModel(m_applicationVm, m_studio.Database);
         viewModel.ErrorMessage = "Some error";
 
         // Act
