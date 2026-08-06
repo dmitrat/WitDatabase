@@ -1,6 +1,10 @@
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Data;
 using System.Windows.Input;
+using Avalonia.Controls;
+// Avalonia 12 moved SetTextAsync off IClipboard and onto ClipboardExtensions.
+using Avalonia.Input.Platform;
 using Microsoft.Extensions.Logging;
 using OutWit.Common.Aspects;
 using OutWit.Common.MVVM.Commands;
@@ -12,7 +16,65 @@ using OutWit.Database.Studio.Ui.Icons;
 namespace OutWit.Database.Studio.ViewModels.Tabs;
 
 /// <summary>
-/// ViewModel for displaying object structure in a tab.
+/// Which part of the structure tab is on screen. A strip along the top rather than a tree or an
+/// accordion: people move between these constantly and the order must never change (5.1).
+/// </summary>
+public enum StructureSection
+{
+    Columns,
+    Keys,
+    Indexes,
+    Triggers,
+    Ddl
+}
+
+/// <summary>
+/// One row of the "keys and constraints" section, as the catalogue publishes it.
+/// </summary>
+public sealed record ConstraintRow(string Name, string Type, string Columns, string? Detail);
+
+/// <summary>
+/// Turns the selected section into "is this the one" for the strip and for the panels beneath it.
+///
+/// Two-way, because the strip's buttons set it: converting back returns the section named by the
+/// parameter when the button is checked, and refuses to answer when it is not - an unchecked radio
+/// button must not decide what is on screen.
+/// </summary>
+public sealed class StructureSectionConverter : Avalonia.Data.Converters.IValueConverter
+{
+    public static StructureSectionConverter Instance { get; } = new();
+
+    public object Convert(object? value, Type targetType, object? parameter, System.Globalization.CultureInfo culture)
+    {
+        return value is StructureSection section &&
+               parameter is string name &&
+               Enum.TryParse<StructureSection>(name, out var expected) &&
+               section == expected;
+    }
+
+    public object ConvertBack(object? value, Type targetType, object? parameter,
+        System.Globalization.CultureInfo culture)
+    {
+        if (value is true && parameter is string name && Enum.TryParse<StructureSection>(name, out var section))
+            return section;
+
+        return Avalonia.Data.BindingOperations.DoNothing;
+    }
+}
+
+/// <summary>
+/// The structure tab, which since stage 8 is the schema designer (section 5).
+///
+/// Two things run through all of it.
+///
+/// <b>The DDL is on screen the whole time (WS-38).</b> A designer is a generator of text that the user
+/// has to be able to read: it is the only place where "the button understood me" can be checked, and
+/// it is what the user would have written by hand. So the DDL section is not behind a button and the
+/// pending edits appear in it as they are made.
+///
+/// <b>Every edit says how it will be carried out, in the row, before Apply (WS-39).</b> The three
+/// categories are not a Studio invention - they are what this engine's ALTER TABLE does and does not
+/// do, measured rather than assumed, and <see cref="SchemaCapabilities"/> holds the matrix.
 /// </summary>
 public class StructureTabViewModel : WorkspaceTabViewModel
 {
@@ -38,16 +100,39 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     private void InitDefault()
     {
         Columns = [];
+        Constraints = [];
+        Indexes = [];
+        Triggers = [];
+        Refusals = [];
+        SelectedSection = StructureSection.Columns;
     }
 
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
+        Columns.CollectionChanged += (_, _) => Recompute();
     }
 
     private void InitCommands()
     {
         RefreshCommand = new RelayCommandAsync(LoadStructureAsync);
+
+        AddColumnCommand = new RelayCommand(AddColumn);
+        DeleteColumnCommand = new RelayCommand<ColumnDraft>(DeleteColumn);
+        RestoreColumnCommand = new RelayCommand<ColumnDraft>(RestoreColumn);
+
+        ApplyCommand = new RelayCommandAsync(ApplyAsync);
+        RevertCommand = new RelayCommand(Revert);
+        RebuildCommand = new RelayCommandAsync(RebuildAsync);
+
+        CreateIndexCommand = new RelayCommandAsync(CreateIndexAsync);
+        DropIndexCommand = new RelayCommandAsync<IndexInfo>(DropIndexAsync);
+        RecreateIndexCommand = new RelayCommandAsync<IndexInfo>(RecreateIndexAsync);
+
+        DropTriggerCommand = new RelayCommandAsync<TriggerInfo>(DropTriggerAsync);
+
+        CopyDdlCommand = new RelayCommandAsync(CopyDdlAsync);
+        ShowSectionCommand = new RelayCommand<StructureSection>(section => SelectedSection = section);
     }
 
     #endregion
@@ -72,7 +157,7 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
     #endregion
 
-    #region Functions
+    #region Loading
 
     /// <summary>
     /// Loads the structure of the object.
@@ -93,15 +178,15 @@ public class StructureTabViewModel : WorkspaceTabViewModel
             switch (ObjectType)
             {
                 case DatabaseNodeType.Table:
-                    await LoadTableStructureAsync(session);
+                    await LoadTableAsync(session);
                     break;
 
                 case DatabaseNodeType.View:
-                    await LoadViewStructureAsync(session);
+                    await LoadViewAsync(session);
                     break;
 
                 case DatabaseNodeType.Index:
-                    await LoadIndexStructureAsync(session);
+                    await LoadIndexAsync(session);
                     break;
 
                 default:
@@ -121,129 +206,511 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         }
     }
 
-    private async Task LoadTableStructureAsync(IDatabaseSession session)
+    private async Task LoadTableAsync(IDatabaseSession session)
     {
         var columns = await session.GetColumnsAsync(ObjectName);
-        Columns = columns.ToList();
+        var foreignKeys = await session.GetForeignKeysAsync(ObjectName);
+
+        m_suppressRecompute = true;
+
+        Columns.Clear();
+
+        foreach (var column in columns)
+        {
+            var draft = new ColumnDraft(column);
+
+            var fk = foreignKeys.FirstOrDefault(f =>
+                string.Equals(f.FromColumn, column.Name, StringComparison.OrdinalIgnoreCase));
+
+            if (fk != null)
+            {
+                draft.ReferencesTable = fk.ToTable;
+                draft.ReferencesColumn = fk.ToColumn;
+            }
+
+            draft.PropertyChanged += OnDraftChanged;
+            Columns.Add(draft);
+        }
+
+        m_suppressRecompute = false;
+
+        Indexes = (await session.GetTableIndexesAsync(ObjectName)).ToList();
+        Triggers = (await session.GetTableTriggersAsync(ObjectName)).ToList();
+        Constraints = await ReadConstraintsAsync(session, foreignKeys);
+
+        TableDdl = await session.GetTableDefinitionAsync(ObjectName) ?? string.Empty;
+        HasRows = await session.HasAnyRowsAsync(ObjectName);
+
+        ColumnCount = Columns.Count(c => !c.IsDeleted);
+
+        UpdateKeyWarning();
+        Recompute();
 
         ApplicationVm.MainWindowVm.StatusText = $"Loaded {columns.Count} columns from table \"{ObjectName}\"";
         Logger.LogInformation("Loaded structure for table {Name}: {Count} columns", ObjectName, columns.Count);
     }
 
-    private async Task LoadViewStructureAsync(IDatabaseSession session)
+    /// <summary>
+    /// The keys, uniques, checks and foreign keys, from TABLE_CONSTRAINTS and KEY_COLUMN_USAGE. The
+    /// CHECK expression itself is not in TABLE_CONSTRAINTS - there is no CHECK_CONSTRAINTS view here -
+    /// so a column check is read from the column, which is where the catalogue keeps it.
+    /// </summary>
+    private async Task<List<ConstraintRow>> ReadConstraintsAsync(
+        IDatabaseSession session, IReadOnlyList<ForeignKeyInfo> foreignKeys)
     {
-        var columns = await session.GetColumnsAsync(ObjectName);
-        Columns = columns.ToList();
+        var rows = new List<ConstraintRow>();
 
-        // Load view definition
         try
         {
             var result = await session.ExecuteQueryAsync(
-                $"SELECT VIEW_DEFINITION FROM INFORMATION_SCHEMA.VIEWS WHERE TABLE_NAME = '{ObjectName.Replace("'", "''")}'");
+                "SELECT tc.CONSTRAINT_NAME, tc.CONSTRAINT_TYPE, kcu.COLUMN_NAME " +
+                "FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS tc " +
+                "LEFT JOIN INFORMATION_SCHEMA.KEY_COLUMN_USAGE kcu " +
+                "ON kcu.CONSTRAINT_NAME = tc.CONSTRAINT_NAME AND kcu.TABLE_NAME = tc.TABLE_NAME " +
+                $"WHERE tc.TABLE_NAME = '{ObjectName.Replace("'", "''")}'");
 
-            if (string.IsNullOrEmpty(result.ErrorMessage) && result.Data != null && result.Data.Rows.Count > 0)
+            if (string.IsNullOrEmpty(result.ErrorMessage) && result.Data != null)
             {
-                ViewDefinition = result.Data.Rows[0][0] as string;
+                var grouped = new Dictionary<string, (string Type, List<string> Columns)>();
+
+                foreach (DataRow row in result.Data.Rows)
+                {
+                    var name = row[0] as string ?? string.Empty;
+                    var type = row[1] as string ?? string.Empty;
+                    var column = row[2] as string;
+
+                    if (!grouped.TryGetValue(name, out var entry))
+                        grouped[name] = entry = (type, []);
+
+                    if (!string.IsNullOrEmpty(column))
+                        entry.Columns.Add(column);
+                }
+
+                foreach (var (name, entry) in grouped)
+                {
+                    var detail = entry.Type.Equals("FOREIGN KEY", StringComparison.OrdinalIgnoreCase)
+                        ? ForeignKeyDetail(name, foreignKeys)
+                        : null;
+
+                    rows.Add(new ConstraintRow(name, entry.Type, string.Join(", ", entry.Columns), detail));
+                }
             }
         }
-        catch
+        catch (Exception ex)
         {
-            // Ignore view definition errors
+            Logger.LogDebug(ex, "Unable to read the constraints of {Table}", ObjectName);
         }
 
-        ApplicationVm.MainWindowVm.StatusText = $"Loaded {columns.Count} columns from view \"{ObjectName}\"";
-        Logger.LogInformation("Loaded structure for view {Name}: {Count} columns", ObjectName, columns.Count);
+        // A column CHECK does not appear in TABLE_CONSTRAINTS with its expression, so it is shown from
+        // the column - the same fact, from the place that has it.
+        foreach (var column in Columns.Where(c => !string.IsNullOrWhiteSpace(c.CheckExpression)))
+        {
+            var name = DdlWriter.CheckName(ObjectName, column.Name);
+
+            if (rows.All(r => !string.Equals(r.Name, name, StringComparison.OrdinalIgnoreCase)))
+                rows.Add(new ConstraintRow(name, "CHECK", column.Name, column.CheckExpression));
+        }
+
+        return rows;
     }
 
-    private async Task LoadIndexStructureAsync(IDatabaseSession session)
+    private static string? ForeignKeyDetail(string name, IReadOnlyList<ForeignKeyInfo> foreignKeys)
     {
-        var indexLiteral = "'" + ObjectName.Replace("'", "''") + "'";
+        var fk = foreignKeys.FirstOrDefault();
 
-        var sql =
-            "SELECT " +
-            "i.TABLE_NAME, " +
-            "i.COLUMN_NAME, " +
-            "i.ORDINAL_POSITION, " +
-            "i.IS_UNIQUE, " +
-            "i.FILTER_CONDITION, " +
-            "c.DATA_TYPE " +
-            "FROM INFORMATION_SCHEMA.INDEXES i " +
-            "LEFT JOIN INFORMATION_SCHEMA.COLUMNS c " +
-            "ON c.TABLE_NAME = i.TABLE_NAME AND c.COLUMN_NAME = i.COLUMN_NAME " +
-            "WHERE i.INDEX_NAME = " + indexLiteral + " " +
-            "ORDER BY i.ORDINAL_POSITION";
+        return fk == null ? null : $"-> {fk.ToTable}({fk.ToColumn})";
+    }
 
-        var result = await session.ExecuteQueryAsync(sql);
+    private async Task LoadViewAsync(IDatabaseSession session)
+    {
+        var columns = await session.GetColumnsAsync(ObjectName);
 
-        if (string.IsNullOrEmpty(result.ErrorMessage) && result.Data != null && result.Data.Rows.Count > 0)
+        m_suppressRecompute = true;
+        Columns.Clear();
+
+        foreach (var column in columns)
+            Columns.Add(new ColumnDraft(column));
+
+        m_suppressRecompute = false;
+
+        ViewDefinition = await session.GetViewDefinitionAsync(ObjectName);
+
+        // A view whose body the catalogue cannot render comes back NULL - measured for a UNION and for
+        // a subquery. Editing means DROP and CREATE, and creating from a body Studio does not have
+        // would destroy the view. So it is shown as unreadable rather than as empty.
+        CanEditView = !string.IsNullOrWhiteSpace(ViewDefinition);
+
+        SelectedSection = StructureSection.Ddl;
+
+        ApplicationVm.MainWindowVm.StatusText = $"Loaded {columns.Count} columns from view \"{ObjectName}\"";
+    }
+
+    private async Task LoadIndexAsync(IDatabaseSession session)
+    {
+        var definition = await session.GetIndexDefinitionAsync(ObjectName);
+
+        TableDdl = definition ?? string.Empty;
+        SelectedSection = StructureSection.Ddl;
+
+        var result = await session.ExecuteQueryAsync(
+            "SELECT TABLE_NAME, COLUMN_NAME, IS_UNIQUE, FILTER_CONDITION FROM INFORMATION_SCHEMA.INDEXES " +
+            $"WHERE INDEX_NAME = '{ObjectName.Replace("'", "''")}' ORDER BY ORDINAL_POSITION");
+
+        m_suppressRecompute = true;
+        Columns.Clear();
+
+        if (string.IsNullOrEmpty(result.ErrorMessage) && result.Data != null)
         {
-            var list = new List<ColumnInfo>();
-
             foreach (DataRow row in result.Data.Rows)
             {
-                var tableName = row[0] as string;
-                var colName = row[1] as string ?? string.Empty;
-                var ordinal = row[2] is int o ? o : 0;
-                var isUniqueStr = row[3] as string;
-                var filter = row[4] as string;
-                var dataType = row[5] as string;
+                IndexTableName ??= row[0] as string;
+                IndexIsUnique ??= (row[2] as string)?.Equals("YES", StringComparison.OrdinalIgnoreCase);
+                IndexFilterCondition ??= row[3] as string;
 
-                if (string.IsNullOrEmpty(IndexTableName))
-                    IndexTableName = tableName;
-
-                if (IndexIsUnique is null && !string.IsNullOrWhiteSpace(isUniqueStr))
-                    IndexIsUnique = isUniqueStr.Equals("YES", StringComparison.OrdinalIgnoreCase);
-
-                if (IndexFilterCondition is null && !string.IsNullOrWhiteSpace(filter))
-                    IndexFilterCondition = filter;
-
-                list.Add(new ColumnInfo
+                Columns.Add(new ColumnDraft
                 {
-                    Name = colName,
-                    OrdinalPosition = ordinal == 0 ? list.Count + 1 : ordinal,
-                    DataType = string.IsNullOrWhiteSpace(dataType) ? string.Empty : dataType,
-                    IsNullable = true,
-                    IsPrimaryKey = false,
-                    DefaultValue = null
+                    Name = row[1] as string ?? string.Empty,
+                    DataType = string.Empty
                 });
             }
-
-            Columns = list;
-            ApplicationVm.MainWindowVm.StatusText = $"Loaded {Columns.Count} columns from index \"{ObjectName}\"";
-            Logger.LogInformation("Loaded structure for index {Name}: {Count} columns", ObjectName, Columns.Count);
-            return;
         }
 
-        // Fallback to PRAGMA
-        var pragmaResult = await session.ExecuteQueryAsync(
-            $"PRAGMA index_info(\"{ObjectName.Replace("\"", "\"\"")}\")");
+        m_suppressRecompute = false;
 
-        if (!string.IsNullOrEmpty(pragmaResult.ErrorMessage) || pragmaResult.Data == null)
+        ApplicationVm.MainWindowVm.StatusText = $"Loaded {Columns.Count} columns from index \"{ObjectName}\"";
+    }
+
+    #endregion
+
+    #region Editing
+
+    private void AddColumn()
+    {
+        var draft = new ColumnDraft
         {
-            ErrorMessage = pragmaResult.ErrorMessage ?? result.ErrorMessage ?? "Failed to load index info";
+            Name = NextColumnName(),
+            DataType = "VARCHAR",
+            MaxLength = 50,
+            IsNullable = true
+        };
+
+        draft.PropertyChanged += OnDraftChanged;
+        Columns.Add(draft);
+
+        SelectedColumn = draft;
+    }
+
+    private string NextColumnName()
+    {
+        var index = 1;
+
+        while (Columns.Any(c => string.Equals(c.Name, $"Column{index}", StringComparison.OrdinalIgnoreCase)))
+            index++;
+
+        return $"Column{index}";
+    }
+
+    private void DeleteColumn(ColumnDraft? draft)
+    {
+        if (draft == null)
             return;
+
+        // A column that was only ever a draft leaves without ceremony; one that exists in the database
+        // is marked, because the row has to keep showing what will happen to it.
+        if (draft.IsNew)
+        {
+            draft.PropertyChanged -= OnDraftChanged;
+            Columns.Remove(draft);
+        }
+        else
+        {
+            draft.IsDeleted = true;
         }
 
-        var fallbackColumns = new List<ColumnInfo>();
-        foreach (DataRow row in pragmaResult.Data.Rows)
+        Recompute();
+    }
+
+    private void RestoreColumn(ColumnDraft? draft)
+    {
+        if (draft == null)
+            return;
+
+        draft.IsDeleted = false;
+        Recompute();
+    }
+
+    private void Revert()
+    {
+        ApplyReport = null;
+        _ = LoadStructureAsync();
+    }
+
+    /// <summary>
+    /// Works out the pending change set from the drafts, marks each row with its category, and puts
+    /// the DDL on screen. Called after every keystroke that could change an answer - the panel is not
+    /// allowed to be behind the grid.
+    /// </summary>
+    private void Recompute()
+    {
+        if (m_suppressRecompute || ObjectType != DatabaseNodeType.Table)
+            return;
+
+        Pending = SchemaChangeSet.Build(ObjectName, Columns.ToList(), Indexes, HasRows, out var refusals);
+        Refusals = refusals.ToList();
+
+        foreach (var draft in Columns)
         {
-            var colName = row.ItemArray.Length > 2 ? row[2] as string ?? string.Empty : string.Empty;
-            if (string.IsNullOrWhiteSpace(colName))
+            draft.Marker = null;
+            draft.MarkerReason = null;
+        }
+
+        foreach (var edit in Pending.Edits)
+        {
+            var draft = Columns.FirstOrDefault(c =>
+                string.Equals(c.Original?.Name ?? c.Name, edit.Column, StringComparison.OrdinalIgnoreCase) ||
+                string.Equals(c.Name, edit.Column, StringComparison.OrdinalIgnoreCase));
+
+            if (draft == null)
                 continue;
 
-            fallbackColumns.Add(new ColumnInfo
+            // A row can carry more than one edit; the heaviest category is the one that decides what
+            // Apply will do, so it is the one shown.
+            if (draft.Marker == null || edit.Category > CategoryOfMarker(draft.Marker))
             {
-                Name = colName,
-                DataType = string.Empty,
-                IsNullable = true,
-                DefaultValue = null,
-                IsPrimaryKey = false,
-                OrdinalPosition = fallbackColumns.Count + 1
-            });
+                draft.Marker = SchemaCapabilities.MarkerOf(edit.Category);
+                draft.MarkerReason = SchemaCapabilities.ReasonOf(edit.Kind);
+            }
         }
 
-        Columns = fallbackColumns;
-        ApplicationVm.MainWindowVm.StatusText = $"Loaded {Columns.Count} columns from index \"{ObjectName}\"";
+        PendingSql = Pending.Sql;
+        PendingCount = Pending.Count;
+        NeedsRebuild = Pending.NeedsRebuild;
+        ColumnCount = Columns.Count(c => !c.IsDeleted);
+
+        UpdateStatus();
+    }
+
+    private static SchemaEditCategory CategoryOfMarker(string marker) => marker switch
+    {
+        "rebuild" => SchemaEditCategory.Rebuild,
+        "drop + create" => SchemaEditCategory.DropCreate,
+        _ => SchemaEditCategory.InPlace
+    };
+
+    #endregion
+
+    #region Applying
+
+    /// <summary>
+    /// Runs the in-place edits and reports (WS-42). When the set also holds something that needs the
+    /// table rebuilt, the in-place part is applied first and the rebuild is offered - which is 5.7's
+    /// rule that a refusal becomes the next step rather than a dead end.
+    /// </summary>
+    private async Task ApplyAsync()
+    {
+        var session = Session;
+
+        if (session?.IsConnected != true || Pending == null || Pending.IsEmpty)
+            return;
+
+        if (Refusals.Count > 0)
+        {
+            ErrorMessage = Refusals[0];
+            return;
+        }
+
+        IsApplying = true;
+        ErrorMessage = null;
+
+        try
+        {
+            ApplyReport = await Pending.ApplyAsync(session, Logger);
+
+            if (ApplyReport.IsComplete)
+            {
+                ApplicationVm.MainWindowVm.StatusText = $"{ObjectName}: {ApplyReport.Summary}";
+                ApplicationVm.Notifications.Information($"{ObjectName}: {ApplyReport.Summary}");
+            }
+            else
+            {
+                ErrorMessage = ApplyReport.ErrorMessage;
+                ApplicationVm.MainWindowVm.StatusText = $"{ObjectName}: {ApplyReport.Summary}";
+            }
+
+            await RefreshEverythingAsync(session);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            Logger.LogError(ex, "Failed to apply schema changes to {Table}", ObjectName);
+        }
+        finally
+        {
+            IsApplying = false;
+            UpdateStatus();
+        }
+    }
+
+    /// <summary>
+    /// Opens the rebuild conversation for the pending shape (5.3). The plan is worked out here and
+    /// shown before anything runs.
+    /// </summary>
+    private async Task RebuildAsync()
+    {
+        var session = Session;
+
+        if (session?.IsConnected != true)
+            return;
+
+        try
+        {
+            IsApplying = true;
+
+            var plan = await TableRebuild.PlanAsync(session, ObjectName, Columns.ToList());
+            var rebuildVm = new TableRebuildViewModel(ApplicationVm, session, plan);
+
+            var done = await Dialogs.ShowTableRebuildAsync(rebuildVm);
+
+            if (done)
+                await RefreshEverythingAsync(session);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message;
+            Logger.LogError(ex, "Failed to plan the rebuild of {Table}", ObjectName);
+        }
+        finally
+        {
+            IsApplying = false;
+            UpdateStatus();
+        }
+    }
+
+    #endregion
+
+    #region Indexes and triggers
+
+    private async Task CreateIndexAsync()
+    {
+        var session = Session;
+
+        if (session?.IsConnected != true)
+            return;
+
+        var vm = new CreateIndexViewModel(ApplicationVm) { TableName = ObjectName };
+
+        await vm.LoadForTableAsync(ObjectName);
+
+        if (await Dialogs.ShowCreateIndexAsync(vm))
+            await LoadStructureAsync();
+    }
+
+    private async Task DropIndexAsync(IndexInfo? index)
+    {
+        if (index == null || Session?.IsConnected != true)
+            return;
+
+        await RunDdlAsync(DdlWriter.DropIndex(index.Name), $"Dropped index {index.Name}");
+    }
+
+    /// <summary>
+    /// "Rebuild an index" from stage 5's deferred list. There is no REINDEX and no ALTER INDEX on this
+    /// engine, so it is a drop and a create - and it is named that way in the menu, because a button
+    /// called Rebuild that silently does something else is the thing section 5 is against.
+    /// </summary>
+    private async Task RecreateIndexAsync(IndexInfo? index)
+    {
+        if (index == null || Session?.IsConnected != true)
+            return;
+
+        var draft = new IndexDraft
+        {
+            Name = index.Name,
+            Table = index.TableName,
+            Columns = index.Columns.Select(c => new IndexColumn(c)).ToList(),
+            IsUnique = index.IsUnique,
+            FilterCondition = index.FilterCondition
+        };
+
+        var set = new SchemaChangeSet(ObjectName);
+
+        set.Add(new SchemaEdit
+        {
+            Kind = SchemaEditKind.DropConstraint,
+            Table = ObjectName,
+            Description = $"drop and create index {index.Name}",
+            Statements = [DdlWriter.DropIndex(index.Name), DdlWriter.CreateIndex(draft)]
+        });
+
+        ApplyReport = await set.ApplyAsync(Session!, Logger);
+
+        if (!ApplyReport.IsComplete)
+            ErrorMessage = ApplyReport.ErrorMessage;
+
+        await LoadStructureAsync();
+    }
+
+    private async Task DropTriggerAsync(TriggerInfo? trigger)
+    {
+        if (trigger == null || Session?.IsConnected != true)
+            return;
+
+        await RunDdlAsync(DdlWriter.DropTrigger(trigger.Name), $"Dropped trigger {trigger.Name}");
+    }
+
+    private async Task RunDdlAsync(string sql, string success)
+    {
+        var session = Session;
+
+        if (session?.IsConnected != true)
+            return;
+
+        try
+        {
+            await session.ExecuteNonQueryAsync(sql);
+
+            ApplicationVm.MainWindowVm.StatusText = success;
+
+            await RefreshEverythingAsync(session);
+        }
+        catch (Exception ex)
+        {
+            ErrorMessage = ex.Message.Split('\n')[0];
+            Logger.LogError(ex, "Failed to run {Sql}", sql);
+        }
+    }
+
+    /// <summary>
+    /// Everything that was looking at this table has to be told, not just this tab.
+    ///
+    /// Found in the running application: after a column was added and after a rebuild, the object
+    /// inspector still said "Columns 4" and still showed the old CREATE TABLE. It is bound to the
+    /// tree's selection and nothing had told it that the object underneath had changed.
+    /// </summary>
+    private async Task RefreshEverythingAsync(IDatabaseSession session)
+    {
+        await session.Catalog.RefreshAsync();
+        await ApplicationVm.DatabaseExplorerVm.RefreshAsync(session);
+
+        await LoadStructureAsync();
+
+        var selected = ApplicationVm.DatabaseExplorerVm.SelectedNode;
+
+        if (selected != null && string.Equals(selected.Name, ObjectName, StringComparison.Ordinal))
+            await ApplicationVm.InspectorVm.LoadAsync(selected);
+    }
+
+    private async Task CopyDdlAsync()
+    {
+        var mainWindow = ApplicationVm.MainWindow;
+
+        if (mainWindow == null)
+            return;
+
+        var clipboard = TopLevel.GetTopLevel(mainWindow)?.Clipboard;
+
+        if (clipboard != null)
+            await clipboard.SetTextAsync(FullDdl);
     }
 
     #endregion
@@ -253,6 +720,52 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     private void UpdateStatus()
     {
         CanRefresh = !IsLoading && Session?.IsConnected == true;
+        CanApply = !IsApplying && Session?.IsConnected == true && PendingCount > 0 &&
+                   Pending?.InPlace.Count > 0 && Refusals.Count == 0;
+        CanRebuild = !IsApplying && Session?.IsConnected == true && NeedsRebuild;
+        HasPending = PendingCount > 0;
+        IsTable = ObjectType == DatabaseNodeType.Table;
+    }
+
+    /// <summary>
+    /// WS-44, and it is a property of THIS engine rather than general advice: no index is created for a
+    /// PRIMARY KEY, so a key whose values are supplied by the user - rather than by AUTOINCREMENT -
+    /// makes every insert scan the table to check uniqueness.
+    /// </summary>
+    private void UpdateKeyWarning()
+    {
+        var keys = Columns.Where(c => c.IsPrimaryKey).ToList();
+
+        if (keys.Count == 0)
+        {
+            KeyWarning = "This table has no primary key. Studio cannot edit its rows, because there is " +
+                         "nothing to name a row by.";
+            KeyWarningIsSevere = true;
+            return;
+        }
+
+        if (keys.All(k => k.IsAutoIncrement))
+        {
+            KeyWarning = "The key is AUTOINCREMENT, so an insert does not scan for uniqueness and needs " +
+                         "no index of its own.";
+            KeyWarningIsSevere = false;
+            return;
+        }
+
+        var covered = keys.All(key => Indexes.Any(index =>
+            index.Columns.FirstOrDefault()?.Equals(key.Name, StringComparison.OrdinalIgnoreCase) == true));
+
+        if (covered)
+        {
+            KeyWarning = "The key has an index of its own, so an insert finds a duplicate without scanning.";
+            KeyWarningIsSevere = false;
+            return;
+        }
+
+        KeyWarning = $"The primary key is set by hand and has no index: every insert scans the whole " +
+                     $"table to check it. Adding a UNIQUE index on " +
+                     $"{string.Join(", ", keys.Select(k => k.Name))} removes that.";
+        KeyWarningIsSevere = true;
     }
 
     #endregion
@@ -261,8 +774,19 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.IsProperty((StructureTabViewModel vm) => vm.IsLoading))
+        if (e.IsProperty((StructureTabViewModel vm) => vm.IsLoading) ||
+            e.IsProperty((StructureTabViewModel vm) => vm.IsApplying))
             UpdateStatus();
+    }
+
+    private void OnDraftChanged(object? sender, PropertyChangedEventArgs e)
+    {
+        // The marker is written BY the recompute; reacting to it would loop.
+        if (e.PropertyName is nameof(ColumnDraft.Marker) or nameof(ColumnDraft.MarkerReason) or
+            nameof(ColumnDraft.HasMarker))
+            return;
+
+        Recompute();
     }
 
     protected override void OnSessionStatusChanged(bool isConnected)
@@ -279,19 +803,10 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
     #region Properties
 
-    /// <summary>
-    /// Name of the object.
-    /// </summary>
     public string ObjectName { get; }
 
-    /// <summary>
-    /// Type of the object.
-    /// </summary>
     public DatabaseNodeType ObjectType { get; }
 
-    /// <summary>
-    /// Display name for the object type.
-    /// </summary>
     public string ObjectTypeDisplay => ObjectType switch
     {
         DatabaseNodeType.Table => "Table",
@@ -301,64 +816,140 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     };
 
     /// <summary>
-    /// Column definitions.
+    /// The columns, as drafts: what the catalogue said, and what has been typed over it.
     /// </summary>
     [Notify]
-    public List<ColumnInfo> Columns { get; set; } = null!;
+    public ObservableCollection<ColumnDraft> Columns { get; set; } = null!;
+
+    [Notify]
+    public ColumnDraft? SelectedColumn { get; set; }
+
+    [Notify]
+    public List<ConstraintRow> Constraints { get; set; } = null!;
+
+    [Notify]
+    public List<IndexInfo> Indexes { get; set; } = null!;
+
+    [Notify]
+    public List<TriggerInfo> Triggers { get; set; } = null!;
+
+    [Notify]
+    public StructureSection SelectedSection { get; set; }
 
     /// <summary>
-    /// Indicates if structure is being loaded.
+    /// How many columns the strip shows. A notified property rather than a computed one: found in the
+    /// running application, where the strip said "Columns 0" over five rows - a computed property is
+    /// read once when the strip binds, which is before the table has been read.
     /// </summary>
+    [Notify]
+    public int ColumnCount { get; private set; }
+
+    /// <summary>
+    /// The pending edits. Null until the first recompute.
+    /// </summary>
+    [Notify]
+    public SchemaChangeSet? Pending { get; private set; }
+
+    /// <summary>
+    /// The DDL of the pending edits - what Apply will run, visible while it is still being decided
+    /// (WS-38).
+    /// </summary>
+    [Notify]
+    public string PendingSql { get; private set; } = string.Empty;
+
+    [Notify]
+    public int PendingCount { get; private set; }
+
+    [Notify]
+    public bool HasPending { get; private set; }
+
+    [Notify]
+    public bool NeedsRebuild { get; private set; }
+
+    /// <summary>
+    /// Edits Studio will not write, and why. They are not failures - nothing has been attempted - so
+    /// they sit above the Apply button rather than in the error line.
+    /// </summary>
+    [Notify]
+    public List<string> Refusals { get; private set; } = null!;
+
+    /// <summary>
+    /// The table as it is now, from the catalogue.
+    /// </summary>
+    [Notify]
+    public string TableDdl { get; set; } = string.Empty;
+
+    /// <summary>
+    /// What the DDL section shows: the object as it stands, and beneath it whatever is pending.
+    /// </summary>
+    public string FullDdl => string.IsNullOrEmpty(PendingSql)
+        ? TableDdl
+        : $"{TableDdl}\n\n-- pending, will run on Apply:\n{PendingSql}";
+
+    [Notify]
+    public bool HasRows { get; private set; }
+
+    [Notify]
+    public DdlApplyReport? ApplyReport { get; private set; }
+
+    public bool HasApplyReport => ApplyReport != null;
+
+    [Notify]
+    public string? KeyWarning { get; private set; }
+
+    [Notify]
+    public bool KeyWarningIsSevere { get; private set; }
+
     [Notify]
     public bool IsLoading { get; set; }
 
-    /// <summary>
-    /// Error message if loading failed.
-    /// </summary>
+    [Notify]
+    public bool IsApplying { get; set; }
+
     [Notify]
     public string? ErrorMessage { get; set; }
 
-    /// <summary>
-    /// Indicates if structure can be refreshed.
-    /// </summary>
     [Notify]
     public bool CanRefresh { get; private set; }
 
-    /// <summary>
-    /// View definition SQL (for views only).
-    /// </summary>
+    [Notify]
+    public bool CanApply { get; private set; }
+
+    [Notify]
+    public bool CanRebuild { get; private set; }
+
+    [Notify]
+    public bool IsTable { get; private set; }
+
     [Notify]
     public string? ViewDefinition { get; set; }
 
     /// <summary>
-    /// Gets whether view has definition.
+    /// False when the catalogue cannot render this view's body. Changing a view means dropping and
+    /// creating it, and creating it from a body Studio does not have would lose it.
     /// </summary>
+    [Notify]
+    public bool CanEditView { get; private set; }
+
     public bool HasViewDefinition => !string.IsNullOrWhiteSpace(ViewDefinition);
 
-    /// <summary>
-    /// Index table name (for indexes only).
-    /// </summary>
     [Notify]
     public string? IndexTableName { get; set; }
 
-    /// <summary>
-    /// Index is unique flag (for indexes only).
-    /// </summary>
     [Notify]
     public bool? IndexIsUnique { get; set; }
 
-    /// <summary>
-    /// Index filter condition (for indexes only).
-    /// </summary>
     [Notify]
     public string? IndexFilterCondition { get; set; }
 
-    /// <summary>
-    /// Gets whether index has additional details.
-    /// </summary>
     public bool HasIndexDetails => !string.IsNullOrWhiteSpace(IndexTableName) ||
                                    IndexIsUnique is not null ||
                                    !string.IsNullOrWhiteSpace(IndexFilterCondition);
+
+    /// <summary>
+    /// The matrix of 5.2, so the designer can show the rule as well as apply it.
+    /// </summary>
+    public IReadOnlyList<SchemaCapability> Capabilities => SchemaCapabilities.Matrix;
 
     #endregion
 
@@ -366,11 +957,43 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
     public ICommand RefreshCommand { get; private set; } = null!;
 
+    public ICommand AddColumnCommand { get; private set; } = null!;
+
+    public ICommand DeleteColumnCommand { get; private set; } = null!;
+
+    public ICommand RestoreColumnCommand { get; private set; } = null!;
+
+    public ICommand ApplyCommand { get; private set; } = null!;
+
+    public ICommand RevertCommand { get; private set; } = null!;
+
+    public ICommand RebuildCommand { get; private set; } = null!;
+
+    public ICommand CreateIndexCommand { get; private set; } = null!;
+
+    public ICommand DropIndexCommand { get; private set; } = null!;
+
+    public ICommand RecreateIndexCommand { get; private set; } = null!;
+
+    public ICommand DropTriggerCommand { get; private set; } = null!;
+
+    public ICommand CopyDdlCommand { get; private set; } = null!;
+
+    public ICommand ShowSectionCommand { get; private set; } = null!;
+
     #endregion
 
     #region Services
 
     private ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    private IDialogService Dialogs => ApplicationVm.Dialogs;
+
+    #endregion
+
+    #region Fields
+
+    private bool m_suppressRecompute;
 
     #endregion
 }

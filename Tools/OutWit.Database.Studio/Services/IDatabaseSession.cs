@@ -156,6 +156,29 @@ public interface IDatabaseSession
     Task<long?> TryCountRowsAsync(string tableName, TimeSpan timeout, CancellationToken ct = default);
 
     /// <summary>
+    /// The triggers on one table, complete enough to be written out again - which a rebuild has to do,
+    /// because a trigger is dropped with its table.
+    /// </summary>
+    Task<IReadOnlyList<TriggerInfo>> GetTableTriggersAsync(string tableName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Whether the table holds any rows. Asked by scanning for one, never with COUNT(*).
+    /// </summary>
+    Task<bool> HasAnyRowsAsync(string tableName, CancellationToken ct = default);
+
+    /// <summary>
+    /// How many values in a column would not survive a conversion to another type, or null when the
+    /// engine will not answer for that pair of types (WS-41).
+    /// </summary>
+    Task<int?> CountValuesThatWillNotConvertAsync(string tableName, string columnName, string fromType,
+        string toType, CancellationToken ct = default);
+
+    /// <summary>
+    /// The views whose stored definition names a table.
+    /// </summary>
+    Task<IReadOnlyList<string>> GetViewsMentioningAsync(string tableName, CancellationToken ct = default);
+
+    /// <summary>
     /// The same schema, cached, for the one consumer that cannot await it: completion answers between
     /// two keystrokes (WS-24). One per connection, living exactly as long as it.
     /// </summary>

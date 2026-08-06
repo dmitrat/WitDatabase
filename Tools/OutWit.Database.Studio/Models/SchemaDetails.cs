@@ -77,6 +77,44 @@ public sealed class IndexInfo
 }
 
 /// <summary>
+/// One trigger, as INFORMATION_SCHEMA.TRIGGERS holds it - enough to write it out again, which is what
+/// a rebuild has to do (the trigger goes when the table does).
+///
+/// ACTION_CONDITION comes back with its brackets on: the engine stores <c>(NEW.Total &gt; 100)</c>,
+/// and it needs them - an unbracketed WHEN is a parse error.
+/// </summary>
+public sealed class TriggerInfo
+{
+    public required string Name { get; init; }
+
+    public required string Table { get; init; }
+
+    /// <summary>
+    /// BEFORE, AFTER or INSTEAD OF.
+    /// </summary>
+    public required string Timing { get; init; }
+
+    /// <summary>
+    /// INSERT, UPDATE or DELETE.
+    /// </summary>
+    public required string Event { get; init; }
+
+    /// <summary>
+    /// ROW or STATEMENT. A statement trigger is written by leaving the FOR EACH clause out entirely -
+    /// FOR EACH STATEMENT does not parse.
+    /// </summary>
+    public string Orientation { get; init; } = "ROW";
+
+    public string? Condition { get; init; }
+
+    public string? Body { get; init; }
+
+    public bool IsRowTrigger => Orientation.Equals("ROW", StringComparison.OrdinalIgnoreCase);
+
+    public override string ToString() => $"{Name} {Timing} {Event} ON {Table}";
+}
+
+/// <summary>
 /// What the inspector says about getting at a table's data (2.5).
 ///
 /// This is the part of the Explorer that knows the engine: an index is not created for a PRIMARY KEY

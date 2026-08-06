@@ -1,125 +1,229 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
              xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
+             xmlns:models="clr-namespace:OutWit.Database.Studio.Models"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
-             mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="400"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="OutWit.Database.Studio.Views.Workspace.StructureView"
              x:DataType="tabs:StructureTabViewModel">
 
-    <Grid RowDefinitions="Auto,*">
-        <!-- Header -->
+    <UserControl.Styles>
+        <!-- The section strip: radio buttons in behaviour, a segmented strip to look at. The order
+             never changes, so the shape of the strip is part of how it is read. -->
+        <Style Selector="RadioButton.tab">
+            <Setter Property="Template">
+                <ControlTemplate>
+                    <Border Name="PART_Border"
+                            Background="Transparent"
+                            BorderBrush="Transparent"
+                            BorderThickness="0,0,0,2"
+                            Padding="10,6">
+                        <ContentPresenter Content="{TemplateBinding Content}"
+                                          ContentTemplate="{TemplateBinding ContentTemplate}"/>
+                    </Border>
+                </ControlTemplate>
+            </Setter>
+        </Style>
+
+        <Style Selector="RadioButton.tab:checked /template/ Border#PART_Border">
+            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+        </Style>
+
+        <Style Selector="RadioButton.tab:pointerover /template/ Border#PART_Border">
+            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+        </Style>
+    </UserControl.Styles>
+
+    <!-- Five sections and a DDL panel that is always there (5.1, WS-38). The strip is at the top and
+         its order never changes: people move between these constantly. -->
+    <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+        <!-- Header: what this is, and what is pending on it -->
         <Border Grid.Row="0"
                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                 BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                 BorderThickness="0,0,0,1"
-                Padding="8">
+                Padding="12,8">
             <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0" VerticalAlignment="Center" Spacing="2">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <TextBlock Text="{Binding ObjectTypeDisplay}"
-                                   FontWeight="SemiBold"
-                                   FontSize="14"/>
-                        <TextBlock Text="{Binding ObjectName}"
-                                   FontSize="14"
-                                   Foreground="Gray"/>
-                    </StackPanel>
-
-                    <!-- Index details -->
-                    <StackPanel Orientation="Horizontal" Spacing="12"
-                                IsVisible="{Binding HasIndexDetails}">
-                        <TextBlock Text="{Binding IndexTableName, StringFormat='Table: {0}'}"
-                                   FontSize="11" Foreground="Gray"
-                                   IsVisible="{Binding IndexTableName, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                        <TextBlock Text="{Binding IndexIsUnique, StringFormat='Unique: {0}'}"
-                                   FontSize="11" Foreground="Gray"
-                                   IsVisible="{Binding IndexIsUnique, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                        <TextBlock Text="{Binding IndexFilterCondition, StringFormat='Filter: {0}'}"
-                                   FontSize="11" Foreground="Gray"
-                                   IsVisible="{Binding IndexFilterCondition, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                   TextWrapping="Wrap"/>
-                    </StackPanel>
-
-                    <!-- View definition -->
-                    <TextBlock Text="{Binding ViewDefinition}"
-                               FontSize="11"
-                               Foreground="Gray"
-                               TextWrapping="Wrap"
-                               MaxHeight="60"
-                               IsVisible="{Binding HasViewDefinition}"/>
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
+                    <TextBlock Text="{Binding ObjectTypeDisplay}" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="{Binding ObjectName}" FontSize="14" Foreground="Gray"/>
+                    <Border Background="#FFF3CD" CornerRadius="3" Padding="6,1"
+                            IsVisible="{Binding HasPending}">
+                        <TextBlock Text="{Binding PendingCount, StringFormat='{}{0} pending'}"
+                                   FontSize="11" Foreground="#856404"/>
+                    </Border>
                 </StackPanel>
 
-                <Button AutomationProperties.AutomationId="StructureRefresh" AutomationProperties.Name="Refresh" Grid.Column="1"
-                        Command="{Binding RefreshCommand}"
-                        IsEnabled="{Binding CanRefresh}"
-                        ToolTip.Tip="Refresh"
-                        Width="32"
-                        Height="32"
-                        Padding="0"
-                        VerticalAlignment="Center">
-                    <PathIcon Data="{x:Static ui:StudioIcons.TABLE_STRUCTURE_REFRESH}"
-                              Width="16"
-                              Height="16" />
-                </Button>
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                    <Button AutomationProperties.AutomationId="StructureAddColumn"
+                            Content="Column" Command="{Binding AddColumnCommand}"
+                            IsVisible="{Binding IsTable}"
+                            ToolTip.Tip="Add a column"/>
+
+                    <Button AutomationProperties.AutomationId="StructureApply"
+                            Content="Apply" Command="{Binding ApplyCommand}"
+                            IsEnabled="{Binding CanApply}" Classes="accent"
+                            IsVisible="{Binding IsTable}"/>
+
+                    <Button AutomationProperties.AutomationId="StructureRebuild"
+                            Content="Rebuild..." Command="{Binding RebuildCommand}"
+                            IsEnabled="{Binding CanRebuild}"
+                            IsVisible="{Binding NeedsRebuild}"
+                            ToolTip.Tip="This change needs the table to be built again"/>
+
+                    <Button AutomationProperties.AutomationId="StructureRevert"
+                            Content="Revert" Command="{Binding RevertCommand}"
+                            IsEnabled="{Binding HasPending}"
+                            IsVisible="{Binding IsTable}"/>
+
+                    <Button AutomationProperties.AutomationId="StructureCopyDdl"
+                            Content="Copy DDL" Command="{Binding CopyDdlCommand}"/>
+
+                    <Button AutomationProperties.AutomationId="StructureRefresh"
+                            AutomationProperties.Name="Refresh"
+                            Command="{Binding RefreshCommand}"
+                            IsEnabled="{Binding CanRefresh}"
+                            ToolTip.Tip="Refresh" Width="32" Height="32" Padding="0">
+                        <PathIcon Data="{x:Static ui:StudioIcons.TABLE_STRUCTURE_REFRESH}" Width="16" Height="16"/>
+                    </Button>
+                </StackPanel>
             </Grid>
         </Border>
 
-        <!-- Content -->
-        <Grid Grid.Row="1">
-            <!-- Columns List -->
-            <Grid RowDefinitions="Auto,*">
-                <!-- List header -->
+        <!-- The section strip -->
+        <Border Grid.Row="1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,4">
+            <StackPanel Orientation="Horizontal" Spacing="4">
+                <RadioButton AutomationProperties.AutomationId="StructureSectionColumns"
+                             AutomationProperties.Name="Columns section"
+                             GroupName="StructureSection" Classes="tab"
+                             IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Columns}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="Columns"/>
+                        <TextBlock Text="{Binding ColumnCount}" Foreground="Gray"/>
+                    </StackPanel>
+                </RadioButton>
+
+                <RadioButton AutomationProperties.AutomationId="StructureSectionKeys"
+                             AutomationProperties.Name="Keys section"
+                             GroupName="StructureSection" Classes="tab"
+                             IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Keys}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="Keys and constraints"/>
+                        <TextBlock Text="{Binding Constraints.Count}" Foreground="Gray"/>
+                    </StackPanel>
+                </RadioButton>
+
+                <RadioButton AutomationProperties.AutomationId="StructureSectionIndexes"
+                             AutomationProperties.Name="Indexes section"
+                             GroupName="StructureSection" Classes="tab"
+                             IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Indexes}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="Indexes"/>
+                        <TextBlock Text="{Binding Indexes.Count}" Foreground="Gray"/>
+                    </StackPanel>
+                </RadioButton>
+
+                <RadioButton AutomationProperties.AutomationId="StructureSectionTriggers"
+                             AutomationProperties.Name="Triggers section"
+                             GroupName="StructureSection" Classes="tab"
+                             IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Triggers}">
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <TextBlock Text="Triggers"/>
+                        <TextBlock Text="{Binding Triggers.Count}" Foreground="Gray"/>
+                    </StackPanel>
+                </RadioButton>
+
+                <RadioButton AutomationProperties.AutomationId="StructureSectionDdl"
+                             AutomationProperties.Name="Ddl section"
+                             GroupName="StructureSection" Classes="tab"
+                             IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Ddl}">
+                    <TextBlock Text="DDL"/>
+                </RadioButton>
+            </StackPanel>
+        </Border>
+
+        <!-- The sections -->
+        <Grid Grid.Row="2">
+
+            <!-- Columns -->
+            <Grid RowDefinitions="Auto,*"
+                  IsVisible="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Columns}">
                 <Border Grid.Row="0"
                         Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                         BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                        BorderThickness="0,0,0,1"
-                        Padding="12,6">
-                    <Grid ColumnDefinitions="*,150,80,100,150">
-                        <TextBlock Grid.Column="0" Text="Name" FontWeight="SemiBold"/>
-                        <TextBlock Grid.Column="1" Text="Type" FontWeight="SemiBold"/>
-                        <TextBlock Grid.Column="2" Text="Nullable" FontWeight="SemiBold"/>
-                        <TextBlock Grid.Column="3" Text="Key" FontWeight="SemiBold"/>
-                        <TextBlock Grid.Column="4" Text="Default" FontWeight="SemiBold"/>
+                        BorderThickness="0,0,0,1" Padding="12,6">
+                    <Grid ColumnDefinitions="1.3*,130,70,130,1.7*,96,34">
+                        <TextBlock Grid.Column="0" Text="NAME" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="1" Text="TYPE" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="2" Text="NOT NULL" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="3" Text="DEFAULT" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="4" Text="CONSTRAINTS" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="5" Text="CHANGE" FontWeight="SemiBold" FontSize="11"/>
                     </Grid>
                 </Border>
 
                 <ScrollViewer Grid.Row="1">
                     <ItemsControl ItemsSource="{Binding Columns}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate>
+                            <DataTemplate x:DataType="models:ColumnDraft">
                                 <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
-                                        BorderThickness="0,0,0,1"
-                                        Padding="12,8">
-                                    <Grid ColumnDefinitions="*,150,80,100,150">
-                                        <TextBlock Grid.Column="0"
-                                                   Text="{Binding Name}"
-                                                   VerticalAlignment="Center"/>
+                                        BorderThickness="0,0,0,1" Padding="12,4">
+                                    <Grid ColumnDefinitions="1.3*,130,70,130,1.7*,96,34">
+                                        <TextBox Grid.Column="0" Text="{Binding Name}"
+                                                 BorderThickness="0" Background="Transparent"
+                                                 VerticalAlignment="Center"/>
 
-                                        <TextBlock Grid.Column="1"
-                                                   Text="{Binding DataType}"
-                                                   Foreground="Gray"
-                                                   VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="1" Text="{Binding DataType}"
+                                                 BorderThickness="0" Background="Transparent"
+                                                 VerticalAlignment="Center"/>
 
-                                        <TextBlock Grid.Column="2"
-                                                   Text="{Binding IsNullable, StringFormat='Null: {0}'}"
-                                                   Foreground="Gray"
-                                                   FontSize="12"
-                                                   VerticalAlignment="Center"/>
+                                        <CheckBox Grid.Column="2" IsChecked="{Binding !IsNullable}"
+                                                  VerticalAlignment="Center"/>
 
-                                        <TextBlock Grid.Column="3"
-                                                   Text="[PK]"
-                                                   Foreground="Orange"
-                                                   FontWeight="Bold"
-                                                   IsVisible="{Binding IsPrimaryKey}"
-                                                   VerticalAlignment="Center"/>
+                                        <TextBox Grid.Column="3" Text="{Binding DefaultValue}"
+                                                 BorderThickness="0" Background="Transparent"
+                                                 VerticalAlignment="Center"/>
 
-                                        <TextBlock Grid.Column="4"
-                                                   Text="{Binding DefaultValue, StringFormat='Default: {0}'}"
-                                                   Foreground="Gray"
-                                                   FontSize="12"
-                                                   IsVisible="{Binding DefaultValue, Converter={x:Static ObjectConverters.IsNotNull}}"
-                                                   VerticalAlignment="Center"/>
+                                        <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6"
+                                                    VerticalAlignment="Center">
+                                            <TextBlock Text="PRIMARY KEY" FontSize="11" Foreground="Orange"
+                                                       IsVisible="{Binding IsPrimaryKey}"/>
+                                            <TextBlock Text="AUTOINCREMENT" FontSize="11" Foreground="Gray"
+                                                       IsVisible="{Binding IsAutoIncrement}"/>
+                                            <TextBlock Text="UNIQUE" FontSize="11" Foreground="Gray"
+                                                       IsVisible="{Binding IsUnique}"/>
+                                            <TextBlock Text="{Binding ReferencesTable, StringFormat='-> {0}'}"
+                                                       FontSize="11" Foreground="Gray"
+                                                       IsVisible="{Binding ReferencesTable, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                            <TextBlock Text="computed" FontSize="11" Foreground="Gray"
+                                                       IsVisible="{Binding IsComputed}"/>
+                                            <TextBlock Text="to be dropped" FontSize="11" Foreground="#B71C1C"
+                                                       IsVisible="{Binding IsDeleted}"/>
+                                        </StackPanel>
+
+                                        <!-- WS-39: the category, in the row, as soon as the edit is made -->
+                                        <Border Grid.Column="5" Background="#FFF3CD" CornerRadius="3"
+                                                Padding="6,1" HorizontalAlignment="Left"
+                                                VerticalAlignment="Center"
+                                                IsVisible="{Binding HasMarker}"
+                                                ToolTip.Tip="{Binding MarkerReason}">
+                                            <TextBlock Text="{Binding Marker}" FontSize="11" Foreground="#856404"/>
+                                        </Border>
+
+                                        <Button Grid.Column="6" Width="24" Height="24" Padding="0"
+                                                AutomationProperties.AutomationId="StructureDropColumn"
+                                                AutomationProperties.Name="Drop this column"
+                                                Content="x" FontSize="11"
+                                                IsVisible="{Binding !IsDeleted}"
+                                                Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).DeleteColumnCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="Drop this column"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -128,43 +232,187 @@
                 </ScrollViewer>
             </Grid>
 
-            <!-- Loading overlay -->
-            <Border Background="#80000000"
-                    IsVisible="{Binding IsLoading}">
-                <StackPanel HorizontalAlignment="Center"
-                            VerticalAlignment="Center"
-                            Spacing="8">
-                    <Border Width="32" Height="32"
-                            Background="White"
-                            CornerRadius="16">
-                        <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
-                                  Width="16" Height="16"
-                                  Foreground="{DynamicResource SystemAccentColor}"/>
+            <!-- Keys and constraints -->
+            <ScrollViewer IsVisible="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Keys}">
+                <StackPanel Spacing="8" Margin="12">
+                    <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
+                            CornerRadius="4" Padding="10"
+                            IsVisible="{Binding KeyWarningIsSevere}">
+                        <TextBlock Text="{Binding KeyWarning}" TextWrapping="Wrap" Foreground="#856404"/>
                     </Border>
-                    <TextBlock Text="Loading structure..."
-                               Foreground="White"
-                               HorizontalAlignment="Center"/>
-                </StackPanel>
-            </Border>
 
-            <!-- Error message -->
-            <Border Background="#FFF3CD"
-                    BorderBrush="#FFC107"
-                    BorderThickness="1"
-                    Padding="8"
-                    Margin="8"
-                    VerticalAlignment="Top"
-                    IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
-                <StackPanel Orientation="Horizontal" Spacing="8">
-                    <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                              Width="16" Height="16"
-                              Foreground="#856404"/>
-                    <TextBlock Text="{Binding ErrorMessage}"
-                               TextWrapping="Wrap"
-                               Foreground="#856404"/>
+                    <TextBlock Text="{Binding KeyWarning}" TextWrapping="Wrap" Foreground="Gray"
+                               IsVisible="{Binding !KeyWarningIsSevere}"/>
+
+                    <ItemsControl ItemsSource="{Binding Constraints}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="tabs:ConstraintRow">
+                                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                        BorderThickness="0,0,0,1" Padding="0,6">
+                                    <Grid ColumnDefinitions="*,140,*">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}"/>
+                                        <TextBlock Grid.Column="1" Text="{Binding Type}" Foreground="Gray"/>
+                                        <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                                            <TextBlock Text="{Binding Columns}" Foreground="Gray"/>
+                                            <TextBlock Text="{Binding Detail}" Foreground="Gray" FontSize="11"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </StackPanel>
-            </Border>
+            </ScrollViewer>
+
+            <!-- Indexes -->
+            <Grid RowDefinitions="Auto,*"
+                  IsVisible="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Indexes}">
+                <Border Grid.Row="0" Padding="12,6"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        BorderThickness="0,0,0,1">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button AutomationProperties.AutomationId="StructureCreateIndex"
+                                Content="Create index..." Command="{Binding CreateIndexCommand}"/>
+                    </StackPanel>
+                </Border>
+
+                <ScrollViewer Grid.Row="1">
+                    <ItemsControl ItemsSource="{Binding Indexes}" Margin="12,0">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:IndexInfo">
+                                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                        BorderThickness="0,0,0,1" Padding="0,8">
+                                    <Grid ColumnDefinitions="*,*,Auto,Auto">
+                                        <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center"/>
+
+                                        <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
+                                            <TextBlock Text="{Binding}" Foreground="Gray" FontSize="12"/>
+                                            <TextBlock Text="{Binding FilterCondition, StringFormat='partial - WHERE {0}'}"
+                                                       Foreground="Gray" FontSize="11"
+                                                       IsVisible="{Binding FilterCondition, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                        </StackPanel>
+
+                                        <Button Grid.Column="2" Content="Drop and create" FontSize="11"
+                                                AutomationProperties.AutomationId="StructureRecreateIndex"
+                                                AutomationProperties.Name="Drop and create this index"
+                                                Margin="0,0,6,0"
+                                                Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).RecreateIndexCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="This engine has no REINDEX and no ALTER INDEX, so rebuilding an index is a drop and a create"/>
+
+                                        <Button Grid.Column="3" Content="Drop" FontSize="11"
+                                                AutomationProperties.AutomationId="StructureDropIndex"
+                                                AutomationProperties.Name="Drop this index"
+                                                Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).DropIndexCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </ScrollViewer>
+            </Grid>
+
+            <!-- Triggers -->
+            <ScrollViewer IsVisible="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Triggers}">
+                <StackPanel Margin="12" Spacing="4">
+                    <ItemsControl ItemsSource="{Binding Triggers}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="models:TriggerInfo">
+                                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                        BorderThickness="0,0,0,1" Padding="0,8">
+                                    <Grid ColumnDefinitions="*,Auto">
+                                        <StackPanel Grid.Column="0" Spacing="2">
+                                            <TextBlock Text="{Binding Name}"/>
+                                            <TextBlock FontSize="11" Foreground="Gray">
+                                                <Run Text="{Binding Timing}"/>
+                                                <Run Text="{Binding Event}"/>
+                                                <Run Text=" - "/>
+                                                <Run Text="{Binding Orientation}"/>
+                                            </TextBlock>
+                                            <TextBlock Text="{Binding Body}" FontSize="11" Foreground="Gray"
+                                                       FontFamily="Consolas,Courier New" TextWrapping="Wrap"/>
+                                        </StackPanel>
+
+                                        <Button Grid.Column="1" Content="Drop" FontSize="11"
+                                                AutomationProperties.AutomationId="StructureDropTrigger"
+                                                AutomationProperties.Name="Drop this trigger"
+                                                Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).DropTriggerCommand}"
+                                                CommandParameter="{Binding}"/>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="There is no ALTER TRIGGER on this engine, and none to enable or disable one: a trigger is created or dropped."
+                               FontSize="11" Foreground="Gray" TextWrapping="Wrap" Margin="0,8,0,0"/>
+                </StackPanel>
+            </ScrollViewer>
+
+            <!-- DDL -->
+            <ScrollViewer IsVisible="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Ddl}">
+                <StackPanel Margin="12" Spacing="8">
+                    <TextBlock Text="{Binding FullDdl}"
+                               FontFamily="Consolas,Courier New" FontSize="12"
+                               TextWrapping="Wrap"/>
+
+                    <TextBlock Text="{Binding ViewDefinition}"
+                               FontFamily="Consolas,Courier New" FontSize="12"
+                               TextWrapping="Wrap"
+                               IsVisible="{Binding HasViewDefinition}"/>
+
+                    <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
+                            CornerRadius="4" Padding="10"
+                            IsVisible="{Binding !CanEditView}">
+                        <TextBlock TextWrapping="Wrap" Foreground="#856404"
+                                   Text="The catalogue cannot render this view's body - it comes back empty for a UNION and for a subquery. Changing a view means dropping and creating it, and Studio will not do that from a body it does not have."/>
+                    </Border>
+                </StackPanel>
+            </ScrollViewer>
         </Grid>
+
+        <!-- The DDL panel: what Apply will run, always visible while it is being decided (WS-38) -->
+        <Border Grid.Row="3"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="12,8"
+                MinHeight="90"
+                IsVisible="{Binding IsTable}">
+            <Grid RowDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Row="0" Text="Will be run on Apply" FontSize="11" FontWeight="SemiBold"
+                           Foreground="Gray"/>
+
+                <ScrollViewer Grid.Row="1" MaxHeight="120">
+                    <TextBlock Text="{Binding PendingSql}"
+                               FontFamily="Consolas,Courier New" FontSize="12"
+                               TextWrapping="Wrap"/>
+                </ScrollViewer>
+
+                <StackPanel Grid.Row="2" Spacing="4">
+                    <!-- Refusals: nothing has been attempted, so they are not errors -->
+                    <ItemsControl ItemsSource="{Binding Refusals}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="#856404" FontSize="11"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+
+                    <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap"
+                               Foreground="#B71C1C" FontSize="11"
+                               IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- Loading overlay: on the content row only, never over the strip or the panel -->
+        <Border Grid.Row="2" Background="#80000000" IsVisible="{Binding IsLoading}">
+            <TextBlock Text="Loading structure..." Foreground="White"
+                       HorizontalAlignment="Center" VerticalAlignment="Center"/>
+        </Border>
+
     </Grid>
 
 </UserControl>

@@ -58,7 +58,9 @@
             <StackPanel Spacing="8">
                 <TextBlock Text="Format" FontWeight="SemiBold"/>
                 <StackPanel Spacing="4">
-                    <RadioButton GroupName="Format"
+                    <RadioButton AutomationProperties.AutomationId="ExportFormatCsv"
+                                 AutomationProperties.Name="CSV format"
+                                 GroupName="Format"
                                  IsEnabled="{Binding !IsExporting}"
                                  IsChecked="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ExportFormat.Csv}}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -67,7 +69,9 @@
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                         </StackPanel>
                     </RadioButton>
-                    <RadioButton GroupName="Format"
+                    <RadioButton AutomationProperties.AutomationId="ExportFormatJson"
+                                 AutomationProperties.Name="JSON format"
+                                 GroupName="Format"
                                  IsEnabled="{Binding !IsExporting}"
                                  IsChecked="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ExportFormat.Json}}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
@@ -76,7 +80,9 @@
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                         </StackPanel>
                     </RadioButton>
-                    <RadioButton GroupName="Format"
+                    <RadioButton AutomationProperties.AutomationId="ExportFormatSql"
+                                 AutomationProperties.Name="SQL format"
+                                 GroupName="Format"
                                  IsEnabled="{Binding !IsExporting}"
                                  IsChecked="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ExportFormat.Sql}}">
                         <StackPanel Orientation="Horizontal" Spacing="8">

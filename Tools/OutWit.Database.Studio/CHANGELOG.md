@@ -43,6 +43,26 @@ built and released under dev tags only, and is not a supported version. Full det
   not, the editor says why paging deeper is slow instead of leaving it unexplained.
 - **More than one database can be open at a time.** *Open Database* and the recent files list add a
   connection instead of replacing the one that is open; the explorer grows a root per connection.
+- **The structure tab is a schema designer.** Five sections - columns, keys and constraints, indexes,
+  triggers, DDL - and a DDL panel that is on screen the whole time: the statements an edit will run
+  appear as it is made, not after Apply has been pressed.
+- **Every edit says how it will be carried out, in its row.** In place, a rebuild, or a drop and a
+  create - the three categories are what this engine's `ALTER TABLE` does and does not do, measured
+  rather than assumed, and each marker carries the reason.
+- **Applying a set of edits reports what landed.** This engine does not roll DDL back, so the set runs
+  a statement at a time, stops at the first refusal, and says which statements are in the database and
+  which never ran.
+- **A table rebuild is planned in full**: four steps with their SQL, the objects that will be put back,
+  the ones that point at the table and will not be, what the catalogue cannot carry across, and how
+  many values the type conversion will destroy. Studio does not run it yet - see Known issues - and
+  hands the script to the query editor instead.
+- **The index dialog offers everything the engine takes** - UNIQUE, several columns, a direction,
+  a partial `WHERE`, `INCLUDE`, an expression - and says which of them the planner will actually use.
+- **A trigger editor that knows the boundary of the language**: only DML in the body, `WHEN` written
+  with the brackets the grammar requires, and an explanation for `SET NEW.column`, which does not parse
+  at all. Replacing a trigger says "Drop and create", because that is what it is.
+- **F2 renames a table**, and only a table: there is no `ALTER VIEW`, `ALTER INDEX` or `ALTER TRIGGER`
+  in this language. **Empty the table** (TRUNCATE) is in the tree's menu beside it.
 
 ### Changed
 
@@ -93,6 +113,15 @@ built and released under dev tags only, and is not a supported version. Full det
 - **An in-memory database is the one you get.** The dialog used to build a database, throw it away and
   connect to a different, empty one; combined with LSM it wrote a database into whichever directory the
   application was launched from. That combination is now refused with an explanation.
+
+### Known issues
+
+- **A table rebuild is not run by Studio.** Rebuilding a table from the designer left the database
+  file unreadable twice, on two different files, in the shipping application - the schema catalogue's
+  overflow chain is damaged and the file cannot be opened by anything afterwards. Fourteen controlled
+  runs of the same rebuild outside the application all reopen correctly, so the cause is not yet
+  known. Until it is, the dialog plans the rebuild and hands the script to the query editor, where the
+  same statements are measured to be safe. Make a copy of the database before running them.
 
 ## 2.0.0
 

@@ -85,6 +85,27 @@ public sealed class ScriptedDialogService : IDialogService
     public Task<bool> ShowCreateIndexAsync(CreateIndexViewModel viewModel)
         => NoteResult(nameof(ShowCreateIndexAsync));
 
+    /// <summary>
+    /// The rebuild dialog. Like the connection dialogs, a test can say what the user does inside it -
+    /// which is how "press Rebuild and watch the table come back with the new shape" is written
+    /// without Avalonia.
+    /// </summary>
+    public Task<bool> ShowTableRebuildAsync(TableRebuildViewModel viewModel)
+    {
+        Shown.Add(nameof(ShowTableRebuildAsync));
+        LastRebuild = viewModel;
+
+        return OnRebuildDialog?.Invoke(viewModel) ?? Task.FromResult(false);
+    }
+
+    public Task<bool> ShowEditTriggerAsync(EditTriggerViewModel viewModel)
+    {
+        Shown.Add(nameof(ShowEditTriggerAsync));
+        LastTrigger = viewModel;
+
+        return OnTriggerDialog?.Invoke(viewModel) ?? Task.FromResult(false);
+    }
+
     #endregion
 
     #region Tools
@@ -123,6 +144,17 @@ public sealed class ScriptedDialogService : IDialogService
 
     /// <summary>Every dialog and picker this was asked for, in order.</summary>
     public List<string> Shown { get; } = [];
+
+    /// <summary>What the user does inside the rebuild dialog. Null means they closed it.</summary>
+    public Func<TableRebuildViewModel, Task<bool>>? OnRebuildDialog { get; set; }
+
+    /// <summary>What the user does inside the trigger editor.</summary>
+    public Func<EditTriggerViewModel, Task<bool>>? OnTriggerDialog { get; set; }
+
+    /// <summary>The last rebuild ViewModel shown - the plan it was built with is worth asserting on.</summary>
+    public TableRebuildViewModel? LastRebuild { get; private set; }
+
+    public EditTriggerViewModel? LastTrigger { get; private set; }
 
     #endregion
 }

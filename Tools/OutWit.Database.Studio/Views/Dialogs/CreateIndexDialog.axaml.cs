@@ -1,11 +1,13 @@
 using Avalonia.Controls;
+using Avalonia.Input;
 using Avalonia.Interactivity;
 using OutWit.Database.Studio.ViewModels;
 
 namespace OutWit.Database.Studio.Views.Dialogs;
 
 /// <summary>
-/// Dialog for creating a new index.
+/// The index dialog (WS-43). The code-behind does only what a multi-selection list makes it do: take
+/// what is selected and hand it to the ViewModel, which owns every decision about the index itself.
 /// </summary>
 public partial class CreateIndexDialog : Window
 {
@@ -22,77 +24,45 @@ public partial class CreateIndexDialog : Window
 
     private void AddColumn_Click(object? sender, RoutedEventArgs e)
     {
-        var vm = DataContext as CreateIndexViewModel;
-        if (vm == null)
+        if (DataContext is not CreateIndexViewModel vm)
             return;
 
-        var availableList = this.FindControl<ListBox>("AvailableColumnsList");
-        if (availableList?.SelectedItems == null)
-            return;
-
-        foreach (var item in availableList.SelectedItems.Cast<string>().ToList())
-        {
-            if (!vm.SelectedColumns.Contains(item))
-            {
-                vm.SelectedColumns.Add(item);
-            }
-        }
+        foreach (var column in Selected())
+            vm.AddColumnCommand.Execute(column);
     }
 
-    private void RemoveColumn_Click(object? sender, RoutedEventArgs e)
+    private void AddIncluded_Click(object? sender, RoutedEventArgs e)
     {
-        var vm = DataContext as CreateIndexViewModel;
-        if (vm == null)
+        if (DataContext is not CreateIndexViewModel vm)
             return;
 
-        var selectedList = this.FindControl<ListBox>("SelectedColumnsList");
-        if (selectedList?.SelectedItems == null)
-            return;
-
-        foreach (var item in selectedList.SelectedItems.Cast<string>().ToList())
-        {
-            vm.SelectedColumns.Remove(item);
-        }
+        foreach (var column in Selected())
+            vm.AddIncludedCommand.Execute(column);
     }
 
-    private void MoveUp_Click(object? sender, RoutedEventArgs e)
+    /// <summary>
+    /// An expression index is typed rather than picked - the catalogue cannot list something that does
+    /// not exist yet.
+    /// </summary>
+    private void Expression_KeyDown(object? sender, KeyEventArgs e)
     {
-        var vm = DataContext as CreateIndexViewModel;
-        if (vm == null)
+        if (e.Key != Key.Enter || DataContext is not CreateIndexViewModel vm)
             return;
 
-        var selectedList = this.FindControl<ListBox>("SelectedColumnsList");
-        if (selectedList?.SelectedItem == null)
+        var box = this.FindControl<TextBox>("ExpressionBox");
+
+        if (string.IsNullOrWhiteSpace(box?.Text))
             return;
 
-        var item = (string)selectedList.SelectedItem;
-        var index = vm.SelectedColumns.IndexOf(item);
-        
-        if (index > 0)
-        {
-            vm.SelectedColumns.Move(index, index - 1);
-            selectedList.SelectedItem = item;
-        }
+        vm.AddColumnCommand.Execute(box.Text.Trim());
+        box.Text = string.Empty;
     }
 
-    private void MoveDown_Click(object? sender, RoutedEventArgs e)
+    private List<string> Selected()
     {
-        var vm = DataContext as CreateIndexViewModel;
-        if (vm == null)
-            return;
+        var list = this.FindControl<ListBox>("AvailableColumnsList");
 
-        var selectedList = this.FindControl<ListBox>("SelectedColumnsList");
-        if (selectedList?.SelectedItem == null)
-            return;
-
-        var item = (string)selectedList.SelectedItem;
-        var index = vm.SelectedColumns.IndexOf(item);
-        
-        if (index < vm.SelectedColumns.Count - 1)
-        {
-            vm.SelectedColumns.Move(index, index + 1);
-            selectedList.SelectedItem = item;
-        }
+        return list?.SelectedItems?.Cast<string>().ToList() ?? [];
     }
 
     #endregion

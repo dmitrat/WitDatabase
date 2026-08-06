@@ -61,6 +61,16 @@ public interface IDialogService
 
     Task<bool> ShowCreateIndexAsync(CreateIndexViewModel viewModel);
 
+    /// <summary>
+    /// The rebuild conversation of 5.3. True when the table was rebuilt.
+    /// </summary>
+    Task<bool> ShowTableRebuildAsync(TableRebuildViewModel viewModel);
+
+    /// <summary>
+    /// The trigger editor (WS-45). True when a trigger was created or replaced.
+    /// </summary>
+    Task<bool> ShowEditTriggerAsync(EditTriggerViewModel viewModel);
+
     #endregion
 }
 
@@ -100,4 +110,8 @@ public sealed class NoDialogService : IDialogService
     public Task<bool> ShowCreateViewAsync(CreateViewViewModel viewModel) => Task.FromResult(false);
 
     public Task<bool> ShowCreateIndexAsync(CreateIndexViewModel viewModel) => Task.FromResult(false);
+
+    public Task<bool> ShowTableRebuildAsync(TableRebuildViewModel viewModel) => Task.FromResult(false);
+
+    public Task<bool> ShowEditTriggerAsync(EditTriggerViewModel viewModel) => Task.FromResult(false);
 }
