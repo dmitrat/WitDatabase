@@ -12,6 +12,7 @@ public class ConnectionViewModelTests
 {
     #region Fields
 
+    private StudioFixture m_studio = null!;
     private ApplicationViewModel m_appVm = null!;
     private ConnectionViewModel m_connectionVm = null!;
 
@@ -20,13 +21,11 @@ public class ConnectionViewModelTests
     #region Setup
 
     [SetUp]
-    public void Setup()
+    public async Task Setup()
     {
-        m_appVm = new ApplicationViewModel(
-            new FakeDatabaseService(),
-            new FakeSettingsService(),
-            new FakeExportService(),
-            NullLogger<ApplicationViewModel>.Instance);
+        m_studio = await StudioFixture.CreateAsync(connect: false);
+
+        m_appVm = m_studio.App;
 
         m_connectionVm = m_appVm.ConnectionVm;
 
@@ -40,6 +39,12 @@ public class ConnectionViewModelTests
         m_connectionVm.IsNewDatabase = false;
         m_connectionVm.ErrorMessage = null;
         m_connectionVm.IsConnecting = false;
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await m_studio.DisposeAsync();
     }
 
     #endregion

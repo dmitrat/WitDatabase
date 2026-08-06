@@ -12,6 +12,7 @@ public class MainWindowViewModelTests
 {
     #region Fields
 
+    private StudioFixture m_studio = null!;
     private ApplicationViewModel m_appVm = null!;
     private MainWindowViewModel m_mainWindowVm = null!;
 
@@ -20,15 +21,19 @@ public class MainWindowViewModelTests
     #region Setup
 
     [SetUp]
-    public void Setup()
+    public async Task Setup()
     {
-        m_appVm = new ApplicationViewModel(
-            new FakeDatabaseService(),
-            new FakeSettingsService(),
-            new FakeExportService(),
-            NullLogger<ApplicationViewModel>.Instance);
+        m_studio = await StudioFixture.CreateAsync();
+
+        m_appVm = m_studio.App;
 
         m_mainWindowVm = m_appVm.MainWindowVm;
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await m_studio.DisposeAsync();
     }
 
     #endregion
@@ -70,23 +75,29 @@ public class MainWindowViewModelTests
     #region CanExecute Tests
 
     [Test]
-    public void CloseDatabaseCannotExecuteWhenNotConnectedTest()
+    public async Task CloseDatabaseFollowsTheConnectionTest()
     {
-        m_mainWindowVm.CurrentConnection = null;
+        // Both directions in one case. This used to set CurrentConnection = null and call that
+        // "not connected" - a property of the view, not of the service, and against a double that was
+        // never connected either way the difference could not show.
+        Assert.That(m_mainWindowVm.CloseDatabaseCommand.CanExecute(null), Is.True,
+            "connected: closing the database is offered");
 
-        var canExecute = m_mainWindowVm.CloseDatabaseCommand.CanExecute(null);
+        await m_studio.Database.DisconnectAsync();
 
-        Assert.That(canExecute, Is.False);
+        Assert.That(m_mainWindowVm.CloseDatabaseCommand.CanExecute(null), Is.False,
+            "disconnected: there is nothing left to close");
     }
 
     [Test]
-    public void RefreshCannotExecuteWhenNotConnectedTest()
+    public async Task RefreshFollowsTheConnectionTest()
     {
-        m_mainWindowVm.CurrentConnection = null;
+        Assert.That(m_mainWindowVm.RefreshCommand.CanExecute(null), Is.True,
+            "connected: there is a schema to refresh");
 
-        var canExecute = m_mainWindowVm.RefreshCommand.CanExecute(null);
+        await m_studio.Database.DisconnectAsync();
 
-        Assert.That(canExecute, Is.False);
+        Assert.That(m_mainWindowVm.RefreshCommand.CanExecute(null), Is.False);
     }
 
     #endregion
@@ -107,9 +118,17 @@ public class MainWindowViewModelTests
     }
 
     [Test]
-    public void IsConnectedReturnsFalseWhenNoConnectionTest()
+    public async Task IsConnectedFollowsTheServiceNotTheDisplayedConnectionTest()
     {
+        Assert.That(m_mainWindowVm.IsConnected, Is.True);
+
+        // Clearing the displayed connection is not a disconnect, and must not read as one.
         m_mainWindowVm.CurrentConnection = null;
+
+        Assert.That(m_mainWindowVm.IsConnected, Is.True,
+            "the flag the whole interface binds to describes the service, not a display property");
+
+        await m_studio.Database.DisconnectAsync();
 
         Assert.That(m_mainWindowVm.IsConnected, Is.False);
     }

@@ -38,13 +38,15 @@ public sealed class ApplicationViewModel
         ISettingsService settingsService,
         IExportService exportService,
         ILogger<ApplicationViewModel> logger,
-        IConfirmationService? confirmations = null)
+        IConfirmationService? confirmations = null,
+        IDialogService? dialogs = null)
     {
         Database = databaseService;
         Settings = settingsService;
         Export = exportService;
         Logger = logger;
         Confirmations = confirmations ?? new KeepUnsavedChangesService();
+        Dialogs = dialogs ?? new NoDialogService();
 
         InitViewModels();
     }
@@ -59,11 +61,7 @@ public sealed class ApplicationViewModel
         ConnectionVm = new ConnectionViewModel(this);
         DatabaseExplorerVm = new DatabaseExplorerViewModel(this);
         
-        // Unified workspace tabs system
         WorkspaceTabsVm = new WorkspaceTabsViewModel(this);
-        
-        // Legacy ViewModel kept for backward compatibility with old tests
-        QueryTabsVm = new QueryTabsViewModel(this);
     }
 
     #endregion
@@ -117,16 +115,9 @@ public sealed class ApplicationViewModel
     public DatabaseExplorerViewModel DatabaseExplorerVm { get; private set; } = null!;
     
     /// <summary>
-    /// Unified workspace tabs system for Query, Edit, and Structure tabs.
+    /// The tabs of the workspace - query, data, structure.
     /// </summary>
     public WorkspaceTabsViewModel WorkspaceTabsVm { get; private set; } = null!;
-    
-    /// <summary>
-    /// Legacy query tabs ViewModel - kept for backward compatibility with tests.
-    /// Use WorkspaceTabsVm for new code.
-    /// </summary>
-    [Obsolete("Use WorkspaceTabsVm instead")]
-    public QueryTabsViewModel QueryTabsVm { get; private set; } = null!;
 
     #endregion
 
@@ -145,6 +136,16 @@ public sealed class ApplicationViewModel
     /// implementation this keeps the work and refuses the close.
     /// </summary>
     public IConfirmationService Confirmations { get; set; }
+
+    /// <summary>
+    /// Pickers and dialogs. Never null: without a host-supplied implementation nothing is shown and
+    /// every answer is "nothing was chosen", which is what a headless run should see.
+    ///
+    /// This and <see cref="Confirmations"/> stay separate on purpose. One shows a window, the other
+    /// asks a person a question; a test that scripts an answer about unapplied work should not have
+    /// to stub nine picker methods to do it.
+    /// </summary>
+    public IDialogService Dialogs { get; set; }
     
     public Avalonia.Controls.Window? MainWindow { get; private set; }
 

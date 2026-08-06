@@ -203,14 +203,10 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         if (!IsConnected)
             return;
 
-        var mainWindow = ApplicationVm.MainWindow;
-        if (mainWindow == null)
-            return;
-
         var exportVm = new ExportViewModel(ApplicationVm);
         await exportVm.InitializeAsync();
 
-        await ExportDialog.ShowAsync(mainWindow, exportVm);
+        await ApplicationVm.Dialogs.ShowExportAsync(exportVm);
     }
 
     private async Task ImportAsync()
@@ -218,14 +214,10 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         if (!IsConnected)
             return;
 
-        var mainWindow = ApplicationVm.MainWindow;
-        if (mainWindow == null)
-            return;
-
         var importVm = new ImportViewModel(ApplicationVm);
         await importVm.InitializeAsync();
 
-        await ImportDialog.ShowAsync(mainWindow, importVm);
+        await ApplicationVm.Dialogs.ShowImportAsync(importVm);
     }
 
     private async Task OpenRecentAsync(string? filePath)
@@ -278,24 +270,17 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task ShowSettingsAsync()
     {
-        var mainWindow = ApplicationVm.MainWindow;
-        if (mainWindow == null)
-            return;
-
         var settingsVm = new SettingsViewModel(ApplicationVm);
         await settingsVm.InitializeAsync();
 
-        await SettingsDialog.ShowAsync(mainWindow, settingsVm);
+        await ApplicationVm.Dialogs.ShowSettingsAsync(settingsVm);
     }
 
     private async Task ShowAboutAsync()
     {
-        var mainWindow = ApplicationVm.MainWindow;
-        if (mainWindow == null)
-            return;
-
         var aboutVm = new AboutViewModel(ApplicationVm);
-        await AboutDialog.ShowAsync(mainWindow, aboutVm);
+
+        await ApplicationVm.Dialogs.ShowAboutAsync(aboutVm);
     }
 
     /// <summary>

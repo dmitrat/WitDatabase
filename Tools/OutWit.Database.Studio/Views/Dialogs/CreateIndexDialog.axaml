@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -59,7 +59,7 @@
                             </DataTemplate>
                         </ComboBox.ItemTemplate>
                     </ComboBox>
-                    <Button Command="{Binding LoadTablesCommand}"
+                    <Button AutomationProperties.AutomationId="CreateIndexLoadTables" AutomationProperties.Name="Load tables" Command="{Binding LoadTablesCommand}"
                             Width="140"
                             HorizontalAlignment="Left"
                             Margin="0,4,0,0">
@@ -107,26 +107,26 @@
                                     VerticalAlignment="Center"
                                     Spacing="8"
                                     Margin="8">
-                            <Button Width="40"
+                            <Button AutomationProperties.AutomationId="CreateIndexAddSelectedColumn" AutomationProperties.Name="Add selected column" Width="40"
                                     Click="AddColumn_Click"
                                     ToolTip.Tip="Add selected column">
                                 <PathIcon Data="{x:Static ui:StudioIcons.CHEVRON_RIGHT}"
                                           Width="14" Height="14"/>
                             </Button>
-                            <Button Width="40"
+                            <Button AutomationProperties.AutomationId="CreateIndexRemoveSelectedColumn" AutomationProperties.Name="Remove selected column" Width="40"
                                     Click="RemoveColumn_Click"
                                     ToolTip.Tip="Remove selected column">
                                 <PathIcon Data="{x:Static ui:StudioIcons.CHEVRON_LEFT}"
                                           Width="14" Height="14"/>
                             </Button>
-                            <Button Width="40"
+                            <Button AutomationProperties.AutomationId="CreateIndexMoveUp" AutomationProperties.Name="Move up" Width="40"
                                     Margin="0,16,0,0"
                                     Click="MoveUp_Click"
                                     ToolTip.Tip="Move up">
                                 <PathIcon Data="{x:Static ui:StudioIcons.ARROW_UP}"
                                           Width="14" Height="14"/>
                             </Button>
-                            <Button Width="40"
+                            <Button AutomationProperties.AutomationId="CreateIndexMoveDown" AutomationProperties.Name="Move down" Width="40"
                                     Click="MoveDown_Click"
                                     ToolTip.Tip="Move down">
                                 <PathIcon Data="{x:Static ui:StudioIcons.ARROW_DOWN}"
@@ -150,7 +150,7 @@
                         </Border>
                     </Grid>
                     
-                    <Button Command="{Binding LoadColumnsCommand}"
+                    <Button AutomationProperties.AutomationId="CreateIndexLoadColumns" AutomationProperties.Name="Load columns" Command="{Binding LoadColumnsCommand}"
                             IsEnabled="{Binding CanLoadColumns}"
                             Width="270"
                             HorizontalAlignment="Left"
@@ -184,7 +184,7 @@
                                    DockPanel.Dock="Left"
                                    VerticalAlignment="Center"/>
                         
-                        <Button Command="{Binding GenerateDdlCommand}"
+                        <Button AutomationProperties.AutomationId="CreateIndexGenerateDdl" AutomationProperties.Name="Generate DDL" Command="{Binding GenerateDdlCommand}"
                                 IsEnabled="{Binding CanGenerateDdl}"
                                 DockPanel.Dock="Right"
                                 HorizontalAlignment="Right"
@@ -239,13 +239,13 @@
                         HorizontalAlignment="Right"
                         Spacing="8">
                 
-                <Button Command="{Binding CancelCommand}"
+                <Button AutomationProperties.AutomationId="CreateIndexCancel" AutomationProperties.Name="Cancel" Command="{Binding CancelCommand}"
                         Width="100"
                         HorizontalContentAlignment="Center">
                     <TextBlock Text="Cancel"/>
                 </Button>
                 
-                <Button Command="{Binding CreateIndexCommand}"
+                <Button AutomationProperties.AutomationId="CreateIndexCreate" AutomationProperties.Name="Create index" Command="{Binding CreateIndexCommand}"
                         IsEnabled="{Binding CanCreateIndex}"
                         Width="130"
                         HorizontalContentAlignment="Center"

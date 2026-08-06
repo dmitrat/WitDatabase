@@ -59,8 +59,8 @@ public class TableEditingTests
 
         var app = new ApplicationViewModel(
             db,
-            new FakeSettingsService(),
-            new FakeExportService(),
+            new SettingsService(NullLogger<SettingsService>.Instance, Path.Combine(Path.GetTempPath(), "WitStudioTests", Guid.NewGuid().ToString("N"), "settings.json")),
+            new ExportService(),
             NullLogger<ApplicationViewModel>.Instance);
 
         return (app, db);

@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -54,7 +54,7 @@
                                          Text="{Binding ConnectionInfo.FilePath, Mode=TwoWay}"
                                          Watermark="C:\Data\myapp.witdb"
                                          Margin="0,0,8,0"/>
-                                <Button Grid.Column="1"
+                                <Button AutomationProperties.AutomationId="CreateDatabaseBrowse" Grid.Column="1"
                                         Command="{Binding BrowseFileCommand}"
                                         Content="Browse..."
                                         Width="100"/>
@@ -201,13 +201,13 @@
                            Foreground="Gray"/>
             </StackPanel>
 
-            <Button Grid.Column="1"
+            <Button AutomationProperties.AutomationId="CreateDatabaseCancel" Grid.Column="1"
                     Content="Cancel"
                     Command="{Binding CancelCommand}"
                     Width="100"
                     Margin="0,0,8,0"/>
 
-            <Button Grid.Column="2"
+            <Button AutomationProperties.AutomationId="CreateDatabaseCreate" Grid.Column="2"
                     Content="Create"
                     Command="{Binding ConnectCommand}"
                     Width="100"

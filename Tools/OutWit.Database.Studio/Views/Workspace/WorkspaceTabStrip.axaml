@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -18,7 +18,7 @@
         <Grid ColumnDefinitions="Auto,*,Auto">
             
             <!-- Left scroll button -->
-            <Button Grid.Column="0"
+            <Button AutomationProperties.AutomationId="WorkspaceTabStripScrollLeftButton" AutomationProperties.Name="Scroll left" Grid.Column="0"
                     x:Name="ScrollLeftButton"
                     Width="20"
                     Height="28"
@@ -94,7 +94,7 @@
                                     <Border.ContextMenu>
                                         <ContextMenu>
                                             <!-- Pin/Unpin -->
-                                            <MenuItem Header="Pin Tab"
+                                            <MenuItem AutomationProperties.AutomationId="WorkspaceTabStripPinTab" Header="Pin Tab"
                                                       Command="{Binding $parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).PinTabCommand}"
                                                       CommandParameter="{Binding}"
                                                       IsVisible="{Binding !IsPinned}">
@@ -102,7 +102,7 @@
                                                     <PathIcon Data="{x:Static ui:StudioIcons.TAB_PIN}" Width="14" Height="14"/>
                                                 </MenuItem.Icon>
                                             </MenuItem>
-                                            <MenuItem Header="Unpin Tab"
+                                            <MenuItem AutomationProperties.AutomationId="WorkspaceTabStripUnpinTab" Header="Unpin Tab"
                                                       Command="{Binding $parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).UnpinTabCommand}"
                                                       CommandParameter="{Binding}"
                                                       IsVisible="{Binding IsPinned}">
@@ -114,7 +114,7 @@
                                             <Separator/>
                                             
                                             <!-- Close options -->
-                                            <MenuItem Header="Close"
+                                            <MenuItem AutomationProperties.AutomationId="WorkspaceTabStripClose" Header="Close"
                                                       Command="{Binding $parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).CloseTabCommand}"
                                                       CommandParameter="{Binding}"
                                                       InputGesture="Ctrl+W"
@@ -123,7 +123,7 @@
                                                     <PathIcon Data="{x:Static ui:StudioIcons.TAB_CLOSE}" Width="14" Height="14"/>
                                                 </MenuItem.Icon>
                                             </MenuItem>
-                                            <MenuItem Header="Close Others"
+                                            <MenuItem AutomationProperties.AutomationId="WorkspaceTabStripCloseOthers" Header="Close Others"
                                                       Command="{Binding $parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).CloseOtherTabsCommand}"
                                                       CommandParameter="{Binding}"
                                                       IsEnabled="{Binding $parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).CanCloseOtherTabs}">
@@ -131,7 +131,7 @@
                                                     <PathIcon Data="{x:Static ui:StudioIcons.TAB_CLOSE}" Width="14" Height="14"/>
                                                 </MenuItem.Icon>
                                             </MenuItem>
-                                            <MenuItem Header="Close All"
+                                            <MenuItem AutomationProperties.AutomationId="WorkspaceTabStripCloseAll" Header="Close All"
                                                       Command="{Binding $parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).CloseAllTabsCommand}"
                                                       IsEnabled="{Binding $parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).CanCloseAllTabs}">
                                                 <MenuItem.Icon>
@@ -142,14 +142,14 @@
                                             <Separator/>
                                             
                                             <!-- Save (only for Query tabs) -->
-                                            <MenuItem Header="Save"
+                                            <MenuItem AutomationProperties.AutomationId="WorkspaceTabStripSave" Header="Save"
                                                       Command="{Binding $parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).SaveTabCommand}"
                                                       InputGesture="Ctrl+S">
                                                 <MenuItem.Icon>
                                                     <PathIcon Data="{x:Static ui:StudioIcons.QUERY_SAVE}" Width="14" Height="14"/>
                                                 </MenuItem.Icon>
                                             </MenuItem>
-                                            <MenuItem Header="Save As..."
+                                            <MenuItem AutomationProperties.AutomationId="WorkspaceTabStripSaveAs" Header="Save As..."
                                                       Command="{Binding $parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).SaveTabAsCommand}"
                                                       InputGesture="Ctrl+Shift+S">
                                                 <MenuItem.Icon>
@@ -187,7 +187,7 @@
                                                    TextTrimming="CharacterEllipsis"/>
                                             
                                         <!-- Close button (hidden for pinned tabs, bound to CanCloseTab) -->
-                                        <Button Width="18"
+                                        <Button AutomationProperties.AutomationId="WorkspaceTabStripCloseTab" AutomationProperties.Name="Close tab" Width="18"
                                                 Height="18"
                                                 Padding="0"
                                                 Background="Transparent"
@@ -215,7 +215,7 @@
                     </ListBox>
 
                     <!-- New Query Tab Button -->
-                    <Button Width="28" 
+                    <Button AutomationProperties.AutomationId="WorkspaceTabStripNewQueryTab" AutomationProperties.Name="New Query Tab" Width="28" 
                             Height="28" 
                             Padding="0" 
                             Margin="4,0,4,0"
@@ -237,7 +237,7 @@
             </ScrollViewer>
             
             <!-- Right scroll button -->
-            <Button Grid.Column="2"
+            <Button AutomationProperties.AutomationId="WorkspaceTabStripScrollRightButton" AutomationProperties.Name="Scroll right" Grid.Column="2"
                     x:Name="ScrollRightButton"
                     Width="20"
                     Height="28"

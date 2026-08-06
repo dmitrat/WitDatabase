@@ -13,22 +13,26 @@ public class SettingsViewModelTests
 {
     #region Fields
 
+    private StudioFixture m_studio = null!;
     private ApplicationViewModel m_applicationVm = null!;
-    private FakeSettingsService m_settingsService = null!;
 
     #endregion
 
     #region Setup
 
     [SetUp]
-    public void Setup()
+    public async Task Setup()
     {
-        m_settingsService = new FakeSettingsService();
-        m_applicationVm = new ApplicationViewModel(
-            new FakeDatabaseService(),
-            m_settingsService,
-            new FakeExportService(),
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ApplicationViewModel>.Instance);
+        // The real SettingsService, pointed at the fixture's own folder: these cases now round-trip
+        // through JSON on disk, which is where the settings a user loses actually live.
+        m_studio = await StudioFixture.CreateAsync(connect: false);
+        m_applicationVm = m_studio.App;
+    }
+
+    [TearDown]
+    public async Task TearDown()
+    {
+        await m_studio.DisposeAsync();
     }
 
     #endregion
@@ -49,13 +53,13 @@ public class SettingsViewModelTests
     public async Task InitializeAsyncLoadsSettingsTest()
     {
         // Arrange
-        m_settingsService.Settings = new Settings
+        await m_studio.Settings.SaveAsync(new Settings
         {
             Theme = "Dark",
             EditorFontSize = 16,
             AutoSaveQueries = false,
             MaxRecentFiles = 5
-        };
+        });
         var viewModel = new SettingsViewModel(m_applicationVm);
 
         // Act
@@ -76,7 +80,7 @@ public class SettingsViewModelTests
     public async Task SelectedThemeDefaultsToLightTest()
     {
         // Arrange
-        m_settingsService.Settings = new Settings { Theme = "Light" };
+        await m_studio.Settings.SaveAsync(new Settings { Theme = "Light" });
         var viewModel = new SettingsViewModel(m_applicationVm);
         await viewModel.InitializeAsync();
 

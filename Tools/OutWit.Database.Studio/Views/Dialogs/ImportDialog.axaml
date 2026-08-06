@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -36,7 +36,7 @@
                          Text="{Binding InputPath}"
                          Watermark="Select file to import..."
                          IsReadOnly="True"/>
-                <Button Grid.Column="2"
+                <Button AutomationProperties.AutomationId="ImportBrowse" Grid.Column="2"
                         Content="Browse..."
                         Command="{Binding BrowseCommand}"
                         IsEnabled="{Binding !IsImporting}"
@@ -189,17 +189,17 @@
 
         <!-- Buttons -->
         <Grid Grid.Row="5" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,20,0,0">
-            <Button Grid.Column="0"
+            <Button AutomationProperties.AutomationId="ImportRefreshPreview" Grid.Column="0"
                     Content="Refresh Preview"
                     Command="{Binding PreviewCommand}"
                     IsEnabled="{Binding CanPreview}"/>
-            <Button Grid.Column="2"
+            <Button AutomationProperties.AutomationId="ImportCancel" Grid.Column="2"
                     Content="Cancel"
                     Command="{Binding CancelCommand}"
                     Width="80"
                     Margin="0,0,8,0"
                     IsVisible="{Binding !IsImporting}"/>
-            <Button Grid.Column="3"
+            <Button AutomationProperties.AutomationId="ImportImport" Grid.Column="3"
                     Content="Import"
                     Command="{Binding ImportCommand}"
                     IsEnabled="{Binding CanImport}"
@@ -253,7 +253,7 @@
                 </TextBlock>
                 
                 <!-- Cancel Button -->
-                <Button Content="Cancel Import"
+                <Button AutomationProperties.AutomationId="ImportCancelImport" Content="Cancel Import"
                         Command="{Binding CancelImportCommand}"
                         HorizontalAlignment="Center"
                         Width="120"

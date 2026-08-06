@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -46,7 +46,7 @@
                                    DockPanel.Dock="Left"
                                    VerticalAlignment="Center"/>
                         
-                        <Button Content="+ Add Column"
+                        <Button AutomationProperties.AutomationId="CreateTableAddColumn" Content="+ Add Column"
                                 Command="{Binding AddColumnCommand}"
                                 DockPanel.Dock="Right"
                                 HorizontalAlignment="Right"
@@ -117,7 +117,7 @@
                                 <DataGridTemplateColumn Header="Actions" Width="80">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Button Content="Remove"
+                                            <Button AutomationProperties.AutomationId="CreateTableRemove" Content="Remove"
                                                     Command="{Binding $parent[Window].((vm:CreateTableViewModel)DataContext).RemoveColumnCommand}"
                                                     IsEnabled="{Binding $parent[Window].((vm:CreateTableViewModel)DataContext).CanRemoveColumn}"
                                                     CommandParameter="{Binding}"
@@ -140,7 +140,7 @@
                                    DockPanel.Dock="Left"
                                    VerticalAlignment="Center"/>
                         
-                        <Button Content="Generate DDL"
+                        <Button AutomationProperties.AutomationId="CreateTableGenerateDDL" Content="Generate DDL"
                                 Command="{Binding GenerateDdlCommand}"
                                 IsEnabled="{Binding CanGenerateDdl}"
                                 DockPanel.Dock="Right"
@@ -198,12 +198,12 @@
                         HorizontalAlignment="Right"
                         Spacing="8">
                 
-                <Button Content="Cancel"
+                <Button AutomationProperties.AutomationId="CreateTableCancel" Content="Cancel"
                         Command="{Binding CancelCommand}"
                         Width="100"
                         HorizontalContentAlignment="Center"/>
                 
-                <Button Content="Create Table"
+                <Button AutomationProperties.AutomationId="CreateTableCreateTable" Content="Create Table"
                         Command="{Binding CreateTableCommand}"
                         IsEnabled="{Binding CanCreateTable}"
                         Width="120"

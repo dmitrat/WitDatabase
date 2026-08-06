@@ -109,31 +109,22 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task BrowseAsync()
     {
-        var mainWindow = ApplicationVm.MainWindow;
-        if (mainWindow == null)
-            return;
-
-        var storageProvider = TopLevel.GetTopLevel(mainWindow)?.StorageProvider;
-        if (storageProvider == null)
-            return;
-
         var filters = SelectedFormat switch
         {
-            ImportFormat.Csv => new[] { new FilePickerFileType("CSV Files") { Patterns = ["*.csv"] } },
-            ImportFormat.Json => new[] { new FilePickerFileType("JSON Files") { Patterns = ["*.json"] } },
-            _ => new[] { new FilePickerFileType("All Files") { Patterns = ["*.*"] } }
+            ImportFormat.Csv => new FileFilter("CSV Files", ["*.csv"]),
+            ImportFormat.Json => new FileFilter("JSON Files", ["*.json"]),
+            _ => new FileFilter("All Files", ["*.*"])
         };
 
-        var files = await storageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
-        {
-            Title = "Select file to import",
-            AllowMultiple = false,
-            FileTypeFilter = [..filters, new FilePickerFileType("All Files") { Patterns = ["*.*"] }]
-        });
+        var filePath = await ApplicationVm.Dialogs.OpenFileAsync("Select file to import",
+        [
+            filters,
+            new FileFilter("All Files", ["*.*"])
+        ]);
 
-        if (files.Count > 0)
+        if (!string.IsNullOrEmpty(filePath))
         {
-            InputPath = files[0].Path.LocalPath;
+            InputPath = filePath;
             await PreviewAsync();
         }
     }

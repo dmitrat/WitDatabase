@@ -122,14 +122,6 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task BrowseAsync()
     {
-        var mainWindow = ApplicationVm.MainWindow;
-        if (mainWindow == null)
-            return;
-
-        var storageProvider = TopLevel.GetTopLevel(mainWindow)?.StorageProvider;
-        if (storageProvider == null)
-            return;
-
         var extension = SelectedFormat switch
         {
             ExportFormat.Csv => "csv",
@@ -142,22 +134,18 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
             ? $"{SelectedTable}.{extension}" 
             : $"export.{extension}";
 
-        var file = await storageProvider.SaveFilePickerAsync(new FilePickerSaveOptions
-        {
-            Title = "Export to file",
-            SuggestedFileName = defaultName,
-            DefaultExtension = extension,
-            FileTypeChoices =
+        var filePath = await ApplicationVm.Dialogs.SaveFileAsync(
+            "Export to file",
+            suggestedFileName: defaultName,
+            defaultExtension: extension,
+            filters:
             [
-                new FilePickerFileType($"{extension.ToUpper()} Files") { Patterns = [$"*.{extension}"] },
-                new FilePickerFileType("All Files") { Patterns = ["*.*"] }
-            ]
-        });
+                new FileFilter($"{extension.ToUpper()} Files", [$"*.{extension}"]),
+                new FileFilter("All Files", ["*.*"])
+            ]);
 
-        if (file != null)
-        {
-            OutputPath = file.Path.LocalPath;
-        }
+        if (!string.IsNullOrEmpty(filePath))
+            OutputPath = filePath;
     }
 
     private async Task ExportAsync()

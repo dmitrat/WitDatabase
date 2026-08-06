@@ -26,15 +26,38 @@ public sealed class SettingsService : ISettingsService
 
     #region Constructors
 
-    public SettingsService(ILogger<SettingsService> logger)
+    /// <summary>
+    /// The settings file is <c>%AppData%\WitDatabase.Studio\settings.json</c> unless a path is given.
+    ///
+    /// The parameter exists so that a test can use the REAL service instead of a double: the path was
+    /// baked into the constructor, so anything exercising settings honestly would have read and
+    /// written the settings of whoever ran the suite.
+    /// </summary>
+    public SettingsService(ILogger<SettingsService> logger, string? settingsFilePath = null)
     {
         m_logger = logger;
-        
+
+        m_settingsFilePath = settingsFilePath ?? DefaultPath();
+
+        var folder = Path.GetDirectoryName(m_settingsFilePath);
+
+        if (!string.IsNullOrEmpty(folder))
+            Directory.CreateDirectory(folder);
+    }
+
+    #endregion
+
+    #region Functions
+
+    /// <summary>
+    /// Where settings live when nothing says otherwise. Public so that the diagnostics section can
+    /// show it rather than describe it.
+    /// </summary>
+    public static string DefaultPath()
+    {
         var appDataPath = Environment.GetFolderPath(Environment.SpecialFolder.ApplicationData);
-        var appFolder = Path.Combine(appDataPath, "WitDatabase.Studio");
-        Directory.CreateDirectory(appFolder);
-        
-        m_settingsFilePath = Path.Combine(appFolder, SETTINGS_FILE_NAME);
+
+        return Path.Combine(appDataPath, "WitDatabase.Studio", SETTINGS_FILE_NAME);
     }
 
     #endregion
