@@ -278,6 +278,116 @@ sign that a tab belongs to a closed connection is that Execute is disabled and s
 
 ---
 
+## Stage 3 - the SQL layer
+
+Three things that all needed the same thing first: Studio has to understand the language it sends.
+It now references `OutWit.Database.Parser` directly (the plan's item 4.1), because the alternative -
+reimplementing statement boundaries in the client - guarantees that the two drift apart.
+
+### The script is cut by the parser and run a statement at a time (`WS-22`)
+
+`SqlScript.Split` asks the parser where each statement starts and takes the text between one start and
+the next. The tab then executes them in order, keeping a `StatementOutcome` for each: what it was, how
+many rows, how long, and whether it failed.
+
+Two decisions worth naming, because they are about what happens to a user's data:
+
+- **A script that does not parse does not run at all.** A syntax error is knowable before anything is
+  sent, and refusing the whole script is better than applying the first five statements and then
+  reporting the sixth.
+- **A statement the engine refuses at run time stops the rest.** The statements before it have already
+  been applied - each is its own transaction unless the script opened one - so which ones they were is
+  shown rather than left to be guessed.
+
+The hand-written DDL scan is gone with it: whether a statement changes the schema is now the parsed
+statement's TYPE, not a search for a leading keyword that had to skip comments by itself.
+
+**Error positions are moved back into the tab's coordinates.** The engine counts lines from the start
+of whatever it was given, so the sixth statement sent on its own always reports line 1. `ErrorFor`
+adds the statement's own position back; a fragment executed from a selection adds the selection's
+position on top of that. And the message shown is the first sentence: an engine parse error carries
+the whole expected-token set, measured at **1,595 characters** for a one-word mistake, which is kept
+in `ErrorDetail` for the Messages tab (`WS-11`).
+
+### Values are bound, not written into the statement (B4)
+
+The editor's `INSERT`, `UPDATE` and `DELETE` are built with placeholders and a `SqlStatement` that
+carries the values; `SqlValueFormatter` is now only for showing a person the SQL (`WS-32`).
+
+**Three of the plan's claims about the old path were checked against the engine, and two of them were
+wrong.** Recorded here because the plan is what the next reader will believe:
+
+| Claim | Measured |
+|---|---|
+| Culture-dependent `DECIMAL`/`DATETIME` formatting | **False.** The formatter already used `InvariantCulture` and fixed date formats |
+| A `BLOB` cannot be written | **False.** `X'000102FAFBFF'` is accepted and comes back byte for byte |
+| A user's string is substituted into the query text | **True, and not exploitable for a plain string.** `EscapeString` doubles the quotes; `O'Brien'; DROP TABLE T; --` is stored whole and the table survives |
+| - | **True, and the reason to do this: precision.** `'2026-08-06 12:34:56'` is what the formatter writes for a value with 789 ms, and 789 ms is what comes back missing |
+| - | **True: a type the formatter has no case for falls through to `ToString()` unquoted.** `'x'` is written as `x`, and the engine goes looking for a column called `x` |
+
+So the case for parameters is the class rather than the incident: a value never passes through the
+language, so there is no escaping step that has to be right and no type that has to have a case.
+
+### Pages (S7, `WS-31`)
+
+A table is read a page at a time: the page is fetched one row longer than it is shown, which is how
+"is there a next page" is answered without `COUNT(*)` - a separate counter on this engine that can
+disagree with the rows. With a single-column primary key the next page starts from the last key seen
+(`WHERE [key] > @anchor ORDER BY [key] LIMIT n`); without one it falls back to `OFFSET` and says so.
+The table editor has Previous/Next buttons; the designed grid comes in stage 7.
+
+**The readiness criterion of this stage had to be restated, and the measurement is why.** The plan
+asks for "a million-row table opens in constant time". Measured at 100,000 and 400,000 rows, three
+runs each, interleaved:
+
+| Shape | 100k | 400k | |
+|---|---|---|---|
+| whole table, no order | 133 ms | 548 ms | linear, as expected |
+| **`LIMIT 200`, no order** | **0 ms** | **0 ms** | **constant - the scan stops early** |
+| `ORDER BY Id LIMIT 200` | 310 ms | 1,327 ms | linear, and 2.4x a full scan |
+| keyset + `ORDER BY`, at the end | 84 ms | 383 ms | linear |
+| `LIMIT 200 OFFSET n-200` | 338 ms | 1,382 ms | linear, 3.6x the keyset form |
+
+`EXPLAIN` names the mechanism: `LIMIT <- ExcludeInternal <- SORT <- SCAN TABLE`. The limit is not
+pushed into the sort, and a primary-key range predicate becomes `FILTER` over a full `SCAN`, not a
+seek.
+
+And the reason Studio cannot simply drop the `ORDER BY` to get the constant-time open: **without it
+the rows come back in INSERTION order** - measured by inserting a scrambled range into both stores and
+reading it back - so pages fetched by key would overlap and miss rows. A page that is fast and wrong
+is not a page.
+
+**So: correct pages, at a cost that is the engine's.** The keyset form is the cheapest correct one
+(3.6x cheaper than `OFFSET` at 400k) and it does not repeat or drop rows when the table changes
+underneath it. Making the open constant-time as well needs a planner that pushes a limit into a sort
+and an index-ordered scan for the primary key - a change order for the engine, added below.
+
+### How it was measured
+
+Every case reads rows back out of a real database. Then the fix was removed again, four times:
+
+| Sabotage | Result |
+|---|---|
+| the editor's `UPDATE` written with literals again | only the structural case went red - and that is the finding: the value-with-quotes case **passes** with the old path, because the escaping worked. The test now says so |
+| `ReportError` forgets where the executed fragment starts | the selection case: an error reported on line 1 instead of line 10 |
+| pages always fetched with `OFFSET` | the first-page shape case; the tiling case stayed green, which is correct - `OFFSET` tiles a table nobody is writing to |
+| (from the design) executing the script as one command | `ErrorLine` is never set, so the readiness case goes red |
+
+**In the shipping executable:** a seven-statement script with a missing comma on line 6 reported
+*"Line 6, column 23: extraneous input 'Name'"* - one line, no token set - and created nothing. The same
+script with the mistake fixed reported *"6 statements executed in 34.52 ms"*, and a value of
+`O'Brien; DROP TABLE Steps; --` came back out of the grid whole, with the table still there to read it
+from.
+
+### Tests
+
+315 -> 338. `SqlScriptTests` (26) covers cutting and coordinates without a database;
+`SqlLayerTests` (13) covers binding, script execution and pages against a real one. The reflection
+test for the deleted keyword scanner is gone; what it pinned - a leading comment must not hide a DDL
+keyword - is now a case over the parser.
+
+---
+
 ## Findings for the engine, not fixed here
 
 **`UPDATE <table> SET <column that does not exist> = 'x'` is accepted.** Measured 2026-08-05 while
@@ -294,6 +404,26 @@ looking for a violation the engine reliably refuses:
 Four of the five refusals are exactly what a client needs. The fifth is a silent no-op: a typo in a
 column name updates nothing and reports success. This belongs to `Sources/**`, which this phase does
 not touch.
+
+**The planner does not use the primary key for order or for range, and does not push a limit into a
+sort.** Measured in stage 3 (the table above, with `EXPLAIN`), and it is what decides how fast a
+client can show a large table:
+
+| Asked | Plan | Cost |
+|---|---|---|
+| `SELECT * FROM t LIMIT 200` | `LIMIT <- SCAN TABLE` | constant - the scan stops early |
+| `SELECT * FROM t ORDER BY Id LIMIT 200` | `LIMIT <- SORT <- SCAN TABLE` | a full sort of the table, per page |
+| `... WHERE Id > n ORDER BY Id LIMIT 200` | `LIMIT <- SORT <- FILTER <- SCAN TABLE` | a full scan, filtered, then sorted |
+
+Three things would each help on their own: a top-N limit pushed into the sort, an index-ordered scan
+when the ordering is the primary key, and a seek for a primary-key range predicate. Any consumer that
+pages a table wants them; Studio pays for the absence with a linear cost per page and says so in its
+own interface rather than hiding it.
+
+**A column may not be named after a type keyword.** `CREATE TABLE T (..., Blob BLOB)` is refused -
+`mismatched input 'Blob'` - because `BLOB` lexes as a keyword and is not accepted where a column name
+is expected. Found while probing the BLOB path; a client cannot work around it and a user with such a
+column in another database cannot import it.
 
 ---
 

@@ -47,5 +47,12 @@
 
   <ItemGroup>
     <ProjectReference Include="..\..\Sources\Providers\OutWit.Database.AdoNet\OutWit.Database.AdoNet.csproj" />
+
+    <!-- Cutting a script into statements, and putting an error back on the line the user wrote it
+         on, need the engine's own understanding of the language. The alternative - reimplementing
+         it in the client - guarantees that the two drift apart, and a client that disagrees with
+         the engine about where a statement ends is worse than one that cannot split at all.
+         The packages version together and the parser pulls no storage behind it. -->
+    <ProjectReference Include="..\..\Sources\Engine\OutWit.Database.Parser\OutWit.Database.Parser.csproj" />
   </ItemGroup>
 </Project>

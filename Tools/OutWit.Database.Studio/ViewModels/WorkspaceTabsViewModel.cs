@@ -18,24 +18,6 @@ namespace OutWit.Database.Studio.ViewModels;
 /// </summary>
 public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 {
-    #region Constants
-
-    /// <summary>
-    /// DDL keywords that should trigger a schema refresh after execution.
-    /// </summary>
-    private static readonly string[] DDL_KEYWORDS =
-    [
-        "CREATE", "DROP", "ALTER", "TRUNCATE", "RENAME"
-    ];
-
-    /// <summary>
-    /// Additional DDL-related keywords that may appear after comments or whitespace.
-    /// </summary>
-    private static readonly HashSet<string> DDL_KEYWORDS_SET = 
-        new(DDL_KEYWORDS, StringComparer.OrdinalIgnoreCase);
-
-    #endregion
-
     #region Fields
 
     private int m_nextQueryNumber = 1;
@@ -409,63 +391,40 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         return false;
     }
 
+    /// <summary>
+    /// The toolbar's Execute. The work belongs to the tab - it owns the results, the messages and the
+    /// connection - so this sets the workspace's own state around it and reloads the tree if the
+    /// script changed the schema.
+    ///
+    /// There used to be a second, independent copy of the execution here, with its own error
+    /// handling and its own hand-written scan for a leading DDL keyword through comments. Two paths
+    /// meant every change to how a query runs had to be made twice, or - what actually happened -
+    /// once.
+    /// </summary>
     private async Task ExecuteSqlAsync(QueryTabViewModel tab, string sql)
     {
-        var session = tab.Session!;
-
         IsExecuting = true;
         CurrentExecutingTab = tab;
-        tab.ErrorMessage = null;
-        tab.SetResultData(null);
-
-        var isDdlStatement = IsDdlStatement(sql);
-        Logger.LogDebug("Executing SQL. IsDDL: {IsDDL}, SQL: {Sql}", isDdlStatement, sql.Length > 100 ? sql[..100] + "..." : sql);
 
         try
         {
-            var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var result = await session.ExecuteQueryAsync(sql);
-            stopwatch.Stop();
+            await tab.ExecuteSqlAsync(sql);
 
-            if (result.IsSuccess)
+            if (tab.DdlWasExecuted && tab.Session != null)
             {
-                tab.SetResultData(result.Data);
-                tab.RowsAffected = result.RowsAffected;
-                tab.ExecutionTimeMs = stopwatch.Elapsed.TotalMilliseconds;
+                Logger.LogInformation("The script changed the schema; reloading the tree of {Connection}",
+                    tab.Session.DisplayName);
 
-                ApplicationVm.MainWindowVm.StatusText =
-                    $"Query executed in {tab.ExecutionTimeMs:F2}ms. {tab.RowsAffected} rows affected.";
-
-                Logger.LogInformation("Query executed successfully: {Time}ms, {Rows} rows",
-                    tab.ExecutionTimeMs, tab.RowsAffected);
-
-                if (isDdlStatement)
+                try
                 {
-                    Logger.LogInformation("DDL statement detected, refreshing schema tree...");
-                    try
-                    {
-                        // The branch of the connection the statement ran in, not the selected one.
-                        await ApplicationVm.DatabaseExplorerVm.RefreshAsync(session);
-                        Logger.LogInformation("Schema tree refreshed successfully");
-                    }
-                    catch (Exception refreshEx)
-                    {
-                        Logger.LogError(refreshEx, "Failed to refresh schema tree after DDL");
-                    }
+                    // The branch of the connection the statement ran in, not the selected one.
+                    await ApplicationVm.DatabaseExplorerVm.RefreshAsync(tab.Session);
+                }
+                catch (Exception ex)
+                {
+                    Logger.LogError(ex, "Failed to refresh schema tree after DDL");
                 }
             }
-            else
-            {
-                tab.ErrorMessage = result.ErrorMessage;
-                ApplicationVm.MainWindowVm.StatusText = "Query execution failed";
-                Logger.LogWarning("Query execution failed: {Error}", result.ErrorMessage);
-            }
-        }
-        catch (Exception ex)
-        {
-            tab.ErrorMessage = $"Execution error: {ex.Message}";
-            ApplicationVm.MainWindowVm.StatusText = "Query execution error";
-            Logger.LogError(ex, "Query execution error");
         }
         finally
         {
@@ -481,72 +440,6 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             queryTab.ClearResults();
             ApplicationVm.MainWindowVm.StatusText = "Results cleared";
         }
-    }
-
-    private static bool IsDdlStatement(string sql)
-    {
-        if (string.IsNullOrWhiteSpace(sql))
-            return false;
-
-        // Skip leading comments and whitespace
-        var trimmed = SkipCommentsAndWhitespace(sql);
-        if (string.IsNullOrEmpty(trimmed))
-            return false;
-
-        // Get first word (keyword)
-        var firstWord = trimmed.Split([' ', '\t', '\r', '\n', '(', '[', '"'], StringSplitOptions.RemoveEmptyEntries)
-                               .FirstOrDefault()?
-                               .ToUpperInvariant();
-
-        return firstWord != null && DDL_KEYWORDS_SET.Contains(firstWord);
-    }
-
-    /// <summary>
-    /// Skips SQL comments (-- and /* */) and whitespace at the beginning of the string.
-    /// </summary>
-    private static string SkipCommentsAndWhitespace(string sql)
-    {
-        var index = 0;
-        while (index < sql.Length)
-        {
-            // Skip whitespace
-            while (index < sql.Length && char.IsWhiteSpace(sql[index]))
-                index++;
-
-            if (index >= sql.Length)
-                break;
-
-            // Check for -- single line comment
-            if (index < sql.Length - 1 && sql[index] == '-' && sql[index + 1] == '-')
-            {
-                // Skip until end of line
-                while (index < sql.Length && sql[index] != '\n')
-                    index++;
-                continue;
-            }
-
-            // Check for /* */ block comment
-            if (index < sql.Length - 1 && sql[index] == '/' && sql[index + 1] == '*')
-            {
-                index += 2;
-                // Skip until */
-                while (index < sql.Length - 1)
-                {
-                    if (sql[index] == '*' && sql[index + 1] == '/')
-                    {
-                        index += 2;
-                        break;
-                    }
-                    index++;
-                }
-                continue;
-            }
-
-            // Not a comment, we're done
-            break;
-        }
-
-        return index < sql.Length ? sql[index..] : string.Empty;
     }
 
     #endregion

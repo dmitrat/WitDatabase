@@ -32,6 +32,16 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     private readonly HashSet<DataRow> m_modifiedRows = [];
     private readonly List<DataRow> m_newRows = [];
 
+    /// <summary>
+    /// Where each page starts, by key: the key of the LAST row of the page before it. Index 0 is
+    /// null - the first page starts at the beginning.
+    ///
+    /// Kept because a page is fetched with "WHERE key > anchor" rather than with OFFSET: OFFSET makes
+    /// the engine walk everything it skips (measured: 1.4 s against 0.4 s at 400,000 rows), and it
+    /// silently repeats or drops rows when the table changes underneath the reader.
+    /// </summary>
+    private readonly List<object?> m_pageAnchors = [null];
+
     #endregion
 
     #region Constructors
@@ -74,6 +84,9 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         CommitCommand = new RelayCommandAsync(CommitChangesAsync);
         RollbackCommand = new RelayCommand(RollbackChanges);
         CellEditedCommand = new RelayCommand<DataRowView>(OnCellEdited);
+        NextPageCommand = new RelayCommandAsync(NextPageAsync);
+        PreviousPageCommand = new RelayCommandAsync(PreviousPageAsync);
+        FirstPageCommand = new RelayCommandAsync(FirstPageAsync);
     }
 
     #endregion
@@ -201,9 +214,11 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
         try
         {
-            // Build SQL with ORDER BY if primary keys exist
-            var sql = BuildSelectStatement();
-            var result = await session.ExecuteQueryAsync(sql);
+            // One row more than the page is asked for: if it comes back, there is a next page. The
+            // alternative is COUNT(*), which on this engine is a separate counter that can disagree
+            // with the rows.
+            var statement = BuildSelectStatement(PageSize + 1);
+            var result = await session.ExecuteQueryAsync(statement);
 
             if (!string.IsNullOrEmpty(result.ErrorMessage))
             {
@@ -211,8 +226,16 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
                 return;
             }
 
-            m_originalData = result.Data?.Copy();
-            EditableData = result.Data;
+            var table = result.Data;
+            HasNextPage = table != null && table.Rows.Count > PageSize;
+
+            if (HasNextPage && table != null)
+                table.Rows.RemoveAt(table.Rows.Count - 1);
+
+            table?.AcceptChanges();
+
+            m_originalData = table?.Copy();
+            EditableData = table;
 
             if (EditableData != null)
             {
@@ -220,9 +243,14 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
                 TotalRowCount = EditableData.Rows.Count;
             }
 
-            SetSuccessStatus($"Loaded {TotalRowCount} rows");
-            ApplicationVm.MainWindowVm.StatusText = $"Loaded {TotalRowCount} rows from table \"{TableName}\"";
-            Logger.LogInformation("Loaded {Count} rows from table {TableName}", TotalRowCount, TableName);
+            HasPreviousPage = PageIndex > 0;
+            RememberPageEnd();
+
+            SetSuccessStatus(DescribePage());
+            ApplicationVm.MainWindowVm.StatusText =
+                $"{DescribePage()} of table \"{TableName}\" in {session.DisplayName}";
+            Logger.LogInformation("Loaded page {Page} ({Count} rows) of table {TableName}",
+                PageIndex + 1, TotalRowCount, TableName);
         }
         catch (Exception ex)
         {
@@ -244,6 +272,108 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         }
 
         await LoadTableDataAsync();
+    }
+
+    #endregion
+
+    #region Paging
+
+    /// <summary>
+    /// The rows of one page, and where the page starts.
+    ///
+    /// The first page is the cheap one: LIMIT with nothing else is the only shape this engine answers
+    /// in constant time - it stops the scan early. ORDER BY does not push the limit down (measured:
+    /// the plan under it is SORT over a full SCAN), so every ordered page costs a pass over the table.
+    /// That is a property of the engine, not of this code; it is written up in the phase document.
+    ///
+    /// Ordered anyway, and deliberately: without ORDER BY the rows come back in INSERTION order on
+    /// both stores - measured by inserting a scrambled range and reading it back - so pages fetched
+    /// by key would overlap and miss rows. A page that is fast and wrong is not a page.
+    /// </summary>
+    private SqlStatement BuildSelectStatement(int limit)
+    {
+        var table = SqlValueFormatter.EscapeIdentifier(TableName);
+
+        if (!CanPageByKey)
+        {
+            // No usable key: OFFSET, and say what it costs rather than pretending it is a page (WS-31).
+            IsDeepPage = PageIndex > 0;
+            return new SqlStatement(
+                $"SELECT * FROM [{table}] LIMIT {limit} OFFSET {PageIndex * PageSize}", []);
+        }
+
+        var key = SqlValueFormatter.EscapeIdentifier(PrimaryKeyColumns[0]);
+        var anchor = PageIndex < m_pageAnchors.Count ? m_pageAnchors[PageIndex] : null;
+
+        IsDeepPage = false;
+
+        if (anchor == null)
+            return new SqlStatement($"SELECT * FROM [{table}] ORDER BY [{key}] LIMIT {limit}", []);
+
+        return new SqlStatement(
+            $"SELECT * FROM [{table}] WHERE [{key}] > @anchor ORDER BY [{key}] LIMIT {limit}",
+            [new Models.SqlParameter("@anchor", anchor)]);
+    }
+
+    /// <summary>
+    /// Keyset paging needs exactly one key column: two columns need a row-value comparison, which is
+    /// a different question from this one. A composite key pages by OFFSET and says so.
+    /// </summary>
+    public bool CanPageByKey => PrimaryKeyColumns.Count == 1;
+
+    /// <summary>
+    /// Remembers where this page ended, so the next one can start there.
+    /// </summary>
+    private void RememberPageEnd()
+    {
+        if (!CanPageByKey || EditableData == null || EditableData.Rows.Count == 0)
+            return;
+
+        var lastKey = EditableData.Rows[^1][PrimaryKeyColumns[0]];
+
+        while (m_pageAnchors.Count <= PageIndex + 1)
+            m_pageAnchors.Add(null);
+
+        m_pageAnchors[PageIndex + 1] = lastKey;
+    }
+
+    private async Task NextPageAsync()
+    {
+        if (!HasNextPage || HasChanges)
+            return;
+
+        PageIndex++;
+        await LoadTableDataAsync();
+    }
+
+    private async Task PreviousPageAsync()
+    {
+        if (PageIndex == 0 || HasChanges)
+            return;
+
+        PageIndex--;
+        await LoadTableDataAsync();
+    }
+
+    private async Task FirstPageAsync()
+    {
+        if (PageIndex == 0 || HasChanges)
+            return;
+
+        PageIndex = 0;
+        await LoadTableDataAsync();
+    }
+
+    /// <summary>
+    /// What the status line says about the page. Never a total: a total is COUNT(*), and on this
+    /// engine that is a counter kept beside the data rather than the data.
+    /// </summary>
+    private string DescribePage()
+    {
+        var where = PageIndex == 0 ? "" : $" (page {PageIndex + 1})";
+        var more = HasNextPage ? ", more to come" : "";
+
+        return $"Loaded {TotalRowCount} rows{where}{more}";
     }
 
     private void AddRow()
@@ -405,11 +535,11 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     /// deletes, then inserts, then updates. Returns null - with a reason - when a row cannot be
     /// addressed, because a set that cannot be expressed must not be half-expressed.
     /// </summary>
-    private List<string>? BuildChangeScript(out string? error)
+    private List<SqlStatement>? BuildChangeScript(out string? error)
     {
         error = null;
 
-        var statements = new List<string>();
+        var statements = new List<SqlStatement>();
         var table = SqlValueFormatter.EscapeIdentifier(TableName);
 
         foreach (var row in m_deletedRows)
@@ -422,15 +552,16 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
                 return null;
             }
 
-            var whereClause = BuildWhereClause(m_originalData!.Rows[originalRowIndex]);
+            var where = BuildWhereClause(m_originalData!.Rows[originalRowIndex], "w");
 
-            if (string.IsNullOrEmpty(whereClause))
+            if (where == null)
             {
                 error = "Cannot delete a row: the table has no primary key.";
                 return null;
             }
 
-            statements.Add($"DELETE FROM [{table}] WHERE {whereClause}");
+            statements.Add(new SqlStatement(
+                $"DELETE FROM [{table}] WHERE {where.Value.Clause}", where.Value.Parameters));
         }
 
         foreach (var newRow in m_newRows)
@@ -449,15 +580,15 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
                 return null;
             }
 
-            var whereClause = BuildWhereClause(m_originalData!.Rows[originalRowIndex]);
+            var where = BuildWhereClause(m_originalData!.Rows[originalRowIndex], "w");
 
-            if (string.IsNullOrEmpty(whereClause))
+            if (where == null)
             {
                 error = "Cannot update a row: the table has no primary key.";
                 return null;
             }
 
-            statements.Add(BuildUpdateStatement(modifiedRow, whereClause));
+            statements.Add(BuildUpdateStatement(modifiedRow, where.Value));
         }
 
         return statements;
@@ -554,22 +685,6 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     #region SQL Building
 
-    private string BuildSelectStatement()
-    {
-        var sql = $"SELECT * FROM [{SqlValueFormatter.EscapeIdentifier(TableName)}]";
-
-        // Add ORDER BY if primary keys exist for consistent ordering
-        if (PrimaryKeyColumns.Count > 0)
-        {
-            var orderByColumns = string.Join(", ", PrimaryKeyColumns.Select(c => $"[{SqlValueFormatter.EscapeIdentifier(c)}]"));
-            sql += $" ORDER BY {orderByColumns}";
-        }
-
-        sql += $" LIMIT {PageSize}";
-
-        return sql;
-    }
-
     /// <summary>
     /// The condition that names exactly one row: its primary key, or nothing.
     ///
@@ -577,23 +692,35 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     /// a unique condition - two identical rows both match it, so an UPDATE meant for one changed both,
     /// and a DELETE meant for one removed both. It also compared BLOB columns in a WHERE clause. The
     /// fallback is gone, and a table without a key is not editable at all (WS-35).
+    ///
+    /// The key's VALUE is bound, not written into the text: a key can be a string, and a string can
+    /// contain a quote.
     /// </summary>
-    private string BuildWhereClause(DataRow row)
+    private (string Clause, List<Models.SqlParameter> Parameters)? BuildWhereClause(DataRow row, string prefix)
     {
         if (PrimaryKeyColumns.Count == 0)
-            return string.Empty;
+            return null;
 
-        var conditions = PrimaryKeyColumns
-            .Select(pkColumn =>
-                $"[{SqlValueFormatter.EscapeIdentifier(pkColumn)}] = {SqlValueFormatter.FormatForSql(row[pkColumn])}");
+        var conditions = new List<string>();
+        var parameters = new List<Models.SqlParameter>();
 
-        return string.Join(" AND ", conditions);
+        for (var i = 0; i < PrimaryKeyColumns.Count; i++)
+        {
+            var name = $"@{prefix}{i}";
+            var column = SqlValueFormatter.EscapeIdentifier(PrimaryKeyColumns[i]);
+
+            conditions.Add($"[{column}] = {name}");
+            parameters.Add(new Models.SqlParameter(name, row[PrimaryKeyColumns[i]]));
+        }
+
+        return (string.Join(" AND ", conditions), parameters);
     }
 
-    private string BuildInsertStatement(DataRow row)
+    private SqlStatement BuildInsertStatement(DataRow row)
     {
         var columns = new List<string>();
-        var values = new List<string>();
+        var placeholders = new List<string>();
+        var parameters = new List<Models.SqlParameter>();
 
         foreach (DataColumn col in row.Table.Columns)
         {
@@ -603,27 +730,41 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             if (columnInfo?.IsAutoIncrement == true && (value == DBNull.Value || value == null))
                 continue;
 
+            var name = $"@v{parameters.Count}";
+
             columns.Add($"[{SqlValueFormatter.EscapeIdentifier(col.ColumnName)}]");
-            values.Add(SqlValueFormatter.FormatForSql(value));
+            placeholders.Add(name);
+            parameters.Add(new Models.SqlParameter(name, value));
         }
 
-        return $"INSERT INTO [{SqlValueFormatter.EscapeIdentifier(TableName)}] ({string.Join(", ", columns)}) VALUES ({string.Join(", ", values)})";
+        return new SqlStatement(
+            $"INSERT INTO [{SqlValueFormatter.EscapeIdentifier(TableName)}] "
+            + $"({string.Join(", ", columns)}) VALUES ({string.Join(", ", placeholders)})",
+            parameters);
     }
 
-    private string BuildUpdateStatement(DataRow row, string whereClause)
+    private SqlStatement BuildUpdateStatement(DataRow row, (string Clause, List<Models.SqlParameter> Parameters) where)
     {
         var setClauses = new List<string>();
+        var parameters = new List<Models.SqlParameter>();
 
         foreach (DataColumn col in row.Table.Columns)
         {
             if (PrimaryKeyColumns.Contains(col.ColumnName))
                 continue;
 
-            var value = row[col];
-            setClauses.Add($"[{SqlValueFormatter.EscapeIdentifier(col.ColumnName)}] = {SqlValueFormatter.FormatForSql(value)}");
+            var name = $"@s{parameters.Count}";
+
+            setClauses.Add($"[{SqlValueFormatter.EscapeIdentifier(col.ColumnName)}] = {name}");
+            parameters.Add(new Models.SqlParameter(name, row[col]));
         }
 
-        return $"UPDATE [{SqlValueFormatter.EscapeIdentifier(TableName)}] SET {string.Join(", ", setClauses)} WHERE {whereClause}";
+        parameters.AddRange(where.Parameters);
+
+        return new SqlStatement(
+            $"UPDATE [{SqlValueFormatter.EscapeIdentifier(TableName)}] "
+            + $"SET {string.Join(", ", setClauses)} WHERE {where.Clause}",
+            parameters);
     }
 
     private static object? ParseDefaultValue(string defaultValue, Type targetType)
@@ -668,6 +809,13 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         CanAddRow = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Session?.IsConnected == true && !IsReadOnly;
         CanDeleteRow = SelectedRowView != null && !IsLoading && !IsReadOnly;
         CanRefresh = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Session?.IsConnected == true;
+        CanGoToNextPage = HasNextPage && !IsLoading && !HasChanges;
+        CanGoToPreviousPage = HasPreviousPage && !IsLoading && !HasChanges;
+
+        PagingNote = !CanPageByKey && PageIndex > 0
+            ? "This table has no single-column primary key, so pages are counted from the start of "
+              + "the table: the further in you go, the longer it takes."
+            : null;
         
         // Status bar states
         HasError = !string.IsNullOrEmpty(ErrorMessage);
@@ -769,10 +917,46 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     public int TotalRowCount { get; set; }
 
     /// <summary>
-    /// Page size for data loading.
+    /// How many rows are on a page (WS-31).
     /// </summary>
     [Notify]
     public int PageSize { get; set; }
+
+    /// <summary>
+    /// Which page is shown, zero-based.
+    /// </summary>
+    [Notify]
+    public int PageIndex { get; private set; }
+
+    /// <summary>
+    /// Whether there are rows after this page. Known because the page is fetched one row longer than
+    /// it is shown - not from a count.
+    /// </summary>
+    [Notify]
+    public bool HasNextPage { get; private set; }
+
+    [Notify]
+    public bool HasPreviousPage { get; private set; }
+
+    [Notify]
+    public bool CanGoToNextPage { get; private set; }
+
+    [Notify]
+    public bool CanGoToPreviousPage { get; private set; }
+
+    /// <summary>
+    /// True when this page is being reached by counting rows from the beginning of the table rather
+    /// than by key - which is what OFFSET does, and what it costs.
+    /// </summary>
+    [Notify]
+    public bool IsDeepPage { get; private set; }
+
+    /// <summary>
+    /// Says out loud why paging is slow here, when it is. A grey "next page" button that takes four
+    /// seconds with no explanation is the thing this avoids.
+    /// </summary>
+    [Notify]
+    public string? PagingNote { get; private set; }
 
     /// <summary>
     /// Indicates if data is being loaded.
@@ -883,6 +1067,12 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     public ICommand RollbackCommand { get; private set; } = null!;
 
     public ICommand CellEditedCommand { get; private set; } = null!;
+
+    public ICommand NextPageCommand { get; private set; } = null!;
+
+    public ICommand PreviousPageCommand { get; private set; } = null!;
+
+    public ICommand FirstPageCommand { get; private set; } = null!;
 
     #endregion
 

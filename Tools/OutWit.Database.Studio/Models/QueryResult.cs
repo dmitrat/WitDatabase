@@ -57,6 +57,13 @@ public sealed class QueryResult : ModelBase
     public DataTable? Data { get; set; }
 
     /// <summary>
+    /// Whether the statement produced a result SET, as opposed to changing rows. A SELECT that
+    /// matches nothing returned rows - none of them; an INSERT returned none at all, and the
+    /// difference decides whether a result tab is opened for it.
+    /// </summary>
+    public bool ReturnedRows { get; set; }
+
+    /// <summary>
     /// Gets whether the query was successful.
     /// </summary>
     public bool IsSuccess => string.IsNullOrEmpty(ErrorMessage);
