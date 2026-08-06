@@ -67,7 +67,12 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
-        Database.ConnectionStatusChanged += OnConnectionStatusChanged;
+
+        // Per session, never global. The old ConnectionStatusChanged belonged to the application, so
+        // disconnecting one database closed the tabs of all of them (WS-13).
+        Connections.SessionOpened += OnSessionOpened;
+        Connections.SessionClosed += OnSessionClosed;
+        Connections.ActiveChanged += OnActiveSessionChanged;
     }
 
     private void InitCommands()
@@ -91,7 +96,9 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     private void AddNewQueryTab()
     {
-        var tab = new QueryTabViewModel(ApplicationVm)
+        // A tab is opened in the connection the user is looking at, and stays in it (WS-3). At startup
+        // there is none, and the tab is unbound until the first database is opened.
+        var tab = new QueryTabViewModel(ApplicationVm, Connections.Active)
         {
             Title = $"Query {m_nextQueryNumber++}",
             SqlText = string.Empty
@@ -105,9 +112,9 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         Logger.LogInformation("Created new query tab: {Title}", tab.Title);
     }
 
-    public QueryTabViewModel OpenQueryTab(string sql, string? title = null)
+    public QueryTabViewModel OpenQueryTab(string sql, string? title = null, IDatabaseSession? session = null)
     {
-        var tab = new QueryTabViewModel(ApplicationVm)
+        var tab = new QueryTabViewModel(ApplicationVm, session ?? Connections.Active)
         {
             Title = title ?? $"Query {m_nextQueryNumber++}",
             SqlText = sql
@@ -125,11 +132,15 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Tab Management - Table Edit
 
-    public async Task<TableEditTabViewModel> OpenTableEditTabAsync(string tableName)
+    /// <summary>
+    /// Opens the table for editing IN THE GIVEN CONNECTION. The same table name in two databases is
+    /// two tabs, not one - which is why the session is part of the identity here.
+    /// </summary>
+    public async Task<TableEditTabViewModel> OpenTableEditTabAsync(IDatabaseSession session, string tableName)
     {
         // Check if tab already exists
         var existingTab = Tabs.OfType<TableEditTabViewModel>()
-            .FirstOrDefault(t => t.UniqueId == $"edit:{tableName}");
+            .FirstOrDefault(t => t.Session == session && t.TableName == tableName);
 
         if (existingTab != null)
         {
@@ -137,7 +148,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             return existingTab;
         }
 
-        var tab = new TableEditTabViewModel(ApplicationVm, tableName);
+        var tab = new TableEditTabViewModel(ApplicationVm, session, tableName);
         tab.PropertyChanged += OnTabPropertyChanged;
 
         AddTab(tab);
@@ -154,12 +165,14 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Tab Management - Structure
 
-    public async Task<StructureTabViewModel> OpenStructureTabAsync(string objectName, DatabaseNodeType objectType)
+    public async Task<StructureTabViewModel> OpenStructureTabAsync(IDatabaseSession session,
+        string objectName, DatabaseNodeType objectType)
     {
         // Check if tab already exists
-        var uniqueId = $"structure:{objectType}:{objectName}";
         var existingTab = Tabs.OfType<StructureTabViewModel>()
-            .FirstOrDefault(t => t.UniqueId == uniqueId);
+            .FirstOrDefault(t => t.Session == session
+                              && t.ObjectName == objectName
+                              && t.ObjectType == objectType);
 
         if (existingTab != null)
         {
@@ -167,7 +180,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             return existingTab;
         }
 
-        var tab = new StructureTabViewModel(ApplicationVm, objectName, objectType);
+        var tab = new StructureTabViewModel(ApplicationVm, session, objectName, objectType);
         tab.PropertyChanged += OnTabPropertyChanged;
 
         AddTab(tab);
@@ -287,7 +300,22 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     public async Task<bool> ConfirmCloseAllAsync()
     {
-        foreach (var tab in Tabs.ToList())
+        return await ConfirmCloseAsync(Tabs.ToList());
+    }
+
+    /// <summary>
+    /// The same question, asked of one connection's tabs only - disconnecting it ends them and
+    /// nothing else (WS-13). Asking the whole workspace would make a user answer for databases that
+    /// are not going anywhere.
+    /// </summary>
+    public async Task<bool> ConfirmCloseSessionAsync(IDatabaseSession session)
+    {
+        return await ConfirmCloseAsync(Tabs.Where(tab => tab.Session == session).ToList());
+    }
+
+    private static async Task<bool> ConfirmCloseAsync(IReadOnlyList<WorkspaceTabViewModel> tabs)
+    {
+        foreach (var tab in tabs)
         {
             if (tab.CanClose())
                 continue;
@@ -341,11 +369,8 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         if (string.IsNullOrWhiteSpace(queryTab.SqlText))
             return;
 
-        if (!Database.IsConnected)
-        {
-            ApplicationVm.MainWindowVm.StatusText = "Not connected to database";
+        if (!IsRunnable(queryTab))
             return;
-        }
 
         await ExecuteSqlAsync(queryTab, queryTab.SqlText);
     }
@@ -362,17 +387,32 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         if (string.IsNullOrWhiteSpace(sqlToExecute))
             return;
 
-        if (!Database.IsConnected)
-        {
-            ApplicationVm.MainWindowVm.StatusText = "Not connected to database";
+        if (!IsRunnable(queryTab))
             return;
-        }
 
         await ExecuteSqlAsync(queryTab, sqlToExecute);
     }
 
+    /// <summary>
+    /// Whether the tab has a connection to run in - ITS connection. What is selected in the tree has
+    /// nothing to do with the answer (WS-3).
+    /// </summary>
+    private bool IsRunnable(QueryTabViewModel tab)
+    {
+        if (tab.Session?.IsConnected == true)
+            return true;
+
+        ApplicationVm.MainWindowVm.StatusText = tab.ConnectionName == null
+            ? "Not connected to database"
+            : $"The connection this tab belongs to ({tab.ConnectionName}) is closed";
+
+        return false;
+    }
+
     private async Task ExecuteSqlAsync(QueryTabViewModel tab, string sql)
     {
+        var session = tab.Session!;
+
         IsExecuting = true;
         CurrentExecutingTab = tab;
         tab.ErrorMessage = null;
@@ -384,7 +424,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         try
         {
             var stopwatch = System.Diagnostics.Stopwatch.StartNew();
-            var result = await Database.ExecuteQueryAsync(sql);
+            var result = await session.ExecuteQueryAsync(sql);
             stopwatch.Stop();
 
             if (result.IsSuccess)
@@ -404,7 +444,8 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
                     Logger.LogInformation("DDL statement detected, refreshing schema tree...");
                     try
                     {
-                        await ApplicationVm.DatabaseExplorerVm.RefreshAsync();
+                        // The branch of the connection the statement ran in, not the selected one.
+                        await ApplicationVm.DatabaseExplorerVm.RefreshAsync(session);
                         Logger.LogInformation("Schema tree refreshed successfully");
                     }
                     catch (Exception refreshEx)
@@ -584,7 +625,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             var content = await File.ReadAllTextAsync(filePath);
             var fileName = Path.GetFileNameWithoutExtension(filePath);
 
-            var tab = new QueryTabViewModel(ApplicationVm)
+            var tab = new QueryTabViewModel(ApplicationVm, Connections.Active)
             {
                 Title = fileName,
                 SqlText = content,
@@ -615,7 +656,10 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     {
         var hasSelectedTab = SelectedTab != null;
         var hasMultipleTabs = Tabs.Count > 1;
-        var isConnected = Database.IsConnected;
+
+        // The selected TAB's connection. Studio can have three databases open and still not be able to
+        // run this tab's query, because the connection it belongs to was closed.
+        var isConnected = SelectedTab?.Session?.IsConnected == true;
 
         var isQueryTab = SelectedTab is QueryTabViewModel;
         var queryTab = SelectedTab as QueryTabViewModel;
@@ -665,32 +709,60 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         }
     }
 
-    private void OnConnectionStatusChanged(object? sender, bool isConnected)
+    /// <summary>
+    /// A tab that has never had a connection adopts the first one opened, so that a query typed before
+    /// File &gt; Open still runs. A tab that HAD one and lost it does not - see
+    /// <see cref="WorkspaceTabViewModel.CanBind"/>.
+    /// </summary>
+    private void OnSessionOpened(object? sender, SessionEventArgs e)
     {
-        if (!isConnected)
+        foreach (var tab in Tabs.Where(tab => tab.CanBind).ToList())
+            tab.Bind(e.Session);
+
+        UpdateStatus();
+    }
+
+    /// <summary>
+    /// WS-13: closing a connection closes the tabs that belong to IT. Everyone else's tabs stay, with
+    /// their results, their unapplied edits and their text.
+    /// </summary>
+    private void OnSessionClosed(object? sender, SessionEventArgs e)
+    {
+        var tabsToClose = Tabs
+            .Where(tab => tab.Session == e.Session && tab.TabType != WorkspaceTabType.Query && !tab.IsPinned)
+            .ToList();
+
+        foreach (var tab in tabsToClose)
         {
-            // Close all edit and structure tabs when disconnected
-            var tabsToClose = Tabs.Where(t => t.TabType != WorkspaceTabType.Query && !t.IsPinned).ToList();
+            // The question belongs before the disconnect (CloseDatabaseAsync asks it), because by
+            // here there is no connection left to apply anything to. Saying so out loud rather
+            // than discarding in silence.
+            if (!tab.CanClose())
+                Logger.LogWarning("Discarding unapplied changes in {Title}: the connection is gone", tab.Title);
 
-            foreach (var tab in tabsToClose)
-            {
-                // The question belongs before the disconnect (CloseDatabaseAsync asks it), because by
-                // here there is no connection left to apply anything to. Saying so out loud rather
-                // than discarding in silence.
-                if (!tab.CanClose())
-                    Logger.LogWarning("Discarding unapplied changes in {Title}: the connection is gone", tab.Title);
-
-                tab.PropertyChanged -= OnTabPropertyChanged;
-                tab.OnClosed();
-                Tabs.Remove(tab);
-            }
-
-            if (Tabs.Count == 0)
-            {
-                AddNewQueryTab();
-            }
+            tab.PropertyChanged -= OnTabPropertyChanged;
+            tab.Unbind();
+            tab.OnClosed();
+            Tabs.Remove(tab);
         }
 
+        // Query tabs are kept: the text in one is usually its only copy, and it is not the closing
+        // connection's to throw away. They lose their connection and say so, rather than quietly
+        // running somewhere else.
+        foreach (var tab in Tabs.Where(tab => tab.Session == e.Session).ToList())
+            tab.Unbind();
+
+        if (Tabs.Count == 0)
+            AddNewQueryTab();
+
+        if (SelectedTab == null || !Tabs.Contains(SelectedTab))
+            SelectedTab = Tabs.LastOrDefault();
+
+        UpdateStatus();
+    }
+
+    private void OnActiveSessionChanged(object? sender, SessionEventArgs? e)
+    {
         UpdateStatus();
     }
 
@@ -772,7 +844,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Services
 
-    public IDatabaseService Database => ApplicationVm.Database;
+    public IConnectionManager Connections => ApplicationVm.Connections;
 
     public ISettingsService Settings => ApplicationVm.Settings;
 

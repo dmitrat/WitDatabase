@@ -19,6 +19,7 @@ public sealed partial class DatabaseNode : ModelBase
 
         return Name.Is(other.Name)
             && NodeType.Is(other.NodeType)
+            && ConnectionId.Equals(other.ConnectionId)
             && IsExpanded.Is(other.IsExpanded)
             && Children.Is(other.Children);
     }
@@ -29,6 +30,7 @@ public sealed partial class DatabaseNode : ModelBase
         {
             Name = Name,
             NodeType = NodeType,
+            ConnectionId = ConnectionId,
             IsExpanded = IsExpanded,
             Children = Children.Select(node => node.Clone()).ToList()
         };
@@ -47,6 +49,16 @@ public sealed partial class DatabaseNode : ModelBase
     /// Gets or sets the node type.
     /// </summary>
     public DatabaseNodeType NodeType { get; set; }
+
+    /// <summary>
+    /// The connection this node came from. Every node in a branch carries it, including the root, so
+    /// that "drop this table" goes to the database the user is pointing at rather than to whichever
+    /// connection is active (WS-3).
+    ///
+    /// An id rather than a reference: a node left over from a closed connection must not be able to
+    /// keep it alive, and <see cref="Guid.Empty"/> reads correctly as "no connection".
+    /// </summary>
+    public Guid ConnectionId { get; set; }
 
     /// <summary>
     /// Gets or sets whether the node is expanded in the tree.

@@ -4,9 +4,9 @@ using OutWit.Database.Studio.Models;
 namespace OutWit.Database.Studio.Services;
 
 /// <summary>
-/// Schema information methods for DatabaseService.
+/// Schema information methods for DatabaseSession.
 /// </summary>
-public sealed partial class DatabaseService
+public sealed partial class DatabaseSession
 {
     #region Tables and Views
 

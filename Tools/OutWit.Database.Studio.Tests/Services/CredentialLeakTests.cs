@@ -9,7 +9,7 @@ namespace OutWit.Database.Studio.Tests.Services;
 ///
 /// This drives the SHIPPING logging path, not a capturing double: a real <see cref="FileLoggerProvider"/>
 /// at the level <c>Program.ConfigureServices</c> configures, writing to a real file, under a real
-/// <see cref="DatabaseService"/>. The claim being tested is "the password is on disk", so the file is
+/// <see cref="DatabaseSession"/>. The claim being tested is "the password is on disk", so the file is
 /// what gets read - a fake logger would answer a different question.
 ///
 /// The main assertion is a NULL result: a substring is absent. A null result proves nothing without a
@@ -96,18 +96,20 @@ public class CredentialLeakTests
         using var provider = new FileLoggerProvider(m_logPath);
         using var factory = NewFactory(provider);
 
-        using (var db = new DatabaseService(factory.CreateLogger<DatabaseService>()))
+        var connection = new ConnectionInfo
         {
-            var connected = await db.ConnectAsync(new ConnectionInfo
-            {
-                FilePath = path,
-                IsEncrypted = true,
-                Password = PASSWORD
-            });
+            FilePath = path,
+            IsEncrypted = true,
+            Password = PASSWORD
+        };
+
+        using (var db = new DatabaseSession(connection, factory.CreateLogger<DatabaseSession>()))
+        {
+            var connected = await db.OpenAsync();
 
             Assert.That(connected, Is.True, "the case is only meaningful if the connection was actually made");
 
-            await db.DisconnectAsync();
+            await db.CloseAsync();
         }
 
         var written = ReadLog();
@@ -140,14 +142,16 @@ public class CredentialLeakTests
         using var provider = new FileLoggerProvider(m_logPath);
         using var factory = NewFactory(provider);
 
-        using (var db = new DatabaseService(factory.CreateLogger<DatabaseService>()))
+        var connection = new ConnectionInfo
         {
-            await db.ConnectAsync(new ConnectionInfo
-            {
-                FilePath = path,
-                IsEncrypted = true,
-                Password = PASSWORD
-            });
+            FilePath = path,
+            IsEncrypted = true,
+            Password = PASSWORD
+        };
+
+        using (var db = new DatabaseSession(connection, factory.CreateLogger<DatabaseSession>()))
+        {
+            await db.OpenAsync();
         }
 
         var written = ReadLog();
@@ -173,7 +177,7 @@ public class CredentialLeakTests
         using (var provider = new FileLoggerProvider(m_logPath))
         {
             using var factory = NewFactory(provider);
-            var logger = factory.CreateLogger<DatabaseService>();
+            var logger = factory.CreateLogger<DatabaseSession>();
 
             logger.LogInformation("Attempting to connect with connection string: {ConnectionString}",
                 $"Data Source=x.witdb;Encryption=aes-gcm;Password={PASSWORD}");

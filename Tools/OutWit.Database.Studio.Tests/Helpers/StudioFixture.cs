@@ -23,15 +23,20 @@ public enum StudioStorage
 /// A whole Studio over a real database, for tests that want to know what the application does rather
 /// than what a double was told to say.
 ///
-/// Everything here is the shipping type: <see cref="DatabaseService"/>, <see cref="SettingsService"/>,
-/// <see cref="ExportService"/>, the real ViewModel graph. Only two things are stood in for, and both
-/// are people rather than services - the answer to a confirmation dialog, and the file picker, which
-/// the ConnectionViewModel reaches through properties a test can set directly.
+/// Everything here is the shipping type: <see cref="ConnectionManager"/>, <see cref="DatabaseSession"/>,
+/// <see cref="SettingsService"/>, <see cref="ExportService"/>, the real ViewModel graph. Only two
+/// things are stood in for, and both are people rather than services - the answer to a confirmation
+/// dialog, and the file picker, which the ConnectionViewModel reaches through properties a test can
+/// set directly.
 ///
 /// Written because 249 of Studio's tests used to drive a permanently disconnected double: after any
 /// change to the connection, the schema or the write paths, a green suite meant nothing. It also
-/// matches the lifetime production has - ONE DatabaseService, reused - which is what let phase 13's
-/// worst defect hide from a fixture that gave every case a fresh one.
+/// matches the lifetime production has - ONE ConnectionManager, reused - which is what let phase 13's
+/// worst defect hide from a fixture that gave every case a fresh service.
+///
+/// Since stage 2 it opens MORE THAN ONE database: <see cref="OpenAnotherAsync"/> gives a second, fully
+/// independent connection through the same manager, which is the only way to ask whether a tab runs in
+/// its own connection (WS-3) and whether disconnecting one leaves the others alone (WS-13).
 /// </summary>
 public sealed class StudioFixture : IAsyncDisposable
 {
@@ -78,7 +83,7 @@ public sealed class StudioFixture : IAsyncDisposable
         DatabasePath = databasePath;
         Storage = storage;
 
-        Database = new DatabaseService(NullLogger<DatabaseService>.Instance);
+        Connections = new ConnectionManager(NullLoggerFactory.Instance, NullLogger<ConnectionManager>.Instance);
 
         Settings = new SettingsService(
             NullLogger<SettingsService>.Instance,
@@ -87,7 +92,7 @@ public sealed class StudioFixture : IAsyncDisposable
         Confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
 
         App = new ApplicationViewModel(
-            Database,
+            Connections,
             Settings,
             new ExportService(),
             NullLogger<ApplicationViewModel>.Instance,
@@ -110,51 +115,77 @@ public sealed class StudioFixture : IAsyncDisposable
         var root = Path.Combine(Path.GetTempPath(), "WitStudio", Guid.NewGuid().ToString("N"));
         Directory.CreateDirectory(root);
 
-        var databasePath = storage switch
-        {
-            StudioStorage.BTree => Path.Combine(root, "studio.witdb"),
-            StudioStorage.Lsm => Path.Combine(root, "studio-lsm"),
-            _ => ":memory:"
-        };
+        var databasePath = PathFor(root, storage, "studio");
 
         var fixture = new StudioFixture(root, databasePath, storage);
 
         if (connect)
         {
-            await fixture.ConnectAsync();
+            var session = await fixture.ConnectAsync();
 
             if (withSchema)
-                await fixture.CreateSchemaAsync();
+                await CreateSchemaAsync(session);
         }
 
         return fixture;
     }
 
     /// <summary>
-    /// Connects the way the application does - through ConnectionInfo, so the connection string is the
-    /// one the dialog would have built.
+    /// Connects the way the application does - through ConnectionInfo and the manager, so the
+    /// connection string is the one the dialog would have built.
     /// </summary>
-    public async Task ConnectAsync()
+    public async Task<IDatabaseSession> ConnectAsync()
+    {
+        return await OpenAsync(DatabasePath, Storage);
+    }
+
+    /// <summary>
+    /// Opens a SECOND (third, fourth) database through the same manager, with its own file and its own
+    /// schema. This is what makes "the tab ran in the right one" a question that can be asked.
+    /// </summary>
+    public async Task<IDatabaseSession> OpenAnotherAsync(
+        string name,
+        StudioStorage storage = StudioStorage.BTree,
+        bool withSchema = true)
+    {
+        var session = await OpenAsync(PathFor(Root, storage, name), storage);
+
+        if (withSchema)
+            await CreateSchemaAsync(session);
+
+        return session;
+    }
+
+    private async Task<IDatabaseSession> OpenAsync(string path, StudioStorage storage)
     {
         var connection = new ConnectionInfo
         {
-            FilePath = DatabasePath,
-            StorageEngine = Storage == StudioStorage.Lsm ? "lsm" : "btree"
+            FilePath = path,
+            StorageEngine = storage == StudioStorage.Lsm ? "lsm" : "btree"
         };
 
-        var connected = await Database.ConnectAsync(connection);
+        var session = await Connections.OpenAsync(connection);
 
-        if (!connected)
-            throw new InvalidOperationException($"The fixture could not open its own database at {DatabasePath}.");
+        if (session == null)
+            throw new InvalidOperationException($"The fixture could not open its own database at {path}.");
+
+        return session;
     }
 
-    public async Task CreateSchemaAsync()
+    private static string PathFor(string root, StudioStorage storage, string name) => storage switch
+    {
+        StudioStorage.BTree => Path.Combine(root, $"{name}.witdb"),
+        StudioStorage.Lsm => Path.Combine(root, $"{name}-lsm"),
+        _ => ":memory:"
+    };
+
+    public static async Task CreateSchemaAsync(IDatabaseSession session)
     {
         foreach (var statement in SCHEMA.Concat(DATA))
         {
             try
             {
-                await Database.ExecuteNonQueryAsync(statement);
+                await session.ExecuteNonQueryAsync(statement);
             }
             catch (Exception ex)
             {
@@ -197,12 +228,13 @@ public sealed class StudioFixture : IAsyncDisposable
     };
 
     /// <summary>
-    /// Reads rows back by scanning them. Never through COUNT(*) - on this engine a count is separate
-    /// state that can disagree with the rows.
+    /// Reads rows back by scanning them, in the connection given - the primary one by default. Never
+    /// through COUNT(*): on this engine a count is separate state that can disagree with the rows.
     /// </summary>
-    public async Task<int> CountRowsAsync(string table)
+    public async Task<int> CountRowsAsync(string table, IDatabaseSession? session = null)
     {
-        var result = await Database.ExecuteQueryAsync($"SELECT * FROM {table}");
+        var target = session ?? Database;
+        var result = await target.ExecuteQueryAsync($"SELECT * FROM {table}");
 
         if (!string.IsNullOrEmpty(result.ErrorMessage))
             throw new InvalidOperationException($"Reading {table} failed: {result.ErrorMessage}");
@@ -220,7 +252,17 @@ public sealed class StudioFixture : IAsyncDisposable
 
     public StudioStorage Storage { get; }
 
-    public DatabaseService Database { get; }
+    /// <summary>
+    /// The one manager, reused for every connection - the lifetime the application has.
+    /// </summary>
+    public ConnectionManager Connections { get; }
+
+    /// <summary>
+    /// The first database opened. Named <c>Database</c> because that is what it was when there could
+    /// only be one, and most cases still only need one.
+    /// </summary>
+    public IDatabaseSession Database => Connections.Sessions.FirstOrDefault()
+        ?? throw new InvalidOperationException("The fixture has no open connection.");
 
     public SettingsService Settings { get; }
 
@@ -246,14 +288,14 @@ public sealed class StudioFixture : IAsyncDisposable
     {
         try
         {
-            await Database.DisconnectAsync();
+            await Connections.CloseAllAsync();
         }
         catch
         {
             // the fixture is being torn down; a failure here must not mask the test's own result
         }
 
-        Database.Dispose();
+        Connections.Dispose();
 
         try
         {

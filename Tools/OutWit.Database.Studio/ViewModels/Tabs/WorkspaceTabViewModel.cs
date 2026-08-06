@@ -3,6 +3,7 @@ using OutWit.Common.Aspects;
 using OutWit.Common.MVVM.ViewModels;
 using OutWit.Common.Utils;
 using OutWit.Database.Studio.Models;
+using OutWit.Database.Studio.Services;
 
 namespace OutWit.Database.Studio.ViewModels.Tabs;
 
@@ -13,10 +14,13 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
 {
     #region Constructors
 
-    protected WorkspaceTabViewModel(ApplicationViewModel applicationVm)
+    protected WorkspaceTabViewModel(ApplicationViewModel applicationVm, IDatabaseSession? session)
         : base(applicationVm)
     {
         InitEvents();
+
+        if (session != null)
+            Bind(session);
     }
 
     #endregion
@@ -26,6 +30,81 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
     private void InitEvents()
     {
         PropertyChanged += OnBasePropertyChanged;
+    }
+
+    #endregion
+
+    #region Session
+
+    /// <summary>
+    /// The connection this tab belongs to, and the only one it will ever run anything in (WS-3).
+    /// Null in exactly two cases: a query tab that existed before any database was opened, and one
+    /// whose connection has since been closed.
+    /// </summary>
+    public IDatabaseSession? Session { get; private set; }
+
+    /// <summary>
+    /// True once this tab has had a connection. A tab that has never had one adopts the first
+    /// connection opened - which is what makes "start Studio, type a query, open a database, run it"
+    /// still work. A tab whose connection was CLOSED does not adopt the next one: it would run against
+    /// a database the user never chose for it, and it would do so silently.
+    /// </summary>
+    private bool m_hasEverBound;
+
+    public bool CanBind => Session == null && !m_hasEverBound;
+
+    /// <summary>
+    /// Ties the tab to a connection for good.
+    /// </summary>
+    public void Bind(IDatabaseSession session)
+    {
+        if (Session != null)
+            return;
+
+        Session = session;
+        m_hasEverBound = true;
+
+        session.StatusChanged += OnSessionStatusChangedInternal;
+
+        ConnectionName = session.DisplayName;
+        ConnectionColorIndex = session.ColorIndex;
+
+        OnSessionChanged();
+    }
+
+    /// <summary>
+    /// Called when the tab's connection has been closed. The tab is not destroyed here - a query tab
+    /// keeps its text, which is usually the only copy of it.
+    /// </summary>
+    public void Unbind()
+    {
+        if (Session == null)
+            return;
+
+        Session.StatusChanged -= OnSessionStatusChangedInternal;
+        Session = null;
+
+        OnSessionChanged();
+    }
+
+    private void OnSessionStatusChangedInternal(object? sender, bool isConnected)
+    {
+        OnSessionStatusChanged(isConnected);
+    }
+
+    /// <summary>
+    /// Called when this tab's own connection opens or closes. Never fires for another connection - the
+    /// event lives on the session, not on the application (WS-13).
+    /// </summary>
+    protected virtual void OnSessionStatusChanged(bool isConnected)
+    {
+    }
+
+    /// <summary>
+    /// Called when the tab gains or loses its connection.
+    /// </summary>
+    protected virtual void OnSessionChanged()
+    {
     }
 
     #endregion
@@ -137,6 +216,20 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
     /// Used to prevent duplicate tabs for the same object.
     /// </summary>
     public virtual string? UniqueId => null;
+
+    /// <summary>
+    /// The name of the connection this tab belongs to, kept after the connection is gone so that the
+    /// tab can still say where its text came from.
+    /// </summary>
+    [Notify]
+    public string? ConnectionName { get; private set; }
+
+    /// <summary>
+    /// The connection's colour (WS-3): a 2px stripe down the left edge of the tab, once the frame is
+    /// redesigned. Carried now because it belongs to the connection, not to the drawing.
+    /// </summary>
+    [Notify]
+    public int ConnectionColorIndex { get; private set; }
 
     #endregion
 }

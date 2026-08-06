@@ -321,11 +321,12 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                 return;
             }
 
-            // Connect to the database (both for new and existing)
+            // Connect to the database (both for new and existing). The manager adds the session and
+            // makes it active; any database already open stays open.
             Logger.LogInformation("Attempting to connect to database: {FilePath}", ConnectionInfo.FilePath);
-            var success = await Database.ConnectAsync(ConnectionInfo);
-            
-            if (success)
+            OpenedSession = await Connections.OpenAsync(ConnectionInfo);
+
+            if (OpenedSession != null)
             {
                 if (IsFileBased && !string.IsNullOrWhiteSpace(ConnectionInfo.FilePath) && ConnectionInfo.FilePath != ":memory:")
                 {
@@ -433,6 +434,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         IsNewDatabase = true;
         DialogResult = false;
         SelectedConnection = null;
+        OpenedSession = null;
 
         // Reset to defaults for Create dialog
         InitDefault();
@@ -445,6 +447,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         IsNewDatabase = false;
         DialogResult = false;
         SelectedConnection = null;
+        OpenedSession = null;
 
         InitDefault();
 
@@ -477,6 +480,13 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     public bool IsNewDatabase { get; set; }
 
     public ConnectionInfo? SelectedConnection { get; set; }
+
+    /// <summary>
+    /// The session this dialog opened, or null if it opened none. The caller needs the session rather
+    /// than the ConnectionInfo now: with several databases open, "the current connection" is not a
+    /// question the service can answer.
+    /// </summary>
+    public IDatabaseSession? OpenedSession { get; private set; }
 
     // Storage type: 0 = File-based, 1 = In-Memory
     [Notify]
@@ -528,7 +538,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Services
 
-    public IDatabaseService Database => ApplicationVm.Database;
+    public IConnectionManager Connections => ApplicationVm.Connections;
 
     public IDialogService Dialogs => ApplicationVm.Dialogs;
 

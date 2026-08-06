@@ -7,13 +7,15 @@ using OutWit.Common.MVVM.Commands;
 using OutWit.Common.MVVM.ViewModels;
 using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
-using OutWit.Database.Studio.ViewModels.Tabs;
-using OutWit.Database.Studio.Views.Dialogs;
 
 namespace OutWit.Database.Studio.ViewModels;
 
 /// <summary>
 /// ViewModel for the database explorer tree.
+///
+/// The tree has one root per open connection (WS-3): there used to be exactly one, because there could
+/// be exactly one connection. Every node carries the id of the connection it came from, so an action
+/// on a node goes to that connection and not to whichever one happens to be active.
 /// </summary>
 public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 {
@@ -53,6 +55,46 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChangedInternal;
+
+        // Only the closing half. A connection's branch is built by whoever opened it, which is a path
+        // that can be awaited; an 'async void' event handler here would refresh the tree twice and
+        // would have nowhere to put a failure.
+        Connections.SessionClosed += OnSessionClosed;
+    }
+
+    #endregion
+
+    #region Sessions
+
+    /// <summary>
+    /// The connection a node came from, or null if that connection has since been closed. Nodes hold
+    /// an id rather than a reference so that a stale node cannot keep a closed database open.
+    /// </summary>
+    public IDatabaseSession? SessionFor(DatabaseNode? node)
+    {
+        return node == null ? null : Connections.Find(node.ConnectionId);
+    }
+
+    /// <summary>
+    /// The connection of the selected node. This is what the object commands act on - and what the
+    /// selection makes active - but NOT what an already open tab runs in (WS-3).
+    /// </summary>
+    public IDatabaseSession? SelectedSession => SessionFor(SelectedNode);
+
+    private void OnSessionClosed(object? sender, SessionEventArgs e)
+    {
+        var root = Nodes.FirstOrDefault(node => node.ConnectionId == e.Session.Id);
+
+        if (root == null)
+            return;
+
+        if (SelectedNode != null && SelectedNode.ConnectionId == e.Session.Id)
+            SelectedNode = null;
+
+        Nodes.Remove(root);
+
+        Logger.LogInformation("Explorer dropped the branch of {Name}; {Count} left",
+            e.Session.DisplayName, Nodes.Count);
     }
 
     #endregion
@@ -71,62 +113,69 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     private void SelectTopRows(int limit)
     {
-        if (SelectedNode == null || !CanBrowseData)
+        var session = SelectedSession;
+
+        if (SelectedNode == null || session == null || !CanBrowseData)
             return;
 
         var tableName = SelectedNode.Name;
         var sql = $"SELECT * FROM [{tableName}] LIMIT {limit}";
-        
-        // Use new WorkspaceTabsViewModel
-        var tab = ApplicationVm.WorkspaceTabsVm.OpenQueryTab(sql, $"{tableName} - Top {limit}");
-        
-        // Execute the query
+
+        // The tab is opened in the connection the node came from and stays there, so executing it
+        // cannot land in another database however the selection moves afterwards.
+        var tab = ApplicationVm.WorkspaceTabsVm.OpenQueryTab(sql, $"{tableName} - Top {limit}", session);
+
         ApplicationVm.WorkspaceTabsVm.ExecuteQueryCommand.Execute(null);
 
-        Logger.LogInformation("Select top {Limit} from {ObjectName}", limit, SelectedNode.Name);
+        Logger.LogInformation("Select top {Limit} from {ObjectName} in {Connection}",
+            limit, tab.Title, session.DisplayName);
     }
 
     private async Task EditDataAsync()
     {
-        if (SelectedNode == null || !CanEditData)
+        var session = SelectedSession;
+
+        if (SelectedNode == null || session == null || !CanEditData)
             return;
 
         var tableName = SelectedNode.Name;
-        
-        // Use new WorkspaceTabsViewModel to open table edit tab
-        await ApplicationVm.WorkspaceTabsVm.OpenTableEditTabAsync(tableName);
-        
+
+        await ApplicationVm.WorkspaceTabsVm.OpenTableEditTabAsync(session, tableName);
+
         ApplicationVm.MainWindowVm.StatusText = $"Editing table: {tableName}";
-        Logger.LogInformation("Edit data for table {TableName}", tableName);
+        Logger.LogInformation("Edit data for table {TableName} in {Connection}", tableName, session.DisplayName);
     }
 
     private async Task ViewStructureAsync()
     {
-        if (SelectedNode == null || !CanViewStructure)
+        var session = SelectedSession;
+
+        if (SelectedNode == null || session == null || !CanViewStructure)
             return;
 
-        // Use new WorkspaceTabsViewModel to open structure tab
-        await ApplicationVm.WorkspaceTabsVm.OpenStructureTabAsync(SelectedNode.Name, SelectedNode.NodeType);
-        
+        await ApplicationVm.WorkspaceTabsVm.OpenStructureTabAsync(session, SelectedNode.Name, SelectedNode.NodeType);
+
         Logger.LogInformation("View structure for {ObjectType} {ObjectName}", SelectedNode.NodeType, SelectedNode.Name);
     }
 
     private async Task ViewDefinitionAsync()
     {
-        if (SelectedNode == null || !CanViewDefinition)
+        var session = SelectedSession;
+
+        if (SelectedNode == null || session == null || !CanViewDefinition)
             return;
 
-        string? definition = null;
+        string? definition;
         var objectType = SelectedNode.NodeType;
 
         try
         {
             definition = objectType switch
             {
-                DatabaseNodeType.Table => await Database.GetTableDefinitionAsync(SelectedNode.Name),
-                DatabaseNodeType.View => await Database.GetViewDefinitionAsync(SelectedNode.Name),
-                DatabaseNodeType.Trigger => await Database.GetTriggerDefinitionAsync(SelectedNode.Name),
-                DatabaseNodeType.Index => await Database.GetIndexDefinitionAsync(SelectedNode.Name),
+                DatabaseNodeType.Table => await session.GetTableDefinitionAsync(SelectedNode.Name),
+                DatabaseNodeType.View => await session.GetViewDefinitionAsync(SelectedNode.Name),
+                DatabaseNodeType.Trigger => await session.GetTriggerDefinitionAsync(SelectedNode.Name),
+                DatabaseNodeType.Index => await session.GetIndexDefinitionAsync(SelectedNode.Name),
                 _ => null
             };
         }
@@ -143,16 +192,17 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             return;
         }
 
-        // Open definition in a new query tab using new WorkspaceTabsViewModel
         var sql = $"-- Definition for {objectType}: {SelectedNode.Name}\n\n{definition}";
-        ApplicationVm.WorkspaceTabsVm.OpenQueryTab(sql, $"{SelectedNode.Name} - Definition");
+        ApplicationVm.WorkspaceTabsVm.OpenQueryTab(sql, $"{SelectedNode.Name} - Definition", session);
 
         Logger.LogInformation("Viewed definition for {ObjectName}", SelectedNode.Name);
     }
 
     private async Task DropObjectAsync()
     {
-        if (SelectedNode == null || !CanDropObject)
+        var session = SelectedSession;
+
+        if (SelectedNode == null || session == null || !CanDropObject)
             return;
 
         var objectType = SelectedNode.NodeType switch
@@ -173,15 +223,16 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         try
         {
-            await Database.ExecuteNonQueryAsync(sql);
-            
+            await session.ExecuteNonQueryAsync(sql);
+
             // Clear selection before refresh to avoid stale reference
             SelectedNode = null;
-            
-            await RefreshAsync();
+
+            await RefreshAsync(session);
 
             ApplicationVm.MainWindowVm.StatusText = $"Dropped {objectType.ToLower()}: {objectName}";
-            Logger.LogInformation("Dropped {ObjectType}: {ObjectName}", objectType, objectName);
+            Logger.LogInformation("Dropped {ObjectType}: {ObjectName} in {Connection}",
+                objectType, objectName, session.DisplayName);
         }
         catch (Exception ex)
         {
@@ -192,7 +243,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task CreateTableAsync()
     {
-        if (!Database.IsConnected)
+        if (ApplicationVm.ActiveSession?.IsConnected != true)
             return;
 
         var createTableVm = new CreateTableViewModel(ApplicationVm);
@@ -205,7 +256,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task CreateViewAsync()
     {
-        if (!Database.IsConnected)
+        if (ApplicationVm.ActiveSession?.IsConnected != true)
             return;
 
         var createViewVm = new CreateViewViewModel(ApplicationVm);
@@ -218,28 +269,49 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task CreateIndexAsync()
     {
-        if (!Database.IsConnected)
+        if (ApplicationVm.ActiveSession?.IsConnected != true)
             return;
 
         var createIndexVm = new CreateIndexViewModel(ApplicationVm);
-        
+
         // Load tables on dialog open
         createIndexVm.LoadTablesCommand.Execute(null);
-        
+
         var result = await ApplicationVm.Dialogs.ShowCreateIndexAsync(createIndexVm);
 
         if (result)
             Logger.LogInformation("Index created successfully");
     }
 
+    /// <summary>
+    /// Rebuilds every connection's branch, and removes the branches of connections that are gone.
+    /// </summary>
     public async Task RefreshAsync()
     {
-        Logger.LogInformation("RefreshAsync called. IsConnected: {IsConnected}", Database.IsConnected);
-        
-        if (!Database.IsConnected)
+        foreach (var root in Nodes.ToList())
         {
-            Logger.LogWarning("Not connected to database, clearing nodes");
-            Nodes.Clear();
+            if (Connections.Find(root.ConnectionId) == null)
+                Nodes.Remove(root);
+        }
+
+        foreach (var session in Connections.Sessions.ToList())
+            await RefreshAsync(session);
+    }
+
+    /// <summary>
+    /// Rebuilds one connection's branch, leaving every other branch - and its expanded state - alone.
+    /// </summary>
+    public async Task RefreshAsync(IDatabaseSession session)
+    {
+        if (!session.IsConnected)
+        {
+            Logger.LogWarning("Not connected to {Name}, dropping its branch", session.DisplayName);
+
+            var stale = Nodes.FirstOrDefault(node => node.ConnectionId == session.Id);
+
+            if (stale != null)
+                Nodes.Remove(stale);
+
             return;
         }
 
@@ -248,158 +320,109 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         // Save expanded state before refresh
         var expandedNodes = SaveExpandedState();
+        var firstLoad = Nodes.All(node => node.ConnectionId != session.Id);
 
         try
         {
-            Logger.LogInformation("Starting schema load...");
-
-            // Create root node
-            var dbName = Path.GetFileNameWithoutExtension(Database.CurrentConnection?.FilePath ?? "Database");
-            Logger.LogInformation("Database name: {DbName}", dbName);
-            
             var rootNode = new DatabaseNode
             {
-                Name = dbName,
+                Name = session.DisplayName,
                 NodeType = DatabaseNodeType.Database,
-                IsExpanded = expandedNodes.Contains($"Database:{dbName}") || expandedNodes.Count == 0
+                ConnectionId = session.Id,
+                IsExpanded = firstLoad || IsExpanded(expandedNodes, session, DatabaseNodeType.Database, session.DisplayName)
             };
 
-            // Tables folder
-            var tablesFolder = new DatabaseNode
-            {
-                Name = "Tables",
-                NodeType = DatabaseNodeType.TablesFolder,
-                IsExpanded = expandedNodes.Contains("TablesFolder:Tables") || expandedNodes.Count == 0
-            };
+            var tables = await session.GetTablesAsync();
+            var views = await session.GetViewsAsync();
+            var indexes = await session.GetIndexesAsync();
+            var triggers = await session.GetTriggersAsync();
+            var sequences = await session.GetSequencesAsync();
 
-            Logger.LogInformation("Loading tables...");
-            var tables = await Database.GetTablesAsync();
-            Logger.LogInformation("Loaded {Count} tables", tables.Count);
-            
-            foreach (var table in tables)
-            {
-                tablesFolder.Children.Add(new DatabaseNode
-                {
-                    Name = table.Name,
-                    NodeType = DatabaseNodeType.Table
-                });
-            }
-            rootNode.Children.Add(tablesFolder);
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Tables",
+                DatabaseNodeType.TablesFolder, DatabaseNodeType.Table,
+                tables.Select(table => table.Name), expandedByDefault: firstLoad));
 
-            // Views folder
-            var viewsFolder = new DatabaseNode
-            {
-                Name = "Views",
-                NodeType = DatabaseNodeType.ViewsFolder,
-                IsExpanded = expandedNodes.Contains("ViewsFolder:Views")
-            };
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Views",
+                DatabaseNodeType.ViewsFolder, DatabaseNodeType.View, views));
 
-            Logger.LogInformation("Loading views...");
-            var views = await Database.GetViewsAsync();
-            Logger.LogInformation("Loaded {Count} views", views.Count);
-            
-            foreach (var view in views)
-            {
-                viewsFolder.Children.Add(new DatabaseNode
-                {
-                    Name = view,
-                    NodeType = DatabaseNodeType.View
-                });
-            }
-            rootNode.Children.Add(viewsFolder);
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Indexes",
+                DatabaseNodeType.IndexesFolder, DatabaseNodeType.Index, indexes));
 
-            // Indexes folder
-            var indexesFolder = new DatabaseNode
-            {
-                Name = "Indexes",
-                NodeType = DatabaseNodeType.IndexesFolder,
-                IsExpanded = expandedNodes.Contains("IndexesFolder:Indexes")
-            };
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Triggers",
+                DatabaseNodeType.TriggersFolder, DatabaseNodeType.Trigger, triggers));
 
-            Logger.LogInformation("Loading indexes...");
-            var indexes = await Database.GetIndexesAsync();
-            Logger.LogInformation("Loaded {Count} indexes", indexes.Count);
-            
-            foreach (var index in indexes)
-            {
-                indexesFolder.Children.Add(new DatabaseNode
-                {
-                    Name = index,
-                    NodeType = DatabaseNodeType.Index
-                });
-            }
-            rootNode.Children.Add(indexesFolder);
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Sequences",
+                DatabaseNodeType.SequencesFolder, DatabaseNodeType.Sequence, sequences));
 
-            // Triggers folder
-            var triggersFolder = new DatabaseNode
-            {
-                Name = "Triggers",
-                NodeType = DatabaseNodeType.TriggersFolder,
-                IsExpanded = expandedNodes.Contains("TriggersFolder:Triggers")
-            };
+            ReplaceRoot(session, rootNode);
 
-            Logger.LogInformation("Loading triggers...");
-            var triggers = await Database.GetTriggersAsync();
-            Logger.LogInformation("Loaded {Count} triggers", triggers.Count);
+            ApplicationVm.MainWindowVm.StatusText =
+                $"{session.DisplayName}: {tables.Count} tables, {views.Count} views, {indexes.Count} indexes, "
+                + $"{triggers.Count} triggers, {sequences.Count} sequences";
 
-            foreach (var trigger in triggers)
-            {
-                triggersFolder.Children.Add(new DatabaseNode
-                {
-                    Name = trigger,
-                    NodeType = DatabaseNodeType.Trigger
-                });
-            }
-            rootNode.Children.Add(triggersFolder);
-
-            // Sequences folder
-            var sequencesFolder = new DatabaseNode
-            {
-                Name = "Sequences",
-                NodeType = DatabaseNodeType.SequencesFolder,
-                IsExpanded = expandedNodes.Contains("SequencesFolder:Sequences")
-            };
-
-            Logger.LogInformation("Loading sequences...");
-            var sequences = await Database.GetSequencesAsync();
-            Logger.LogInformation("Loaded {Count} sequences", sequences.Count);
-
-            foreach (var sequence in sequences)
-            {
-                sequencesFolder.Children.Add(new DatabaseNode
-                {
-                    Name = sequence,
-                    NodeType = DatabaseNodeType.Sequence
-                });
-            }
-            rootNode.Children.Add(sequencesFolder);
-
-            Nodes.Clear();
-            Nodes.Add(rootNode);
-            
-            Logger.LogInformation("Nodes updated. Count: {Count}", Nodes.Count);
-
-            ApplicationVm.MainWindowVm.StatusText = $"Loaded: {tables.Count} tables, {views.Count} views, {indexes.Count} indexes, {triggers.Count} triggers, {sequences.Count} sequences";
-
-            Logger.LogInformation("Database explorer refreshed: {Tables} tables, {Views} views, {Indexes} indexes, {Triggers} triggers, {Sequences} sequences",
-                tables.Count, views.Count, indexes.Count, triggers.Count, sequences.Count);
+            Logger.LogInformation(
+                "Explorer refreshed {Connection}: {Tables} tables, {Views} views, {Indexes} indexes, {Triggers} triggers, {Sequences} sequences",
+                session.DisplayName, tables.Count, views.Count, indexes.Count, triggers.Count, sequences.Count);
         }
         catch (Exception ex)
         {
             ErrorMessage = $"Failed to load schema: {ex.Message}";
             ApplicationVm.MainWindowVm.StatusText = "Error loading schema";
-            Logger.LogError(ex, "Failed to refresh database explorer");
+            Logger.LogError(ex, "Failed to refresh the branch of {Connection}", session.DisplayName);
         }
         finally
         {
             IsLoading = false;
-            Logger.LogInformation("RefreshAsync completed. IsLoading: {IsLoading}, Nodes.Count: {NodesCount}", 
-                IsLoading, Nodes.Count);
         }
     }
 
     /// <summary>
-    /// Saves the expanded state of all nodes before refresh.
+    /// Puts the rebuilt branch where the old one was, so that refreshing the second of three
+    /// connections does not move it to the end of the tree.
+    /// </summary>
+    private void ReplaceRoot(IDatabaseSession session, DatabaseNode rootNode)
+    {
+        var existing = Nodes.FirstOrDefault(node => node.ConnectionId == session.Id);
+
+        if (existing != null)
+        {
+            Nodes[Nodes.IndexOf(existing)] = rootNode;
+            return;
+        }
+
+        // Kept in the order the connections were opened, which is the order the manager holds them in.
+        var position = Connections.Sessions.IndexOf(session);
+        Nodes.Insert(position < 0 || position > Nodes.Count ? Nodes.Count : position, rootNode);
+    }
+
+    private static DatabaseNode BuildFolder(IDatabaseSession session, HashSet<string> expanded, string name,
+        DatabaseNodeType folderType, DatabaseNodeType childType, IEnumerable<string> children,
+        bool expandedByDefault = false)
+    {
+        var folder = new DatabaseNode
+        {
+            Name = name,
+            NodeType = folderType,
+            ConnectionId = session.Id,
+            IsExpanded = expandedByDefault || IsExpanded(expanded, session, folderType, name)
+        };
+
+        foreach (var child in children)
+        {
+            folder.Children.Add(new DatabaseNode
+            {
+                Name = child,
+                NodeType = childType,
+                ConnectionId = session.Id
+            });
+        }
+
+        return folder;
+    }
+
+    /// <summary>
+    /// Saves the expanded state of all nodes before refresh. Keyed by connection as well as by node:
+    /// two connections to the same database would otherwise share one answer.
     /// </summary>
     private HashSet<string> SaveExpandedState()
     {
@@ -413,44 +436,46 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         foreach (var node in nodes)
         {
             if (node.IsExpanded)
-            {
-                expanded.Add($"{node.NodeType}:{node.Name}");
-            }
+                expanded.Add(ExpandedKey(node.ConnectionId, node.NodeType, node.Name));
+
             SaveExpandedStateRecursive(node.Children, expanded);
         }
+    }
+
+    private static bool IsExpanded(HashSet<string> expanded, IDatabaseSession session,
+        DatabaseNodeType nodeType, string name)
+    {
+        return expanded.Contains(ExpandedKey(session.Id, nodeType, name));
+    }
+
+    private static string ExpandedKey(Guid connectionId, DatabaseNodeType nodeType, string name)
+    {
+        return $"{connectionId}:{nodeType}:{name}";
     }
 
     #endregion
 
     #region Tools
 
-    /// <summary>
-    /// Quotes an identifier using double quotes (SQL standard).
-    /// WitSql also supports square brackets [] and backticks ``.
-    /// </summary>
-    private static string QuoteIdentifier(string identifier)
-    {
-        return $"\"{identifier.Replace("\"", "\"\"")}\"";
-    }
-
     private void UpdateCommandStates()
     {
         var nodeType = SelectedNode?.NodeType;
+        var connected = SelectedSession?.IsConnected == true;
 
-        CanBrowseData = nodeType == DatabaseNodeType.Table || nodeType == DatabaseNodeType.View;
-        CanEditData = nodeType == DatabaseNodeType.Table;
-        CanViewStructure = nodeType == DatabaseNodeType.Table
-                        || nodeType == DatabaseNodeType.View 
-                        || nodeType == DatabaseNodeType.Index;
-        CanViewDefinition = nodeType == DatabaseNodeType.Table
-                         || nodeType == DatabaseNodeType.View 
-                         || nodeType == DatabaseNodeType.Trigger 
-                         || nodeType == DatabaseNodeType.Index;
-        CanDropObject = nodeType == DatabaseNodeType.Table
-                     || nodeType == DatabaseNodeType.View
-                     || nodeType == DatabaseNodeType.Index
-                     || nodeType == DatabaseNodeType.Trigger
-                     || nodeType == DatabaseNodeType.Sequence;
+        CanBrowseData = connected && nodeType is DatabaseNodeType.Table or DatabaseNodeType.View;
+        CanEditData = connected && nodeType == DatabaseNodeType.Table;
+        CanViewStructure = connected && nodeType is DatabaseNodeType.Table
+                                              or DatabaseNodeType.View
+                                              or DatabaseNodeType.Index;
+        CanViewDefinition = connected && nodeType is DatabaseNodeType.Table
+                                               or DatabaseNodeType.View
+                                               or DatabaseNodeType.Trigger
+                                               or DatabaseNodeType.Index;
+        CanDropObject = connected && nodeType is DatabaseNodeType.Table
+                                           or DatabaseNodeType.View
+                                           or DatabaseNodeType.Index
+                                           or DatabaseNodeType.Trigger
+                                           or DatabaseNodeType.Sequence;
     }
 
     #endregion
@@ -462,6 +487,13 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         if (e.PropertyName != nameof(SelectedNode))
             return;
 
+        // Selecting in the tree moves the focus - the connection new tabs and object dialogs belong
+        // to. It does NOT move the target of a tab that is already open (WS-3).
+        var session = SelectedSession;
+
+        if (session != null)
+            Connections.Active = session;
+
         UpdateCommandStates();
     }
 
@@ -470,7 +502,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     #region Properties
 
     /// <summary>
-    /// Observable collection of database nodes for the tree view.
+    /// The roots of the tree: one per open connection.
     /// </summary>
     public ObservableCollection<DatabaseNode> Nodes { get; private set; } = null!;
 
@@ -526,7 +558,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Services
 
-    public IDatabaseService Database => ApplicationVm.Database;
+    public IConnectionManager Connections => ApplicationVm.Connections;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

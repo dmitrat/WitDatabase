@@ -93,7 +93,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
 
     public async Task InitializeAsync()
     {
-        if (!Database.IsConnected)
+        if (Database?.IsConnected != true)
             return;
 
         try
@@ -181,12 +181,14 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task AutoMapColumnsAsync()
     {
-        if (string.IsNullOrEmpty(SelectedTable))
+        var session = Database;
+
+        if (string.IsNullOrEmpty(SelectedTable) || session?.IsConnected != true)
             return;
 
         try
         {
-            var targetColumns = await Database.GetColumnsAsync(SelectedTable);
+            var targetColumns = await session.GetColumnsAsync(SelectedTable);
             var targetColumnNames = targetColumns.Select(c => c.Name).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
             AvailableTargetColumns = new ObservableCollection<string>(targetColumns.Select(c => c.Name));
@@ -337,6 +339,17 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         if (!CanImport)
             return;
 
+        // Captured once, for the whole import: this is a loop over thousands of statements inside one
+        // transaction, and re-reading the active connection each time would let a click in the tree
+        // move the target halfway through (WS-3).
+        var session = Database;
+
+        if (session?.IsConnected != true)
+        {
+            ErrorMessage = "Not connected to a database";
+            return;
+        }
+
         IsImporting = true;
         ErrorMessage = null;
         ImportProgress = 0;
@@ -364,11 +377,11 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
             
             if (SelectedFormat == ImportFormat.Csv)
             {
-                await ImportCsvAsync(targetColumns, includedMappings, ct);
+                await ImportCsvAsync(session, targetColumns, includedMappings, ct);
             }
             else
             {
-                await ImportJsonAsync(targetColumns, includedMappings, ct);
+                await ImportJsonAsync(session, targetColumns, includedMappings, ct);
             }
 
             if (!ct.IsCancellationRequested)
@@ -410,7 +423,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         }
     }
 
-    private async Task ImportCsvAsync(string targetColumns, List<ColumnMapping> mappings, CancellationToken ct)
+    private async Task ImportCsvAsync(IDatabaseSession session, string targetColumns, List<ColumnMapping> mappings, CancellationToken ct)
     {
         var delimiterChar = string.IsNullOrEmpty(Delimiter) ? ',' : Delimiter[0];
         var lineNumber = 0;
@@ -423,7 +436,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         
         if (useTransaction)
         {
-            await Database.ExecuteNonQueryAsync("BEGIN TRANSACTION", ct);
+            await session.ExecuteNonQueryAsync("BEGIN TRANSACTION", ct);
         }
         
         try
@@ -447,7 +460,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
                     var sqlValues = BuildSqlValues(values, mappings, PreviewData!);
                     var sql = $"INSERT INTO [{SelectedTable}] ({targetColumns}) VALUES ({sqlValues})";
                     
-                    await Database.ExecuteNonQueryAsync(sql, ct);
+                    await session.ExecuteNonQueryAsync(sql, ct);
                     RowsImported++;
                 }
                 catch (OperationCanceledException)
@@ -484,20 +497,20 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
             
             if (useTransaction)
             {
-                await Database.ExecuteNonQueryAsync("COMMIT", ct);
+                await session.ExecuteNonQueryAsync("COMMIT", ct);
             }
         }
         catch
         {
             if (useTransaction)
             {
-                await Database.ExecuteNonQueryAsync("ROLLBACK");
+                await session.ExecuteNonQueryAsync("ROLLBACK");
             }
             throw;
         }
     }
 
-    private async Task ImportJsonAsync(string targetColumns, List<ColumnMapping> mappings, CancellationToken ct)
+    private async Task ImportJsonAsync(IDatabaseSession session, string targetColumns, List<ColumnMapping> mappings, CancellationToken ct)
     {
         var json = await File.ReadAllTextAsync(InputPath!, ct);
         
@@ -514,7 +527,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         
         if (useTransaction)
         {
-            await Database.ExecuteNonQueryAsync("BEGIN TRANSACTION", ct);
+            await session.ExecuteNonQueryAsync("BEGIN TRANSACTION", ct);
         }
         
         try
@@ -540,7 +553,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
                     }
                     
                     var sql = $"INSERT INTO [{SelectedTable}] ({targetColumns}) VALUES ({string.Join(", ", values)})";
-                    await Database.ExecuteNonQueryAsync(sql, ct);
+                    await session.ExecuteNonQueryAsync(sql, ct);
                     RowsImported++;
                 }
                 catch (OperationCanceledException)
@@ -574,14 +587,14 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
             
             if (useTransaction)
             {
-                await Database.ExecuteNonQueryAsync("COMMIT", ct);
+                await session.ExecuteNonQueryAsync("COMMIT", ct);
             }
         }
         catch
         {
             if (useTransaction)
             {
-                await Database.ExecuteNonQueryAsync("ROLLBACK");
+                await session.ExecuteNonQueryAsync("ROLLBACK");
             }
             throw;
         }
@@ -764,7 +777,10 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Services
 
-    private IDatabaseService Database => ApplicationVm.Database;
+    /// <summary>
+    /// The active connection - the one selected in the tree.
+    /// </summary>
+    private IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     private ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

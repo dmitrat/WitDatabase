@@ -4,9 +4,9 @@ using System.Text;
 namespace OutWit.Database.Studio.Services;
 
 /// <summary>
-/// DDL generation methods for DatabaseService (table/view/index/trigger definitions).
+/// DDL generation methods for DatabaseSession (table/view/index/trigger definitions).
 /// </summary>
-public sealed partial class DatabaseService
+public sealed partial class DatabaseSession
 {
     #region View Definition
 

@@ -92,7 +92,7 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     public async Task InitializeAsync()
     {
-        if (!Database.IsConnected)
+        if (Database?.IsConnected != true)
             return;
 
         try
@@ -172,7 +172,15 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
             }
             else if (!string.IsNullOrEmpty(SelectedTable))
             {
-                var result = await Database.ExecuteQueryAsync($"SELECT * FROM [{SelectedTable}]", ct);
+                var session = Database;
+
+                if (session?.IsConnected != true)
+                {
+                    ErrorMessage = "Not connected to a database";
+                    return;
+                }
+
+                var result = await session.ExecuteQueryAsync($"SELECT * FROM [{SelectedTable}]", ct);
                 if (result.Data == null)
                 {
                     ErrorMessage = "Failed to load table data";
@@ -589,7 +597,10 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Services
 
-    private IDatabaseService Database => ApplicationVm.Database;
+    /// <summary>
+    /// The active connection - the one selected in the tree.
+    /// </summary>
+    private IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     private IExportService Export => ApplicationVm.Export;
 

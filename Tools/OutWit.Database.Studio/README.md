@@ -13,7 +13,8 @@ WitDatabase Studio is a graphical management tool for WitDatabase, similar to My
 - **Project Structure**: .NET 10.0 Avalonia MVVM application
 - **Architecture**: MVVM pattern using OutWit.Common.MVVM.Avalonia
 - **Models**: ConnectionInfo, Settings, DatabaseNode, TableInfo, ColumnInfo, QueryResult
-- **Services**: DatabaseService (ADO.NET integration), SettingsService (JSON persistence)
+- **Services**: ConnectionManager (the open connections) over DatabaseSession (one ADO.NET connection
+  each), SettingsService (JSON persistence)
 - **ViewModels**: ApplicationViewModel (Singleton), MainWindowViewModel, ConnectionViewModel, DatabaseExplorerViewModel, QueryEditorViewModel, TableStructureViewModel
 - **Menu Commands**: New Database, Open Database, Close Database, Exit, Refresh
 - **Connection Dialog**: Full-featured connection dialog with encryption support

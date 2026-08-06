@@ -166,6 +166,118 @@ index directory; nothing beside them.
 
 ---
 
+## Stage 1 - an honest test foundation, and Studio can be driven
+
+301 → 304 tests, and the number is the least of it: 249 of the old ones drove a `FakeDatabaseService`
+that is permanently disconnected and answers every question with an empty collection. Every double is
+deleted. The two that remain stand in for a PERSON - `ScriptedConfirmationService`,
+`ScriptedDialogService` - and both of them answer a question rather than pretend to be a service.
+
+- **`StudioFixture`** builds the real service graph, the real ViewModel graph and a real database on
+  B-Tree, LSM or in-memory, with a schema that has an autoincrement key, a foreign key, an index, a
+  trigger, a view and a table with **no** primary key. Its own tests check it before anything is built
+  on it, and one case reuses a single service across two connections, because that is the lifetime
+  `Program.cs` gives it.
+- **`IDialogService` / `DialogService`**: no ViewModel constructs a window any more. This is what made
+  "File > Open Database, and the schema appears" testable at all - it needed Avalonia before, so it had
+  never run.
+- **The automation surface**: `SqlEditorAutomationPeer` (AvaloniaEdit ships none, so the editor was not
+  an element at all), plus `AutomationId` on 111 buttons and menu items. Studio can now be driven end
+  to end by UI automation, which is how stage 2 was verified in the shipping executable.
+- `QueryTabsViewModel` and the dead `QueryToolbar` are gone; `SettingsService` takes its path as a
+  parameter, so a test with the real service cannot write the developer's own settings.
+
+---
+
+## Stage 2 - multi-connection
+
+`DatabaseService` was a singleton holding one `WitDbConnection` and a **global**
+`ConnectionStatusChanged`. Four ViewModels listened to it. So a tab could only ever run against
+whatever Studio was connected to last, and disconnecting anything closed every data and structure tab
+of every database. The plan says to do this in one pass, and it is right: a half-cut connection is
+worse than an uncut one.
+
+### The cut
+
+| Was | Is |
+|---|---|
+| `IDatabaseService` (one connection, `ConnectAsync`, `CurrentConnection`) | `IDatabaseSession` - one connection, created FOR it, with its OWN `StatusChanged` |
+| the same singleton, reused for every open | `IConnectionManager` - `Sessions`, `Active`, `SessionOpened` / `SessionClosed` / `ActiveChanged` |
+| a tab reads `ApplicationVm.Database` | a tab holds `Session` and runs there, whatever the tree has selected (`WS-3`) |
+| one root in the explorer | one root per connection; every node carries its `ConnectionId` |
+| disconnect closes every tab | disconnect closes the tabs of THAT connection (`WS-13`) |
+
+Opening and closing belong to the manager, not to the session, because they are what the collection is
+made of: a session opened behind the manager's back would belong to nobody. A session **clones** the
+`ConnectionInfo` it is given - the dialog goes on editing its own instance afterwards.
+
+Consequences worth naming, because they are decisions rather than mechanics:
+
+- **Opening a database no longer closes the one that is open.** `File > Open Database` and the recent
+  files list both add a connection. `OpenRecentAsync` used to call the `async void` `CloseDatabaseAsync`
+  without awaiting it and then connect over the top of the close.
+- **`Close Database` closes the active connection only**, and asks only ITS tabs about unapplied work.
+- **A tab that loses its connection is kept, not closed** - the text in a query tab is usually its only
+  copy. It becomes unbound, says so when asked to run, and does **not** adopt the next connection
+  opened: that would run a query against a database the user never chose for it. A tab that has never
+  had a connection does adopt the first one, which is what keeps "start Studio, type a query, open a
+  database, press Execute" working.
+- **The tree selection moves the focus, not the target.** Selecting a node makes its connection active
+  - where a new tab is opened, where the object dialogs create their objects, where export and import
+  read and write. An already open tab is unaffected.
+- The same table name in two databases is two tabs: the session is part of a tab's identity.
+- Import captures its session once, for the whole import: it is a loop of thousands of statements
+  inside one transaction, and re-reading the active connection each time would let a click in the tree
+  move the target halfway through.
+
+`ConnectionProfile` and `ICredentialStore` (the plan's item 4 for this stage, `S6`/`WS-68`) are **not**
+done here. They are a security change with a per-platform credential store behind them, and nothing in
+the connection cut depends on them; `ConnectionInfo` still carries the password in memory, as it did.
+
+### How it was measured
+
+**Readiness, in the plan's own words:** two databases open, an `INSERT` in a tab of the first, the rows
+in the first, while the tree has the second selected. `MultiConnectionTests` runs that **twice, once
+per role** - a tab that quietly used the active connection would pass a single-direction version half
+the time - and exercises both execution paths, the workspace toolbar and the button inside the tab.
+Every "the rows landed here" is paired with "and not there".
+
+**Then the fix was removed again, three times, and the measurement is the red:**
+
+| Sabotage | Result |
+|---|---|
+| the query tab and the toolbar use `ActiveSession` instead of the tab's | readiness red in **both** directions, plus the orphan-tab case |
+| `SessionClosed` closes every data and structure tab, as the global event did | `ClosingOneConnectionClosesOnlyItsTabsTest` red: the other connection's editor is gone |
+| the table editor commits to `ActiveSession` | the edit lands in the *other* database - caught by reading the value back, not by a status |
+
+**And in the shipping executable, because that is what found the worst defect of phase 13.** Two
+databases opened through `File > Open Database`; two roots in the tree, `alpha` and `beta`; `Customers`
+of **beta** selected; `INSERT` executed in the tab belonging to **alpha**; read back in the same tab:
+`seed of alpha` + `written from the alpha tab`. Then `Close Database` on alpha: alpha's root gone,
+beta's editor tab still open with its row, status *"Disconnected from alpha"*, `Connected: True`, and
+alpha's orphaned query tab keeping its text with Execute greyed out. After `File > Exit` the process
+was gone, both `.witdb` files were free, and reading them from outside Studio confirmed the artifact:
+**alpha 2 rows, beta 1**.
+
+### Tests
+
+304 → 315, all green, ~9 s. New and rewritten:
+
+| Fixture | Covers |
+|---|---|
+| `MultiConnectionTests` | the readiness case both ways, the editor's target, tab identity per connection, `WS-13`, the orphaned tab's refusal, one root per connection, adoption, name collisions |
+| `StudioFixture` | opens N databases through one manager; `OpenAnotherAsync`, and `CountRowsAsync` takes the session to read from |
+| `StudioEngineContactTests` | the S1 case rewritten: opening a second database must ADD a connection, and the first must hear nothing at all |
+| `DatabaseExplorerViewModelTests` | a control that a node whose connection is gone offers no command |
+
+### Left for the frame (stages 4-9)
+
+A tab carries `ConnectionName` and `ConnectionColorIndex` already, and nothing draws them yet: the
+2 px coloured stripe on the tab is `WS-3`'s, and it belongs to the window frame. Until then the only
+sign that a tab belongs to a closed connection is that Execute is disabled and says why when pressed.
+
+---
+
 ## Findings for the engine, not fixed here
 
 **`UPDATE <table> SET <column that does not exist> = 'x'` is accepted.** Measured 2026-08-05 while

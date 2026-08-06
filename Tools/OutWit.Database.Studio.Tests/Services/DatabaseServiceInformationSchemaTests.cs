@@ -5,7 +5,7 @@ using OutWit.Database.Studio.Services;
 namespace OutWit.Database.Studio.Tests.Services;
 
 [TestFixture]
-public sealed class DatabaseServiceInformationSchemaTests
+public sealed class DatabaseSessionInformationSchemaTests
 {
     [Test]
     public async Task GetTablesAsync_ReturnsBaseTablesOnlyTest()
@@ -201,9 +201,9 @@ public sealed class DatabaseServiceInformationSchemaTests
     {
         private readonly string _filePath;
 
-        public DatabaseService Service { get; }
+        public DatabaseSession Service { get; }
 
-        private StudioDbHarness(string filePath, DatabaseService service)
+        private StudioDbHarness(string filePath, DatabaseSession service)
         {
             _filePath = filePath;
             Service = service;
@@ -216,7 +216,6 @@ public sealed class DatabaseServiceInformationSchemaTests
 
             var filePath = Path.Combine(tmpDir, "test.witdb");
 
-            var service = new DatabaseService(NullLogger<DatabaseService>.Instance);
             var conn = new ConnectionInfo
             {
                 FilePath = filePath,
@@ -227,7 +226,9 @@ public sealed class DatabaseServiceInformationSchemaTests
                 DisplayName = "test"
             };
 
-            var connected = await service.ConnectAsync(conn);
+            var service = new DatabaseSession(conn, NullLogger<DatabaseSession>.Instance);
+
+            var connected = await service.OpenAsync();
             if (!connected)
                 throw new InvalidOperationException("Failed to connect test database");
 
@@ -243,7 +244,7 @@ public sealed class DatabaseServiceInformationSchemaTests
 
         public async ValueTask DisposeAsync()
         {
-            await Service.DisconnectAsync();
+            await Service.CloseAsync();
 
             try
             {

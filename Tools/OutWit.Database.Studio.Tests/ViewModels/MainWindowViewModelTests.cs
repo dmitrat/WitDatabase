@@ -83,7 +83,7 @@ public class MainWindowViewModelTests
         Assert.That(m_mainWindowVm.CloseDatabaseCommand.CanExecute(null), Is.True,
             "connected: closing the database is offered");
 
-        await m_studio.Database.DisconnectAsync();
+        await m_studio.Connections.CloseAsync(m_studio.Database);
 
         Assert.That(m_mainWindowVm.CloseDatabaseCommand.CanExecute(null), Is.False,
             "disconnected: there is nothing left to close");
@@ -95,7 +95,7 @@ public class MainWindowViewModelTests
         Assert.That(m_mainWindowVm.RefreshCommand.CanExecute(null), Is.True,
             "connected: there is a schema to refresh");
 
-        await m_studio.Database.DisconnectAsync();
+        await m_studio.Connections.CloseAsync(m_studio.Database);
 
         Assert.That(m_mainWindowVm.RefreshCommand.CanExecute(null), Is.False);
     }
@@ -118,7 +118,7 @@ public class MainWindowViewModelTests
     }
 
     [Test]
-    public async Task IsConnectedFollowsTheServiceNotTheDisplayedConnectionTest()
+    public async Task IsConnectedFollowsTheConnectionNotTheDisplayedOneTest()
     {
         Assert.That(m_mainWindowVm.IsConnected, Is.True);
 
@@ -128,7 +128,7 @@ public class MainWindowViewModelTests
         Assert.That(m_mainWindowVm.IsConnected, Is.True,
             "the flag the whole interface binds to describes the service, not a display property");
 
-        await m_studio.Database.DisconnectAsync();
+        await m_studio.Connections.CloseAsync(m_studio.Database);
 
         Assert.That(m_mainWindowVm.IsConnected, Is.False);
     }

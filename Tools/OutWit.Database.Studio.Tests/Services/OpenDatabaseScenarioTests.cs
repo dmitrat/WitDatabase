@@ -13,7 +13,7 @@ namespace OutWit.Database.Studio.Tests.Services;
 ///
 /// It needed Avalonia until now, because the ViewModels constructed windows and reached into
 /// <c>MainWindow.StorageProvider</c>. With <see cref="IDialogService"/> the window is the only thing
-/// missing: the real ConnectionViewModel runs, the real DatabaseService connects, the real explorer
+/// missing: the real ConnectionViewModel runs, the real ConnectionManager connects, the real explorer
 /// loads the real schema.
 /// </summary>
 [TestFixture]
@@ -68,10 +68,11 @@ public class OpenDatabaseScenarioTests
             await connection.CloseAsync();
         }
 
-        using var database = new DatabaseService(NullLogger<DatabaseService>.Instance);
+        using var connections = new ConnectionManager(NullLoggerFactory.Instance,
+            NullLogger<ConnectionManager>.Instance);
 
         var app = new ApplicationViewModel(
-            database,
+            connections,
             new SettingsService(NullLogger<SettingsService>.Instance,
                 Path.Combine(m_root, "settings", "settings.json")),
             new ExportService(),
@@ -91,14 +92,14 @@ public class OpenDatabaseScenarioTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(database.IsConnected, Is.True, "the scenario ends connected");
+            Assert.That(connections.Active?.IsConnected, Is.True, "the scenario ends connected");
             Assert.That(app.MainWindowVm.IsConnected, Is.True, "and the interface knows it");
             Assert.That(tables, Is.Not.Null, "the explorer shows a folder of tables");
             Assert.That(tables!.Children.Select(c => c.Name), Does.Contain("Customers"),
                 "and the table that is actually in the database");
         });
 
-        await database.DisconnectAsync();
+        await connections.CloseAllAsync();
     }
 
     /// <summary>
@@ -109,10 +110,11 @@ public class OpenDatabaseScenarioTests
     [Test]
     public async Task ControlClosingTheDialogWithoutConnectingChangesNothingTest()
     {
-        using var database = new DatabaseService(NullLogger<DatabaseService>.Instance);
+        using var connections = new ConnectionManager(NullLoggerFactory.Instance,
+            NullLogger<ConnectionManager>.Instance);
 
         var app = new ApplicationViewModel(
-            database,
+            connections,
             new SettingsService(NullLogger<SettingsService>.Instance,
                 Path.Combine(m_root, "settings", "settings.json")),
             new ExportService(),
@@ -128,7 +130,7 @@ public class OpenDatabaseScenarioTests
         Assert.Multiple(() =>
         {
             Assert.That(dialogs.Shown, Is.Not.Empty, "CONTROL: the dialog was asked for");
-            Assert.That(database.IsConnected, Is.False, "and nothing was opened");
+            Assert.That(connections.Sessions, Is.Empty, "and nothing was opened");
             Assert.That(app.DatabaseExplorerVm.Nodes, Is.Empty);
         });
     }

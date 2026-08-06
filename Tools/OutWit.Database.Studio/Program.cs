@@ -120,8 +120,9 @@ sealed class Program
             builder.SetMinimumLevel(LogLevel.Information);
         });
 
-        // Services
-        services.AddSingleton<IDatabaseService, DatabaseService>();
+        // Services. One manager, as many sessions as the user opens databases - this used to be one
+        // IDatabaseService holding one connection, which is what made every tab share a target.
+        services.AddSingleton<IConnectionManager, ConnectionManager>();
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IExportService, ExportService>();
 
