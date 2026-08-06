@@ -46,6 +46,7 @@
              other tool - one jump, and gone. -->
         <Border Grid.Row="1"
                 Padding="8,6"
+                IsVisible="{Binding MainWindowVm.IsConnected}"
                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBox AutomationProperties.AutomationId="ExplorerFilter"
@@ -224,7 +225,7 @@
         </Border>
 
         <!-- Loading overlay -->
-        <Border Grid.Row="1"
+        <Border Grid.Row="2"
                 Background="#80000000"
                 IsVisible="{Binding DatabaseExplorerVm.IsLoading}">
             <StackPanel HorizontalAlignment="Center"
@@ -246,7 +247,7 @@
         </Border>
 
         <!-- Error message -->
-        <Border Grid.Row="1"
+        <Border Grid.Row="2"
                 Background="#FFF3CD"
                 BorderBrush="#FFC107"
                 BorderThickness="1"
@@ -265,7 +266,7 @@
         </Border>
 
         <!-- Empty state -->
-        <Grid Grid.Row="1"
+        <Grid Grid.Row="2"
               IsVisible="{Binding !MainWindowVm.IsConnected}">
             <StackPanel HorizontalAlignment="Center"
                         VerticalAlignment="Center"
