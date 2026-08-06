@@ -352,7 +352,7 @@
 		</Border>
 
 		<!-- Основной контент с разделителем -->
-		<Grid Grid.Row="2" ColumnDefinitions="250,Auto,*">
+		<Grid Grid.Row="2" ColumnDefinitions="250,Auto,*,Auto,320">
 			<!-- Обозреватель баз данных -->
 			<Border Grid.Column="0"
                     BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
@@ -484,6 +484,21 @@
 				<workspace:WorkspaceTabs DataContext="{Binding WorkspaceTabsVm}"
 				                         IsVisible="{Binding $parent[Window].((vm:ApplicationViewModel)DataContext).MainWindowVm.IsConnected}"/>
 			</Grid>
+
+			<!-- The right panel the frame reserved (WS-12), now the object inspector (WS-18). It
+			     follows the selection in the tree and answers "what is this" without opening a tab. -->
+			<GridSplitter Grid.Column="3"
+			              Width="4"
+			              Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+			              ResizeDirection="Columns"
+			              IsVisible="{Binding MainWindowVm.IsConnected}"/>
+
+			<Border Grid.Column="4"
+			        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+			        BorderThickness="1,0,0,0"
+			        IsVisible="{Binding MainWindowVm.IsConnected}">
+				<views:ObjectInspector DataContext="{Binding InspectorVm}"/>
+			</Border>
 		</Grid>
 
 		<!-- E. Status bar (1.5). Left: where we are. Middle: what is happening right now, and a way

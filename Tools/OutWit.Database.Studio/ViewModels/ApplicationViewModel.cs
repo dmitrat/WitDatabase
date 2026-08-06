@@ -66,8 +66,9 @@ public sealed class ApplicationViewModel
 
         WorkspaceTabsVm = new WorkspaceTabsViewModel(this);
 
-        // Last: it reads the other view models to build its list of commands.
+        // Both read the other view models, so they come last.
         PaletteVm = new CommandPaletteViewModel(this);
+        InspectorVm = new ObjectInspectorViewModel(this);
     }
 
     #endregion
@@ -129,6 +130,11 @@ public sealed class ApplicationViewModel
     /// Ctrl+K: objects and commands in one list (WS-9).
     /// </summary>
     public CommandPaletteViewModel PaletteVm { get; private set; } = null!;
+
+    /// <summary>
+    /// The right panel: what the selected object is (WS-18).
+    /// </summary>
+    public ObjectInspectorViewModel InspectorVm { get; private set; } = null!;
 
     #endregion
 

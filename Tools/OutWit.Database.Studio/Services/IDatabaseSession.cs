@@ -122,6 +122,31 @@ public interface IDatabaseSession
     /// </summary>
     Task<string?> GetTableDefinitionAsync(string tableName, CancellationToken ct = default);
 
+    /// <summary>
+    /// Functions and procedures (WS-21).
+    /// </summary>
+    Task<IReadOnlyList<RoutineInfo>> GetRoutinesAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// The foreign keys that leave this table.
+    /// </summary>
+    Task<IReadOnlyList<ForeignKeyInfo>> GetForeignKeysAsync(string tableName, CancellationToken ct = default);
+
+    /// <summary>
+    /// The foreign keys that point at this table.
+    /// </summary>
+    Task<IReadOnlyList<ForeignKeyInfo>> GetReferencingKeysAsync(string tableName, CancellationToken ct = default);
+
+    /// <summary>
+    /// The indexes of one table, with the columns each covers.
+    /// </summary>
+    Task<IReadOnlyList<IndexInfo>> GetTableIndexesAsync(string tableName, CancellationToken ct = default);
+
+    /// <summary>
+    /// How many rows the table has, or null if the count did not finish within the timeout (WS-16).
+    /// </summary>
+    Task<long?> TryCountRowsAsync(string tableName, TimeSpan timeout, CancellationToken ct = default);
+
     #endregion
 
     #region Query

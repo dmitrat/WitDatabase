@@ -50,6 +50,8 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         CreateTableCommand = new RelayCommandAsync(CreateTableAsync);
         CreateViewCommand = new RelayCommandAsync(CreateViewAsync);
         CreateIndexCommand = new RelayCommandAsync(CreateIndexAsync);
+        ExpandNodeCommand = new RelayCommandAsync<DatabaseNode>(ExpandNodeAsync);
+        ClearFilterCommand = new RelayCommand(() => Filter = string.Empty);
     }
 
     private void InitEvents()
@@ -354,7 +356,37 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             rootNode.Children.Add(BuildFolder(session, expandedNodes, "Sequences",
                 DatabaseNodeType.SequencesFolder, DatabaseNodeType.Sequence, sequences));
 
+            // The sixth folder (WS-21). The engine has had functions and procedures since phase 9d
+            // and the tree has never shown them - which reads, to a user, as the database not having
+            // any.
+            var routines = await session.GetRoutinesAsync();
+
+            var routinesFolder = BuildFolder(session, expandedNodes, "Routines",
+                DatabaseNodeType.RoutinesFolder, DatabaseNodeType.Routine,
+                routines.Select(routine => routine.Name));
+
+            foreach (var node in routinesFolder.Children)
+            {
+                var routine = routines.First(candidate => candidate.Name == node.Name);
+
+                node.Detail = routine.IsFunction
+                    ? $"function -> {routine.DataType}"
+                    : "procedure";
+                node.ChildrenLoaded = true;
+            }
+
+            rootNode.Children.Add(routinesFolder);
+
+            WatchForExpansion(rootNode);
+
             ReplaceRoot(session, rootNode);
+
+            // The counts are NOT awaited (2.2): the tree is usable the moment it is drawn, and each
+            // number appears when its query comes back - or does not, if it takes too long.
+            _ = CountRowsAsync(session).ContinueWith(
+                task => Logger.LogError(task.Exception, "Counting the tables of {Connection} failed",
+                    session.DisplayName),
+                TaskContinuationOptions.OnlyOnFaulted);
 
             ApplicationVm.MainWindowVm.StatusText =
                 $"{session.DisplayName}: {tables.Count} tables, {views.Count} views, {indexes.Count} indexes, "
@@ -380,6 +412,164 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         {
             IsLoading = false;
         }
+    }
+
+    /// <summary>
+    /// Loads a table's columns the moment it is first opened in the tree (WS-15).
+    ///
+    /// Watched on the NODE rather than handled in the view: the node already tells the tree whether
+    /// it is expanded, and a second path through the code-behind would be a second thing to keep in
+    /// step with it.
+    /// </summary>
+    private void WatchForExpansion(DatabaseNode root)
+    {
+        foreach (var folder in root.Children)
+        {
+            foreach (var node in folder.Children)
+            {
+                if (node.ChildrenLoaded)
+                    continue;
+
+                var target = node;
+
+                target.PropertyChanged += async (_, e) =>
+                {
+                    if (e.PropertyName != nameof(DatabaseNode.IsExpanded) || !target.IsExpanded)
+                        return;
+
+                    await ExpandNodeAsync(target);
+                };
+            }
+        }
+    }
+
+    /// <summary>
+    /// Asks for the row count of every table of a connection, and stops asking for any that takes
+    /// too long (WS-16).
+    ///
+    /// Deliberately NOT awaited by the refresh: the names are usable the moment the tree is drawn,
+    /// and the numbers arrive as they come. A count is a query, and a query on a table nobody has
+    /// opened is not worth a frozen window (2.2).
+    /// </summary>
+    public async Task CountRowsAsync(IDatabaseSession session, CancellationToken ct = default)
+    {
+        var root = Nodes.FirstOrDefault(node => node.ConnectionId == session.Id);
+
+        var folder = root?.Children.FirstOrDefault(child => child.NodeType == DatabaseNodeType.TablesFolder);
+
+        if (folder == null)
+            return;
+
+        foreach (var table in folder.Children.ToList())
+        {
+            if (ct.IsCancellationRequested || !session.IsConnected)
+                return;
+
+            table.CountState = RowCountState.Counting;
+
+            var count = await session.TryCountRowsAsync(table.Name, CountTimeout, ct);
+
+            table.RowCount = count;
+            table.CountState = count == null ? RowCountState.TimedOut : RowCountState.Counted;
+            table.Detail = count?.ToString("N0");
+        }
+    }
+
+    /// <summary>
+    /// Loads what a node contains the first time it is opened. For a table or a view that is its
+    /// columns (WS-15) - the most frequent question anyone asks of a schema, and no reason to open a
+    /// tab for it.
+    /// </summary>
+    public async Task ExpandNodeAsync(DatabaseNode? node)
+    {
+        if (node == null || node.ChildrenLoaded)
+            return;
+
+        var session = SessionFor(node);
+
+        if (session?.IsConnected != true)
+            return;
+
+        node.ChildrenLoaded = true;
+
+        try
+        {
+            var columns = await session.GetColumnsAsync(node.Name);
+            var keys = await session.GetForeignKeysAsync(node.Name);
+            var foreign = keys.Select(key => key.FromColumn).ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+            foreach (var column in columns)
+            {
+                node.Children.Add(new DatabaseNode
+                {
+                    Name = column.Name,
+                    NodeType = DatabaseNodeType.Column,
+                    ConnectionId = node.ConnectionId,
+                    ParentName = node.Name,
+                    Detail = column.DataType,
+                    IsPrimaryKey = column.IsPrimaryKey,
+                    IsForeignKey = foreign.Contains(column.Name),
+                    IsRequired = !column.IsNullable,
+                    ChildrenLoaded = true
+                });
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to read the columns of {Node}", node.Name);
+        }
+    }
+
+    /// <summary>
+    /// Everything that matches the filter, across every open connection, with the path that leads to
+    /// it. A filter is not the palette (WS-17): it narrows the tree and stays until it is cleared,
+    /// while the palette is one jump and closes.
+    /// </summary>
+    private void ApplyFilter()
+    {
+        FilterMatches.Clear();
+
+        var text = (Filter ?? string.Empty).Trim();
+
+        if (text.Length == 0)
+        {
+            FilterSummary = null;
+            return;
+        }
+
+        var connections = 0;
+
+        foreach (var root in Nodes)
+        {
+            var before = FilterMatches.Count;
+
+            foreach (var folder in root.Children)
+            {
+                foreach (var node in folder.Children)
+                {
+                    if (node.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
+                    {
+                        FilterMatches.Add(new FilterMatch(node, $"{root.Name} / {folder.Name}"));
+                        continue;
+                    }
+
+                    // Columns count too, and they are what the filter is most often used for: the
+                    // name of a column is often all anyone remembers of a schema.
+                    foreach (var child in node.Children)
+                    {
+                        if (child.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
+                            FilterMatches.Add(new FilterMatch(child, $"{root.Name} / {folder.Name} / {node.Name}"));
+                    }
+                }
+            }
+
+            if (FilterMatches.Count > before)
+                connections++;
+        }
+
+        FilterSummary = FilterMatches.Count == 0
+            ? "No matches"
+            : $"{FilterMatches.Count} matches in {connections} connection{(connections == 1 ? "" : "s")}";
     }
 
     /// <summary>
@@ -410,6 +600,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             Name = name,
             NodeType = folderType,
             ConnectionId = session.Id,
+            ChildrenLoaded = true,
             IsExpanded = expandedByDefault || IsExpanded(expanded, session, folderType, name)
         };
 
@@ -419,9 +610,17 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             {
                 Name = child,
                 NodeType = childType,
-                ConnectionId = session.Id
+                ConnectionId = session.Id,
+
+                // A table's columns are read when it is first expanded; everything else has none.
+                ChildrenLoaded = childType != DatabaseNodeType.Table && childType != DatabaseNodeType.View
             });
         }
+
+        // The number of objects, which INFORMATION_SCHEMA answers for nothing. An empty folder keeps
+        // its place with a zero rather than disappearing - a node that vanishes breaks the muscle
+        // memory of everyone who knew where it was (2.1).
+        folder.Detail = folder.Children.Count.ToString();
 
         return folder;
     }
@@ -490,6 +689,12 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     private void OnPropertyChangedInternal(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.PropertyName == nameof(Filter))
+        {
+            ApplyFilter();
+            return;
+        }
+
         if (e.PropertyName != nameof(SelectedNode))
             return;
 
@@ -514,6 +719,32 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public DatabaseNode? SelectedNode { get; set; }
+
+    /// <summary>
+    /// Narrows the tree to what matches, across every open connection, and stays until it is cleared
+    /// (WS-17).
+    /// </summary>
+    [Notify]
+    public string Filter { get; set; } = string.Empty;
+
+    /// <summary>
+    /// What the filter found, with the path to each match.
+    /// </summary>
+    public ObservableCollection<FilterMatch> FilterMatches { get; } = [];
+
+    /// <summary>
+    /// "5 matches in 2 connections", or nothing when the filter is empty.
+    /// </summary>
+    [Notify]
+    public string? FilterSummary { get; private set; }
+
+    public bool IsFiltering => !string.IsNullOrWhiteSpace(Filter);
+
+    /// <summary>
+    /// How long a row count is allowed to take before it is given up on (WS-16). Two seconds is the
+    /// design's number and it is a property so that a test does not have to wait for it.
+    /// </summary>
+    public TimeSpan CountTimeout { get; set; } = TimeSpan.FromSeconds(2);
 
     [Notify]
     public bool IsLoading { get; set; }
@@ -559,6 +790,13 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand CreateViewCommand { get; private set; } = null!;
 
     public ICommand CreateIndexCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// Loads a node's children the first time it is opened.
+    /// </summary>
+    public ICommand ExpandNodeCommand { get; private set; } = null!;
+
+    public ICommand ClearFilterCommand { get; private set; } = null!;
 
     #endregion
 
