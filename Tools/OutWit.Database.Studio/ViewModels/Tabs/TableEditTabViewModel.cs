@@ -65,9 +65,13 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     {
         Columns = [];
         PageSize = DEFAULT_PAGE_SIZE;
-        
+
         // Initialize column settings for the edit grid
         EditColumnSettings = new GridColumnSettings();
+
+        Filters = [];
+        ConflictColumns = [];
+        PageSizes = [200, DEFAULT_PAGE_SIZE, 5000, 0];
     }
 
     private void InitEvents()
@@ -87,6 +91,15 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         NextPageCommand = new RelayCommandAsync(NextPageAsync);
         PreviousPageCommand = new RelayCommandAsync(PreviousPageAsync);
         FirstPageCommand = new RelayCommandAsync(FirstPageAsync);
+
+        SortByCommand = new RelayCommandAsync<string>(SortByAsync);
+        ApplyFiltersCommand = new RelayCommandAsync(ApplyFiltersAsync);
+        ClearFiltersCommand = new RelayCommandAsync(ClearFiltersAsync);
+        CountRowsCommand = new RelayCommandAsync(CountRowsAsync);
+        ShowViewSqlCommand = new RelayCommand(ShowViewSql);
+        ShowChangesSqlCommand = new RelayCommand(ShowChangesSql);
+        RereadCommand = new RelayCommandAsync(ResolveByRereadingAsync);
+        OverwriteCommand = new RelayCommandAsync(ResolveByOverwritingAsync);
     }
 
     #endregion
@@ -185,6 +198,12 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             Columns = columns.ToList();
             PrimaryKeyColumns = columns.Where(c => c.IsPrimaryKey).Select(c => c.Name).ToList();
 
+            // A box per column, kept across reloads so that a refresh does not clear what was typed.
+            if (Filters.Count == 0)
+                Filters = columns
+                    .Select(column => new ColumnFilter(column.Name, column.DataType ?? ""))
+                    .ToList();
+
             // WS-35. Without a primary key there is no condition that names one row: the old fallback
             // built a WHERE over every column, which two identical rows both satisfy - so editing one
             // of them changed both, and the affected-row count nobody read was the only sign.
@@ -217,8 +236,13 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             // One row more than the page is asked for: if it comes back, there is a next page. The
             // alternative is COUNT(*), which on this engine is a separate counter that can disagree
             // with the rows.
-            var statement = BuildSelectStatement(PageSize + 1);
-            var result = await session.ExecuteQueryAsync(statement);
+            var query = GridQuery.Page(View(PageIndex));
+
+            Paging = query.Paging;
+            ViewDescription = query.Description;
+            IsDeepPage = query.Paging == GridPaging.Offset && PageIndex > 0;
+
+            var result = await session.ExecuteQueryAsync(query.Statement);
 
             if (!string.IsNullOrEmpty(result.ErrorMessage))
             {
@@ -227,7 +251,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             }
 
             var table = result.Data;
-            HasNextPage = table != null && table.Rows.Count > PageSize;
+            HasNextPage = PageSize > 0 && table != null && table.Rows.Count > PageSize;
 
             if (HasNextPage && table != null)
                 table.Rows.RemoveAt(table.Rows.Count - 1);
@@ -276,44 +300,161 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     #endregion
 
-    #region Paging
+    #region The view: sorting, filters, Show SQL
 
     /// <summary>
-    /// The rows of one page, and where the page starts.
-    ///
-    /// The first page is the cheap one: LIMIT with nothing else is the only shape this engine answers
-    /// in constant time - it stops the scan early. ORDER BY does not push the limit down (measured:
-    /// the plan under it is SORT over a full SCAN), so every ordered page costs a pass over the table.
-    /// That is a property of the engine, not of this code; it is written up in the phase document.
-    ///
-    /// Ordered anyway, and deliberately: without ORDER BY the rows come back in INSERTION order on
-    /// both stores - measured by inserting a scrambled range and reading it back - so pages fetched
-    /// by key would overlap and miss rows. A page that is fast and wrong is not a page.
+    /// What the grid is showing, as a question the engine can be asked (WS-30, WS-32). Everything -
+    /// the page, Show SQL, the count - is built from this one value, so what is displayed and what is
+    /// sent cannot drift apart.
     /// </summary>
-    private SqlStatement BuildSelectStatement(int limit)
+    private GridView View(int pageIndex)
     {
-        var table = SqlValueFormatter.EscapeIdentifier(TableName);
+        var conditions = new List<GridFilterCondition>();
+        var index = 0;
 
-        if (!CanPageByKey)
+        foreach (var filter in Filters)
         {
-            // No usable key: OFFSET, and say what it costs rather than pretending it is a page (WS-31).
-            IsDeepPage = PageIndex > 0;
-            return new SqlStatement(
-                $"SELECT * FROM [{table}] LIMIT {limit} OFFSET {PageIndex * PageSize}", []);
+            var column = Columns.FirstOrDefault(candidate => candidate.Name == filter.Column);
+
+            if (column == null)
+                continue;
+
+            var condition = GridFilter.Parse(filter.Text, column, index++);
+
+            if (condition != null)
+                conditions.Add(condition);
         }
 
-        var key = SqlValueFormatter.EscapeIdentifier(PrimaryKeyColumns[0]);
-        var anchor = PageIndex < m_pageAnchors.Count ? m_pageAnchors[PageIndex] : null;
+        var anchor = pageIndex < m_pageAnchors.Count ? m_pageAnchors[pageIndex] : null;
 
-        IsDeepPage = false;
-
-        if (anchor == null)
-            return new SqlStatement($"SELECT * FROM [{table}] ORDER BY [{key}] LIMIT {limit}", []);
-
-        return new SqlStatement(
-            $"SELECT * FROM [{table}] WHERE [{key}] > @anchor ORDER BY [{key}] LIMIT {limit}",
-            [new Models.SqlParameter("@anchor", anchor)]);
+        return new GridView(
+            TableName,
+            conditions,
+            SortColumn,
+            SortDescending,
+            CanPageByKey ? PrimaryKeyColumns[0] : null,
+            pageIndex,
+            PageSize,
+            anchor);
     }
+
+    /// <summary>
+    /// Sorting is a new query (WS-30). Sorting the page already fetched would sort a sample of the
+    /// table and present it as the table - which is a lie the user only catches on page two.
+    /// </summary>
+    private async Task SortByAsync(string? column)
+    {
+        if (string.IsNullOrEmpty(column) || HasChanges)
+            return;
+
+        if (string.Equals(SortColumn, column, StringComparison.OrdinalIgnoreCase))
+            SortDescending = !SortDescending;
+        else
+        {
+            SortColumn = column;
+            SortDescending = false;
+        }
+
+        await ResetToFirstPageAsync();
+    }
+
+    private async Task ApplyFiltersAsync()
+    {
+        if (HasChanges)
+            return;
+
+        await ResetToFirstPageAsync();
+    }
+
+    private async Task ClearFiltersAsync()
+    {
+        foreach (var filter in Filters)
+            filter.Text = null;
+
+        await ResetToFirstPageAsync();
+    }
+
+    /// <summary>
+    /// Any change to the view starts again from the first page: the anchors belong to the old order
+    /// and the old conditions, and reusing them would page through a table that no longer exists.
+    /// </summary>
+    private async Task ResetToFirstPageAsync()
+    {
+        m_pageAnchors.Clear();
+        m_pageAnchors.Add(null);
+
+        PageIndex = 0;
+        TotalRows = null;
+
+        await LoadTableDataAsync();
+    }
+
+    /// <summary>
+    /// The total, when somebody asks for it (4.2). Never on its own: an unfiltered count on this
+    /// engine is a counter kept beside the data, and a filtered one is a scan - neither is something
+    /// to pay for on every page just to fill in a label.
+    /// </summary>
+    private async Task CountRowsAsync()
+    {
+        var session = Session;
+
+        if (session?.IsConnected != true)
+            return;
+
+        var result = await session.ExecuteQueryAsync(GridQuery.Count(View(PageIndex)));
+
+        if (result.Data is { Rows.Count: > 0 })
+            TotalRows = Convert.ToInt64(result.Data.Rows[0][0]);
+
+        UpdateStatus();
+    }
+
+    /// <summary>
+    /// The bridge from clicks to the editor (WS-32): everything done by clicking is a SELECT, and
+    /// showing it explains what happened and lets the user go on by hand where the clicks stop.
+    /// </summary>
+    private void ShowViewSql()
+    {
+        var session = Session;
+
+        if (session == null)
+            return;
+
+        ApplicationVm.WorkspaceTabsVm.OpenQueryTab(GridQuery.Whole(View(PageIndex)).ToDisplaySql(),
+            $"SQL of {TableName}", session);
+    }
+
+    /// <summary>
+    /// The other direction: the edit buffer as the transaction it will become - BEFORE it is applied,
+    /// which is the only moment at which it is useful.
+    /// </summary>
+    private void ShowChangesSql()
+    {
+        var session = Session;
+
+        if (session == null)
+            return;
+
+        var statements = BuildChangeScript(out var error);
+
+        if (statements == null)
+        {
+            SetErrorStatus(error!);
+            return;
+        }
+
+        var script = statements.Count == 0
+            ? "-- there is nothing in the edit buffer"
+            : "BEGIN TRANSACTION;\n"
+              + string.Join("\n", statements.Select(statement => statement.ToDisplaySql() + ";"))
+              + "\nCOMMIT;";
+
+        ApplicationVm.WorkspaceTabsVm.OpenQueryTab(script, $"Changes to {TableName}", session);
+    }
+
+    #endregion
+
+    #region Paging
 
     /// <summary>
     /// Keyset paging needs exactly one key column: two columns need a row-value comparison, which is
@@ -326,7 +467,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     /// </summary>
     private void RememberPageEnd()
     {
-        if (!CanPageByKey || EditableData == null || EditableData.Rows.Count == 0)
+        if (Paging == GridPaging.Offset || !CanPageByKey || EditableData == null || EditableData.Rows.Count == 0)
             return;
 
         var lastKey = EditableData.Rows[^1][PrimaryKeyColumns[0]];
@@ -506,10 +647,15 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
                     $"Nothing was applied. Statement {result.FailedIndex + 1} of {statements.Count} "
                     + $"failed: {result.ErrorMessage}");
 
+                if (result.IsConflict)
+                    await DescribeConflictAsync(session, result.FailedIndex, statements.Count);
+
                 Logger.LogWarning("Commit to {TableName} rolled back at statement {Index}",
                     TableName, result.FailedIndex + 1);
                 return;
             }
+
+            ClearConflict();
 
             SetSuccessStatus($"Applied {statements.Count} changes");
             ApplicationVm.MainWindowVm.StatusText =
@@ -552,7 +698,9 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
                 return null;
             }
 
-            var where = BuildWhereClause(m_originalData!.Rows[originalRowIndex], "w");
+            var where = OverwriteConflicts
+                ? BuildWhereClause(m_originalData!.Rows[originalRowIndex], "w")
+                : BuildVersionedWhereClause(m_originalData!.Rows[originalRowIndex], "w");
 
             if (where == null)
             {
@@ -561,7 +709,8 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             }
 
             statements.Add(new SqlStatement(
-                $"DELETE FROM [{table}] WHERE {where.Value.Clause}", where.Value.Parameters));
+                $"DELETE FROM [{table}] WHERE {where.Value.Clause}", where.Value.Parameters,
+                ExpectedRows: OverwriteConflicts ? null : 1));
         }
 
         foreach (var newRow in m_newRows)
@@ -580,7 +729,9 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
                 return null;
             }
 
-            var where = BuildWhereClause(m_originalData!.Rows[originalRowIndex], "w");
+            var where = OverwriteConflicts
+                ? BuildWhereClause(m_originalData!.Rows[originalRowIndex], "w")
+                : BuildVersionedWhereClause(m_originalData!.Rows[originalRowIndex], "w");
 
             if (where == null)
             {
@@ -683,6 +834,164 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     #endregion
 
+    #region Conflict
+
+    /// <summary>
+    /// Reads the row as it is in the database now and puts it beside what the user has (WS-37).
+    ///
+    /// "The transaction was rejected" is what this replaces, and it leaves the user with no way to
+    /// decide anything. Both values, side by side, turn it into a choice: re-read, or apply over.
+    /// </summary>
+    private async Task DescribeConflictAsync(IDatabaseSession session, int failedIndex, int total)
+    {
+        ConflictColumns.Clear();
+
+        var row = ConflictRow(failedIndex);
+
+        if (row == null)
+        {
+            HasConflict = true;
+            ConflictSummary = "A row was changed by another connection after it was read here.";
+            return;
+        }
+
+        var where = BuildWhereClause(row, "c");
+
+        if (where == null)
+            return;
+
+        var current = await session.ExecuteQueryAsync(new SqlStatement(
+            $"SELECT * FROM [{SqlValueFormatter.EscapeIdentifier(TableName)}] WHERE {where.Value.Clause}",
+            where.Value.Parameters));
+
+        var key = string.Join(", ",
+            PrimaryKeyColumns.Select(column => $"{column} = {SqlValueFormatter.FormatForSql(row[column])}"));
+
+        if (current.Data == null || current.Data.Rows.Count == 0)
+        {
+            HasConflict = true;
+            ConflictSummary = $"The row {key} has been DELETED by another connection.";
+            return;
+        }
+
+        var live = current.Data.Rows[0];
+
+        // "Mine" is the value in the EDIT BUFFER, not the one the row was read with: the user is
+        // deciding between what they typed and what is in the database, and the row they loaded from
+        // is of no interest to either side. The original row is only what the WHERE was built from.
+        var edited = EditedRowFor(row) ?? row;
+
+        foreach (DataColumn column in row.Table.Columns)
+        {
+            if (!current.Data.Columns.Contains(column.ColumnName))
+                continue;
+
+            var mine = edited.RowState == DataRowState.Deleted ? row[column] : edited[column.ColumnName];
+            var theirs = live[column.ColumnName];
+
+            if (Equals(mine, theirs))
+                continue;
+
+            ConflictColumns.Add(new ConflictedValue(
+                column.ColumnName,
+                SqlValueFormatter.FormatForSql(mine),
+                SqlValueFormatter.FormatForSql(theirs)));
+        }
+
+        HasConflict = true;
+        ConflictSummary = $"The row {key} was changed by another connection after it was read here. "
+            + $"Statement {failedIndex + 1} of {total} matched nothing, so nothing was applied.";
+    }
+
+    /// <summary>
+    /// The row the failed statement was built from - deletes come first in the script, then inserts,
+    /// then updates, which is the order <see cref="BuildChangeScript"/> writes them in.
+    /// </summary>
+    private DataRow? ConflictRow(int failedIndex)
+    {
+        var deletes = m_deletedRows.ToList();
+
+        if (failedIndex < deletes.Count)
+            return Original(deletes[failedIndex]);
+
+        var afterInserts = failedIndex - deletes.Count - m_newRows.Count;
+        var updates = m_modifiedRows
+            .Where(row => row.RowState is not (DataRowState.Deleted or DataRowState.Detached))
+            .ToList();
+
+        return afterInserts >= 0 && afterInserts < updates.Count ? Original(updates[afterInserts]) : null;
+    }
+
+    private DataRow? Original(DataRow row)
+    {
+        var index = FindOriginalRowIndex(row);
+
+        return index >= 0 ? m_originalData!.Rows[index] : null;
+    }
+
+    /// <summary>
+    /// The buffer's row that the given ORIGINAL row belongs to - the other direction of
+    /// <see cref="Original"/>, and what carries the values the user typed.
+    /// </summary>
+    private DataRow? EditedRowFor(DataRow original)
+    {
+        if (PrimaryKeyColumns.Count == 0 || EditableData == null)
+            return null;
+
+        foreach (DataRow row in EditableData.Rows)
+        {
+            if (row.RowState == DataRowState.Deleted)
+                continue;
+
+            if (PrimaryKeyColumns.All(key => Equals(row[key], original[key])))
+                return row;
+        }
+
+        return null;
+    }
+
+    /// <summary>
+    /// Throws the buffer away and reads the page again - the "re-read" half of the choice.
+    /// </summary>
+    private async Task ResolveByRereadingAsync()
+    {
+        ClearConflict();
+        ClearChangeTracking();
+
+        await LoadTableDataAsync();
+    }
+
+    /// <summary>
+    /// Applies the same edits without the version check - the "apply over" half.
+    ///
+    /// Deliberately a separate press: it overwrites somebody else's work, which is a decision, and a
+    /// decision is not something a client should make on a user's behalf because a retry is easier.
+    /// </summary>
+    private async Task ResolveByOverwritingAsync()
+    {
+        ClearConflict();
+
+        OverwriteConflicts = true;
+
+        try
+        {
+            await CommitChangesAsync();
+        }
+        finally
+        {
+            OverwriteConflicts = false;
+        }
+    }
+
+    private void ClearConflict()
+    {
+        HasConflict = false;
+        ConflictSummary = null;
+        ConflictColumns.Clear();
+    }
+
+    #endregion
+
     #region SQL Building
 
     /// <summary>
@@ -711,6 +1020,54 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
             conditions.Add($"[{column}] = {name}");
             parameters.Add(new Models.SqlParameter(name, row[PrimaryKeyColumns[i]]));
+        }
+
+        return (string.Join(" AND ", conditions), parameters);
+    }
+
+    /// <summary>
+    /// The same condition, plus the values the row was READ with (WS-37).
+    ///
+    /// The key alone names the row; these name the version of it. If somebody else changed the row
+    /// since it was loaded, the statement matches nothing, the count says so and the whole set is
+    /// rolled back - which is the only way this engine can be asked the question, since it has no
+    /// optimistic concurrency of its own.
+    ///
+    /// BLOB columns are left out: comparing a megabyte in a WHERE clause to find out whether it moved
+    /// costs more than the edit, and the key plus the other columns is already a version.
+    /// </summary>
+    private (string Clause, List<Models.SqlParameter> Parameters)? BuildVersionedWhereClause(
+        DataRow original, string prefix)
+    {
+        var key = BuildWhereClause(original, prefix);
+
+        if (key == null)
+            return null;
+
+        var conditions = new List<string> { key.Value.Clause };
+        var parameters = new List<Models.SqlParameter>(key.Value.Parameters);
+
+        foreach (DataColumn column in original.Table.Columns)
+        {
+            if (PrimaryKeyColumns.Contains(column.ColumnName))
+                continue;
+
+            if (column.DataType == typeof(byte[]))
+                continue;
+
+            var value = original[column];
+            var escaped = SqlValueFormatter.EscapeIdentifier(column.ColumnName);
+
+            if (value == DBNull.Value || value == null)
+            {
+                conditions.Add($"[{escaped}] IS NULL");
+                continue;
+            }
+
+            var name = $"@{prefix}v{parameters.Count}";
+
+            conditions.Add($"[{escaped}] = {name}");
+            parameters.Add(new Models.SqlParameter(name, value));
         }
 
         return (string.Join(" AND ", conditions), parameters);
@@ -764,7 +1121,8 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         return new SqlStatement(
             $"UPDATE [{SqlValueFormatter.EscapeIdentifier(TableName)}] "
             + $"SET {string.Join(", ", setClauses)} WHERE {where.Clause}",
-            parameters);
+            parameters,
+            ExpectedRows: OverwriteConflicts ? null : 1);
     }
 
     private static object? ParseDefaultValue(string defaultValue, Type targetType)
@@ -959,6 +1317,63 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     public string? PagingNote { get; private set; }
 
     /// <summary>
+    /// How the current page is being reached (WS-31), which is a statement about what it costs.
+    /// </summary>
+    [Notify]
+    public GridPaging Paging { get; private set; }
+
+    /// <summary>
+    /// The filters and the sorting in words, for the footer: "2 filters: Total &gt; 100, Status
+    /// contains ship · sorted by Total descending".
+    /// </summary>
+    [Notify]
+    public string? ViewDescription { get; private set; }
+
+    /// <summary>
+    /// One filter box per column (4.3). The boxes exist whether or not anything is typed in them, so
+    /// that the row of them is part of the grid rather than something that appears.
+    /// </summary>
+    public List<ColumnFilter> Filters { get; private set; } = null!;
+
+    [Notify]
+    public string? SortColumn { get; private set; }
+
+    [Notify]
+    public bool SortDescending { get; private set; }
+
+    /// <summary>
+    /// How many rows the view has - null until somebody asks, because asking costs a scan when there
+    /// is a filter and reads a separate counter when there is not (4.2).
+    /// </summary>
+    [Notify]
+    public long? TotalRows { get; private set; }
+
+    /// <summary>
+    /// 200 / 1000 / 5000 / everything, as the design offers. Zero is "everything", and it warns.
+    /// </summary>
+    public IReadOnlyList<int> PageSizes { get; private set; } = null!;
+
+    /// <summary>
+    /// True while a conflict is being shown, which is a question rather than a failure (WS-37).
+    /// </summary>
+    [Notify]
+    public bool HasConflict { get; private set; }
+
+    [Notify]
+    public string? ConflictSummary { get; private set; }
+
+    /// <summary>
+    /// Column by column: what the user has, and what is in the database now.
+    /// </summary>
+    public List<ConflictedValue> ConflictColumns { get; private set; } = null!;
+
+    /// <summary>
+    /// Set only between "Apply over" and the commit it triggers: the version check is dropped, so the
+    /// edits overwrite whatever is there now. Never the default, and never sticky.
+    /// </summary>
+    public bool OverwriteConflicts { get; private set; }
+
+    /// <summary>
     /// Indicates if data is being loaded.
     /// </summary>
     [Notify]
@@ -1073,6 +1488,28 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     public ICommand PreviousPageCommand { get; private set; } = null!;
 
     public ICommand FirstPageCommand { get; private set; } = null!;
+
+    public ICommand SortByCommand { get; private set; } = null!;
+
+    public ICommand ApplyFiltersCommand { get; private set; } = null!;
+
+    public ICommand ClearFiltersCommand { get; private set; } = null!;
+
+    public ICommand CountRowsCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// WS-32, one way: the view as a SELECT, in a query tab.
+    /// </summary>
+    public ICommand ShowViewSqlCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// WS-32, the other: the edit buffer as the transaction it will become.
+    /// </summary>
+    public ICommand ShowChangesSqlCommand { get; private set; } = null!;
+
+    public ICommand RereadCommand { get; private set; } = null!;
+
+    public ICommand OverwriteCommand { get; private set; } = null!;
 
     #endregion
 
