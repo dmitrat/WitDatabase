@@ -140,47 +140,64 @@ public class SchemaMatrixTests
     }
 
     /// <summary>
-    /// PINS AN OBSERVATION, NOT CORRECT BEHAVIOUR.
+    /// WAS A PIN, NOW AN ASSERTION. It went red when the engine was fixed, which is what it was for.
     ///
-    /// The plan says <c>ALTER COLUMN ... TYPE</c> leaves the rows alone. It does not: the rows are
-    /// rewritten. What is wrong with it is worse and quieter - a value that will not convert is
-    /// replaced with a default, no error is raised, and changing the type back does not bring the value
-    /// back. That is why WS-40 still holds, and why the rebuild counts the casualties first.
+    /// The plan said <c>ALTER COLUMN ... TYPE</c> leaves the rows alone. It does not - it rewrites
+    /// them - and what was actually wrong with it was quieter: a value that would not convert was
+    /// replaced with a default, no error was raised, and changing the type back did not bring it back.
+    /// The engine now refuses such a value instead, naming it.
     ///
-    /// If this ever goes red because the engine refuses the conversion, WS-40 gets simpler and this
-    /// test should say so.
+    /// <b>WS-40 still holds, and for the reason it was rewritten with:</b> the designer offers a type
+    /// change as a REBUILD, so the conversion is a CAST the user can read and the values that will not
+    /// survive it are counted before anything runs. An in-place ALTER now fails at the first bad value
+    /// with nothing changed, which is safe but tells the user nothing about the other 999.
     /// </summary>
     [Test]
-    public async Task ChangingAColumnTypeRewritesTheRowsAndLosesWhatItCannotConvertAsync()
+    public async Task ChangingAColumnTypeRefusesAValueItCannotReadAsync()
     {
         await Session.ExecuteNonQueryAsync("CREATE TABLE T (Id INTEGER PRIMARY KEY AUTOINCREMENT, V VARCHAR(30))");
         await Session.ExecuteNonQueryAsync("INSERT INTO T (V) VALUES ('42')");
         await Session.ExecuteNonQueryAsync("INSERT INTO T (V) VALUES ('not a number')");
 
-        Assert.That(await TryAsync("ALTER TABLE T ALTER COLUMN V TYPE INTEGER"), Is.Null,
-            "The engine accepts the type change - it is Studio that refuses to offer it in place.");
+        Assert.That(await TryAsync("ALTER TABLE T ALTER COLUMN V TYPE INTEGER"),
+            Does.Contain("not a number"),
+            "The engine refuses, naming the value that stopped it.");
 
-        var afterChange = await ReadAsync("SELECT Id, V FROM T ORDER BY Id");
-
-        Assert.That(afterChange, Is.EqualTo(new[] { "1|42", "2|0" }),
-            "The convertible value survived and the other became 0, with no error.");
-
-        await Session.ExecuteNonQueryAsync("ALTER TABLE T ALTER COLUMN V TYPE VARCHAR(30)");
-
-        var afterUndo = await ReadAsync("SELECT Id, V FROM T ORDER BY Id");
-
-        Assert.That(afterUndo, Is.EqualTo(new[] { "1|42", "2|0" }),
-            "Changing the type back does not bring the value back: the rows were rewritten, not reinterpreted.");
+        Assert.That(await ReadAsync("SELECT Id, V FROM T ORDER BY Id"),
+            Is.EqualTo(new[] { "1|42", "2|not a number" }),
+            "and nothing was changed on the way to finding out.");
     }
 
     /// <summary>
-    /// PINS AN OBSERVATION, NOT CORRECT BEHAVIOUR - and this one is why the rebuild does not rename.
-    ///
-    /// After <c>ALTER TABLE ... RENAME TO</c> the key generator restarts, and the next generated INSERT
-    /// lands on an occupied key and OVERWRITES that row, silently, reporting one row affected.
+    /// The control: a column whose values all read as the new type is still converted in place. The
+    /// designer refuses to OFFER that as an edit - a rebuild shows the conversion - but the engine
+    /// performing it is what makes the refusal a choice rather than a workaround.
     /// </summary>
     [Test]
-    public async Task RenamingATableLosesItsKeyGeneratorAsync()
+    public async Task AConvertibleColumnIsStillConvertedByTheEngineAsync()
+    {
+        await Session.ExecuteNonQueryAsync("CREATE TABLE T (Id INTEGER PRIMARY KEY AUTOINCREMENT, V VARCHAR(30))");
+        await Session.ExecuteNonQueryAsync("INSERT INTO T (V) VALUES ('42')");
+
+        Assert.That(await TryAsync("ALTER TABLE T ALTER COLUMN V TYPE INTEGER"), Is.Null);
+
+        Assert.That(await ReadAsync("SELECT Id, V FROM T"), Is.EqualTo(new[] { "1|42" }));
+    }
+
+    /// <summary>
+    /// WAS A PIN, NOW AN ASSERTION, and the one that decided the shape of the rebuild.
+    ///
+    /// A renamed table used to restart its key generator, so the next generated INSERT landed on key 1
+    /// and OVERWROTE the row that was there - silently, reporting one row affected. The rename now
+    /// carries the counter, and a generated key that lands on an existing row is refused rather than
+    /// written.
+    ///
+    /// <b>The rebuild still does not rename</b>, and that is now a choice rather than a necessity: it
+    /// copies the rows out and back, which leaves the carrier as something to recover from if a step
+    /// fails. Renaming would be one statement fewer and no safer.
+    /// </summary>
+    [Test]
+    public async Task RenamingATableKeepsItsKeyGeneratorAsync()
     {
         await Session.ExecuteNonQueryAsync("CREATE TABLE R (Id INTEGER PRIMARY KEY AUTOINCREMENT, V VARCHAR(10))");
         await Session.ExecuteNonQueryAsync("INSERT INTO R (V) VALUES ('one')");
@@ -189,18 +206,13 @@ public class SchemaMatrixTests
         await Session.ExecuteNonQueryAsync(DdlWriter.RenameTable("R", "R2"));
         await Session.ExecuteNonQueryAsync("INSERT INTO R2 (V) VALUES ('three')");
 
-        var rows = await ReadAsync("SELECT Id, V FROM R2 ORDER BY Id");
+        Assert.That(await ReadAsync("SELECT Id, V FROM R2 ORDER BY Id"),
+            Is.EqualTo(new[] { "1|one", "2|two", "3|three" }),
+            "the insert adds a row - it used to land on key 1 and destroy 'one'");
 
-        Assert.That(rows, Is.EqualTo(new[] { "1|three", "2|two" }),
-            "Row 1 was overwritten by the insert. If this goes red the engine has been fixed, and " +
-            "TableRebuild may go back to renaming.");
-
-        // The control that attributes it: the same collision, named explicitly, IS refused. So it is
-        // the generated-key path that skips the check, not the check that is missing.
-        var explicitClash = await TryAsync("INSERT INTO R2 (Id, V) VALUES (2, 'clash')");
-
-        Assert.That(explicitClash, Does.Contain("UNIQUE"),
-            "An explicit duplicate key is refused correctly - only the generated one is not.");
+        // The control that attributed the defect when it was one, kept because it is still the rule:
+        // an explicit duplicate key is refused.
+        Assert.That(await TryAsync("INSERT INTO R2 (Id, V) VALUES (2, 'clash')"), Does.Contain("UNIQUE"));
     }
 
     #endregion
@@ -241,20 +253,20 @@ public class SchemaMatrixTests
     /// real, and this is it.
     /// </summary>
     [Test]
-    public async Task NotNullWithNoDefaultOnATableWithRowsWedgesItAsync()
+    public async Task NotNullWithNoDefaultOnATableWithRowsIsRefusedByTheEngineTooAsync()
     {
-        Assert.That(await TryAsync("ALTER TABLE Customers ADD COLUMN Req INTEGER NOT NULL"), Is.Null,
-            "The engine accepts it.");
+        // WAS A PIN, NOW AN ASSERTION. The engine used to ACCEPT this, leave NULL in every existing
+        // row and then refuse every later write to the table - including an UPDATE of an unrelated
+        // column. It refuses the statement itself now.
+        //
+        // Studio still refuses it first, and that is not redundant: the designer says so in the row
+        // while the user is still deciding, instead of letting Apply come back with an error.
+        Assert.That(await TryAsync("ALTER TABLE Customers ADD COLUMN Req INTEGER NOT NULL"),
+            Does.Contain("DEFAULT"),
+            "the engine refuses it and says what would work");
 
-        Assert.That(await ReadAsync("SELECT Id, Req FROM Customers ORDER BY Id"),
-            Has.All.EndsWith("|"), "and leaves NULL in every existing row.");
-
-        Assert.That(await TryAsync("UPDATE Customers SET Name = 'renamed' WHERE Id = 1"),
-            Does.Contain("NOT NULL"),
-            "after which an UPDATE of an UNRELATED column is refused - the table is closed for writing.");
-
-        Assert.That(await TryAsync("INSERT INTO Customers (Name, Email) VALUES ('New', 'n@x')"),
-            Does.Contain("NOT NULL"));
+        Assert.That(await TryAsync("UPDATE Customers SET Name = 'renamed' WHERE Id = 1"), Is.Null,
+            "and the table is still writable, which is the whole point");
     }
 
     [Test]
@@ -269,24 +281,27 @@ public class SchemaMatrixTests
     }
 
     /// <summary>
-    /// DROP COLUMN takes the foreign key on it and LEAVES the index, which survives a reopen still
-    /// naming a column that does not exist. This is why the change set drops the index first.
+    /// WAS A PIN, NOW AN ASSERTION. The index over a dropped column used to stay in the catalogue,
+    /// naming a column that no longer existed, and survive a reopen.
+    ///
+    /// The change set still drops the index explicitly first, and that stays: it runs before the
+    /// column drop, so it is the statement the user reads in the DDL panel rather than something the
+    /// engine does invisibly.
     /// </summary>
     [Test]
-    public async Task DroppingAColumnLeavesTheIndexOnItBehindAsync()
+    public async Task DroppingAColumnTakesTheIndexOnItAsync()
     {
         await Session.ExecuteNonQueryAsync(DdlWriter.DropColumn("Orders", "CustomerId"));
 
         var indexes = await Session.GetTableIndexesAsync("Orders");
 
-        Assert.That(indexes.Select(i => i.Name), Does.Contain("IX_Orders_CustomerId"),
-            "The index is still in the catalogue, over a column that is gone.");
+        Assert.That(indexes.Select(i => i.Name), Does.Not.Contain("IX_Orders_CustomerId"));
 
         var constraints = await ReadAsync(
             "SELECT CONSTRAINT_TYPE FROM INFORMATION_SCHEMA.TABLE_CONSTRAINTS WHERE TABLE_NAME = 'Orders'");
 
         Assert.That(constraints, Does.Not.Contain("FOREIGN KEY"),
-            "The foreign key on the column DID go with it.");
+            "and the foreign key goes with it, as it always did");
     }
 
     #endregion
