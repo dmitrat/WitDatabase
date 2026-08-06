@@ -295,19 +295,28 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         HasRecentFiles = false;
     }
 
-    private async Task ShowSettingsAsync()
+    private Task ShowSettingsAsync()
     {
-        var settingsVm = new SettingsViewModel(ApplicationVm);
-        await settingsVm.InitializeAsync();
-
-        await ApplicationVm.Dialogs.ShowSettingsAsync(settingsVm);
+        return ShowSettingsAsync(SettingsViewModel.SECTION_GENERAL);
     }
 
-    private async Task ShowAboutAsync()
+    /// <summary>
+    /// About is a SECTION of the settings, not a window of its own (WS-53). A window whose only job is
+    /// to state four version numbers is a window; the numbers belong next to the log folder and the
+    /// file format version, which is what the person asking for them is actually collecting.
+    /// </summary>
+    private Task ShowAboutAsync()
     {
-        var aboutVm = new AboutViewModel(ApplicationVm);
+        return ShowSettingsAsync(SettingsViewModel.SECTION_ABOUT);
+    }
 
-        await ApplicationVm.Dialogs.ShowAboutAsync(aboutVm);
+    private Task ShowSettingsAsync(string section)
+    {
+        SettingsVm ??= new SettingsViewModel(ApplicationVm);
+
+        SettingsVm.ShowSection(section);
+
+        return ApplicationVm.Dialogs.ShowSettingsAsync(SettingsVm);
     }
 
     /// <summary>
@@ -443,6 +452,13 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     #endregion
 
     #region Properties
+
+    /// <summary>
+    /// The settings window's ViewModel, kept rather than rebuilt: the window is not modal, so it can
+    /// still be open when the menu item is used again, and a second ViewModel would put a second
+    /// section selection on the same live settings.
+    /// </summary>
+    public SettingsViewModel? SettingsVm { get; private set; }
 
     [Notify]
     public string Title { get; set; } = null!;

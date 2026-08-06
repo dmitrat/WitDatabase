@@ -65,13 +65,13 @@ public class SettingsTests
     }
 
     [Test]
-    public void DefaultAutoSaveQueriesIsTrueTest()
+    public void DefaultRestoreUnsavedTabsIsTrueTest()
     {
         // Arrange & Act
         var settings = new Settings();
 
         // Assert
-        Assert.That(settings.AutoSaveQueries, Is.True);
+        Assert.That(settings.RestoreUnsavedTabs, Is.True);
     }
 
     #endregion
@@ -108,7 +108,7 @@ public class SettingsTests
         {
             Theme = "Dark",
             EditorFontSize = 18,
-            AutoSaveQueries = false,
+            RestoreUnsavedTabs = false,
             MaxRecentFiles = 20,
             WindowWidth = 1400,
             WindowHeight = 900,
@@ -122,7 +122,7 @@ public class SettingsTests
         // Assert
         Assert.That(clone.Theme, Is.EqualTo("Dark"));
         Assert.That(clone.EditorFontSize, Is.EqualTo(18));
-        Assert.That(clone.AutoSaveQueries, Is.False);
+        Assert.That(clone.RestoreUnsavedTabs, Is.False);
         Assert.That(clone.MaxRecentFiles, Is.EqualTo(20));
         Assert.That(clone.WindowWidth, Is.EqualTo(1400));
         Assert.That(clone.WindowHeight, Is.EqualTo(900));

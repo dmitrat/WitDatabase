@@ -1,4 +1,6 @@
 using Avalonia.Controls;
+// Avalonia 12 moved SetTextAsync off IClipboard and onto ClipboardExtensions.
+using Avalonia.Input.Platform;
 using Avalonia.Platform.Storage;
 using Avalonia.Threading;
 using OutWit.Database.Studio.ViewModels;
@@ -96,6 +98,56 @@ public sealed class DialogService : IDialogService
 
     #endregion
 
+    #region The desktop
+
+    /// <summary>
+    /// Through Avalonia's launcher rather than <c>Process.Start</c>: Studio ships on three platforms
+    /// and the shell command differs on each. A path that does not exist answers false rather than
+    /// throwing - the log file has not been written yet on a first run, and that is not a failure.
+    /// </summary>
+    public async Task<bool> RevealAsync(string path)
+    {
+        var owner = m_owner();
+
+        if (owner == null || string.IsNullOrWhiteSpace(path))
+            return false;
+
+        var launcher = TopLevel.GetTopLevel(owner)?.Launcher;
+
+        if (launcher == null)
+            return false;
+
+        if (File.Exists(path))
+            return await launcher.LaunchFileInfoAsync(new FileInfo(path));
+
+        return Directory.Exists(path) && await launcher.LaunchDirectoryInfoAsync(new DirectoryInfo(path));
+    }
+
+    public async Task<bool> OpenUrlAsync(string url)
+    {
+        var owner = m_owner();
+
+        var launcher = owner == null ? null : TopLevel.GetTopLevel(owner)?.Launcher;
+
+        return launcher != null && await launcher.LaunchUriAsync(new Uri(url));
+    }
+
+    public async Task<bool> CopyToClipboardAsync(string text)
+    {
+        var owner = m_owner();
+
+        var clipboard = owner == null ? null : TopLevel.GetTopLevel(owner)?.Clipboard;
+
+        if (clipboard == null)
+            return false;
+
+        await clipboard.SetTextAsync(text);
+
+        return true;
+    }
+
+    #endregion
+
     #region Windows
 
     public Task<bool> ShowOpenDatabaseAsync(ConnectionViewModel viewModel)
@@ -136,9 +188,6 @@ public sealed class DialogService : IDialogService
 
     public Task ShowSettingsAsync(SettingsViewModel viewModel)
         => SettingsDialog.ShowAsync(RequireOwner(), viewModel);
-
-    public Task ShowAboutAsync(AboutViewModel viewModel)
-        => AboutDialog.ShowAsync(RequireOwner(), viewModel);
 
     public Task ShowExportAsync(ExportViewModel viewModel)
         => ExportDialog.ShowAsync(RequireOwner(), viewModel);

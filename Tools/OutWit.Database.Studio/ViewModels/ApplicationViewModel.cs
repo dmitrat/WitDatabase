@@ -1,4 +1,5 @@
 using OutWit.Database.Studio.Services;
+using OutWit.Database.Studio.Services.Localization;
 using Microsoft.Extensions.Logging;
 
 namespace OutWit.Database.Studio.ViewModels;
@@ -41,17 +42,27 @@ public sealed class ApplicationViewModel
         IConfirmationService? confirmations = null,
         IDialogService? dialogs = null,
         INotificationService? notifications = null,
-        IQueryHistoryService? history = null)
+        IQueryHistoryService? history = null,
+        ILocalizationService? localization = null)
     {
         Connections = connections;
         Settings = settingsService;
         Export = exportService;
         Logger = logger;
+        Localization = localization ?? new LocalizationService(settingsService.Current.Language);
         History = history ?? new NoQueryHistoryService();
         Confirmations = confirmations ?? new KeepUnsavedChangesService();
         Dialogs = dialogs ?? new NoDialogService();
         Notifications = notifications ?? new NotificationService(
             Microsoft.Extensions.Logging.Abstractions.NullLogger<NotificationService>.Instance);
+
+        // The language is a setting, so it is changed by changing the setting - there is no second way
+        // to do it and nothing to keep in step. This is the whole of "applied immediately" for WS-63.
+        Settings.Changed += (_, e) =>
+        {
+            if (e.PropertyName == nameof(Models.Settings.Language))
+                Localization.SetLanguage(Settings.Current.Language);
+        };
 
         InitViewModels();
     }
@@ -156,6 +167,12 @@ public sealed class ApplicationViewModel
     public IDatabaseSession? ActiveSession => Connections.Active;
 
     public ISettingsService Settings { get; }
+
+    /// <summary>
+    /// The interface language (WS-63). Never null - a host that supplies none still gets English, so no
+    /// call site needs a null check to ask for a string.
+    /// </summary>
+    public ILocalizationService Localization { get; }
 
     public IExportService Export { get; }
 

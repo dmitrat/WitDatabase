@@ -39,6 +39,23 @@ public interface IDialogService
 
     #endregion
 
+    #region The desktop
+
+    /// <summary>
+    /// Opens a file or folder in whatever the system uses for it. The diagnostics section needs it for
+    /// the log folder and the last log: "open the folder" saves half the correspondence on an issue,
+    /// and telling someone a path and asking them to find it does not.
+    /// </summary>
+    Task<bool> RevealAsync(string path);
+
+    /// <summary>Opens a URL in the system browser.</summary>
+    Task<bool> OpenUrlAsync(string url);
+
+    /// <summary>Puts text on the clipboard - the About section's block of versions for a bug report.</summary>
+    Task<bool> CopyToClipboardAsync(string text);
+
+    #endregion
+
     #region Windows
 
     /// <summary>Shows the Open dialog over the given ViewModel; true when a connection was made.</summary>
@@ -48,8 +65,6 @@ public interface IDialogService
     Task<bool> ShowCreateDatabaseAsync(ConnectionViewModel viewModel);
 
     Task ShowSettingsAsync(SettingsViewModel viewModel);
-
-    Task ShowAboutAsync(AboutViewModel viewModel);
 
     Task ShowExportAsync(ExportViewModel viewModel);
 
@@ -93,13 +108,17 @@ public sealed class NoDialogService : IDialogService
 
     public Task<string?> OpenFolderAsync(string title) => Task.FromResult<string?>(null);
 
+    public Task<bool> RevealAsync(string path) => Task.FromResult(false);
+
+    public Task<bool> OpenUrlAsync(string url) => Task.FromResult(false);
+
+    public Task<bool> CopyToClipboardAsync(string text) => Task.FromResult(false);
+
     public Task<bool> ShowOpenDatabaseAsync(ConnectionViewModel viewModel) => Task.FromResult(false);
 
     public Task<bool> ShowCreateDatabaseAsync(ConnectionViewModel viewModel) => Task.FromResult(false);
 
     public Task ShowSettingsAsync(SettingsViewModel viewModel) => Task.CompletedTask;
-
-    public Task ShowAboutAsync(AboutViewModel viewModel) => Task.CompletedTask;
 
     public Task ShowExportAsync(ExportViewModel viewModel) => Task.CompletedTask;
 

@@ -126,6 +126,13 @@ sealed class Program
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IExportService, ExportService>();
 
+        // The interface language (WS-63). Built from the setting rather than from the machine's
+        // culture: what language Studio speaks and how it writes a decimal are separate questions, and
+        // deriving one from the other is how a value stops pasting into SQL.
+        services.AddSingleton<Services.Localization.ILocalizationService>(provider =>
+            new Services.Localization.LocalizationService(
+                provider.GetRequiredService<ISettingsService>().Current.Language));
+
         // The notification centre (WS-7). One list for the whole application, and it writes every
         // entry to the log as well, so a trimmed list never loses what happened.
         services.AddSingleton<INotificationService, NotificationService>();

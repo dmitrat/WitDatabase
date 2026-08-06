@@ -68,9 +68,36 @@ public sealed class ScriptedDialogService : IDialogService
 
     public Task<bool> ShowCreateDatabaseAsync(ConnectionViewModel viewModel) => ShowConnection(viewModel);
 
-    public Task ShowSettingsAsync(SettingsViewModel viewModel) => Note(nameof(ShowSettingsAsync));
+    public Task ShowSettingsAsync(SettingsViewModel viewModel)
+    {
+        Shown.Add(nameof(ShowSettingsAsync));
+        LastSettings = viewModel;
 
-    public Task ShowAboutAsync(AboutViewModel viewModel) => Note(nameof(ShowAboutAsync));
+        return Task.CompletedTask;
+    }
+
+    /// <summary>
+    /// The desktop calls record what they were asked to open rather than opening it. That is enough to
+    /// check the thing worth checking - that "open the log folder" asks for the folder the log is in
+    /// and not for the log, and that the About block put on the clipboard is the one a bug report needs.
+    /// </summary>
+    public Task<bool> RevealAsync(string path)
+    {
+        Revealed.Add(path);
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> OpenUrlAsync(string url)
+    {
+        Opened.Add(url);
+        return Task.FromResult(true);
+    }
+
+    public Task<bool> CopyToClipboardAsync(string text)
+    {
+        Copied = text;
+        return Task.FromResult(true);
+    }
 
     public Task ShowExportAsync(ExportViewModel viewModel) => Note(nameof(ShowExportAsync));
 
@@ -155,6 +182,18 @@ public sealed class ScriptedDialogService : IDialogService
     public TableRebuildViewModel? LastRebuild { get; private set; }
 
     public EditTriggerViewModel? LastTrigger { get; private set; }
+
+    /// <summary>The settings ViewModel last shown - which section it opened on is worth asserting.</summary>
+    public SettingsViewModel? LastSettings { get; private set; }
+
+    /// <summary>Paths handed to <see cref="RevealAsync"/>, in order.</summary>
+    public List<string> Revealed { get; } = [];
+
+    /// <summary>URLs handed to <see cref="OpenUrlAsync"/>, in order.</summary>
+    public List<string> Opened { get; } = [];
+
+    /// <summary>The last text put on the clipboard.</summary>
+    public string? Copied { get; private set; }
 
     #endregion
 }
