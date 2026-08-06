@@ -19,7 +19,8 @@ Stages, from that plan:
 | 4 | The window frame |
 | 5 | The Explorer and the object inspector |
 | 6 | The query workspace |
-| 7–9 | The rest of the redesign: grid, schema designer, dialogs |
+| 7 | The data grid |
+| 8–9 | The rest of the redesign: schema designer, dialogs |
 | 10 | The Database tab, after the ADO.NET provider gains maintenance access (`WS-57`) |
 
 Releases while this runs are **dev tags only** - no eSigner signatures are spent until the interface
@@ -712,6 +713,105 @@ under the limit; and the history **surviving a restart of the process**.
 
 368 → 450. `TransactionControlTests` (15), `SqlFormatterTests` (12), `SqlCompletionTests` (17),
 `QueryHistoryTests` (9), `QueryPlanTests` (8), `QueryWorkspaceTests` (21).
+
+---
+
+## Stage 7 - the data grid
+
+Section 4. The readiness criterion, again written first because the plan gives none:
+
+> **What the grid shows is a question the engine answered, and the grid can show you the question.**
+> Sorting and filtering reach the whole table rather than the page; the view becomes a `SELECT` and the
+> edit buffer becomes a transaction, both readable before anything happens; a row somebody else changed
+> is refused with both values side by side; and a value is shown as the type it is.
+
+### Sorting and filtering are a new query (WS-30)
+
+`GridQuery` is the single place a view becomes SQL - the page, the same view without its page for
+**Show SQL**, and the count. One place because what is displayed has to be what was sent: a second
+builder would drift, and the first time the two disagreed the feature would be worse than not having
+it.
+
+The proof that the sort is the engine's is that it **reaches beyond the page**: with a page of one, the
+smallest of three rows is what comes back, which a client sorting what it was given could not know.
+
+The filter row is a small language, one syntax for every type (4.3): a bare word is a substring, and
+`= 'new'`, `> 1000`, `10..500`, `NULL`, `IN (1,2,3)`, `LIKE 'A%'` are the rest. Several are joined with
+`AND`; anything needing `OR` is what Show SQL is for. **A value never passes through the language** -
+`O'Brien` in a filter box is a bound parameter, and the case that says so also checks the table is
+still there afterwards.
+
+**The defect the shipping application had is exactly the one WS-30 names.** `DataGridBase` re-sorted
+the PAGE it was holding by a column remembered from an earlier session, every time it rebuilt its
+columns - so a table opened ordered by its key came up 12..1 under a footer saying "ordered by Id", and
+each page was internally sorted and jointly meaningless. A header click did the same live. Both now go
+to the engine; the saved client-side sort survives only where the page IS the data, in the query result
+grid.
+
+### Show SQL, both ways (WS-32)
+
+The view opens as a `SELECT` in a query tab, and the edit buffer opens as the transaction it will
+become - **before** it is applied, which is the only moment at which that is useful. Verified in the
+executable: a range filter produced
+`SELECT * FROM [Orders] WHERE [Total] BETWEEN 108 AND 111 ORDER BY [Id] ASC`, and it ran.
+
+### The conflict, with both sides (WS-37)
+
+The engine has no optimistic concurrency, so the mechanism had to be measured before it could be
+designed: an `UPDATE` that names its row by key **and by the values it was read with** affects one row
+if nothing changed and **zero** if something did. So a statement can carry an expected row count, the
+batch rolls back when it is not met, and the tab re-reads the row and puts the two values side by side.
+"Apply over" is a separate press, because it overwrites somebody else's work.
+
+**An assumption was wrong and the test now says so.** A second connection to the same database file was
+expected to be refused - 12.2.0 holds it under an exclusive lock - and it **opens, and sees the same
+rows**. That is what makes this a real question rather than a theoretical one, and the conflict cases
+use a genuine second connection.
+
+### Values, exactly (WS-33, WS-34)
+
+Measured: the provider returns exact types - `decimal` stays `decimal`, a GUID is a `Guid`, a BLOB is
+`byte[]`. So WS-34 is not about conversion in the engine, it is about a client that renders everything
+through `ToString` and parses it back through `double`. Nothing here goes through a double. A BLOB is
+its size and a hex dump with the first bytes recognised (PNG, JPEG, GIF, PDF, ZIP, GZIP, BMP) and never
+text; JSON becomes a tree; a line break in a cell becomes `¶` with the whole text a keystroke away; and
+**NULL is never an empty cell**, because an empty string is a value and the two are different things in
+the database.
+
+### How it was measured
+
+Three sabotages: the bare-word filter turned into equality (4 red); the page ignoring its filters
+(**green** - the case asserted only the row COUNT, and ten rows cut to a page of five look exactly like
+six rows cut to a page of five; it asserts the values now, then red); and the version check removed
+(3 red).
+
+**And in the executable, three defects the tests could not see:** the client-side re-sort above; the
+filter row empty, because the collection was REPLACED after the view had bound the one it started with;
+and the footer reading `page0 ·12rows shown`, because `Run` elements put no space between themselves.
+
+**One measurement had to be chased and then discarded.** An early probe reported
+`WHERE Status = 'Shipped'` returning one row where `LIKE '%ship%'` returned eleven - a filter answering
+with the wrong rows, which is the worst thing that could be true of the feature being built. Six
+controlled runs later - across table sizes, with and without case variants, with `SELECT *` and with an
+explicit column list, and with different queries run before it - the engine answered correctly every
+time and the reading could not be reproduced. It is **not** written up as an engine defect. What did
+reproduce, three times, is that **`=` is case-SENSITIVE while `<>` and `LIKE` are case-INSENSITIVE**, so
+`col = 'x'` and `col <> 'x'` do not partition a table holding both `'Shipped'` and `'shipped'`. That is
+what decides the filter row: a bare word is `LIKE`, because "contains" is expected to ignore case, and
+`=` stays exact.
+
+### Left for later, deliberately
+
+- **The filter row is not aligned with the grid's columns.** Avalonia's DataGrid does not publish its
+  column widths, and a row that almost lines up is worse than one that plainly does not. The boxes are
+  labelled instead.
+- The column menu (2.4's equivalent for columns), pinning a result, clipboard paste with type checking,
+  and the per-table column settings key: all of section 4 that is about the grid CONTROL rather than
+  about what it shows. They belong with a grid that is replaced rather than extended.
+
+### Tests
+
+450 -> 489. `GridQueryTests` (16), `GridEditingTests` (14), `CellValueTests` (9).
 
 ---
 
