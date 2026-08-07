@@ -47,11 +47,27 @@
                 BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="12,8">
-            <Grid ColumnDefinitions="*,Auto">
-                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8" VerticalAlignment="Center">
-                    <TextBlock Text="{Binding ObjectTypeDisplay}" FontWeight="SemiBold" FontSize="14"/>
-                    <TextBlock Text="{Binding ObjectName}" FontSize="14" Foreground="Gray"/>
-                    <Border Background="#FFF3CD" CornerRadius="3" Padding="6,1"
+            <!-- Auto for the title and star for the buttons, which is the way round it has to be.
+                 It was "*,Auto": the buttons took every pixel they wanted and the title got the
+                 remainder - and a horizontal StackPanel neither shrinks nor clips, so it was PAINTED
+                 UNDER the buttons. "Пересобрать…" only made it visible; the row was one caption away
+                 from it in any language.
+
+                 The buttons wrap now instead of pushing. A toolbar that cannot fit on one line is a
+                 toolbar that belongs on two - hiding a command, or drawing it over a name, are both
+                 worse than being one row taller. -->
+            <Grid ColumnDefinitions="Auto,*">
+                <Grid Grid.Column="0" ColumnDefinitions="Auto,Auto,Auto"
+                      VerticalAlignment="Center" Margin="0,0,12,0" ClipToBounds="True">
+                    <TextBlock Grid.Column="0" Text="{Binding ObjectTypeDisplay}"
+                               FontWeight="SemiBold" FontSize="14" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" Margin="0,0,8,0"/>
+                    <TextBlock Grid.Column="1" Text="{Binding ObjectName}" FontSize="14" Foreground="Gray"
+                               Margin="0,0,8,0" VerticalAlignment="Center"
+                               TextTrimming="CharacterEllipsis" MaxWidth="260"
+                               ToolTip.Tip="{Binding ObjectName}"/>
+                    <Border Grid.Column="2" Background="#FFF3CD" CornerRadius="3" Padding="6,1"
+                            VerticalAlignment="Center"
                             IsVisible="{Binding HasPending}">
                         <!-- A count needs a plural rule, not a template, so the LANGUAGE is an input
                              here: it is what makes the badge change when the catalogue is swapped. -->
@@ -65,9 +81,15 @@
                             </TextBlock.Text>
                         </TextBlock>
                     </Border>
-                </StackPanel>
+                </Grid>
 
-                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                <WrapPanel Grid.Column="1" Orientation="Horizontal" HorizontalAlignment="Right">
+                    <WrapPanel.Styles>
+                        <Style Selector="WrapPanel > Button">
+                            <Setter Property="Margin" Value="6,2,0,2"/>
+                        </Style>
+                    </WrapPanel.Styles>
+
                     <Button AutomationProperties.AutomationId="StructureAddColumn"
                             Content="{DynamicResource S.Structure.Column}" Command="{Binding AddColumnCommand}"
                             IsVisible="{Binding IsTable}"
@@ -99,7 +121,7 @@
                             ToolTip.Tip="{DynamicResource S.Common.Refresh}" Width="32" Height="32" Padding="0">
                         <PathIcon Data="{x:Static ui:StudioIcons.TABLE_STRUCTURE_REFRESH}" Width="16" Height="16"/>
                     </Button>
-                </StackPanel>
+                </WrapPanel>
             </Grid>
         </Border>
 
@@ -168,13 +190,17 @@
                         Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                         BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                         BorderThickness="0,0,0,1" Padding="12,6">
+                    <!-- Every heading TRIMS and keeps a gap. Without it a heading longer than its
+                         column runs into the next one and the two read as one word - "ОГРАНИЧЕНИЯ"
+                         and "ИЗМЕНЕНИЕ" were arriving as "ОГРАНИЧЕНИИЗМЕНЕНИЕ". A caption whose
+                         column may be too narrow is a translation away from that in any language. -->
                     <Grid ColumnDefinitions="1.3*,130,70,130,1.7*,96,34">
-                        <TextBlock Grid.Column="0" Text="{DynamicResource S.Structure.Head.Name}" FontWeight="SemiBold" FontSize="11"/>
-                        <TextBlock Grid.Column="1" Text="{DynamicResource S.Structure.Head.Type}" FontWeight="SemiBold" FontSize="11"/>
-                        <TextBlock Grid.Column="2" Text="NOT NULL" FontWeight="SemiBold" FontSize="11"/>
-                        <TextBlock Grid.Column="3" Text="{DynamicResource S.Structure.Head.Default}" FontWeight="SemiBold" FontSize="11"/>
-                        <TextBlock Grid.Column="4" Text="{DynamicResource S.Structure.Head.Constraints}" FontWeight="SemiBold" FontSize="11"/>
-                        <TextBlock Grid.Column="5" Text="{DynamicResource S.Structure.Head.Change}" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.Structure.Head.Name}" FontWeight="SemiBold" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="1" Text="{DynamicResource S.Structure.Head.Type}" FontWeight="SemiBold" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="2" Text="NOT NULL" FontWeight="SemiBold" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="3" Text="{DynamicResource S.Structure.Head.Default}" FontWeight="SemiBold" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="4" Text="{DynamicResource S.Structure.Head.Constraints}" FontWeight="SemiBold" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis"/>
+                        <TextBlock Grid.Column="5" Text="{DynamicResource S.Structure.Head.Change}" FontWeight="SemiBold" FontSize="11" Margin="0,0,8,0" TextTrimming="CharacterEllipsis"/>
                     </Grid>
                 </Border>
 
@@ -200,8 +226,13 @@
                                                  BorderThickness="0" Background="Transparent"
                                                  VerticalAlignment="Center"/>
 
+                                        <!-- Same shape as the header above: this row of flags cannot
+                                             shrink, so it was painting AUTOINCREMENT over the delete
+                                             button. It clips at its column now and the whole list is
+                                             in the tooltip, so nothing is lost - only cut. -->
                                         <StackPanel Grid.Column="4" Orientation="Horizontal" Spacing="6"
-                                                    VerticalAlignment="Center">
+                                                    VerticalAlignment="Center"
+                                                    Margin="0,0,8,0" ClipToBounds="True">
                                             <TextBlock Text="PRIMARY KEY" FontSize="11" Foreground="Orange"
                                                        IsVisible="{Binding IsPrimaryKey}"/>
                                             <TextBlock Text="AUTOINCREMENT" FontSize="11" Foreground="Gray"

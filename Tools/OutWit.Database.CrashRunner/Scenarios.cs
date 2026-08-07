@@ -115,6 +115,31 @@ public static class Scenarios
     /// </remarks>
     public const string UNCOMMITTED_KILL = "uncommitted-kill";
 
+    /// <summary>
+    /// DDL in autocommit, closed cleanly. The control for the scenario below: a path that cannot store
+    /// a schema when nothing goes wrong says nothing about what a kill takes.
+    /// </summary>
+    public const string DDL_CONTROL_CLEAN = "ddl-control-clean";
+
+    /// <summary>
+    /// Create a table, churn the catalogue, and die - every statement DDL, every one in autocommit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// KnownIssues issue 10, the engine half. A page reaches the disk in a <c>Flush</c>, which writes
+    /// the header, or by eviction, which does not - so only a flush brings the header up to date, and
+    /// the only thing that flushed was a commit. Every DML statement runs in a transaction and commits;
+    /// a DDL statement in autocommit committed nothing, so the header stayed at the vintage of the last
+    /// INSERT while the file grew underneath it.
+    /// </para>
+    /// <para>
+    /// The churn is what the casualties were made of: the catalogue is one value in an overflow chain,
+    /// so every DDL statement rewrites it, frees the old chain and grows the file. Measured before the
+    /// fix at 240 statements: the header counted 1 page of 591 and the database read back EMPTY.
+    /// </para>
+    /// </remarks>
+    public const string DDL_KILL = "ddl-kill";
+
     #endregion
 
     #region Functions
@@ -136,6 +161,8 @@ public static class Scenarios
         CONFIGURED_CONTROL_CLEAN => ConfiguredControlClean(context),
         CONFIGURED_COMMIT_KILL => ConfiguredCommitKill(context),
         UNCOMMITTED_KILL => UncommittedKill(context),
+        DDL_CONTROL_CLEAN => DdlControlClean(context),
+        DDL_KILL => DdlKill(context),
         _ => null
     };
 
@@ -152,7 +179,9 @@ public static class Scenarios
         LOCK_HELD_KILL,
         CONFIGURED_CONTROL_CLEAN,
         CONFIGURED_COMMIT_KILL,
-        UNCOMMITTED_KILL
+        UNCOMMITTED_KILL,
+        DDL_CONTROL_CLEAN,
+        DDL_KILL
     };
 
     #endregion
@@ -314,6 +343,71 @@ public static class Scenarios
         // Killed here: the rows are written, the transaction has neither committed nor rolled back, and
         // nothing will run on the way out.
         return context.Park(("rows", context.Rows), ("mode", "uncommitted"));
+    }
+
+    private static int DdlControlClean(ScenarioContext context)
+    {
+        using var connection = new WitDbConnection(ConnectionString(context));
+        connection.Open();
+        context.Ready();
+
+        RunDdl(connection, context);
+
+        connection.Close();
+
+        context.Done(("ddlStatements", 2 + context.Rows * 2));
+        return CrashProtocol.EXIT_OK;
+    }
+
+    private static int DdlKill(ScenarioContext context)
+    {
+        var connection = new WitDbConnection(ConnectionString(context));
+        connection.Open();
+        context.Ready();
+
+        RunDdl(connection, context);
+
+        // Killed here. Every statement above was DDL, every one of them was in autocommit, and every
+        // one of them reported success.
+        return context.Park(("ddlStatements", 2 + context.Rows * 2));
+    }
+
+    /// <summary>
+    /// The table the test looks for, a few rows, and then enough catalogue churn to move the file out
+    /// from under the header.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The order is the whole design, and every part of it was measured rather than assumed.</b>
+    /// </para>
+    /// <para>
+    /// The rows come first because each INSERT commits and therefore flushes, which carries the header
+    /// FORWARD. The churn then leaves it behind while the file keeps growing, and those two vintages
+    /// are what make a file unreadable rather than merely out of date: measured, DDL alone leaves a
+    /// header of 1 page against 591 and the database opens EMPTY, while inserts THEN churn leaves 52
+    /// against 635 and will not open at all.
+    /// </para>
+    /// <para>
+    /// The table the test looks for is created <b>LAST</b>, for the opposite reason: anything that
+    /// flushes after it would make it durable by accident. With it created first, the inserts flushed
+    /// it into the file and the silent-loss case passed against the unfixed engine - a case agreeing
+    /// with the defect it was written to catch.
+    /// </para>
+    /// </remarks>
+    private static void RunDdl(DbConnection connection, ScenarioContext context)
+    {
+        Command(connection, $"CREATE TABLE {context.Table}Rows (Id BIGINT PRIMARY KEY AUTOINCREMENT, V INT)");
+
+        for (var i = 0; i < 20; i++)
+            Command(connection, $"INSERT INTO {context.Table}Rows (V) VALUES ({i})");
+
+        for (var i = 0; i < context.Rows; i++)
+        {
+            Command(connection, $"CREATE TABLE {context.Table}Churn{i} (Id BIGINT PRIMARY KEY, Payload VARCHAR(200))");
+            Command(connection, $"DROP TABLE {context.Table}Churn{i}");
+        }
+
+        Command(connection, $"CREATE TABLE {context.Table} (Id BIGINT PRIMARY KEY AUTOINCREMENT, V INT)");
     }
 
     private static int ConfiguredControlClean(ScenarioContext context)

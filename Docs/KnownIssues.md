@@ -546,8 +546,70 @@ original scale a non-MVCC database is two pages, so nothing is ever evicted and 
 arm came back clean, journal or no journal. What the scale bought was the ability to
 fail. Nothing about a passing run says which of the two it was.
 
-Whether this is fixed in the storage layer or recorded as a deliberate limit of the
-MVCC store is **not decided here**.
+### The cause, narrowed to one sentence and proved by running it
+
+**A DDL statement in autocommit never reaches a `Commit`, and a `Commit` is the only
+thing that flushes.** Splitting the same workload says it without any reading:
+
+| workload, MVCC, ended with `Environment.Exit(0)` | header vs file | reopen |
+|---|---|---|
+| 400 inserts, no DDL | 52 = 52 | opens |
+| 240 DDL statements in autocommit | **1 against 591** | opens **empty** - everything lost |
+| **the same** 240 DDL statements inside an explicit transaction | **200 = 200** | opens, 2 tables |
+| both, as the casualties were made | **52 against 635** | **BROKEN** |
+
+DML is safe because the engine wraps every statement in an implicit transaction whose
+commit flushes (`MvccTransaction.Commit` when `SynchronousCommit`, which is the
+default; `Transaction.Commit` always). DDL gets no such wrapper:
+`SchemaCatalog.PutSchemaRecord` finds no ambient transaction and calls `m_store.Put`,
+and **neither** `TransactionalStore.Put` nor `MvccTransactionalStore.Put` flushes.
+
+The third row is the fix pointing at itself: the identical statements, changed only
+by being inside a transaction, leave the file whole.
+
+Why it is MVCC that shows the damage: without versions the file stops growing, so a
+stale header keeps counting the pages that exist. MVCC keeps every version, the file
+grows past the header's last value, and the two are then at different vintages.
+
+Two things worth knowing before choosing a fix. `PageManager.Flush` writes the header
+**first**, then the cache, then storage - the opposite of the crash-safe order. And a
+page reaches the disk on its own whenever the cache **evicts** it (`EvictSlot` writes
+if `IsDirty`), with nothing ordering that write against the header.
+
+### FIXED, 2026-08-07
+
+**`SchemaCatalog.MakeDurable`** - an autocommit schema write is made durable where
+it is written, so no schema writer added later can forget it. That is the same
+reasoning the ambient-transaction routing already used, one line down.
+
+**A flush and not a transaction of our own**, though the measurement that found the
+cause used one. The commit's only contribution here is the flush at the end of it,
+and opening a transaction would cost more than it buys: on the non-MVCC store a
+transaction takes the database write lock for its lifetime, so the documented
+out-of-contract caller - one that opens a transaction on one execution flow and runs
+DDL on another - would move from a `LockRecursionException` to a **deadlock**.
+
+**And `PageManager.Flush` writes the header LAST**, after the pages it counts are
+durable. It used to write it first, which is the unsafe order: a header that
+promises pages the file does not hold is unreadable, while one that is merely older
+is not. The storage flush *between* the two is the half that is easy to omit -
+without it the ordering lives in the source and not on the disk.
+
+Pinned by `DdlAfterAKillTests` (the crash runner, a real process, killed - a
+`CREATE TABLE` that returned is gone without the fix, and the database will not open
+either) and `FlushWritesTheHeaderLastTests` (the order asserted on the storage,
+because both orders end with the same bytes). Both measured red first.
+
+**Two existing tests had been passing on this defect**, which is its own finding:
+`AttributionAreTheUncommittedRowsOnTheMediaTest` counted every reachable record and
+read zero - an answer about the schema wearing an answer about the rows - and the
+async-only-storage pin recorded the boundary as sitting between `CREATE TABLE` and
+the first `INSERT`, when the create only "survived" because it wrote nothing at all.
+
+**Still open, and deliberately:** a process that dies in the MIDDLE of a statement
+can leave a header of one vintage beside pages of another, because eviction happens
+while the statement runs. That window is identical for DML, and closing it needs a
+journal that can be replayed at open - which the MVCC store still refuses to have.
 
 ---
 

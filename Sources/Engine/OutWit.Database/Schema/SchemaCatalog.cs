@@ -139,10 +139,50 @@ public sealed partial class SchemaCatalog : IDisposable
         // write lock its own transaction is holding.
         transaction ??= m_ambientTransaction.Value;
 
-        if (transaction == null)
-            m_store.Put(key, value);
-        else
+        if (transaction != null)
+        {
             transaction.Put(key, value);
+            return;
+        }
+
+        m_store.Put(key, value);
+        MakeDurable();
+    }
+
+    /// <summary>
+    /// Makes an autocommit schema write reach the disk, which nothing else does.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>KnownIssues issue 10, the engine half.</b> A page reaches the disk either in a
+    /// <c>Flush</c> - which writes the header - or on its own when the cache evicts it, which does
+    /// not. So the header is only ever brought up to date by a flush, and the only thing that
+    /// flushes is a commit. Every DML statement runs in a transaction and therefore commits; a DDL
+    /// statement in autocommit reaches this method and used to commit nothing at all. Measured
+    /// 2026-08-07 with the same workload three ways, each abandoned by <c>Environment.Exit(0)</c>:
+    /// 400 inserts left the header counting 52 pages of 52; 240 DDL statements left it counting 1 of
+    /// 591 and the database read back EMPTY; the same 240 inside an explicit transaction left 200 of
+    /// 200 and read back whole.
+    /// </para>
+    /// <para>
+    /// <b>A flush and not a transaction of our own</b>, though the measurement above was made with a
+    /// transaction. The two produce the same durability - the commit's only contribution here is the
+    /// flush at the end of it - and opening one would cost more than it buys: on the non-MVCC store a
+    /// transaction takes the database write lock for its lifetime, so the documented out-of-contract
+    /// caller (one that opens a transaction on one execution flow and runs DDL on another, where the
+    /// <c>AsyncLocal</c> does not reach) would move from a <c>LockRecursionException</c> to a
+    /// deadlock. A hang is worse than a throw.
+    /// </para>
+    /// <para>
+    /// <b>What this does not fix:</b> a process that dies in the MIDDLE of a DDL statement can still
+    /// leave a header of one vintage beside pages of another, because eviction happens while the
+    /// statement runs. That window is identical for DML, and closing it needs a journal that can be
+    /// replayed at open - which the MVCC store currently refuses to have.
+    /// </para>
+    /// </remarks>
+    private void MakeDurable()
+    {
+        m_store.Flush();
     }
 
     /// <summary>
@@ -152,10 +192,14 @@ public sealed partial class SchemaCatalog : IDisposable
     {
         var transaction = m_ambientTransaction.Value;
 
-        if (transaction == null)
-            m_store.Delete(key);
-        else
+        if (transaction != null)
+        {
             transaction.Delete(key);
+            return;
+        }
+
+        m_store.Delete(key);
+        MakeDurable();
     }
 
     /// <summary>
