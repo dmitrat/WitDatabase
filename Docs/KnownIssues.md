@@ -546,8 +546,38 @@ original scale a non-MVCC database is two pages, so nothing is ever evicted and 
 arm came back clean, journal or no journal. What the scale bought was the ability to
 fail. Nothing about a passing run says which of the two it was.
 
-Whether this is fixed in the storage layer or recorded as a deliberate limit of the
-MVCC store is **not decided here**.
+### The cause, narrowed to one sentence and proved by running it
+
+**A DDL statement in autocommit never reaches a `Commit`, and a `Commit` is the only
+thing that flushes.** Splitting the same workload says it without any reading:
+
+| workload, MVCC, ended with `Environment.Exit(0)` | header vs file | reopen |
+|---|---|---|
+| 400 inserts, no DDL | 52 = 52 | opens |
+| 240 DDL statements in autocommit | **1 against 591** | opens **empty** - everything lost |
+| **the same** 240 DDL statements inside an explicit transaction | **200 = 200** | opens, 2 tables |
+| both, as the casualties were made | **52 against 635** | **BROKEN** |
+
+DML is safe because the engine wraps every statement in an implicit transaction whose
+commit flushes (`MvccTransaction.Commit` when `SynchronousCommit`, which is the
+default; `Transaction.Commit` always). DDL gets no such wrapper:
+`SchemaCatalog.PutSchemaRecord` finds no ambient transaction and calls `m_store.Put`,
+and **neither** `TransactionalStore.Put` nor `MvccTransactionalStore.Put` flushes.
+
+The third row is the fix pointing at itself: the identical statements, changed only
+by being inside a transaction, leave the file whole.
+
+Why it is MVCC that shows the damage: without versions the file stops growing, so a
+stale header keeps counting the pages that exist. MVCC keeps every version, the file
+grows past the header's last value, and the two are then at different vintages.
+
+Two things worth knowing before choosing a fix. `PageManager.Flush` writes the header
+**first**, then the cache, then storage - the opposite of the crash-safe order. And a
+page reaches the disk on its own whenever the cache **evicts** it (`EvictSlot` writes
+if `IsDirty`), with nothing ordering that write against the header.
+
+Whether this is fixed - wrapping autocommit DDL in a transaction, or flushing after an
+autocommit schema write - or recorded as a deliberate limit is **not decided here**.
 
 ---
 
