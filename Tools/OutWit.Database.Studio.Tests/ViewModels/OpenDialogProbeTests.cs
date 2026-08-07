@@ -127,6 +127,50 @@ public class OpenDialogProbeTests
     }
 
     /// <summary>
+    /// <b>Found by driving the shipping executable, and no ViewModel case could have seen it:</b> every
+    /// one of them called <c>ApplyAutoDetectedSettings</c> itself, and the dialog only called it from
+    /// the two Browse buttons. A path that was TYPED or pasted - which is the commonest way one arrives,
+    /// and the only way a recent path does - produced no sentence at all.
+    ///
+    /// <para>
+    /// This case says the path, and nothing else. It is the difference between the promise of 6.2 and
+    /// an occasional version of it.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void APathThatWasTypedIsRecognisedTest()
+    {
+        var path = Path.Combine(m_root, "typed.witdb");
+
+        StudioFixture.CreateDatabaseOnDisk(path);
+
+        // Exactly what the text box does, and nothing more.
+        m_studio.Connection.ConnectionInfo.FilePath = path;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_studio.Connection.Probe.Kind, Is.EqualTo(StorageKind.Database));
+            Assert.That(m_studio.Connection.ProbeMessage, Does.Contain("B-Tree"));
+        });
+    }
+
+    /// <summary>
+    /// And an encrypted one typed in asks for the password without anything being pressed - which is
+    /// the half of it a user notices.
+    /// </summary>
+    [Test]
+    public void ATypedPathToAnEncryptedDatabaseAsksForThePasswordTest()
+    {
+        var path = Path.Combine(m_root, "typed-secret.witdb");
+
+        StudioFixture.CreateDatabaseOnDisk(path, "correct horse");
+
+        m_studio.Connection.ConnectionInfo.FilePath = path;
+
+        Assert.That(m_studio.Connection.NeedsPassword, Is.True);
+    }
+
+    /// <summary>
     /// A computed property is read once when it binds unless it is told otherwise - the defect stage 8
     /// found in the section strip. Both of these are computed from the probe, so both are announced.
     /// </summary>

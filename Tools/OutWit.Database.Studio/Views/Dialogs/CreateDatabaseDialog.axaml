@@ -24,7 +24,7 @@
                 <TextBlock Text="{DynamicResource S.Dialog.Create.Storage}" FontSize="10" Opacity="0.55"/>
 
                 <UniformGrid Columns="3" HorizontalAlignment="Stretch">
-                    <RadioButton AutomationProperties.AutomationId="CreateStorageBTree"
+                    <RadioButton AutomationProperties.AutomationId="CreateStorageBTree" AutomationProperties.Name="B-Tree, one file"
                                  GroupName="Storage" Margin="0,0,6,0"
                                  IsChecked="{Binding NeedsFile, Mode=OneWay}"
                                  Command="{Binding ChooseStorageCommand}" CommandParameter="btree">
@@ -35,7 +35,7 @@
                         </StackPanel>
                     </RadioButton>
 
-                    <RadioButton AutomationProperties.AutomationId="CreateStorageLsm"
+                    <RadioButton AutomationProperties.AutomationId="CreateStorageLsm" AutomationProperties.Name="LSM, a folder of SSTables"
                                  GroupName="Storage" Margin="0,0,6,0"
                                  IsChecked="{Binding NeedsFolder, Mode=OneWay}"
                                  Command="{Binding ChooseStorageCommand}" CommandParameter="lsm">
@@ -46,7 +46,7 @@
                         </StackPanel>
                     </RadioButton>
 
-                    <RadioButton AutomationProperties.AutomationId="CreateStorageMemory"
+                    <RadioButton AutomationProperties.AutomationId="CreateStorageMemory" AutomationProperties.Name="In memory, nothing is kept"
                                  GroupName="Storage"
                                  IsChecked="{Binding IsInMemory, Mode=OneWay}"
                                  Command="{Binding ChooseStorageCommand}" CommandParameter="memory">

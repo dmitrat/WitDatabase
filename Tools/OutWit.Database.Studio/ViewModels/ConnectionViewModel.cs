@@ -466,6 +466,16 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private void OnConnectionInfoPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // The path can arrive by being TYPED or pasted, not only from the pickers - and until this was
+        // here, it did not probe. The dialog showed nothing about a path the user had typed, which is
+        // the commonest way one arrives, and no ViewModel test could see it: every case called
+        // ApplyAutoDetectedSettings itself. Found by driving the shipping executable.
+        //
+        // It probes per keystroke. That is a file open and a 128-byte read, only while the dialog is
+        // open, and it is what makes the sentence under the box true rather than occasionally true.
+        if (e.IsProperty((ConnectionInfo info) => info.FilePath) && !IsNewDatabase)
+            ApplyAutoDetectedSettings(ConnectionInfo.FilePath);
+
         // When any ConnectionInfo property changes, re-evaluate CanConnect
         UpdateStatus();
     }
