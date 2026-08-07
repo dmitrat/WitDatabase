@@ -1103,10 +1103,30 @@ file format version it reports is read from the engine's own constant - **1.1**,
 
 ### The language, and the two ways a localisation stops being one
 
-Two catalogues **embedded in the assembly** rather than shipped as satellite assemblies: Studio is
+The catalogues are **embedded in the assembly** rather than shipped as satellite assemblies: Studio is
 packed for three platforms, and a satellite that fails to arrive turns the interface English with no
 error anywhere - a failure indistinguishable from nobody having translated it. A missing key renders as
 itself, so it is visible on screen and greppable.
+
+**A language is a file, and that took a second pass.** The version that first shipped had a
+general-looking interface over a mechanism hardcoded to exactly two: the offered languages were a
+literal list in the constructor, each catalogue needed its own `<EmbeddedResource>` line, the plural
+rules were a `switch` on the language code with a case for `"ru"` and an English-shaped default, and
+the tests compared `"en"` against `"ru"` **by name** - so a third catalogue could have been embedded,
+offered, and checked by nothing.
+
+Now the languages are discovered from the assembly manifest, the csproj globs
+`Resources\Strings.*.json`, and each catalogue carries its own header: `$language`, its name in its own
+language for the picker, and `$plural`, its family. **Plural rules are families rather than
+languages** - `one-other`, `slavic`, `one-form` - so a new language that behaves like one already here
+needs no code, and a catalogue naming a family this build does not implement is refused rather than
+falling back quietly. Every case walks the languages that shipped and compares each against the base.
+
+Measured rather than claimed: dropping a `Strings.fr.json` in - a file, nothing else - made French
+appear, and **38 of 39 cases passed with it**; it was discovered, offered, and checked for complete
+keys, for naming itself and for declaring a family. The one failure was the right one - the control
+that refuses a copy said *"195 of 195 fr strings are byte-identical to the base"*. The fake French was
+then deleted: a translation nobody has done does not belong in the repository.
 
 Every case was run against a broken catalogue before being trusted:
 
