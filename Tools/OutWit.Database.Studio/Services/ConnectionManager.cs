@@ -56,9 +56,14 @@ public sealed class ConnectionManager : IConnectionManager
 
     public async Task<IDatabaseSession?> OpenAsync(ConnectionInfo connection, CancellationToken ct = default)
     {
+        // A colour the user chose in the dialog wins (WS-46); otherwise the next one in the rotation.
+        // The colour is what tells a person where a query is about to go, so "whatever the manager
+        // happened to be up to" is the fallback rather than the rule.
         var session = new DatabaseSession(connection, m_loggerFactory.CreateLogger<DatabaseSession>())
         {
-            ColorIndex = m_nextColorIndex % COLOR_COUNT
+            ColorIndex = connection.ColorIndex >= 0
+                ? connection.ColorIndex % COLOR_COUNT
+                : m_nextColorIndex % COLOR_COUNT
         };
 
         session.DisplayName = UniqueDisplayName(session.DisplayName);

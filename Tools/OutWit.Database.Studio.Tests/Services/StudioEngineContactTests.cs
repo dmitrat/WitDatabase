@@ -558,14 +558,20 @@ public class StudioEngineContactTests
     }
 
     /// <summary>
-    /// INVERTED 2026-08-05, phase 0 / S3. In-memory combined with 'lsm' used to call WithLsmTree("."),
-    /// writing a database into the PROCESS WORKING DIRECTORY - for an installed application, wherever
-    /// it happened to be launched from.
+    /// INVERTED 2026-08-05, phase 0 / S3, and CHANGED AGAIN in stage 9. In-memory combined with 'lsm'
+    /// used to call WithLsmTree("."), writing a database into the PROCESS WORKING DIRECTORY - for an
+    /// installed application, wherever it happened to be launched from.
     ///
-    /// The combination is now refused, because it has no meaning: LSM is a folder of SSTables on disk.
+    /// <para>
+    /// Stage 0 refused the combination. Stage 9 removed the ability to express it: the storage is ONE
+    /// choice of three (WS-48), so asking for memory drops the LSM choice rather than producing a pair
+    /// that has to be refused. The assertion about the refusal MESSAGE is therefore gone - there is
+    /// nothing left to refuse - and what is asserted instead is that nothing is written and that the
+    /// two choices cannot both be held. See ChoosingInMemoryDropsTheLsmChoiceTest.
+    /// </para>
     /// </summary>
     [Test]
-    public async Task InMemoryWithLsmIsRefusedAndWritesNothingTest()
+    public async Task InMemoryWithLsmCannotBeExpressedAndWritesNothingTest()
     {
         var working = Directory.GetCurrentDirectory();
         var meta = Path.Combine(working, "provider.meta");
@@ -601,9 +607,8 @@ public class StudioEngineContactTests
         {
             Assert.That(appeared, Is.False,
                 $"nothing may be written into the working directory ({working})");
-            Assert.That(IsConnected(connections), Is.False, "the combination is refused, not quietly reinterpreted");
-            Assert.That(vm.ErrorMessage, Is.Not.Null.And.Contains("LSM"),
-                "and the refusal says which of the two choices cannot be had");
+            Assert.That(vm.SelectedStorageEngine, Is.Not.EqualTo("lsm"),
+                "asking for memory drops the LSM choice - the pair cannot be held at once");
         });
 
         connections.Dispose();

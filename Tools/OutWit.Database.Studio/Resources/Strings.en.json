@@ -26,6 +26,7 @@
   "Dialog.Open.ColourHint": "The colour marks the tabs of this connection, so it is visible where a query will go.",
   "Dialog.Open.ReadOnly": "Read only",
   "Dialog.Open.Connect": "Connect",
+  "Dialog.Open.Connecting": "Connecting…",
   "Dialog.Open.NotFound": "There is no file at this path. To start a new database, use Create database.",
   "Dialog.Open.NotADatabaseFolder": "There is no WitDatabase in this folder: no manifest and no SSTable.",
   "Dialog.Open.NotADatabaseFile": "This file is not a WitDatabase.",
@@ -56,6 +57,7 @@
   "Dialog.Create.FileHint": "B-Tree was chosen, so a file is asked for.",
   "Dialog.Create.FolderHint": "LSM was chosen, so an empty folder is asked for.",
   "Dialog.Create.PasswordsDiffer": "The two passwords are not the same.",
+  "Dialog.Create.PathRequired": "Choose where the database goes.",
 
   "Settings.Title": "Settings",
   "Settings.General": "General",

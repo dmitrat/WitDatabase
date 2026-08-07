@@ -15,6 +15,9 @@ public sealed class ConnectionInfo : ModelBase
     public const string DEFAULT_ENCRYPTION = "aes-gcm";
     public const string CHACHA20 = "chacha20-poly1305";
 
+    /// <summary>"No colour chosen" - the manager gives out the next one in its rotation.</summary>
+    public const int NO_COLOUR = -1;
+
     #endregion
 
     #region Functions
@@ -28,6 +31,7 @@ public sealed class ConnectionInfo : ModelBase
         StorageEngine = DEFAULT_STORAGE_ENGINE;
         EncryptionProvider = DEFAULT_ENCRYPTION;
         DisplayName = null;
+        ColorIndex = NO_COLOUR;
     }
 
     #endregion
@@ -45,6 +49,7 @@ public sealed class ConnectionInfo : ModelBase
             && IsReadOnly.Is(other.IsReadOnly)
             && StorageEngine.Is(other.StorageEngine)
             && EncryptionProvider.Is(other.EncryptionProvider)
+            && ColorIndex.Is(other.ColorIndex)
             && DisplayName.Is(other.DisplayName);
     }
 
@@ -58,6 +63,7 @@ public sealed class ConnectionInfo : ModelBase
             IsReadOnly = IsReadOnly,
             StorageEngine = StorageEngine,
             EncryptionProvider = EncryptionProvider,
+            ColorIndex = ColorIndex,
             DisplayName = DisplayName
         };
     }
@@ -172,6 +178,19 @@ public sealed class ConnectionInfo : ModelBase
     /// </summary>
     [Notify]
     public string? DisplayName { get; set; }
+
+    /// <summary>
+    /// The colour that marks this connection's tabs (WS-3, WS-46), or <see cref="NO_COLOUR"/> to let
+    /// the manager pick the next one.
+    ///
+    /// <para>
+    /// It is chosen in the Open dialog because the colour is what tells a person where a query is
+    /// about to go, and "wherever the manager happened to be in its rotation" is not a property anyone
+    /// can remember. A connection reopened from the saved list keeps the colour it was given.
+    /// </para>
+    /// </summary>
+    [Notify]
+    public int ColorIndex { get; set; } = NO_COLOUR;
 
     #endregion
 }

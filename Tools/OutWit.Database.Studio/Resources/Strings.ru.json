@@ -26,6 +26,7 @@
   "Dialog.Open.ColourHint": "Цвет красит корешки вкладок этого подключения — так видно, куда уйдёт запрос.",
   "Dialog.Open.ReadOnly": "Только чтение",
   "Dialog.Open.Connect": "Подключить",
+  "Dialog.Open.Connecting": "Подключение…",
   "Dialog.Open.NotFound": "Файла нет по этому пути. Чтобы завести новую базу, используйте «Создать базу».",
   "Dialog.Open.NotADatabaseFolder": "В папке нет базы WitDatabase: не найдено ни манифеста, ни SSTable.",
   "Dialog.Open.NotADatabaseFile": "Этот файл не является базой WitDatabase.",
@@ -56,6 +57,7 @@
   "Dialog.Create.FileHint": "Выбран B-Tree, поэтому спрашивается файл.",
   "Dialog.Create.FolderHint": "Выбран LSM, поэтому спрашивается пустая папка.",
   "Dialog.Create.PasswordsDiffer": "Пароли не совпадают.",
+  "Dialog.Create.PathRequired": "Выберите, где будет лежать база.",
 
   "Settings.Title": "Настройки",
   "Settings.General": "Общие",

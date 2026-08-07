@@ -5,6 +5,7 @@
              xmlns:vm="clr-namespace:OutWit.Database.Studio.ViewModels"
              xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
+             xmlns:conv="using:OutWit.Database.Studio.Converters"
              mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="40"
              x:Class="OutWit.Database.Studio.Views.Workspace.WorkspaceTabStrip"
              x:DataType="vm:WorkspaceTabsViewModel"
@@ -160,6 +161,18 @@
                                     </Border.ContextMenu>
                                     
                                     <StackPanel Orientation="Horizontal" Spacing="6">
+                                        <!-- The connection's colour (WS-3). Every tab has carried a
+                                             ConnectionColorIndex since stage 2 and NOTHING drew it, so
+                                             the only sign a tab belonged to another database was a
+                                             greyed-out Execute. With several databases open this is
+                                             what answers "where is this query about to go" BEFORE it
+                                             runs. -->
+                                        <Border Width="3"
+                                                Margin="-4,-6,2,-6"
+                                                Background="{Binding ConnectionColorIndex,
+                                                            Converter={x:Static conv:ConnectionColors.Brush}}"
+                                                ToolTip.Tip="{Binding ConnectionName}"/>
+
                                         <!-- Tab Type Icon -->
                                         <PathIcon Data="{x:Static ui:StudioIcons.TAB_QUERY}"
                                                   Width="14" Height="14"

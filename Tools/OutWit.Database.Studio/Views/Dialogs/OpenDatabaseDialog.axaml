@@ -1,141 +1,153 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:OutWit.Database.Studio.ViewModels"
-        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
+        xmlns:conv="using:OutWit.Database.Studio.Converters"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="470"
         x:Class="OutWit.Database.Studio.Views.Dialogs.OpenDatabaseDialog"
         x:DataType="vm:ConnectionViewModel"
-        Title="Open Database"
-        Width="600"
-        Height="500"
-        MinHeight="450"
-        MaxHeight="600"
+        Title="{DynamicResource S.Dialog.Open.Title}"
+        Width="520"
+        Height="470"
         WindowStartupLocation="CenterOwner"
-        CanResize="True">
+        CanResize="False">
 
-    <Grid RowDefinitions="Auto,*,Auto" Margin="16">
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,16">
-            <TextBlock Text="Open Database"
-                       FontSize="18"
-                       FontWeight="SemiBold"/>
-            <TextBlock Text="Open an existing database. Its configuration is read from the database itself."
-                       Foreground="Gray"
-                       TextWrapping="Wrap"
-                       FontSize="12"/>
-        </StackPanel>
+    <!-- The rules of 6.1: fixed size, the error inside the window rather than a modal on a modal, the
+         helper on the left and the one accented verb on the right. Nothing here asks what the FILE
+         already knows - since 12.2.0 it records its store, journal, MVCC and page size (WS-46). -->
+    <Grid RowDefinitions="*,Auto,Auto" Margin="0">
 
-        <!-- Content -->
-        <TabControl Grid.Row="1">
-            <TabItem Header="General">
-                <StackPanel Spacing="16" Margin="8" MaxWidth="560">
-                    <!-- Database path. A B+Tree database is a file and an LSM database is a
-                         directory, so both pickers are offered - a file picker alone made an LSM
-                         database impossible to open. -->
-                    <StackPanel Spacing="4">
-                        <TextBlock Text="Database:"
-                                   FontWeight="SemiBold"/>
-                        <Grid ColumnDefinitions="*,Auto,Auto">
-                            <TextBox Grid.Column="0"
-                                     Text="{Binding ConnectionInfo.FilePath, Mode=TwoWay}"
-                                     Watermark="C:\Data\myapp.witdb"
-                                     Margin="0,0,8,0"/>
-                            <Button AutomationProperties.AutomationId="OpenDatabaseFile" Grid.Column="1"
-                                    Command="{Binding BrowseFileCommand}"
-                                    Content="File..."
-                                    Width="90"
-                                    Margin="0,0,8,0"
-                                    ToolTip.Tip="Open a B+Tree database file"/>
-                            <Button AutomationProperties.AutomationId="OpenDatabaseFolder" Grid.Column="2"
-                                    Command="{Binding BrowseFolderCommand}"
-                                    Content="Folder..."
-                                    Width="90"
-                                    ToolTip.Tip="Open an LSM database, which is a directory of SSTables"/>
-                        </Grid>
-                    </StackPanel>
+        <ScrollViewer Grid.Row="0" Padding="18,16">
+            <StackPanel Spacing="10">
 
-                    <!-- Encryption -->
-                    <CheckBox IsChecked="{Binding ConnectionInfo.IsEncrypted}"
-                              Content="Database is encrypted"/>
-
-                    <!-- Password -->
-                    <StackPanel Spacing="4"
-                                IsVisible="{Binding ConnectionInfo.IsEncrypted}">
-                        <TextBlock Text="Password:"
-                                   FontWeight="SemiBold"/>
-                        <TextBox Text="{Binding ConnectionInfo.Password, Mode=TwoWay}"
-                                 Watermark="Enter password"
-                                 PasswordChar="*"
-                                 RevealPassword="False"/>
-                    </StackPanel>
-
-                    <!-- Storage engine, transactions, MVCC and file locking used to be offered here
-                         and on an Advanced tab. None of them ever reached the engine:
-                         BuildConnectionString emits only Data Source, Mode, Encryption, Password and
-                         Store, so clearing "Enable MVCC" got an MVCC database and no message. Since
-                         12.2.0 the file records all of them and supplies whatever the connection
-                         string does not name, so the honest fix is to stop asking. -->
-
-                    <!-- Read Only -->
-                    <CheckBox IsChecked="{Binding ConnectionInfo.IsReadOnly}"
-                              Content="Open in read-only mode"/>
-
-                    <!-- Error Message -->
-                    <Border Background="#FFF3CD"
-                            BorderBrush="#FFC107"
-                            BorderThickness="1"
-                            Padding="12"
-                            CornerRadius="4"
-                            IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
-                        <StackPanel Spacing="4">
-                            <TextBlock Text="[!] Error"
-                                       FontWeight="Bold"
-                                       Foreground="#856404"/>
-                            <TextBlock Text="{Binding ErrorMessage}"
-                                       TextWrapping="Wrap"
-                                       Foreground="#856404"/>
+                <Grid ColumnDefinitions="110,*">
+                    <TextBlock Grid.Column="0" Text="{DynamicResource S.Dialog.Open.Path}" Margin="0,6,0,0"/>
+                    <StackPanel Grid.Column="1" Spacing="6">
+                        <TextBox AutomationProperties.AutomationId="OpenDatabasePath"
+                                 Text="{Binding ConnectionInfo.FilePath, Mode=TwoWay}"
+                                 Watermark="D:\data\sales.witdb"/>
+                        <StackPanel Orientation="Horizontal" Spacing="7">
+                            <Button AutomationProperties.AutomationId="OpenDatabaseFile"
+                                    Content="{DynamicResource S.Common.File}"
+                                    Command="{Binding BrowseFileCommand}"/>
+                            <Button AutomationProperties.AutomationId="OpenDatabaseFolder"
+                                    Content="{DynamicResource S.Common.Folder}"
+                                    Command="{Binding BrowseFolderCommand}"/>
                         </StackPanel>
-                    </Border>
-                </StackPanel>
-            </TabItem>
+                        <TextBlock Text="{DynamicResource S.Dialog.Open.PathHint}"
+                                   Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
 
-        </TabControl>
-
-        <!-- Buttons -->
-        <Grid Grid.Row="2"
-              ColumnDefinitions="*,Auto,Auto"
-              Margin="0,8,0,0">
-            <StackPanel Grid.Column="0"
-                       Orientation="Horizontal"
-                       Spacing="8"
-                       IsVisible="{Binding IsConnecting}">
-                <Border Width="16" Height="16"
-                        Background="{DynamicResource SystemAccentColor}"
-                        CornerRadius="8">
-                    <TextBlock Text="..."
-                               FontSize="10"
-                               Foreground="White"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"/>
+                <!-- What was found, in whichever of the three states the engine allows. An encrypted
+                     database says only that it is encrypted, because its header is inside the
+                     encryption; a file with no magic bytes says "encrypted, or not a database", because
+                     those two cannot be told apart at all. -->
+                <Border Padding="10,8" CornerRadius="6"
+                        Background="{DynamicResource SystemControlBackgroundListLowBrush}"
+                        IsVisible="{Binding ProbeMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
+                    <TextBlock AutomationProperties.AutomationId="OpenDatabaseProbe"
+                               Text="{Binding ProbeMessage}" TextWrapping="Wrap" FontSize="12"/>
                 </Border>
-                <TextBlock Text="Connecting..."
-                           VerticalAlignment="Center"
-                           Foreground="Gray"/>
+
+                <!-- Asked for only when there is something encrypted to open (WS-46). -->
+                <Grid ColumnDefinitions="110,*" IsVisible="{Binding NeedsPassword}">
+                    <TextBlock Grid.Column="0" Text="{DynamicResource S.Dialog.Open.Password}" Margin="0,6,0,0"/>
+                    <TextBox Grid.Column="1"
+                             AutomationProperties.AutomationId="OpenDatabasePassword"
+                             Text="{Binding ConnectionInfo.Password, Mode=TwoWay}"
+                             PasswordChar="*" RevealPassword="False"/>
+                </Grid>
+
+                <Grid ColumnDefinitions="110,*">
+                    <TextBlock Grid.Column="0" Text="{DynamicResource S.Dialog.Open.NameAndLabel}" Margin="0,6,0,0"/>
+                    <StackPanel Grid.Column="1" Spacing="6">
+                        <StackPanel Orientation="Horizontal" Spacing="10">
+                            <TextBox AutomationProperties.AutomationId="OpenDatabaseName"
+                                     Text="{Binding ConnectionInfo.DisplayName, Mode=TwoWay}"
+                                     Width="180"/>
+
+                            <!-- The palette is the one in ConnectionColors, which is also what draws
+                                 the stripe on the tab. A picker whose colour appeared nowhere would be
+                                 decoration. -->
+                            <ListBox AutomationProperties.AutomationId="OpenDatabaseColour"
+                                     SelectedIndex="{Binding ConnectionInfo.ColorIndex, Mode=TwoWay}"
+                                     Background="Transparent" BorderThickness="0" Padding="0"
+                                     VerticalAlignment="Center">
+                                <ListBox.ItemsPanel>
+                                    <ItemsPanelTemplate>
+                                        <StackPanel Orientation="Horizontal" Spacing="6"/>
+                                    </ItemsPanelTemplate>
+                                </ListBox.ItemsPanel>
+                                <ListBox.Styles>
+                                    <Style Selector="ListBoxItem">
+                                        <Setter Property="Padding" Value="2"/>
+                                    </Style>
+                                </ListBox.Styles>
+                                <ListBoxItem><Border Width="18" Height="18" CornerRadius="5" Background="#4CC13C"/></ListBoxItem>
+                                <ListBoxItem><Border Width="18" Height="18" CornerRadius="5" Background="#D9A227"/></ListBoxItem>
+                                <ListBoxItem><Border Width="18" Height="18" CornerRadius="5" Background="#8A7BE8"/></ListBoxItem>
+                                <ListBoxItem><Border Width="18" Height="18" CornerRadius="5" Background="#35A7C4"/></ListBoxItem>
+                                <ListBoxItem><Border Width="18" Height="18" CornerRadius="5" Background="#D9534F"/></ListBoxItem>
+                                <ListBoxItem><Border Width="18" Height="18" CornerRadius="5" Background="#5D6879"/></ListBoxItem>
+                            </ListBox>
+                        </StackPanel>
+                        <TextBlock Text="{DynamicResource S.Dialog.Open.ColourHint}"
+                                   Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
+
+                <CheckBox Content="{DynamicResource S.Dialog.Open.ReadOnly}"
+                          IsChecked="{Binding ConnectionInfo.IsReadOnly}"/>
+
+                <!-- WS-49: what will actually reach WitDbConnection, editable. The provider has a
+                     dozen and a half properties this window deliberately does not ask about; not
+                     asking is a choice, hiding them is not. -->
+                <StackPanel Spacing="6" IsVisible="{Binding IsConnectionStringVisible}">
+                    <TextBlock Text="{DynamicResource S.Common.ConnectionString}" FontSize="11" Opacity="0.6"/>
+                    <TextBox AutomationProperties.AutomationId="OpenDatabaseConnectionStringBox"
+                             Text="{Binding ConnectionString, Mode=TwoWay}"
+                             FontFamily="Consolas" FontSize="11"
+                             TextWrapping="Wrap" AcceptsReturn="False"/>
+                </StackPanel>
+
             </StackPanel>
+        </ScrollViewer>
 
-            <Button AutomationProperties.AutomationId="OpenDatabaseCancel" Grid.Column="1"
-                    Content="Cancel"
-                    Command="{Binding CancelCommand}"
-                    Width="100"
-                    Margin="0,0,8,0"/>
+        <!-- The error is a strip above the buttons, and the last one is gone when the window reopens. -->
+        <Border Grid.Row="1" Margin="18,0,18,10" Padding="10,8" CornerRadius="6"
+                Background="#22D9534F" BorderBrush="#55D9534F" BorderThickness="1"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <TextBlock AutomationProperties.AutomationId="OpenDatabaseError"
+                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12"/>
+        </Border>
 
-            <Button AutomationProperties.AutomationId="OpenDatabaseOpen" Grid.Column="2"
-                    Content="Open"
-                    Command="{Binding ConnectCommand}"
-                    Width="100"
-                    Classes="accent"/>
-        </Grid>
+        <Border Grid.Row="2" Padding="14,10"
+                Background="{DynamicResource SystemControlBackgroundListLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <Button Grid.Column="0"
+                        AutomationProperties.AutomationId="OpenDatabaseConnectionString"
+                        Content="{DynamicResource S.Common.ConnectionString}"
+                        Command="{Binding ShowConnectionStringCommand}"/>
+
+                <TextBlock Grid.Column="1" Margin="12,0" VerticalAlignment="Center" Opacity="0.6"
+                           Text="{DynamicResource S.Dialog.Open.Connecting}"
+                           IsVisible="{Binding IsConnecting}"/>
+
+                <Button Grid.Column="2" Margin="0,0,8,0" Width="100"
+                        AutomationProperties.AutomationId="OpenDatabaseCancel"
+                        Content="{DynamicResource S.Common.Cancel}"
+                        Command="{Binding CancelCommand}"/>
+
+                <!-- The verb, not "OK" (6.1). -->
+                <Button Grid.Column="3" Width="120" Classes="accent"
+                        AutomationProperties.AutomationId="OpenDatabaseOpen"
+                        Content="{DynamicResource S.Dialog.Open.Connect}"
+                        Command="{Binding ConnectCommand}"/>
+            </Grid>
+        </Border>
     </Grid>
 
 </Window>
