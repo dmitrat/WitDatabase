@@ -45,7 +45,7 @@
 						<TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource S.Inspector.Rows}" FontSize="12" Opacity="0.6"/>
 						<TextBlock Grid.Row="0" Grid.Column="1" FontSize="12"
 						           AutomationProperties.AutomationId="InspectorRowCount"
-						           Text="{Binding RowCount, TargetNullValue='not counted'}"/>
+						           Text="{Binding RowCountText}"/>
 
 						<TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource S.Inspector.Columns}" FontSize="12" Opacity="0.6"/>
 						<TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ColumnCount}" FontSize="12"/>

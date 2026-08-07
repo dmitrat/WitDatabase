@@ -183,6 +183,9 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
         // to discover that a table is too big to count.
         RowCount = await session.TryCountRowsAsync(table, ApplicationVm.DatabaseExplorerVm.CountTimeout, ct);
 
+        RowCountText = RowCount?.ToString(System.Globalization.CultureInfo.InvariantCulture)
+            ?? Localization["Inspector.NotCounted"];
+
         Definition = await session.GetTableDefinitionAsync(table, ct);
 
         if (Definition == null)

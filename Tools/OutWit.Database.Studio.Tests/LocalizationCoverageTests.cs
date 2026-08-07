@@ -73,9 +73,15 @@ public class LocalizationCoverageTests
     /// <summary>
     /// A caption built inside a binding. It is markup, and no attribute rule can see it: the text is
     /// inside single quotes inside another attribute's value.
+    ///
+    /// <para>
+    /// <c>TargetNullValue</c> and <c>FallbackValue</c> are here for the same reason and were added
+    /// after the fact: the inspector's row count read <c>TargetNullValue='not counted'</c>, which
+    /// survived the whole sweep because nothing was looking at that attribute.
+    /// </para>
     /// </summary>
     private static readonly Regex STRING_FORMAT =
-        new(@"(StringFormat)='([^']*)'", RegexOptions.Compiled);
+        new(@"(StringFormat|TargetNullValue|FallbackValue)='([^']*)'", RegexOptions.Compiled);
 
     /// <summary>
     /// Properties a view binds and a person therefore reads. Rule 3 is about where a string GOES, not
@@ -338,6 +344,8 @@ public class LocalizationCoverageTests
                 "a number's format specifier is not prose");
             Assert.That(Caught(STRING_FORMAT, "StringFormat='{}{0:yyyy-MM-dd HH:mm}'"), Is.False,
                 "a date pattern is not prose");
+            Assert.That(Caught(STRING_FORMAT, "Text=\"{Binding RowCount, TargetNullValue='not counted'}\""), Is.True,
+                "a caption inside a binding's null value must be caught");
 
             Assert.That(Caught(ANNOUNCED, @"AutomationProperties.Name=""Clear filter"""), Is.True,
                 "a hardcoded announcement must be caught");
