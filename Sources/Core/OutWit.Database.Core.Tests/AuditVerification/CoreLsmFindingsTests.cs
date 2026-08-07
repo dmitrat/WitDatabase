@@ -38,21 +38,43 @@ public class CoreLsmFindingsTests
 
     #region Compaction has no manifest
 
+    /// <summary>
+    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. <b>A crashed compaction resurrects deleted rows.</b>
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This was recorded as "MECHANISM CONFIRMED, CONSEQUENCE NOT REPRODUCED" and the consequence
+    /// reproduces.</b> What stopped it was the instrument, not the engine: <c>Compact()</c> applied
+    /// the automatic <c>Level0CompactionTrigger</c> to an explicit call, and this case has two
+    /// SSTables against a default trigger of four - so the compaction it is named after never ran.
+    /// The moment an explicit compaction was made to compact (2026-08-07, <c>ExplicitCompactionTests</c>),
+    /// this case went red on its own.
+    /// </para>
+    /// <para>
+    /// <b>And the old reasoning was wrong in a way worth naming.</b> It said the output RETAINS the
+    /// tombstone, "verified, not assumed, because Get(k0) returned null after compaction". Null was a
+    /// proxy: <c>Compactor.Compact</c> <b>drops</b> tombstones - "they've done their job" - so after a
+    /// full merge k0 is null because it is ABSENT, not because anything masks it. Absence and a
+    /// tombstone read identically through <c>Get</c>, and the difference is the whole defect.
+    /// </para>
+    /// <para>
+    /// <b>The chain, all of it measured:</b> a full compaction merges every SSTable into one and drops
+    /// the tombstones, which is legitimate only because the output is meant to replace the whole live
+    /// set; the inputs are then deleted with every failure swallowed
+    /// (<c>try { File.Delete(file); } catch { }</c>); and the live set on the next open is a directory
+    /// listing with no manifest. So an input the compaction failed to delete - a crash between the two,
+    /// a virus scanner, a handle held open - is readmitted as live data, and the rows it holds come
+    /// back from the dead with nothing left to mask them.
+    /// </para>
+    /// <para>
+    /// <b>A fix must invert the last assertion.</b> The shape it needs is a manifest: the live set
+    /// stated in a file that is updated atomically, rather than inferred from what happens to be on
+    /// disk. Until then this pin says what the engine does.
+    /// </para>
+    /// </remarks>
     [Test]
-    public void CrashedCompactionDoesNotResurrectDeletedRowsTest()
+    public void CrashedCompactionResurrectsDeletedRowsTest()
     {
-        // MECHANISM CONFIRMED, CONSEQUENCE NOT REPRODUCED - and the reason is worth keeping. The
-        // live set really is a directory listing, so a surviving input IS readmitted. But it loses:
-        // Recover() sorts by filename and the compaction output carries a higher id, so it is
-        // treated as newest; and the output RETAINS the tombstone - verified, not assumed, because
-        // Get(k0) returned null after compaction when the output was the only file left. A
-        // resurrected row would need the output to drop the tombstone or to sort behind a survivor,
-        // neither of which happens here. This test stays active as the pin for both properties.
-        //
-        // Finding: StoreLsm.cs:519 - compaction keeps no manifest. The live SSTable set is literally
-        // `Directory.GetFiles(m_directory, "sst_*.sst")` (StoreLsm.cs:601), so any input file the
-        // compaction failed to delete is silently readmitted as live data on the next open - and the
-        // rows it holds come back from the dead.
         var holding = Path.Combine(m_directory, "..", Path.GetFileName(m_directory) + "-holding");
         Directory.CreateDirectory(holding);
 
@@ -79,8 +101,15 @@ public class CoreLsmFindingsTests
                 store.Compact();
                 store.WaitForCompaction();
 
+                // CONTROL, and the one that makes the pin below mean something: with the compaction's
+                // output as the only file, the deleted row is gone. If this failed, the resurrection
+                // below would be "compaction never ran" rather than "a survivor readmitted it".
+                Assert.That(Directory.GetFiles(m_directory, "sst_*.sst"), Has.Length.EqualTo(1),
+                    "CONTROL: the compaction did not merge the inputs, so nothing below is about a "
+                    + "crashed compaction");
+
                 Assert.That(store.Get(Key("k0")), Is.Null,
-                    "the delete must have survived compaction");
+                    "the delete did not survive the compaction");
             }
 
             // The crash: compaction published its output, deleted the tombstone's input, and died
@@ -90,8 +119,15 @@ public class CoreLsmFindingsTests
 
             using var reopened = new StoreLsm(m_directory);
 
-            Assert.That(reopened.Get(Key("k0")), Is.Null,
-                "a row deleted before the crash must not come back because an input file survived");
+            // PINS A DEFECT, NOT CORRECT BEHAVIOUR. A fix - a manifest naming the live set - must
+            // invert this to Is.Null.
+            Assert.That(reopened.Get(Key("k0")), Is.Not.Null,
+                "the deleted row did NOT come back, so either the compaction now keeps its tombstones "
+                + "or the live set is no longer a directory listing - re-measure and invert this pin");
+
+            TestContext.Out.WriteLine(
+                "LSM PIN: a row deleted before a crashed compaction is readable again - the full merge "
+                + "dropped its tombstone and the surviving input was readmitted by the directory listing");
         }
         finally
         {

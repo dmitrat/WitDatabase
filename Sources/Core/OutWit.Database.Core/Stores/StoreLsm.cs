@@ -19,6 +19,13 @@ namespace OutWit.Database.Core.Stores
         /// </summary>
         public const string PROVIDER_KEY = "lsm";
 
+        /// <summary>
+        /// How many SSTables an EXPLICIT <see cref="Compact"/> needs before there is anything to do.
+        /// Two: one file cannot be merged with itself, and everything above that is the caller's
+        /// business rather than the trigger's.
+        /// </summary>
+        private const int MINIMUM_FILES_TO_MERGE = 2;
+
         #endregion
 
         #region Fields
@@ -469,19 +476,35 @@ namespace OutWit.Database.Core.Stores
         /// <summary>
         /// Forces compaction of SSTables. Waits for completion.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>"Forces" is now true.</b> This used to apply <see cref="LsmOptions.Level0CompactionTrigger"/>
+        /// - the threshold that decides AUTOMATIC compaction - to an explicit call as well, so a caller
+        /// that asked for a compaction below it got nothing and was told nothing. Measured 2026-08-07:
+        /// six checkpoints with the trigger raised to 100 left six SSTables, and <c>Compact()</c> left
+        /// six as well with the compaction counter still at zero. With the default trigger of four the
+        /// automatic path keeps the store BELOW its own threshold, so an explicit call was refused
+        /// almost every time it could be made.
+        /// </para>
+        /// <para>
+        /// The threshold for an explicit call is two, which is the number below which there is nothing
+        /// to merge. The automatic path is untouched and still uses the trigger: it decides how much
+        /// churn is worth a rewrite, which is a different question from "the user asked".
+        /// </para>
+        /// </remarks>
         public void Compact()
         {
             ThrowIfDisposed();
-            
+
             if (m_options.BackgroundCompaction)
             {
                 // Trigger and wait for background compaction
-                ScheduleBackgroundCompaction();
+                ScheduleBackgroundCompaction(MINIMUM_FILES_TO_MERGE);
                 WaitForCompaction();
             }
             else
             {
-                ExecuteCompaction();
+                ExecuteCompaction(MINIMUM_FILES_TO_MERGE);
             }
         }
 
@@ -503,7 +526,7 @@ namespace OutWit.Database.Core.Stores
             task?.Wait();
         }
 
-        private void ScheduleBackgroundCompaction()
+        private void ScheduleBackgroundCompaction(int minimumFiles)
         {
             lock (m_compactionLock)
             {
@@ -520,7 +543,7 @@ namespace OutWit.Database.Core.Stores
                 m_sstableLock.EnterReadLock();
                 try
                 {
-                    if (m_sstables.Count < m_options.Level0CompactionTrigger)
+                    if (m_sstables.Count < minimumFiles)
                         return;
                 }
                 finally
@@ -539,7 +562,7 @@ namespace OutWit.Database.Core.Stores
                 {
                     try
                     {
-                        ExecuteCompaction();
+                        ExecuteCompaction(minimumFiles);
                     }
                     finally
                     {
@@ -552,7 +575,7 @@ namespace OutWit.Database.Core.Stores
             }
         }
 
-        private void ExecuteCompaction()
+        private void ExecuteCompaction(int minimumFiles)
         {
             // Get current SSTable files
             List<string> filesToCompact;
@@ -561,7 +584,7 @@ namespace OutWit.Database.Core.Stores
             try
             {
                 currentSstableCount = m_sstables.Count;
-                if (currentSstableCount < m_options.Level0CompactionTrigger)
+                if (currentSstableCount < minimumFiles)
                     return;
 
                 filesToCompact = m_sstables.Select(s => s.FilePath).ToList();
@@ -699,16 +722,17 @@ namespace OutWit.Database.Core.Stores
             // Truncate WAL
             m_wal?.Truncate();
 
-            // Check if compaction needed
+            // Check if compaction needed. The AUTOMATIC path, and it keeps the trigger: how much churn
+            // is worth a rewrite is a different question from "the user asked for one".
             if (m_sstables.Count >= m_options.Level0CompactionTrigger)
             {
                 if (m_options.BackgroundCompaction)
                 {
-                    ScheduleBackgroundCompaction();
+                    ScheduleBackgroundCompaction(m_options.Level0CompactionTrigger);
                 }
                 else
                 {
-                    ExecuteCompaction();
+                    ExecuteCompaction(m_options.Level0CompactionTrigger);
                 }
             }
         }
