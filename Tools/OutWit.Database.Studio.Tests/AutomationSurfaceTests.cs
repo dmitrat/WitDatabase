@@ -24,8 +24,26 @@ public class AutomationSurfaceTests
     // section strip as "Avalonia.Controls.StackPanel" - the same defect this guard exists for, in an
     // element type it was not looking at. CheckBox and TabItem are still outside it; see the phase
     // document.
-    private static readonly Regex INTERACTIVE = new(@"<(Button|MenuItem|ToggleButton|RadioButton)(\s[^>]*?)?(/?)>",
-        RegexOptions.Singleline | RegexOptions.Compiled);
+    // ListBoxItem was added in stage 9, after the running application announced the six colour
+    // swatches of the Open dialog as "Avalonia.Controls.Border" - six identical unnamed items, which
+    // is the same defect one element type further out again. CheckBox and TabItem are still outside.
+    private static readonly Regex INTERACTIVE =
+        new(@"<(Button|MenuItem|ToggleButton|RadioButton|ListBoxItem|CheckBox)(\s[^>]*?)?(/?)>",
+            RegexOptions.Singleline | RegexOptions.Compiled);
+
+    /// <summary>
+    /// An element that is only ever reached through the list it belongs to does not need an
+    /// AutomationId of its own - the list has one, and the item is found by NAME inside it. The
+    /// swatches are the case: six of them, one list.
+    /// </summary>
+    /// <summary>
+    /// CheckBox joined this list in stage 9, for a different reason from ListBoxItem's: a checkbox
+    /// announces from its Content and is found by that text, and requiring an Id from every one of the
+    /// dozen already in the shipping views would be a sweep with no defect behind it. What it IS
+    /// required to do is carry a NAME when its content is a panel - which is the defect the running
+    /// application showed twice in the import wizard, both times as "Avalonia.Controls.StackPanel".
+    /// </summary>
+    private static readonly HashSet<string> NAMED_BUT_NOT_IDENTIFIED = ["ListBoxItem", "CheckBox"];
 
     #endregion
 
@@ -39,7 +57,9 @@ public class AutomationSurfaceTests
         Assert.That(views, Is.Not.Null, "the Views folder was not found from " + AppContext.BaseDirectory);
 
         var nameless = new List<string>();
+        var unannounced = new List<string>();
         var interactive = 0;
+        var withChildren = 0;
 
         foreach (var file in Directory.EnumerateFiles(views!, "*.axaml", SearchOption.AllDirectories))
         {
@@ -50,12 +70,39 @@ public class AutomationSurfaceTests
                 interactive++;
 
                 var attributes = match.Groups[2].Value;
-
-                if (attributes.Contains("AutomationProperties.AutomationId", StringComparison.Ordinal))
-                    continue;
+                var selfClosing = match.Groups[3].Value == "/";
 
                 var line = markup[..match.Index].Count(c => c == '\n') + 1;
-                nameless.Add($"{Path.GetFileName(file)}:{line} <{match.Groups[1].Value}>");
+                var where = $"{Path.GetFileName(file)}:{line} <{match.Groups[1].Value}>";
+
+                if (!NAMED_BUT_NOT_IDENTIFIED.Contains(match.Groups[1].Value)
+                    && !attributes.Contains("AutomationProperties.AutomationId", StringComparison.Ordinal))
+                    nameless.Add(where);
+
+                // An element that announces itself does so from Content= or Header=. One whose content
+                // is a PANEL has no text of its own and announces as the panel - which is the original
+                // defect this guard exists for, "Avalonia.Controls.StackPanel", and the guard could not
+                // see it because it only ever asked about the AutomationId.
+                //
+                // Found by running the application: the three storage cards of the Create dialog and
+                // the six colour swatches of the Open dialog all carried Ids and announced as the panel
+                // or the Border inside them.
+                //
+                // The rule is deliberately narrow - a panel, specifically. A first draft asked for a
+                // Name from anything with children at all and named 40 menu items that announce
+                // perfectly well from their Header.
+                if (selfClosing
+                    || attributes.Contains("Content=", StringComparison.Ordinal)
+                    || attributes.Contains("Header=", StringComparison.Ordinal))
+                    continue;
+
+                if (!ContentIsAPanel(markup, match))
+                    continue;
+
+                withChildren++;
+
+                if (!attributes.Contains("AutomationProperties.Name", StringComparison.Ordinal))
+                    unannounced.Add(where);
             }
         }
 
@@ -65,10 +112,41 @@ public class AutomationSurfaceTests
             Assert.That(interactive, Is.GreaterThan(80),
                 "CONTROL: too few interactive elements found - the walk is looking in the wrong place");
 
+            // CONTROL for the second rule, for the same reason: if nothing has children, the rule
+            // below is asserting about an empty set.
+            Assert.That(withChildren, Is.GreaterThan(10),
+                "CONTROL: too few elements whose content is markup - the second rule is measuring nothing");
+
             Assert.That(nameless, Is.Empty,
-                "these cannot be found by UI automation or announced by a screen reader:"
+                "these cannot be found by UI automation:"
                 + Environment.NewLine + string.Join(Environment.NewLine, nameless));
+
+            Assert.That(unannounced, Is.Empty,
+                "these have no text of their own, so a screen reader announces the panel inside them:"
+                + Environment.NewLine + string.Join(Environment.NewLine, unannounced));
         });
+    }
+
+    /// <summary>
+    /// Whether the element's content is a layout panel rather than text - which is what makes it
+    /// announce as the panel. Reads up to the element's own closing tag; a nested element of the same
+    /// name would cut it short, and that is acceptable here because everything that nests
+    /// (<c>MenuItem</c>) is exempted by its Header before this is reached.
+    /// </summary>
+    private static bool ContentIsAPanel(string markup, Match element)
+    {
+        var closing = markup.IndexOf("</" + element.Groups[1].Value, element.Index, StringComparison.Ordinal);
+
+        if (closing < 0)
+            return false;
+
+        var body = markup[(element.Index + element.Length)..closing];
+
+        return body.Contains("<StackPanel", StringComparison.Ordinal)
+            || body.Contains("<Grid", StringComparison.Ordinal)
+            || body.Contains("<DockPanel", StringComparison.Ordinal)
+            || body.Contains("<WrapPanel", StringComparison.Ordinal)
+            || body.Contains("<Border", StringComparison.Ordinal);
     }
 
     /// <summary>

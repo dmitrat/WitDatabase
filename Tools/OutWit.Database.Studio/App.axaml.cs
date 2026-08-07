@@ -23,6 +23,19 @@ public partial class App : Application
         {
             var appVm = ApplicationViewModel.Instance;
 
+            // The strings the markup binds to, and the theme, both come from settings that apply the
+            // moment they change (WS-52). Neither has a Save button to hang the work on, so both are
+            // wired here, once, before the first window exists.
+            Ui.LocalizedResources.Attach(Resources, appVm.Localization);
+
+            ApplyTheme(appVm.Settings.Current.Theme);
+
+            appVm.Settings.Changed += (_, e) =>
+            {
+                if (e.PropertyName == nameof(Models.Settings.Theme))
+                    ApplyTheme(appVm.Settings.Current.Theme);
+            };
+
             desktop.MainWindow = new MainWindow();
         }
 

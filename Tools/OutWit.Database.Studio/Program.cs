@@ -110,6 +110,11 @@ sealed class Program
 
     private static void ConfigureServices()
     {
+        // ChaCha20-Poly1305 registers itself through a [ModuleInitializer], which runs when the
+        // assembly is LOADED - and an assembly nothing has touched yet may not be. Asking explicitly
+        // is the difference between the second encryption algorithm working and working sometimes.
+        OutWit.Database.Core.BouncyCastle.BouncyCastleProviderRegistration.EnsureRegistered();
+
         var services = new ServiceCollection();
 
         // Logging - the console provider writes nowhere in a WinExe, so the file is the real one.
@@ -125,6 +130,17 @@ sealed class Program
         services.AddSingleton<IConnectionManager, ConnectionManager>();
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IExportService, ExportService>();
+
+        // The saved connections (WS-68), in a file of their own beside the settings: the two are
+        // cleared for different reasons, and "reset settings" must not read as "forget my databases".
+        services.AddSingleton<IConnectionProfileStore, ConnectionProfileStore>();
+
+        // The interface language (WS-63). Built from the setting rather than from the machine's
+        // culture: what language Studio speaks and how it writes a decimal are separate questions, and
+        // deriving one from the other is how a value stops pasting into SQL.
+        services.AddSingleton<Services.Localization.ILocalizationService>(provider =>
+            new Services.Localization.LocalizationService(
+                provider.GetRequiredService<ISettingsService>().Current.Language));
 
         // The notification centre (WS-7). One list for the whole application, and it writes every
         // entry to the log as well, so a trimmed list never loses what happened.

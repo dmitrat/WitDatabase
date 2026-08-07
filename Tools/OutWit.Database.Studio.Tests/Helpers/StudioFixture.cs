@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging.Abstractions;
 using OutWit.Common.MVVM.Commands;
+using OutWit.Database.Core.Builder;
 using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
 using OutWit.Database.Studio.ViewModels;
@@ -89,6 +90,12 @@ public sealed class StudioFixture : IAsyncDisposable
             NullLogger<SettingsService>.Instance,
             Path.Combine(root, "settings", "settings.json"));
 
+        // The saved connections, in the fixture's own folder for the same reason the settings are: a
+        // test that exercises them honestly must not write into the developer's list.
+        Profiles = new ConnectionProfileStore(
+            NullLogger<ConnectionProfileStore>.Instance,
+            Path.Combine(root, "settings", "connections.json"));
+
         Confirmations = new ScriptedConfirmationService(UnsavedChangesDecision.Cancel);
 
         // The real history service over a store inside the fixture's own folder - never the developer's
@@ -103,7 +110,8 @@ public sealed class StudioFixture : IAsyncDisposable
             new ExportService(),
             NullLogger<ApplicationViewModel>.Instance,
             Confirmations,
-            history: History);
+            history: History,
+            profiles: Profiles);
     }
 
     #endregion
@@ -182,6 +190,35 @@ public sealed class StudioFixture : IAsyncDisposable
             throw new InvalidOperationException($"The fixture could not open its own database at {path}.");
 
         return session;
+    }
+
+    /// <summary>
+    /// Builds a database at <paramref name="path"/> and closes it again, for the cases that ask what
+    /// Studio can find out about a file <b>nothing has open</b>.
+    ///
+    /// <para>
+    /// Through <c>WitDatabaseBuilder</c> and closed immediately, rather than through the fixture's own
+    /// connection: since 12.2.0 an open database is held under an exclusive file lock, and a probe that
+    /// has to read the header would be measuring the lock rather than the file.
+    /// </para>
+    /// </summary>
+    public static void CreateDatabaseOnDisk(string path, string? password = null)
+    {
+        var folder = Path.GetDirectoryName(path);
+
+        if (!string.IsNullOrEmpty(folder))
+            Directory.CreateDirectory(folder);
+
+        var builder = new WitDatabaseBuilder()
+            .WithFilePath(path)
+            .WithBTree();
+
+        if (!string.IsNullOrEmpty(password))
+            builder = builder.WithEncryption(password);
+
+        using var database = builder.Build();
+
+        database.Put("probe"u8.ToArray(), "value"u8.ToArray());
     }
 
     private static string PathFor(string root, StudioStorage storage, string name) => storage switch
@@ -277,6 +314,9 @@ public sealed class StudioFixture : IAsyncDisposable
         ?? throw new InvalidOperationException("The fixture has no open connection.");
 
     public SettingsService Settings { get; }
+
+    /// <summary>The saved connections (WS-68), in the fixture's own folder.</summary>
+    public ConnectionProfileStore Profiles { get; }
 
     public ScriptedConfirmationService Confirmations { get; }
 

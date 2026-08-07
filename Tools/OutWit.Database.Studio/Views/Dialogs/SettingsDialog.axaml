@@ -1,91 +1,245 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        xmlns:conv="using:OutWit.Database.Studio.Converters"
         mc:Ignorable="d"
-        d:DesignWidth="450"
-        d:DesignHeight="380"
+        d:DesignWidth="760"
+        d:DesignHeight="480"
         x:Class="OutWit.Database.Studio.Views.Dialogs.SettingsDialog"
         x:DataType="vm:SettingsViewModel"
-        Title="Settings"
-        Width="450"
-        Height="380"
+        Title="{DynamicResource S.Settings.Title}"
+        Width="760"
+        Height="500"
         WindowStartupLocation="CenterOwner"
         CanResize="False">
 
-    <Grid RowDefinitions="*,Auto" Margin="20">
-        
-        <StackPanel Grid.Row="0" Spacing="20">
-            
-            <StackPanel Spacing="12">
-                <TextBlock Text="Appearance" FontWeight="SemiBold" FontSize="14"/>
-                
-                <Grid ColumnDefinitions="120,*">
-                    <TextBlock Grid.Column="0" 
-                               Text="Theme:" 
-                               VerticalAlignment="Center"/>
-                    <ComboBox Grid.Column="1" 
-                              ItemsSource="{Binding AvailableThemes}"
-                              SelectedItem="{Binding SelectedTheme}"
-                              HorizontalAlignment="Stretch"/>
-                </Grid>
+    <!-- Five sections down the side, one pane at a time, and NO Save button: every control below is
+         bound straight to the live settings object, so a change is the change (WS-52). -->
+    <Grid ColumnDefinitions="190,*">
+
+        <Border Grid.Column="0" Background="{DynamicResource SystemControlBackgroundListLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,0,1,0">
+            <DockPanel Margin="8,10">
+                <StackPanel DockPanel.Dock="Bottom" Margin="8,10,8,4" Spacing="2">
+                    <TextBlock Text="{Binding StudioVersion, StringFormat='Studio {0}'}"
+                               FontFamily="Consolas" FontSize="10" Opacity="0.6"/>
+                    <TextBlock Text="{Binding EngineVersion, StringFormat='engine {0}'}"
+                               FontFamily="Consolas" FontSize="10" Opacity="0.6"/>
+                </StackPanel>
+
+                <ListBox AutomationProperties.AutomationId="SettingsSections"
+                         ItemsSource="{Binding Sections}"
+                         SelectedItem="{Binding SelectedSection}"
+                         Background="Transparent"
+                         BorderThickness="0"/>
+            </DockPanel>
+        </Border>
+
+        <ScrollViewer Grid.Column="1" Padding="18,14">
+            <StackPanel Spacing="10">
+
+                <!-- GENERAL -->
+                <StackPanel Spacing="10" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsGeneral}}">
+                    <TextBlock Text="{DynamicResource S.Settings.General}" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="{DynamicResource S.Settings.General.Hint}" Opacity="0.6" FontSize="11" TextWrapping="Wrap"/>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.LanguageAndLook}" FontSize="10" Opacity="0.55" Margin="0,8,0,0"/>
+
+                    <Grid ColumnDefinitions="150,*" Margin="0,2">
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.Settings.Language}" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" AutomationProperties.AutomationId="SettingsLanguage"
+                                  ItemsSource="{Binding Languages}"
+                                  SelectedValue="{Binding Values.Language}"
+                                  SelectedValueBinding="{Binding Code}"
+                                  DisplayMemberBinding="{Binding NativeName}"
+                                  Width="220" HorizontalAlignment="Left"/>
+                    </Grid>
+                    <TextBlock Text="{DynamicResource S.Settings.Language.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+
+                    <Grid ColumnDefinitions="150,*" Margin="0,2">
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.Settings.Theme}" VerticalAlignment="Center"/>
+                        <ComboBox Grid.Column="1" AutomationProperties.AutomationId="SettingsTheme"
+                                  ItemsSource="{Binding AvailableThemes}"
+                                  SelectedItem="{Binding Values.Theme}"
+                                  Width="220" HorizontalAlignment="Left"/>
+                    </Grid>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.AtStartup}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <CheckBox Content="{DynamicResource S.Settings.RestoreConnections}" IsChecked="{Binding Values.RestoreConnections}"/>
+                    <CheckBox Content="{DynamicResource S.Settings.RestoreTabs}" IsChecked="{Binding Values.RestoreTabs}"/>
+                    <CheckBox Content="{DynamicResource S.Settings.CheckForUpdates}" IsChecked="{Binding Values.CheckForUpdates}"/>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Recent}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{DynamicResource S.Settings.RememberHowMany}" VerticalAlignment="Center" Width="140"/>
+                        <ComboBox AutomationProperties.AutomationId="SettingsRecentCount"
+                                  ItemsSource="{Binding RecentCounts}"
+                                  SelectedItem="{Binding Values.MaxRecentFiles}" Width="90"/>
+                        <Button AutomationProperties.AutomationId="SettingsClearRecent"
+                                Content="{DynamicResource S.Settings.ClearRecent}"
+                                Command="{Binding ClearRecentCommand}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <!-- EDITOR -->
+                <StackPanel Spacing="10" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsEditor}}">
+                    <TextBlock Text="{DynamicResource S.Settings.Editor}" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Editor.Hint}" Opacity="0.6" FontSize="11" TextWrapping="Wrap"/>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Look}" FontSize="10" Opacity="0.55" Margin="0,8,0,0"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{DynamicResource S.Settings.Font}" VerticalAlignment="Center" Width="140"/>
+                        <TextBox AutomationProperties.AutomationId="SettingsFontFamily"
+                                 Text="{Binding Values.EditorFontFamily}" Width="180"/>
+                        <ComboBox AutomationProperties.AutomationId="SettingsFontSize"
+                                  ItemsSource="{Binding AvailableFontSizes}"
+                                  SelectedItem="{Binding Values.EditorFontSize}" Width="80"/>
+                    </StackPanel>
+                    <CheckBox Content="{DynamicResource S.Settings.LineNumbers}" IsChecked="{Binding Values.ShowLineNumbers}"/>
+                    <CheckBox Content="{DynamicResource S.Settings.Whitespace}" IsChecked="{Binding Values.ShowWhitespace}"/>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Hints}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <CheckBox Content="{DynamicResource S.Settings.CompleteAsYouType}" IsChecked="{Binding Values.CompleteAsYouType}"/>
+                    <CheckBox Content="{DynamicResource S.Settings.CheckSyntax}" IsChecked="{Binding Values.CheckSyntaxAsYouType}"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{DynamicResource S.Settings.KeywordCase}" VerticalAlignment="Center" Width="140"/>
+                        <ComboBox AutomationProperties.AutomationId="SettingsKeywordCase"
+                                  ItemsSource="{Binding KeywordCases}"
+                                  SelectedItem="{Binding Values.KeywordCase}" Width="140"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Execution}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{DynamicResource S.Settings.RowLimit}" VerticalAlignment="Center" Width="140"/>
+                        <ComboBox AutomationProperties.AutomationId="SettingsRowLimit"
+                                  ItemsSource="{Binding RowLimits}"
+                                  SelectedItem="{Binding Values.DefaultRowLimit}" Width="140"/>
+                    </StackPanel>
+                    <CheckBox Content="{DynamicResource S.Settings.RestoreUnsavedTabs}" IsChecked="{Binding Values.RestoreUnsavedTabs}"/>
+                </StackPanel>
+
+                <!-- DATA -->
+                <StackPanel Spacing="10" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsData}}">
+                    <TextBlock Text="{DynamicResource S.Settings.Data}" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Data.Hint}" Opacity="0.6" FontSize="11" TextWrapping="Wrap"/>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Formats}" FontSize="10" Opacity="0.55" Margin="0,8,0,0"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{DynamicResource S.Settings.DateTime}" VerticalAlignment="Center" Width="140"/>
+                        <ComboBox AutomationProperties.AutomationId="SettingsDateFormat"
+                                  ItemsSource="{Binding DateTimeFormats}"
+                                  SelectedItem="{Binding Values.DateTimeFormat}" Width="140"/>
+                    </StackPanel>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{DynamicResource S.Settings.Numbers}" VerticalAlignment="Center" Width="140"/>
+                        <ComboBox AutomationProperties.AutomationId="SettingsNumberFormat"
+                                  ItemsSource="{Binding NumberFormats}"
+                                  SelectedItem="{Binding Values.NumberFormat}" Width="140"/>
+                    </StackPanel>
+                    <TextBlock Text="{DynamicResource S.Settings.Formats.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{DynamicResource S.Settings.Binary}" VerticalAlignment="Center" Width="140"/>
+                        <ComboBox AutomationProperties.AutomationId="SettingsBinaryDisplay"
+                                  ItemsSource="{Binding BinaryDisplays}"
+                                  SelectedItem="{Binding Values.BinaryDisplay}" Width="140"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Grid}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{DynamicResource S.Settings.PageSize}" VerticalAlignment="Center" Width="140"/>
+                        <ComboBox AutomationProperties.AutomationId="SettingsPageSize"
+                                  ItemsSource="{Binding PageSizes}"
+                                  SelectedItem="{Binding Values.GridPageSize}" Width="140"/>
+                    </StackPanel>
+                    <CheckBox Content="{DynamicResource S.Settings.CountRows}" IsChecked="{Binding Values.CountRowsAutomatically}"/>
+
+                    <!-- WS-67: the catalogue of every modal question the product asks. -->
+                    <TextBlock Text="{DynamicResource S.Settings.Group.AskBefore}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <CheckBox Content="{DynamicResource S.Settings.AskClosingEditedTab}" IsChecked="{Binding Values.AskBeforeClosingEditedTab}"/>
+                    <CheckBox Content="{DynamicResource S.Settings.AskDroppingObject}" IsChecked="{Binding Values.AskBeforeDroppingObject}"/>
+                    <CheckBox Content="{DynamicResource S.Settings.AskUnfilteredWrite}" IsChecked="{Binding Values.AskBeforeUnfilteredWrite}"/>
+                    <CheckBox Content="{DynamicResource S.Settings.AskLongScript}" IsChecked="{Binding Values.AskBeforeLongScript}"/>
+                </StackPanel>
+
+                <!-- DIAGNOSTICS -->
+                <StackPanel Spacing="10" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsDiagnostics}}">
+                    <TextBlock Text="{DynamicResource S.Settings.Diagnostics}" FontWeight="SemiBold" FontSize="14"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Diagnostics.Hint}" Opacity="0.6" FontSize="11" TextWrapping="Wrap"/>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Log}" FontSize="10" Opacity="0.55" Margin="0,8,0,0"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <TextBlock Text="{DynamicResource S.Settings.LogLevel}" VerticalAlignment="Center" Width="140"/>
+                        <ComboBox AutomationProperties.AutomationId="SettingsLogLevel"
+                                  ItemsSource="{Binding LogLevels}"
+                                  SelectedItem="{Binding Values.LogLevel}" Width="140"/>
+                    </StackPanel>
+                    <TextBlock Text="{DynamicResource S.Settings.LogLevel.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding LogFilePath}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Opacity="0.75"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button AutomationProperties.AutomationId="SettingsOpenLogFolder"
+                                Content="{DynamicResource S.Settings.OpenLogFolder}" Command="{Binding OpenLogFolderCommand}"/>
+                        <Button AutomationProperties.AutomationId="SettingsOpenLastLog"
+                                Content="{DynamicResource S.Settings.OpenLastLog}" Command="{Binding OpenLastLogCommand}"/>
+                    </StackPanel>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Facts}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <Grid ColumnDefinitions="180,*">
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.Settings.FileFormat}" Opacity="0.7"/>
+                        <TextBlock Grid.Column="1" Text="{Binding FileFormatVersion}" FontFamily="Consolas"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="180,*">
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.Settings.SettingsPath}" Opacity="0.7"/>
+                        <TextBlock Grid.Column="1" Text="{Binding SettingsFilePath}" FontFamily="Consolas"
+                                   FontSize="11" TextWrapping="Wrap"/>
+                    </Grid>
+
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Reset}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <Button AutomationProperties.AutomationId="SettingsReset"
+                                Content="{DynamicResource S.Settings.Reset}" Command="{Binding ResetSettingsCommand}"/>
+                        <Button AutomationProperties.AutomationId="SettingsClearHistory"
+                                Content="{DynamicResource S.Settings.ClearHistory}" Command="{Binding ClearHistoryCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="{DynamicResource S.Settings.Reset.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                </StackPanel>
+
+                <!-- ABOUT: a section, not a window (WS-53). -->
+                <StackPanel Spacing="8" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsAbout}}">
+                    <TextBlock Text="WitDatabase Studio" FontWeight="SemiBold" FontSize="16"/>
+                    <TextBlock Text="{Binding StudioVersion}" FontFamily="Consolas" Opacity="0.7"/>
+
+                    <Grid ColumnDefinitions="180,*" Margin="0,10,0,0">
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.About.Engine}" Opacity="0.7"/>
+                        <TextBlock Grid.Column="1" Text="{Binding EngineVersion}" FontFamily="Consolas"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="180,*">
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.About.FileFormat}" Opacity="0.7"/>
+                        <TextBlock Grid.Column="1" Text="{Binding FileFormatVersion}" FontFamily="Consolas"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="180,*">
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.About.Interface}" Opacity="0.7"/>
+                        <TextBlock Grid.Column="1" Text="{Binding AvaloniaVersion}" FontFamily="Consolas"/>
+                    </Grid>
+                    <Grid ColumnDefinitions="180,*">
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.About.Licence}" Opacity="0.7"/>
+                        <TextBlock Grid.Column="1" Text="Apache 2.0"/>
+                    </Grid>
+
+                    <StackPanel Orientation="Horizontal" Spacing="8" Margin="0,12,0,0">
+                        <Button AutomationProperties.AutomationId="SettingsCopyDetails"
+                                Content="{DynamicResource S.About.CopyDetails}" Command="{Binding CopyDetailsCommand}"/>
+                        <Button AutomationProperties.AutomationId="SettingsWebsite"
+                                Content="{DynamicResource S.About.Website}" Command="{Binding OpenWebsiteCommand}"/>
+                        <Button AutomationProperties.AutomationId="SettingsSources"
+                                Content="{DynamicResource S.About.Sources}" Command="{Binding OpenSourcesCommand}"/>
+                    </StackPanel>
+                    <TextBlock Text="{DynamicResource S.About.CopyDetails.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                </StackPanel>
+
             </StackPanel>
-
-            <Separator/>
-
-            <StackPanel Spacing="12">
-                <TextBlock Text="Editor" FontWeight="SemiBold" FontSize="14"/>
-                
-                <Grid ColumnDefinitions="120,*">
-                    <TextBlock Grid.Column="0" 
-                               Text="Font Size:" 
-                               VerticalAlignment="Center"/>
-                    <ComboBox Grid.Column="1" 
-                              ItemsSource="{Binding AvailableFontSizes}"
-                              SelectedItem="{Binding EditorFontSize}"
-                              Width="100"
-                              HorizontalAlignment="Left"/>
-                </Grid>
-            </StackPanel>
-
-            <Separator/>
-
-            <StackPanel Spacing="12">
-                <TextBlock Text="Behavior" FontWeight="SemiBold" FontSize="14"/>
-                
-                <CheckBox Content="Auto-save queries on close"
-                          IsChecked="{Binding AutoSaveQueries}"/>
-                
-                <Grid ColumnDefinitions="120,*">
-                    <TextBlock Grid.Column="0" 
-                               Text="Recent files:" 
-                               VerticalAlignment="Center"/>
-                    <NumericUpDown Grid.Column="1" 
-                                   Value="{Binding MaxRecentFiles}"
-                                   Minimum="1"
-                                   Maximum="25"
-                                   Width="100"
-                                   HorizontalAlignment="Left"/>
-                </Grid>
-            </StackPanel>
-
-        </StackPanel>
-
-        <StackPanel Grid.Row="1" 
-                    Orientation="Horizontal" 
-                    HorizontalAlignment="Right"
-                    Spacing="8"
-                    Margin="0,20,0,0">
-            <Button AutomationProperties.AutomationId="SettingsCancel" Content="Cancel"
-                    Command="{Binding CancelCommand}"
-                    Width="80"/>
-            <Button AutomationProperties.AutomationId="SettingsSave" Content="Save"
-                    Command="{Binding SaveCommand}"
-                    Width="80"
-                    Classes="accent"/>
-        </StackPanel>
-        
+        </ScrollViewer>
     </Grid>
 
 </Window>

@@ -18,10 +18,22 @@
         MinWidth="600"
         MinHeight="550">
 
-    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto,Auto" Margin="20">
-        
+    <Grid RowDefinitions="Auto,Auto,Auto,Auto,*,Auto,Auto" Margin="20">
+
+        <!-- The only wizard in the product, and it has three steps because the decisions depend on
+             each other: how the file was read, where the rows go, how the columns line up (6.4). -->
+        <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="14" Margin="0,0,0,14">
+            <TextBlock Text="1 · File" FontWeight="SemiBold"
+                       Opacity="{Binding Step, Converter={x:Static vm:ImportSteps.OpacityForFile}}"/>
+            <TextBlock Text="2 · Destination" FontWeight="SemiBold"
+                       Opacity="{Binding Step, Converter={x:Static vm:ImportSteps.OpacityForDestination}}"/>
+            <TextBlock Text="3 · Columns" FontWeight="SemiBold"
+                       Opacity="{Binding Step, Converter={x:Static vm:ImportSteps.OpacityForColumns}}"/>
+        </StackPanel>
+
         <!-- Source File -->
-        <StackPanel Grid.Row="0" Spacing="8">
+        <StackPanel Grid.Row="1" Spacing="8"
+                    IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsFile}}">
             <TextBlock Text="Source File" FontWeight="SemiBold"/>
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <ComboBox Grid.Column="0"
@@ -44,44 +56,100 @@
             </Grid>
         </StackPanel>
 
-        <!-- CSV Options -->
-        <StackPanel Grid.Row="1" 
+        <!-- STEP 1: how the file was read. Detected, and still visible and editable. -->
+        <StackPanel Grid.Row="2"
                     Spacing="8"
                     Margin="0,16,0,0"
-                    IsVisible="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ImportFormat.Csv}}">
-            <TextBlock Text="CSV Options" FontWeight="SemiBold"/>
-            <StackPanel Orientation="Horizontal" Spacing="16">
+                    IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsFile}}">
+            <TextBlock Text="CSV Options" FontWeight="SemiBold"
+                       IsVisible="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ImportFormat.Csv}}"/>
+            <StackPanel Orientation="Horizontal" Spacing="16"
+                        IsVisible="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ImportFormat.Csv}}">
                 <CheckBox Content="First row contains headers"
                           IsChecked="{Binding HasHeaders}"
                           IsEnabled="{Binding !IsImporting}"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="Delimiter:" VerticalAlignment="Center"/>
-                    <TextBox Text="{Binding Delimiter}" 
+                    <TextBox Text="{Binding Delimiter}"
                              Width="50"
                              IsEnabled="{Binding !IsImporting}"/>
                 </StackPanel>
             </StackPanel>
-        </StackPanel>
 
-        <!-- Import Options -->
-        <StackPanel Grid.Row="2" Spacing="8" Margin="0,16,0,0">
-            <TextBlock Text="Import Options" FontWeight="SemiBold"/>
-            <CheckBox IsChecked="{Binding ContinueOnError}"
+            <!-- A CSV cannot tell an empty string from a missing value, so the user says which, once. -->
+            <CheckBox AutomationProperties.AutomationId="ImportEmptyIsNull"
+                      AutomationProperties.Name="An empty field is NULL rather than an empty string"
+                      IsChecked="{Binding EmptyIsNull}"
                       IsEnabled="{Binding !IsImporting}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="Continue on error"/>
-                    <TextBlock Text="(skip failed rows instead of stopping)"
+                    <TextBlock Text="An empty field is NULL"/>
+                    <TextBlock Text="(rather than an empty string)"
                                Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                                FontSize="12"/>
                 </StackPanel>
             </CheckBox>
         </StackPanel>
 
+        <!-- STEP 3: what to do when an imported row collides with one that is already there. -->
+        <StackPanel Grid.Row="3" Spacing="8" Margin="0,16,0,0"
+                    IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsColumns}}">
+            <TextBlock Text="On a key collision" FontWeight="SemiBold"/>
+            <StackPanel Orientation="Horizontal" Spacing="10">
+                <RadioButton AutomationProperties.AutomationId="ImportConflictSkip"
+                             GroupName="Conflict" Content="Skip the row"
+                             IsChecked="{Binding OnConflict, Converter={x:Static vm:ImportSteps.ConflictIsSkip}}"
+                             Command="{Binding ChooseConflictCommand}" CommandParameter="Skip"/>
+                <RadioButton AutomationProperties.AutomationId="ImportConflictUpdate"
+                             GroupName="Conflict" Content="Update"
+                             IsChecked="{Binding OnConflict, Converter={x:Static vm:ImportSteps.ConflictIsUpdate}}"
+                             Command="{Binding ChooseConflictCommand}" CommandParameter="Update"/>
+                <RadioButton AutomationProperties.AutomationId="ImportConflictAbort"
+                             GroupName="Conflict" Content="Stop the import"
+                             IsChecked="{Binding OnConflict, Converter={x:Static vm:ImportSteps.ConflictIsAbort}}"
+                             Command="{Binding ChooseConflictCommand}" CommandParameter="Abort"/>
+            </StackPanel>
+
+            <StackPanel Orientation="Horizontal" Spacing="8"
+                        IsVisible="{Binding OnConflict, Converter={x:Static vm:ImportSteps.ConflictIsUpdate}}">
+                <TextBlock Text="Key column:" VerticalAlignment="Center"/>
+                <ComboBox AutomationProperties.AutomationId="ImportKeyColumn"
+                          ItemsSource="{Binding AvailableTargetColumns}"
+                          SelectedItem="{Binding KeyColumn}"
+                          Width="180"
+                          PlaceholderText="which column decides"/>
+                <TextBlock VerticalAlignment="Center" FontSize="12"
+                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                           Text="Update is a MERGE and has to be told what the same row means."/>
+            </StackPanel>
+
+            <!-- Off by default: a million rows in one transaction is a million versions in MVCC and a
+                 journal that grows until it stops. The default must not be the mode that fails on the
+                 largest file (6.4). -->
+            <CheckBox AutomationProperties.AutomationId="ImportAllOrNothing"
+                      AutomationProperties.Name="All or nothing, in one transaction"
+                      IsChecked="{Binding AllOrNothing}"
+                      IsEnabled="{Binding !IsImporting}">
+                <StackPanel Orientation="Horizontal" Spacing="8">
+                    <TextBlock Text="All or nothing"/>
+                    <TextBlock Text="(one transaction - slower, and heavy on a large file)"
+                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               FontSize="12"/>
+                </StackPanel>
+            </CheckBox>
+
+            <CheckBox AutomationProperties.AutomationId="ImportStopOnError"
+                      Content="Stop on any other error"
+                      IsChecked="{Binding StopOnError}"
+                      IsEnabled="{Binding !IsImporting}"/>
+        </StackPanel>
+
         <!-- Target and Mapping -->
-        <Grid Grid.Row="3" RowDefinitions="Auto,*" Margin="0,16,0,0">
-            
+        <Grid Grid.Row="4" RowDefinitions="Auto,*" Margin="0,16,0,0"
+              IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsNotFile}}">
+
             <!-- Target Table -->
-            <StackPanel Grid.Row="0" Spacing="8">
+            <StackPanel Grid.Row="0" Spacing="8"
+                        IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsDestination}}">
                 <TextBlock Text="Target Table" FontWeight="SemiBold"/>
                 <ComboBox ItemsSource="{Binding AvailableTables}"
                           SelectedItem="{Binding SelectedTable}"
@@ -91,7 +159,11 @@
             </StackPanel>
 
             <!-- Column Mapping -->
-            <Grid Grid.Row="1" Margin="0,16,0,0" RowDefinitions="Auto,*">
+            <!-- The mapping belongs to step 3 and only to step 3. It was bound to "not the first step"
+                 and appeared on step 2 as well, empty - which reads as a step with nothing in it.
+                 Found by driving the application. -->
+            <Grid Grid.Row="1" Margin="0,16,0,0" RowDefinitions="Auto,*"
+                  IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsColumns}}">
                 <TextBlock Grid.Row="0" Text="Column Mapping" FontWeight="SemiBold" Margin="0,0,0,8"/>
                 
                 <Border Grid.Row="1"
@@ -132,7 +204,7 @@
         </Grid>
 
         <!-- Preview Info -->
-        <Border Grid.Row="4"
+        <Border Grid.Row="5"
                 Background="#E8F5E9"
                 BorderBrush="#4CAF50"
                 BorderThickness="1"
@@ -154,7 +226,7 @@
         </Border>
 
         <!-- Error Message -->
-        <Border Grid.Row="4"
+        <Border Grid.Row="5"
                 Background="#FFEBEE"
                 BorderBrush="#F44336"
                 BorderThickness="1"
@@ -188,29 +260,54 @@
         </Border>
 
         <!-- Buttons -->
-        <Grid Grid.Row="5" ColumnDefinitions="Auto,*,Auto,Auto" Margin="0,20,0,0">
+        <Grid Grid.Row="6" ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="0,20,0,0">
             <Button AutomationProperties.AutomationId="ImportRefreshPreview" Grid.Column="0"
                     Content="Refresh Preview"
                     Command="{Binding PreviewCommand}"
                     IsEnabled="{Binding CanPreview}"/>
-            <Button AutomationProperties.AutomationId="ImportCancel" Grid.Column="2"
+
+            <!-- The rejected rows, all of them - the window shows ten. An import that reports
+                 "16 skipped" and can name three is an import nobody can fix. -->
+            <Button AutomationProperties.AutomationId="ImportWriteReport" Grid.Column="1"
+                    Content="Report to CSV"
+                    Margin="8,0,0,0"
+                    Command="{Binding WriteReportCommand}"
+                    IsVisible="{Binding Rejected.Count}"/>
+
+            <Button AutomationProperties.AutomationId="ImportBack" Grid.Column="3"
+                    Content="Back"
+                    Command="{Binding BackCommand}"
+                    Width="80"
+                    Margin="0,0,8,0"
+                    IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsNotFile}}"/>
+
+            <Button AutomationProperties.AutomationId="ImportCancel" Grid.Column="4"
                     Content="Cancel"
                     Command="{Binding CancelCommand}"
                     Width="80"
                     Margin="0,0,8,0"
                     IsVisible="{Binding !IsImporting}"/>
-            <Button AutomationProperties.AutomationId="ImportImport" Grid.Column="3"
+
+            <Button AutomationProperties.AutomationId="ImportNext" Grid.Column="5"
+                    Content="Next"
+                    Command="{Binding NextCommand}"
+                    Width="90"
+                    Classes="accent"
+                    IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsNotColumns}}"/>
+
+            <!-- The verb, and only on the last step (6.1). -->
+            <Button AutomationProperties.AutomationId="ImportImport" Grid.Column="5"
                     Content="Import"
                     Command="{Binding ImportCommand}"
                     IsEnabled="{Binding CanImport}"
-                    Width="80"
+                    Width="90"
                     Classes="accent"
-                    IsVisible="{Binding !IsImporting}"/>
+                    IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsColumns}}"/>
         </Grid>
         
         <!-- Loading Overlay with Progress -->
         <Border Grid.Row="0"
-                Grid.RowSpan="6"
+                Grid.RowSpan="7"
                 Background="#E0000000"
                 IsVisible="{Binding IsImporting}">
             <StackPanel HorizontalAlignment="Center"

@@ -3,30 +3,61 @@ using OutWit.Database.Studio.ViewModels;
 
 namespace OutWit.Database.Studio.Views.Dialogs;
 
+/// <summary>
+/// The settings window. <b>Not modal</b> (WS-52): people come here to read a setting, go and look at
+/// what it did, and come back, and a modal window forbids all three.
+/// </summary>
 public partial class SettingsDialog : Window
 {
+    #region Fields
+
+    private static SettingsDialog? s_open;
+
+    #endregion
+
+    #region Constructors
+
     public SettingsDialog()
     {
         InitializeComponent();
     }
 
-    public static async Task<bool> ShowAsync(Window owner, SettingsViewModel viewModel)
+    #endregion
+
+    #region Functions
+
+    /// <summary>
+    /// Shows the window, or brings the one already open to the front. A second settings window would be
+    /// two views of one live object, which is not wrong so much as pointless and confusing.
+    /// </summary>
+    public static Task ShowAsync(Window owner, SettingsViewModel viewModel)
     {
-        var dialog = new SettingsDialog
+        if (s_open != null)
         {
-            DataContext = viewModel
+            s_open.DataContext = viewModel;
+            s_open.Activate();
+
+            return Task.CompletedTask;
+        }
+
+        var dialog = new SettingsDialog { DataContext = viewModel };
+
+        void OnCloseRequested(object? sender, EventArgs e) => dialog.Close();
+
+        viewModel.CloseRequested += OnCloseRequested;
+
+        dialog.Closed += (_, _) =>
+        {
+            viewModel.CloseRequested -= OnCloseRequested;
+            s_open = null;
         };
 
-        var tcs = new TaskCompletionSource<bool>();
+        s_open = dialog;
 
-        viewModel.DialogClosed += result =>
-        {
-            tcs.TrySetResult(result);
-            dialog.Close();
-        };
+        dialog.Show(owner);
 
-        await dialog.ShowDialog(owner);
-
-        return tcs.Task.IsCompleted ? tcs.Task.Result : false;
+        return Task.CompletedTask;
     }
+
+    #endregion
 }

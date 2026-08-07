@@ -61,6 +61,8 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         OpenRecentCommand = new RelayCommandAsync<string>(OpenRecentAsync);
         ClearRecentFilesCommand = new RelayCommandAsync(ClearRecentFilesAsync);
         SettingsCommand = new RelayCommandAsync(ShowSettingsAsync);
+        ConnectionsCommand = new RelayCommandAsync(ShowConnectionsAsync);
+        DumpDatabaseCommand = new RelayCommandAsync(DumpDatabaseAsync);
         AboutCommand = new RelayCommandAsync(ShowAboutAsync);
         ExitCommand = new RelayCommandAsync(ExitAsync);
         ShowNotificationsCommand = new RelayCommand(ShowNotifications);
@@ -295,19 +297,81 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         HasRecentFiles = false;
     }
 
-    private async Task ShowSettingsAsync()
+    private Task ShowSettingsAsync()
     {
-        var settingsVm = new SettingsViewModel(ApplicationVm);
-        await settingsVm.InitializeAsync();
-
-        await ApplicationVm.Dialogs.ShowSettingsAsync(settingsVm);
+        return ShowSettingsAsync(SettingsViewModel.SECTION_GENERAL);
     }
 
-    private async Task ShowAboutAsync()
+    /// <summary>
+    /// The whole database as a WitSQL script (WS-51). Written from the ACTIVE connection, because with
+    /// several open "the database" is not a question the application can answer for itself.
+    ///
+    /// <para>
+    /// A dump is not a copy: this is text that has to be executed again, where a byte copy keeps the
+    /// pages, the encryption and the statistics. The two live in different places for that reason, and
+    /// the script says so in its first two lines.
+    /// </para>
+    /// </summary>
+    private async Task DumpDatabaseAsync()
     {
-        var aboutVm = new AboutViewModel(ApplicationVm);
+        var session = ApplicationVm.ActiveSession;
 
-        await ApplicationVm.Dialogs.ShowAboutAsync(aboutVm);
+        if (session?.IsConnected != true)
+            return;
+
+        var target = await ApplicationVm.Dialogs.SaveFileAsync(
+            "Dump the database",
+            suggestedFileName: session.DisplayName + ".sql",
+            defaultExtension: "sql",
+            filters: [new FileFilter("SQL Files", ["*.sql"])]);
+
+        if (string.IsNullOrEmpty(target))
+            return;
+
+        try
+        {
+            var script = await Services.DatabaseDump.WriteAsync(session, new Services.DumpOptions());
+
+            await File.WriteAllTextAsync(target, script);
+
+            ApplicationVm.Notifications.Information("Database dumped", target, session.DisplayName);
+        }
+        catch (Exception ex)
+        {
+            ApplicationVm.Notifications.Error("The dump failed", ex.Message, session.DisplayName);
+        }
+    }
+
+    /// <summary>
+    /// The saved connections (WS-68). Rebuilt each time rather than kept: the window's whole job is to
+    /// say what is on disk NOW, and a network drive comes and goes between one opening and the next.
+    /// </summary>
+    private async Task ShowConnectionsAsync()
+    {
+        ConnectionsVm = new ConnectionsViewModel(ApplicationVm);
+
+        await ConnectionsVm.RefreshAsync();
+
+        await ApplicationVm.Dialogs.ShowConnectionsAsync(ConnectionsVm);
+    }
+
+    /// <summary>
+    /// About is a SECTION of the settings, not a window of its own (WS-53). A window whose only job is
+    /// to state four version numbers is a window; the numbers belong next to the log folder and the
+    /// file format version, which is what the person asking for them is actually collecting.
+    /// </summary>
+    private Task ShowAboutAsync()
+    {
+        return ShowSettingsAsync(SettingsViewModel.SECTION_ABOUT);
+    }
+
+    private Task ShowSettingsAsync(string section)
+    {
+        SettingsVm ??= new SettingsViewModel(ApplicationVm);
+
+        SettingsVm.ShowSection(section);
+
+        return ApplicationVm.Dialogs.ShowSettingsAsync(SettingsVm);
     }
 
     /// <summary>
@@ -444,6 +508,16 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Properties
 
+    /// <summary>
+    /// The settings window's ViewModel, kept rather than rebuilt: the window is not modal, so it can
+    /// still be open when the menu item is used again, and a second ViewModel would put a second
+    /// section selection on the same live settings.
+    /// </summary>
+    public SettingsViewModel? SettingsVm { get; private set; }
+
+    /// <summary>The connections window's ViewModel, rebuilt each time it is opened.</summary>
+    public ConnectionsViewModel? ConnectionsVm { get; private set; }
+
     [Notify]
     public string Title { get; set; } = null!;
 
@@ -529,6 +603,12 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand ClearRecentFilesCommand { get; private set; } = null!;
 
     public ICommand SettingsCommand { get; private set; } = null!;
+
+    /// <summary>The saved connections (WS-68).</summary>
+    public ICommand ConnectionsCommand { get; private set; } = null!;
+
+    /// <summary>The whole database as a WitSQL script (WS-51).</summary>
+    public ICommand DumpDatabaseCommand { get; private set; } = null!;
 
     public ICommand AboutCommand { get; private set; } = null!;
 

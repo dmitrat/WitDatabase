@@ -20,6 +20,14 @@ namespace OutWit.Database.Studio.ViewModels;
 /// </summary>
 public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 {
+    #region Constants
+
+    public const string STORAGE_BTREE = "btree";
+    public const string STORAGE_LSM = "lsm";
+    public const string STORAGE_MEMORY = "memory";
+
+    #endregion
+
     #region Constructors
 
     public ConnectionViewModel(ApplicationViewModel applicationVm)
@@ -46,8 +54,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         // because InitDefault replaced everything except this.
         ErrorMessage = null;
 
-        StorageEngines = ["btree", "lsm"];
-        SelectedStorageEngine = "btree";
+        StorageEngines = [STORAGE_BTREE, STORAGE_LSM];
+        Storage = STORAGE_BTREE;
         
         // Set default page size to 4096
         SelectedPageSize = 4096;
@@ -71,6 +79,9 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         BrowseFolderCommand = new RelayCommandAsync(BrowseFolderAsync);
         ConnectCommand = new RelayCommandAsync(ConnectAsync);
         CancelCommand = new RelayCommand(Cancel);
+        ShowConnectionStringCommand = new RelayCommand(() => IsConnectionStringVisible = !IsConnectionStringVisible);
+        ChooseStorageCommand = new RelayCommand<string>(storage => Storage = storage ?? STORAGE_BTREE);
+        ChooseEncryptionCommand = new RelayCommand<string>(ChooseEncryption);
     }
 
     private void InitEvents()
@@ -140,39 +151,38 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     }
 
     /// <summary>
-    /// Reads the configuration a database records about itself and shows it in the dialog.
-    /// Called by the Browse path; separated so that it can be driven without a file picker.
+    /// Looks at the path and shows what is there, before anything is opened (WS-47).
+    ///
+    /// <para>
+    /// The dialog has THREE states rather than the design's one, and the engine is why. An
+    /// unencrypted database can be described in full; an encrypted one can be recognised as encrypted
+    /// and as nothing else, because its header is inside the encrypted page; and a file with no magic
+    /// bytes is indistinguishable from an encrypted database, so Studio says so instead of asking for
+    /// the password to a text file. <see cref="StorageProbe"/> carries the measurements.
+    /// </para>
+    /// <para>
+    /// Called by the Browse path and separated so that it can be driven without a file picker.
+    /// </para>
     /// </summary>
     public void ApplyAutoDetectedSettings(string filePath)
     {
-        // DatabaseExists rather than File.Exists: an LSM database is a directory, and guarding on
-        // File.Exists meant detection was silently skipped for one of the two stores.
-        if (!UseAutoDetectedSettings || !DatabaseExists(filePath))
+        Probe = StorageProbe.Look(filePath);
+
+        if (!UseAutoDetectedSettings)
             return;
 
-        try
-        {
-            StorageDetectionResult dbInfo = WitDatabase.GetDatabaseInfo(filePath);
-            ConnectionInfo.IsEncrypted = dbInfo.RequiresPassword;
+        ConnectionInfo.IsEncrypted = Probe.RequiresPassword;
 
-            // Set storage engine from detected store type
-            if (!string.IsNullOrEmpty(dbInfo.StoreType))
-            {
-                SelectedStorageEngine = dbInfo.StoreType.ToLowerInvariant();
-            }
+        if (!string.IsNullOrEmpty(Probe.StoreType))
+            SelectedStorageEngine = Probe.StoreType;
 
-            // Configure features
-            // If encrypted, we can't read features reliably, keep user's defaults
-            if (!dbInfo.RequiresPassword)
-            {
-                EnableTransactions = dbInfo.HasTransactions;
-                EnableMvcc = dbInfo.HasMvcc;
-                EnableFileLocking = dbInfo.HasFileLocking;
-            }
-        }
-        catch
+        // Only from a database that could actually be read. An encrypted one publishes none of this,
+        // and copying the guesses in would put three wrong facts on screen.
+        if (Probe.Kind == StorageKind.Database)
         {
-            // Ignore errors during detection
+            EnableTransactions = Probe.HasTransactions;
+            EnableMvcc = Probe.HasMvcc;
+            EnableFileLocking = Probe.HasFileLocking;
         }
     }
 
@@ -277,22 +287,27 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
             // Build connection with advanced settings if creating new database
             if (IsNewDatabase)
             {
-                // An in-memory database has no storage engine to choose and no place to put one. The
-                // combination used to be accepted and answered with WithLsmTree("."), which wrote a
-                // database into the process working directory - for an installed application, wherever
-                // it happened to be launched from (WS-48).
-                if (!IsFileBased && SelectedStorageEngine == "lsm")
-                {
-                    ErrorMessage = "An in-memory database cannot use the LSM store: LSM is a folder of "
-                        + "SSTables on disk. Choose B-Tree, or create the database as a folder.";
-                    Logger.LogWarning("Refused in-memory + lsm: the combination has no meaning");
-                    return;
-                }
+                // "In memory + LSM" used to be accepted here and answered with WithLsmTree("."), which
+                // wrote a database into the process working directory - for an installed application,
+                // wherever it happened to be launched from. Stage 0 refused the combination; stage 9
+                // removed the ability to express it, because Storage is now ONE choice of three
+                // (WS-48). There is deliberately no check for it here: a refusal that cannot be
+                // reached is a comment pretending to be code.
+                // ChoosingInMemoryDropsTheLsmChoiceTest is what keeps that true.
 
                 // Validate file path for file-based database
                 if (IsFileBased && string.IsNullOrWhiteSpace(ConnectionInfo.FilePath))
                 {
-                    ErrorMessage = "Please specify a database file path.";
+                    ErrorMessage = Localization["Dialog.Create.PathRequired"];
+                    return;
+                }
+
+                // The key is derived from the password and no copy of it is kept anywhere, so a typing
+                // mistake here is unrecoverable in a way almost nothing else in Studio is.
+                if (ConnectionInfo.IsEncrypted && PasswordAgain != null
+                    && ConnectionInfo.Password != PasswordAgain)
+                {
+                    ErrorMessage = Localization["Dialog.Create.PasswordsDiffer"];
                     return;
                 }
 
@@ -310,15 +325,32 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                     await CreateDatabaseOnDiskAsync();
                 }
             }
-            else if (IsFileBased && !DatabaseExists(ConnectionInfo.FilePath))
+            else if (IsFileBased)
             {
-                // The engine creates a database it is asked to open and cannot find, which is right
-                // for a provider and wrong for a dialog called Open: a user whose file has moved
-                // would be shown an empty database and read it as their data being gone.
-                ErrorMessage = $"Database not found: {ConnectionInfo.FilePath}";
-                Logger.LogWarning("Refused to open a database that does not exist: {FilePath}",
-                    ConnectionInfo.FilePath);
-                return;
+                var probe = StorageProbe.Look(ConnectionInfo.FilePath);
+
+                if (probe.Kind == StorageKind.NotFound)
+                {
+                    // The engine creates a database it is asked to open and cannot find, which is right
+                    // for a provider and wrong for a dialog called Open: a user whose file has moved
+                    // would be shown an empty database and read it as their data being gone.
+                    ErrorMessage = Localization["Dialog.Open.NotFound"];
+                    Logger.LogWarning("Refused to open a database that does not exist: {FilePath}",
+                        ConnectionInfo.FilePath);
+                    return;
+                }
+
+                if (probe.Kind == StorageKind.NotADatabase)
+                {
+                    // A folder with no SSTable, or a file too short to be one. This is knowable, unlike
+                    // the encrypted-or-not-a-database case, so it is refused rather than attempted.
+                    ErrorMessage = probe.IsDirectory
+                        ? Localization["Dialog.Open.NotADatabaseFolder"]
+                        : Localization["Dialog.Open.NotADatabaseFile"];
+                    Logger.LogWarning("Refused to open something that is not a database: {FilePath}",
+                        ConnectionInfo.FilePath);
+                    return;
+                }
             }
 
             // Connect to the database (both for new and existing). The manager adds the session and
@@ -331,6 +363,16 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                 if (IsFileBased && !string.IsNullOrWhiteSpace(ConnectionInfo.FilePath) && ConnectionInfo.FilePath != ":memory:")
                 {
                     await Settings.AddRecentFileAsync(ConnectionInfo.FilePath);
+
+                    // The saved connection (WS-68). It carries the name, the colour and the read-only
+                    // flag - the things a person chose and would have to choose again - and NEVER the
+                    // password. The session's own colour is used rather than the one in the dialog,
+                    // because the manager is what decides when the dialog left it unset.
+                    var profile = ConnectionProfile.From(ConnectionInfo);
+                    profile.ColorIndex = OpenedSession.ColorIndex;
+                    profile.Name = OpenedSession.DisplayName;
+
+                    await ApplicationVm.Profiles.SaveAsync(profile);
                 }
                 
                 SelectedConnection = ConnectionInfo;
@@ -388,9 +430,25 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
-        if (e.IsProperty((ConnectionViewModel vm) => vm.StorageType))
+        if (e.IsProperty((ConnectionViewModel vm) => vm.Storage))
         {
+            // Everything about the next question is computed from the storage, and a computed property
+            // is not re-read unless it is told.
             OnPropertyChanged(nameof(IsFileBased));
+            OnPropertyChanged(nameof(StorageType));
+            OnPropertyChanged(nameof(NeedsFile));
+            OnPropertyChanged(nameof(NeedsFolder));
+            OnPropertyChanged(nameof(IsInMemory));
+            OnPropertyChanged(nameof(SelectedStorageEngine));
+            OnPropertyChanged(nameof(PathLabel));
+            OnPropertyChanged(nameof(PathHint));
+
+            // The path is deliberately NOT cleared. It was, for one draft: a .witdb file means nothing
+            // to LSM, so wiping it looked tidy. It also makes the ViewModel depend on the ORDER two
+            // properties are set in, and four cases went red for that reason alone. The box shows what
+            // the user typed; Browse picks the right kind of thing for the storage they chose, which is
+            // what WS-48 actually asks for.
+
             UpdateStatus();
         }
         else if (e.IsProperty((ConnectionViewModel vm) => vm.ConnectionInfo))
@@ -399,6 +457,14 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         }
         else if (e.IsProperty((ConnectionViewModel vm) => vm.IsConnecting))
         {
+            UpdateStatus();
+        }
+        else if (e.IsProperty((ConnectionViewModel vm) => vm.Probe))
+        {
+            // Both are computed from the probe, and a computed property is not re-read unless it is
+            // told - which is the defect shape stage 8 found in the section strip.
+            OnPropertyChanged(nameof(ProbeMessage));
+            OnPropertyChanged(nameof(NeedsPassword));
             UpdateStatus();
         }
         else if (e.IsProperty((ConnectionViewModel vm) => vm.UseAutoDetectedSettings))
@@ -410,6 +476,16 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private void OnConnectionInfoPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        // The path can arrive by being TYPED or pasted, not only from the pickers - and until this was
+        // here, it did not probe. The dialog showed nothing about a path the user had typed, which is
+        // the commonest way one arrives, and no ViewModel test could see it: every case called
+        // ApplyAutoDetectedSettings itself. Found by driving the shipping executable.
+        //
+        // It probes per keystroke. That is a file open and a 128-byte read, only while the dialog is
+        // open, and it is what makes the sentence under the box true rather than occasionally true.
+        if (e.IsProperty((ConnectionInfo info) => info.FilePath) && !IsNewDatabase)
+            ApplyAutoDetectedSettings(ConnectionInfo.FilePath);
+
         // When any ConnectionInfo property changes, re-evaluate CanConnect
         UpdateStatus();
     }
@@ -464,8 +540,47 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public List<string> StorageEngines { get; set; } = null!;
 
+    /// <summary>
+    /// The storage, as ONE choice of three (WS-48): <c>btree</c>, <c>lsm</c> or <c>memory</c>.
+    ///
+    /// <para>
+    /// It used to be two independent axes - a store and a file/memory switch - and that shape is what
+    /// allowed "in-memory + LSM", a combination with no meaning that the engine answered by writing an
+    /// LSM database into the process working directory. It was fixed in stage 0 by refusing the
+    /// combination; it is fixed here by making it unrepresentable, which is a different quality of
+    /// fix. The choice also decides the NEXT question: a file, an empty folder, or nothing at all.
+    /// </para>
+    /// </summary>
     [Notify]
-    public string SelectedStorageEngine { get; set; } = "btree";
+    public string Storage { get; set; } = STORAGE_BTREE;
+
+    /// <summary>B-Tree asks for a file.</summary>
+    public bool NeedsFile => Storage == STORAGE_BTREE;
+
+    /// <summary>LSM asks for an empty folder, because an LSM database IS a folder of SSTables.</summary>
+    public bool NeedsFolder => Storage == STORAGE_LSM;
+
+    /// <summary>In memory asks for nothing, and warns that nothing is kept.</summary>
+    public bool IsInMemory => Storage == STORAGE_MEMORY;
+
+    /// <summary>
+    /// The store the engine is told about. An in-memory database has no store to choose - the
+    /// connection creates it - so it answers with the paged one rather than with "memory".
+    /// </summary>
+    public string SelectedStorageEngine
+    {
+        get => IsInMemory ? STORAGE_BTREE : Storage;
+
+        // Naming a store while the database is in memory does NOT take it out of memory: an in-memory
+        // database has no store to choose, so the name has nowhere to go. Without this guard the two
+        // old properties would still be able to argue - setting the engine after choosing memory would
+        // silently put the database back on disk, which is the class of defect WS-48 is about.
+        set
+        {
+            if (!IsInMemory && value is STORAGE_BTREE or STORAGE_LSM)
+                Storage = value;
+        }
+    }
 
     [Notify]
     public bool IsConnecting { get; set; }
@@ -488,11 +603,17 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     public IDatabaseSession? OpenedSession { get; private set; }
 
-    // Storage type: 0 = File-based, 1 = In-Memory
-    [Notify]
-    public int StorageType { get; set; }
+    /// <summary>
+    /// 0 = on disk, 1 = in memory. Derived from <see cref="Storage"/> rather than stored beside it -
+    /// two fields for one fact is what let them disagree.
+    /// </summary>
+    public int StorageType
+    {
+        get => IsInMemory ? 1 : 0;
+        set => Storage = value == 1 ? STORAGE_MEMORY : STORAGE_BTREE;
+    }
 
-    public bool IsFileBased => StorageType == 0;
+    public bool IsFileBased => !IsInMemory;
 
     // Advanced settings for new database
     [Notify]
@@ -519,6 +640,165 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public bool CanConnect { get; set; }
 
+    /// <summary>
+    /// What is at the chosen path, as far as it can be known without opening it (WS-47). Never null,
+    /// so the banner has something to bind to before a path is picked.
+    /// </summary>
+    [Notify]
+    public StorageProbe Probe { get; set; } = StorageProbe.Look(null);
+
+    /// <summary>
+    /// The sentence under the path box. Three states, because the engine allows three
+    /// - see <see cref="ApplyAutoDetectedSettings"/>.
+    /// </summary>
+    public string ProbeMessage => Probe.Kind switch
+    {
+        StorageKind.Database => Localization.Format("Dialog.Open.Found",
+            Probe.StoreType == "lsm" ? "LSM" : "B-Tree",
+            Size(Probe.SizeInBytes),
+            Probe.HasMvcc ? "MVCC" : Localization["Dialog.Open.NoMvcc"]),
+
+        // ONE sentence covering both, because Studio genuinely cannot tell them apart: the magic bytes
+        // are absent, which is what encryption looks like and what a text file looks like. Claiming the
+        // more likely one is how a user ends up typing a password at a JPEG and being told the password
+        // is wrong.
+        StorageKind.Unreadable => Localization.Format("Dialog.Open.EncryptedOrNot", Size(Probe.SizeInBytes)),
+
+        StorageKind.NotADatabase => Probe.IsDirectory
+            ? Localization["Dialog.Open.NotADatabaseFolder"]
+            : Localization["Dialog.Open.NotADatabaseFile"],
+
+        _ => string.Empty
+    };
+
+    /// <summary>Whether the password box is shown at all: only an encrypted database needs one.</summary>
+    public bool NeedsPassword => Probe.RequiresPassword;
+
+    /// <summary>Whether the connection string panel is open (WS-49).</summary>
+    [Notify]
+    public bool IsConnectionStringVisible { get; set; }
+
+    /// <summary>
+    /// The password typed a second time. A password that cannot be recovered is worth confirming, and
+    /// this is the only field in either dialog that exists to catch a typing mistake.
+    /// </summary>
+    [Notify]
+    public string? PasswordAgain { get; set; }
+
+    /// <summary>The label over the path box: a file for B-Tree, a folder for LSM.</summary>
+    public string PathLabel => NeedsFolder
+        ? Localization["Dialog.Create.DatabaseFolder"]
+        : Localization["Dialog.Create.DatabaseFile"];
+
+    /// <summary>And the sentence under it, which says WHY it is asking for that one.</summary>
+    public string PathHint => NeedsFolder
+        ? Localization["Dialog.Create.FolderHint"]
+        : Localization["Dialog.Create.FileHint"];
+
+    public bool IsNotEncrypted => !ConnectionInfo.IsEncrypted;
+
+    public bool IsAesGcm => ConnectionInfo.IsEncrypted
+        && ConnectionInfo.EncryptionProvider == ConnectionInfo.DEFAULT_ENCRYPTION;
+
+    public bool IsChaCha20 => ConnectionInfo.IsEncrypted
+        && ConnectionInfo.EncryptionProvider == ConnectionInfo.CHACHA20;
+
+    /// <summary>
+    /// Turning encryption off clears the password rather than remembering it: a password left in a
+    /// field nobody can see is the shape of B1, the defect that put one in the log file.
+    /// </summary>
+    private void ChooseEncryption(string? provider)
+    {
+        if (string.IsNullOrEmpty(provider))
+        {
+            ConnectionInfo.IsEncrypted = false;
+            ConnectionInfo.Password = null;
+            PasswordAgain = null;
+        }
+        else
+        {
+            ConnectionInfo.IsEncrypted = true;
+            ConnectionInfo.EncryptionProvider = provider;
+        }
+
+        OnPropertyChanged(nameof(IsNotEncrypted));
+        OnPropertyChanged(nameof(IsAesGcm));
+        OnPropertyChanged(nameof(IsChaCha20));
+    }
+
+    /// <summary>
+    /// What will actually be handed to <c>WitDbConnection</c>, editable (WS-49).
+    ///
+    /// <para>
+    /// It is here because the provider has a dozen and a half properties - cache, journal, isolation,
+    /// page size - that these two windows deliberately do not ask about. Not asking is a choice;
+    /// HIDING them is not, and a person who needs one should not have to give up the dialog to set it.
+    /// </para>
+    /// <para>
+    /// Reading it back is done by the provider's own builder rather than by a parser of Studio's own:
+    /// a client that disagrees with the engine about what a connection string means is worse than one
+    /// that cannot show it.
+    /// </para>
+    /// </summary>
+    public string ConnectionString
+    {
+        get => string.IsNullOrWhiteSpace(ConnectionInfo.FilePath)
+            ? string.Empty
+            : ConnectionInfo.BuildConnectionString();
+
+        set
+        {
+            if (string.IsNullOrWhiteSpace(value))
+                return;
+
+            try
+            {
+                var parsed = new OutWit.Database.AdoNet.WitDbConnectionStringBuilder(value);
+
+                if (!string.IsNullOrEmpty(parsed.DataSource))
+                    ConnectionInfo.FilePath = parsed.DataSource;
+
+                ConnectionInfo.IsEncrypted = !string.IsNullOrEmpty(parsed.Password);
+                ConnectionInfo.Password = parsed.Password;
+
+                if (!string.IsNullOrEmpty(parsed.Encryption))
+                    ConnectionInfo.EncryptionProvider = parsed.Encryption;
+
+                if (!string.IsNullOrEmpty(parsed.Store))
+                    SelectedStorageEngine = parsed.Store;
+
+                ErrorMessage = null;
+            }
+            catch (Exception ex)
+            {
+                // A string that will not parse is the user's typing, not a failure of the dialog.
+                ErrorMessage = ex.Message;
+            }
+
+            OnPropertyChanged(nameof(ConnectionString));
+        }
+    }
+
+    /// <summary>
+    /// A size a person reads, written invariantly like every other number Studio shows (WS-65).
+    /// </summary>
+    private static string Size(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+
+        double size = bytes;
+        var unit = 0;
+
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+
+        return size.ToString(unit == 0 ? "0" : "0.#", System.Globalization.CultureInfo.InvariantCulture)
+            + " " + units[unit];
+    }
+
     /// <summary>Raised when the dialog showing this ViewModel should close.</summary>
     public event EventHandler? CloseRequested;
 
@@ -534,6 +814,15 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     public ICommand CancelCommand { get; private set; } = null!;
 
+    /// <summary>Shows or hides the connection string panel (WS-49).</summary>
+    public ICommand ShowConnectionStringCommand { get; private set; } = null!;
+
+    /// <summary>Picks the storage, which is what decides the next question (WS-48).</summary>
+    public ICommand ChooseStorageCommand { get; private set; } = null!;
+
+    /// <summary>Picks the encryption algorithm, or none.</summary>
+    public ICommand ChooseEncryptionCommand { get; private set; } = null!;
+
     #endregion
 
     #region Services
@@ -543,6 +832,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     public IDialogService Dialogs => ApplicationVm.Dialogs;
 
     public ISettingsService Settings => ApplicationVm.Settings;
+
+    public Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

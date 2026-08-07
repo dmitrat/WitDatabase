@@ -1,218 +1,160 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:OutWit.Database.Studio.ViewModels"
-        xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
-        mc:Ignorable="d" d:DesignWidth="600" d:DesignHeight="500"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="540"
         x:Class="OutWit.Database.Studio.Views.Dialogs.CreateDatabaseDialog"
         x:DataType="vm:ConnectionViewModel"
-        Title="Create New Database"
-        Width="600"
-        Height="500"
-        MinHeight="450"
-        MaxHeight="600"
+        Title="{DynamicResource S.Dialog.Create.Title}"
+        Width="520"
+        Height="540"
         WindowStartupLocation="CenterOwner"
-        CanResize="True">
+        CanResize="False">
 
-    <Grid RowDefinitions="Auto,*,Auto" Margin="16">
-        <!-- Header -->
-        <StackPanel Grid.Row="0" Spacing="8" Margin="0,0,0,16">
-            <TextBlock Text="Create New Database"
-                       FontSize="18"
-                       FontWeight="SemiBold"/>
-            <TextBlock Text="Create a new WitDatabase file with custom settings"
-                       Foreground="Gray"
-                       FontSize="12"/>
-        </StackPanel>
+    <!-- The construction follows the physics (WS-48): the STORAGE is chosen first, because it is what
+         decides whether the next question is a file, an empty folder, or nothing at all. The three
+         defects of 2.0 - LSM creating a second abandoned database, in-memory writing to disk, and
+         in-memory connecting elsewhere - were all this question being asked in the wrong order. -->
+    <Grid RowDefinitions="*,Auto,Auto">
 
-        <!-- Content with Tabs -->
-        <TabControl Grid.Row="1">
-            <!-- General Tab -->
-            <TabItem Header="General">
-                <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                              VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="16" Margin="8">
-                        <!-- Storage Type -->
+        <ScrollViewer Grid.Row="0" Padding="18,16">
+            <StackPanel Spacing="10">
+
+                <TextBlock Text="{DynamicResource S.Dialog.Create.Storage}" FontSize="10" Opacity="0.55"/>
+
+                <UniformGrid Columns="3" HorizontalAlignment="Stretch">
+                    <RadioButton AutomationProperties.AutomationId="CreateStorageBTree" AutomationProperties.Name="B-Tree, one file"
+                                 GroupName="Storage" Margin="0,0,6,0"
+                                 IsChecked="{Binding NeedsFile, Mode=OneWay}"
+                                 Command="{Binding ChooseStorageCommand}" CommandParameter="btree">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Storage Type:"
-                                       FontWeight="SemiBold"/>
-                            <ComboBox SelectedIndex="{Binding StorageType}"
-                                      HorizontalAlignment="Stretch">
-                                <ComboBoxItem Content="File-based database"/>
-                                <ComboBoxItem Content="In-Memory database"/>
-                            </ComboBox>
+                            <TextBlock Text="{DynamicResource S.Dialog.Create.BTree}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{DynamicResource S.Dialog.Create.BTreeHint}"
+                                       FontSize="10.5" Opacity="0.6" TextWrapping="Wrap" MaxWidth="140"/>
                         </StackPanel>
+                    </RadioButton>
 
-                        <!-- File Path (only for file-based) -->
-                        <StackPanel Spacing="4"
-                                   IsVisible="{Binding IsFileBased}">
-                            <TextBlock Text="Database File:"
-                                       FontWeight="SemiBold"/>
-                            <Grid ColumnDefinitions="*,Auto">
-                                <TextBox Grid.Column="0"
-                                         Text="{Binding ConnectionInfo.FilePath, Mode=TwoWay}"
-                                         Watermark="C:\Data\myapp.witdb"
-                                         Margin="0,0,8,0"/>
-                                <Button AutomationProperties.AutomationId="CreateDatabaseBrowse" Grid.Column="1"
-                                        Command="{Binding BrowseFileCommand}"
-                                        Content="Browse..."
-                                        Width="100"/>
-                            </Grid>
-                        </StackPanel>
-
-                        <!-- Storage Engine -->
+                    <RadioButton AutomationProperties.AutomationId="CreateStorageLsm" AutomationProperties.Name="LSM, a folder of SSTables"
+                                 GroupName="Storage" Margin="0,0,6,0"
+                                 IsChecked="{Binding NeedsFolder, Mode=OneWay}"
+                                 Command="{Binding ChooseStorageCommand}" CommandParameter="lsm">
                         <StackPanel Spacing="4">
-                            <TextBlock Text="Storage Engine:"
-                                       FontWeight="SemiBold"/>
-                            <ComboBox ItemsSource="{Binding StorageEngines}"
-                                      SelectedItem="{Binding SelectedStorageEngine}"
-                                      HorizontalAlignment="Stretch"/>
-
-                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="4,2,0,0">
-                                <PathIcon Data="{x:Static ui:StudioIcons.COMMON_BULLET}" Width="10" Height="10" Foreground="Gray" />
-                                <TextBlock Text="btree: Balanced read/write performance" Foreground="Gray" FontSize="11"/>
-                            </StackPanel>
-                            <StackPanel Orientation="Horizontal" Spacing="6" Margin="4,0,0,0">
-                                <PathIcon Data="{x:Static ui:StudioIcons.COMMON_BULLET}" Width="10" Height="10" Foreground="Gray" />
-                                <TextBlock Text="lsm: Optimized for write-heavy workloads" Foreground="Gray" FontSize="11"/>
-                            </StackPanel>
+                            <TextBlock Text="{DynamicResource S.Dialog.Create.Lsm}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{DynamicResource S.Dialog.Create.LsmHint}"
+                                       FontSize="10.5" Opacity="0.6" TextWrapping="Wrap" MaxWidth="140"/>
                         </StackPanel>
+                    </RadioButton>
 
-                        <!-- Encryption -->
-                        <StackPanel Spacing="12">
-                            <CheckBox IsChecked="{Binding ConnectionInfo.IsEncrypted}"
-                                      Content="Enable database encryption (AES-GCM)"/>
-
-                            <!-- Password -->
-                            <StackPanel Spacing="4"
-                                       IsVisible="{Binding ConnectionInfo.IsEncrypted}">
-                                <TextBlock Text="Password:"
-                                           FontWeight="SemiBold"/>
-                                <TextBox Text="{Binding ConnectionInfo.Password, Mode=TwoWay}"
-                                         Watermark="Enter password"
-                                         PasswordChar="*"
-                                         RevealPassword="False"/>
-
-                                <StackPanel Orientation="Horizontal" Spacing="6" Margin="4,2,0,0">
-                                    <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}" Width="12" Height="12" Foreground="DarkOrange" />
-                                    <TextBlock Text="Password cannot be recovered if lost" Foreground="DarkOrange" FontSize="11"/>
-                                </StackPanel>
-                            </StackPanel>
+                    <RadioButton AutomationProperties.AutomationId="CreateStorageMemory" AutomationProperties.Name="In memory, nothing is kept"
+                                 GroupName="Storage"
+                                 IsChecked="{Binding IsInMemory, Mode=OneWay}"
+                                 Command="{Binding ChooseStorageCommand}" CommandParameter="memory">
+                        <StackPanel Spacing="4">
+                            <TextBlock Text="{DynamicResource S.Dialog.Create.InMemory}" FontWeight="SemiBold"/>
+                            <TextBlock Text="{DynamicResource S.Dialog.Create.InMemoryHint}"
+                                       FontSize="10.5" Opacity="0.6" TextWrapping="Wrap" MaxWidth="140"/>
                         </StackPanel>
+                    </RadioButton>
+                </UniformGrid>
+
+                <!-- One field, and WHICH field it is follows the choice above. -->
+                <Grid ColumnDefinitions="110,*" IsVisible="{Binding IsFileBased}" Margin="0,6,0,0">
+                    <TextBlock Grid.Column="0" Margin="0,6,0,0"
+                               Text="{Binding PathLabel}"/>
+                    <StackPanel Grid.Column="1" Spacing="6">
+                        <TextBox AutomationProperties.AutomationId="CreateDatabasePath"
+                                 Text="{Binding ConnectionInfo.FilePath, Mode=TwoWay}"/>
+                        <Button AutomationProperties.AutomationId="CreateDatabaseBrowse"
+                                Content="{DynamicResource S.Common.Browse}"
+                                Command="{Binding BrowseFileCommand}"/>
+                        <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap"
+                                   Text="{Binding PathHint}"/>
                     </StackPanel>
-                </ScrollViewer>
-            </TabItem>
+                </Grid>
 
-            <!-- Advanced Tab -->
-            <TabItem Header="Advanced">
-                <ScrollViewer HorizontalScrollBarVisibility="Disabled"
-                              VerticalScrollBarVisibility="Disabled">
-                    <Grid Margin="8" ColumnDefinitions="*,*" ColumnSpacing="16" RowDefinitions="Auto,Auto,Auto">
-                        <!-- Left column: page size + transactions -->
-                        <StackPanel Grid.Row="0" Grid.Column="0" Spacing="4">
-                            <TextBlock Text="Page Size (bytes):" FontWeight="SemiBold"/>
-                            <ComboBox ItemsSource="{Binding PageSizeOptions}"
-                                      SelectedItem="{Binding SelectedPageSize}"
-                                      HorizontalAlignment="Stretch"/>
-                            <TextBlock Text="Default: 4096 bytes" Foreground="Gray" FontSize="11" Margin="4,2,0,0"/>
-                            <TextBlock Text="Cannot be changed after creation" Foreground="DarkOrange" FontSize="11" Margin="4,0,0,0"/>
-                        </StackPanel>
+                <!-- The honest warning rather than a lost database. -->
+                <Border Padding="10,8" CornerRadius="6" IsVisible="{Binding IsInMemory}"
+                        Background="#22D9A227" BorderBrush="#55D9A227" BorderThickness="1">
+                    <TextBlock Text="{DynamicResource S.Dialog.Create.InMemoryWarning}"
+                               TextWrapping="Wrap" FontSize="12"/>
+                </Border>
 
-                        <StackPanel Grid.Row="1" Grid.Column="0" Spacing="8" Margin="0,12,0,0">
-                            <TextBlock Text="Transaction Settings:" FontWeight="SemiBold"/>
-                            <CheckBox IsChecked="{Binding EnableTransactions}" Content="Enable ACID transactions"/>
-                            <TextBlock Text="Provides atomicity, consistency, isolation, and durability"
-                                       Foreground="Gray" FontSize="11" Margin="24,0,0,0" TextWrapping="Wrap"/>
+                <TextBlock Text="{DynamicResource S.Dialog.Create.Encryption}" FontSize="10" Opacity="0.55"
+                           Margin="0,8,0,0"/>
 
-                            <CheckBox IsChecked="{Binding EnableMvcc}"
-                                      Content="Enable MVCC (Multi-Version Concurrency Control)"
-                                      IsEnabled="{Binding EnableTransactions}"
-                                      Margin="24,4,0,0"/>
-                            <TextBlock Text="Better read performance with concurrent writes (requires more disk space)"
-                                       Foreground="Gray" FontSize="11" Margin="48,0,0,0" TextWrapping="Wrap"
-                                       IsVisible="{Binding EnableTransactions}"/>
-                        </StackPanel>
+                <Grid ColumnDefinitions="110,*">
+                    <TextBlock Grid.Column="0" Text="{DynamicResource S.Dialog.Create.Algorithm}" Margin="0,6,0,0"/>
+                    <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8">
+                        <RadioButton AutomationProperties.AutomationId="CreateEncryptionNone"
+                                     GroupName="Encryption"
+                                     Content="{DynamicResource S.Dialog.Create.NoEncryption}"
+                                     IsChecked="{Binding IsNotEncrypted, Mode=OneWay}"
+                                     Command="{Binding ChooseEncryptionCommand}" CommandParameter=""/>
+                        <RadioButton AutomationProperties.AutomationId="CreateEncryptionAes"
+                                     GroupName="Encryption" Content="AES-256-GCM"
+                                     IsChecked="{Binding IsAesGcm, Mode=OneWay}"
+                                     Command="{Binding ChooseEncryptionCommand}" CommandParameter="aes-gcm"/>
+                        <RadioButton AutomationProperties.AutomationId="CreateEncryptionChaCha"
+                                     GroupName="Encryption" Content="ChaCha20"
+                                     IsChecked="{Binding IsChaCha20, Mode=OneWay}"
+                                     Command="{Binding ChooseEncryptionCommand}"
+                                     CommandParameter="chacha20-poly1305"/>
+                    </StackPanel>
+                </Grid>
 
-                        <!-- Right column: cache + file locking -->
-                        <StackPanel Grid.Row="0" Grid.Column="1" Spacing="4">
-                            <TextBlock Text="Cache Size (pages):" FontWeight="SemiBold"/>
-                            <NumericUpDown Value="{Binding CacheSize}"
-                                           Minimum="10"
-                                           Maximum="100000"
-                                           Increment="100"
-                                           FormatString="N0"
-                                           HorizontalAlignment="Stretch"/>
-                            <TextBlock Text="Default: 1000 pages" Foreground="Gray" FontSize="11" Margin="4,2,0,0"/>
-                            <TextBlock Text="More cache = faster queries" Foreground="Gray" FontSize="11" Margin="4,0,0,0"/>
-                        </StackPanel>
+                <Grid ColumnDefinitions="110,*" IsVisible="{Binding ConnectionInfo.IsEncrypted}">
+                    <TextBlock Grid.Column="0" Text="{DynamicResource S.Dialog.Create.Password}" Margin="0,6,0,0"/>
+                    <StackPanel Grid.Column="1" Spacing="6">
+                        <TextBox AutomationProperties.AutomationId="CreateDatabasePassword"
+                                 Text="{Binding ConnectionInfo.Password, Mode=TwoWay}"
+                                 PasswordChar="*" RevealPassword="False"/>
+                        <TextBox AutomationProperties.AutomationId="CreateDatabasePasswordAgain"
+                                 Text="{Binding PasswordAgain, Mode=TwoWay}"
+                                 Watermark="{DynamicResource S.Dialog.Create.PasswordAgain}"
+                                 PasswordChar="*" RevealPassword="False"/>
+                        <TextBlock Text="{DynamicResource S.Dialog.Create.PasswordHint}"
+                                   FontSize="11" Opacity="0.55" TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Grid>
 
-                        <StackPanel Grid.Row="1" Grid.Column="1" Spacing="8" Margin="0,12,0,0"
-                                    IsVisible="{Binding IsFileBased}">
-                            <TextBlock Text="Multi-Process Safety:" FontWeight="SemiBold"/>
-                            <CheckBox IsChecked="{Binding EnableFileLocking}" Content="Enable file locking"/>
-                            <TextBlock Text="Prevents corruption from concurrent access by multiple processes"
-                                       Foreground="Gray" FontSize="11" Margin="24,0,0,0" TextWrapping="Wrap"/>
-                        </StackPanel>
-                    </Grid>
-                </ScrollViewer>
-            </TabItem>
-        </TabControl>
+                <StackPanel Spacing="6" IsVisible="{Binding IsConnectionStringVisible}">
+                    <TextBlock Text="{DynamicResource S.Common.ConnectionString}" FontSize="11" Opacity="0.6"/>
+                    <TextBox AutomationProperties.AutomationId="CreateConnectionStringBox"
+                             Text="{Binding ConnectionString, Mode=TwoWay}"
+                             FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"/>
+                </StackPanel>
 
-        <!-- Error Message -->
-        <Border Grid.Row="1"
-                Background="#FFF3CD"
-                BorderBrush="#FFC107"
-                BorderThickness="1"
-                Padding="12"
-                CornerRadius="4"
-                VerticalAlignment="Bottom"
-                Margin="0,0,0,8"
-                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <StackPanel Spacing="4">
-                <TextBlock Text="[!] Error"
-                           FontWeight="Bold"
-                           Foreground="#856404"/>
-                <TextBlock Text="{Binding ErrorMessage}"
-                           TextWrapping="Wrap"
-                           Foreground="#856404"/>
             </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="1" Margin="18,0,18,10" Padding="10,8" CornerRadius="6"
+                Background="#22D9534F" BorderBrush="#55D9534F" BorderThickness="1"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <TextBlock AutomationProperties.AutomationId="CreateDatabaseError"
+                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12"/>
         </Border>
 
-        <!-- Buttons -->
-        <Grid Grid.Row="2"
-              ColumnDefinitions="*,Auto,Auto"
-              Margin="0,8,0,0">
-            <StackPanel Grid.Column="0"
-                       Orientation="Horizontal"
-                       Spacing="8"
-                       IsVisible="{Binding IsConnecting}">
-                <Border Width="16" Height="16"
-                        Background="{DynamicResource SystemAccentColor}"
-                        CornerRadius="8">
-                    <TextBlock Text="..."
-                               FontSize="10"
-                               Foreground="White"
-                               HorizontalAlignment="Center"
-                               VerticalAlignment="Center"/>
-                </Border>
-                <TextBlock Text="Creating database..."
-                           VerticalAlignment="Center"
-                           Foreground="Gray"/>
-            </StackPanel>
+        <Border Grid.Row="2" Padding="14,10"
+                Background="{DynamicResource SystemControlBackgroundListLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <Button Grid.Column="0"
+                        AutomationProperties.AutomationId="CreateDatabaseConnectionString"
+                        Content="{DynamicResource S.Common.ConnectionString}"
+                        Command="{Binding ShowConnectionStringCommand}"/>
 
-            <Button AutomationProperties.AutomationId="CreateDatabaseCancel" Grid.Column="1"
-                    Content="Cancel"
-                    Command="{Binding CancelCommand}"
-                    Width="100"
-                    Margin="0,0,8,0"/>
+                <Button Grid.Column="2" Margin="0,0,8,0" Width="100"
+                        AutomationProperties.AutomationId="CreateDatabaseCancel"
+                        Content="{DynamicResource S.Common.Cancel}"
+                        Command="{Binding CancelCommand}"/>
 
-            <Button AutomationProperties.AutomationId="CreateDatabaseCreate" Grid.Column="2"
-                    Content="Create"
-                    Command="{Binding ConnectCommand}"
-                    Width="100"
-                    Classes="accent"/>
-        </Grid>
+                <Button Grid.Column="3" Width="140" Classes="accent"
+                        AutomationProperties.AutomationId="CreateDatabaseCreate"
+                        Content="{DynamicResource S.Dialog.Create.Create}"
+                        Command="{Binding ConnectCommand}"/>
+            </Grid>
+        </Border>
     </Grid>
 
 </Window>

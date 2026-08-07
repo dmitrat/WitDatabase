@@ -56,18 +56,23 @@ public class SqlValueConverterTests
         Assert.That(result, Is.EqualTo("(empty)"));
     }
 
+    /// <summary>
+    /// The BLOB default is its SIZE now, not truncated hex (the Data section of the settings, 6.6).
+    /// Sixteen bytes of hex in a narrow column tell a person nothing they can act on; the cell viewer
+    /// shows the bytes when they want them, and Hex and Base64 are still one setting away.
+    /// </summary>
     [Test]
-    public void ConvertSmallByteArrayReturnsHexStringTest()
+    public void ConvertSmallByteArrayReturnsItsSizeByDefaultTest()
     {
         var bytes = new byte[] { 0xDE, 0xAD, 0xBE, 0xEF };
 
         var result = m_converter.Convert(bytes, typeof(string), null, CultureInfo.InvariantCulture);
 
-        Assert.That(result, Is.EqualTo("0xDEADBEEF"));
+        Assert.That(result, Is.EqualTo("(4 bytes)"));
     }
 
     [Test]
-    public void ConvertLargeByteArrayReturnsTruncatedHexWithSizeTest()
+    public void ConvertLargeByteArrayReturnsItsSizeByDefaultTest()
     {
         var bytes = new byte[32];
         for (var i = 0; i < bytes.Length; i++)
@@ -75,46 +80,51 @@ public class SqlValueConverterTests
 
         var result = m_converter.Convert(bytes, typeof(string), null, CultureInfo.InvariantCulture);
 
-        Assert.That(result, Does.StartWith("0x"));
-        Assert.That(result, Does.EndWith("(32 bytes)"));
-        Assert.That(result, Does.Contain("..."));
+        Assert.That(result, Is.EqualTo("(32 bytes)"));
     }
 
     #endregion
 
-    #region DateTime Tests - Return original values for DataGrid culture-aware formatting
+    #region Dates - written by Studio, not by the DataGrid
 
+    /// <summary>
+    /// <b>These four cases used to assert the opposite, and they were pinning a defect.</b> They said
+    /// the value came back unchanged, with a comment explaining that the DataGrid would format it
+    /// "culture-aware" - which it did: on a ru-RU machine a DATETIME was drawn as
+    /// <c>15.06.2025 14:30:45</c> and a DECIMAL as <c>123,45</c>, and neither can be pasted into a
+    /// statement. WS-65 is that the format of a value is Studio's decision and not the locale's, so
+    /// the converter now renders it and the grid formats nothing.
+    ///
+    /// They passed for four releases because the suite only ever ran under en-US.
+    /// </summary>
     [Test]
-    public void ConvertDateTimeReturnsOriginalValueTest()
+    public void ConvertDateTimeIsWrittenInIsoTest()
     {
         var dateTime = new DateTime(2025, 6, 15, 14, 30, 45);
 
         var result = m_converter.Convert(dateTime, typeof(string), null, CultureInfo.InvariantCulture);
 
-        // DateTime returned as-is - DataGrid handles culture-aware formatting
-        Assert.That(result, Is.EqualTo(dateTime));
+        Assert.That(result, Is.EqualTo("2025-06-15 14:30:45"));
     }
 
     [Test]
-    public void ConvertDateOnlyReturnsOriginalValueTest()
+    public void ConvertDateOnlyIsWrittenInIsoTest()
     {
         var date = new DateOnly(2025, 6, 15);
 
         var result = m_converter.Convert(date, typeof(string), null, CultureInfo.InvariantCulture);
 
-        // DateOnly returned as-is - DataGrid handles culture-aware formatting
-        Assert.That(result, Is.EqualTo(date));
+        Assert.That(result, Is.EqualTo("2025-06-15"));
     }
 
     [Test]
-    public void ConvertTimeOnlyReturnsOriginalValueTest()
+    public void ConvertTimeOnlyIsWrittenInIsoTest()
     {
         var time = new TimeOnly(14, 30, 45);
 
         var result = m_converter.Convert(time, typeof(string), null, CultureInfo.InvariantCulture);
 
-        // TimeOnly returned as-is - DataGrid handles culture-aware formatting
-        Assert.That(result, Is.EqualTo(time));
+        Assert.That(result, Is.EqualTo("14:30:45"));
     }
 
     [Test]
@@ -129,14 +139,13 @@ public class SqlValueConverterTests
     }
 
     [Test]
-    public void ConvertDateTimeOffsetReturnsOriginalValueTest()
+    public void ConvertDateTimeOffsetIsWrittenInIsoTest()
     {
         var dto = new DateTimeOffset(2025, 6, 15, 14, 30, 45, TimeSpan.FromHours(2));
 
         var result = m_converter.Convert(dto, typeof(string), null, CultureInfo.InvariantCulture);
 
-        // DateTimeOffset returned as-is - DataGrid handles culture-aware formatting
-        Assert.That(result, Is.EqualTo(dto));
+        Assert.That(result, Is.EqualTo("2025-06-15 14:30:45 +02:00"));
     }
 
     #endregion
@@ -187,20 +196,24 @@ public class SqlValueConverterTests
         Assert.That(result, Is.EqualTo(123456789L));
     }
 
+    /// <summary>
+    /// Same story as the dates: this used to assert that the decimal came back untouched, which on a
+    /// machine with a comma meant the grid drew a value that will not paste into a statement.
+    /// </summary>
     [Test]
-    public void ConvertDecimalReturnsOriginalValueTest()
+    public void ConvertDecimalIsWrittenWithADotTest()
     {
         var result = m_converter.Convert(123.45m, typeof(string), null, CultureInfo.InvariantCulture);
 
-        Assert.That(result, Is.EqualTo(123.45m));
+        Assert.That(result, Is.EqualTo("123.45"));
     }
 
     [Test]
-    public void ConvertDoubleReturnsOriginalValueTest()
+    public void ConvertDoubleIsWrittenWithADotTest()
     {
         var result = m_converter.Convert(3.14159d, typeof(string), null, CultureInfo.InvariantCulture);
 
-        Assert.That(result, Is.EqualTo(3.14159d));
+        Assert.That(result, Is.EqualTo("3.14159"));
     }
 
     [Test]
