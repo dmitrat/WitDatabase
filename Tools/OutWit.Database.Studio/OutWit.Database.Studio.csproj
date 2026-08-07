@@ -71,5 +71,12 @@
          the engine about where a statement ends is worse than one that cannot split at all.
          The packages version together and the parser pulls no storage behind it. -->
     <ProjectReference Include="..\..\Sources\Engine\OutWit.Database.Parser\OutWit.Database.Parser.csproj" />
+
+    <!-- ChaCha20-Poly1305 lives in its own package, and without it Studio can offer AES-GCM and
+         nothing else - the Create dialog's second algorithm would be a control that produces a
+         database Studio cannot reopen. Measured: with the reference and an explicit EnsureRegistered
+         in Program, a ChaCha20 database created and reopened through Studio's own connection string
+         round-trips. -->
+    <ProjectReference Include="..\..\Sources\Core\OutWit.Database.Core.BouncyCastle\OutWit.Database.Core.BouncyCastle.csproj" />
   </ItemGroup>
 </Project>

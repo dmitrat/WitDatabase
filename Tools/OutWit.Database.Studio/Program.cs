@@ -110,6 +110,11 @@ sealed class Program
 
     private static void ConfigureServices()
     {
+        // ChaCha20-Poly1305 registers itself through a [ModuleInitializer], which runs when the
+        // assembly is LOADED - and an assembly nothing has touched yet may not be. Asking explicitly
+        // is the difference between the second encryption algorithm working and working sometimes.
+        OutWit.Database.Core.BouncyCastle.BouncyCastleProviderRegistration.EnsureRegistered();
+
         var services = new ServiceCollection();
 
         // Logging - the console provider writes nowhere in a WinExe, so the file is the real one.
