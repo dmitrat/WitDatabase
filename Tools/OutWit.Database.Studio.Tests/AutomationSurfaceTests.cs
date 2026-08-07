@@ -28,7 +28,7 @@ public class AutomationSurfaceTests
     // swatches of the Open dialog as "Avalonia.Controls.Border" - six identical unnamed items, which
     // is the same defect one element type further out again. CheckBox and TabItem are still outside.
     private static readonly Regex INTERACTIVE =
-        new(@"<(Button|MenuItem|ToggleButton|RadioButton|ListBoxItem)(\s[^>]*?)?(/?)>",
+        new(@"<(Button|MenuItem|ToggleButton|RadioButton|ListBoxItem|CheckBox)(\s[^>]*?)?(/?)>",
             RegexOptions.Singleline | RegexOptions.Compiled);
 
     /// <summary>
@@ -36,7 +36,14 @@ public class AutomationSurfaceTests
     /// AutomationId of its own - the list has one, and the item is found by NAME inside it. The
     /// swatches are the case: six of them, one list.
     /// </summary>
-    private static readonly HashSet<string> NAMED_BUT_NOT_IDENTIFIED = ["ListBoxItem"];
+    /// <summary>
+    /// CheckBox joined this list in stage 9, for a different reason from ListBoxItem's: a checkbox
+    /// announces from its Content and is found by that text, and requiring an Id from every one of the
+    /// dozen already in the shipping views would be a sweep with no defect behind it. What it IS
+    /// required to do is carry a NAME when its content is a panel - which is the defect the running
+    /// application showed twice in the import wizard, both times as "Avalonia.Controls.StackPanel".
+    /// </summary>
+    private static readonly HashSet<string> NAMED_BUT_NOT_IDENTIFIED = ["ListBoxItem", "CheckBox"];
 
     #endregion
 

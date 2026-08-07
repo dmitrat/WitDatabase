@@ -71,6 +71,58 @@ public enum ImportConflict
     Abort
 }
 
+/// <summary>
+/// Which step is showing, and which conflict answer is chosen, for the markup. One converter per
+/// value rather than one taking a parameter, for the reason given on <c>SettingsSection</c>.
+/// </summary>
+public static class ImportSteps
+{
+    public static readonly Avalonia.Data.Converters.IValueConverter IsFile =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportStep, bool>(step => step == ImportStep.File);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter IsDestination =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportStep, bool>(step => step == ImportStep.Destination);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter IsColumns =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportStep, bool>(step => step == ImportStep.Columns);
+
+    /// <summary>Import is offered on the last step only - the earlier ones have Next.</summary>
+    public static readonly Avalonia.Data.Converters.IValueConverter IsNotColumns =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportStep, bool>(step => step != ImportStep.Columns);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter IsNotFile =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportStep, bool>(step => step != ImportStep.File);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter ConflictIsSkip =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportConflict, bool>(c => c == ImportConflict.Skip);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter ConflictIsUpdate =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportConflict, bool>(c => c == ImportConflict.Update);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter ConflictIsAbort =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportConflict, bool>(c => c == ImportConflict.Abort);
+
+    /// <summary>
+    /// How strongly each label in the step strip is drawn - the current one full, the others faded.
+    ///
+    /// <para>
+    /// These return a DOUBLE, and that is the whole point. The first version bound the bool converters
+    /// above to <c>Opacity</c>, which is a double: the binding failed, fell through to its
+    /// FallbackValue of 1, and every step was drawn identically. A strip that does not say which step
+    /// you are on is not a step strip, and it looked completely normal in a screenshot. Found by
+    /// driving the application.
+    /// </para>
+    /// </summary>
+    public static readonly Avalonia.Data.Converters.IValueConverter OpacityForFile =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportStep, double>(step => step == ImportStep.File ? 1.0 : 0.4);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter OpacityForDestination =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportStep, double>(step => step == ImportStep.Destination ? 1.0 : 0.4);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter OpacityForColumns =
+        new Avalonia.Data.Converters.FuncValueConverter<ImportStep, double>(step => step == ImportStep.Columns ? 1.0 : 0.4);
+}
+
 public class ImportViewModel : ViewModelBase<ApplicationViewModel>
 {
     #region Constants
@@ -127,6 +179,8 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         NextCommand = new RelayCommand(GoNext);
         BackCommand = new RelayCommand(GoBack);
         WriteReportCommand = new RelayCommandAsync(WriteReportAsync);
+        ChooseConflictCommand = new RelayCommand<string>(answer =>
+            OnConflict = Enum.TryParse<ImportConflict>(answer, out var parsed) ? parsed : OnConflict);
     }
 
     private void InitEvents()
@@ -1024,6 +1078,9 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
     /// <summary>Where the report of rejected rows was written, once it has been.</summary>
     [Notify]
     public string? ReportPath { get; set; }
+
+    /// <summary>Picks the answer to a key collision from the markup.</summary>
+    public ICommand ChooseConflictCommand { get; private set; } = null!;
 
     public ICommand NextCommand { get; private set; } = null!;
 
