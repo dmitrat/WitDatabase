@@ -1455,6 +1455,57 @@ interface, which is the WS-65 control and the thing that would have broken first
 
 ---
 
+## Stage 11 - the rebuild button, armed
+
+Issue 10 in [KnownIssues.md](KnownIssues.md) carries the six runs; this is what they changed in Studio.
+
+`TableRebuildViewModel.CanRebuild` was a hard `false` and is now `Plan.Steps.Count > 0`. The only
+refusal left is an empty plan, and it says so from the catalogue
+(`Dialog.Rebuild.NothingToDo`). `TheRebuildDialogWillNotRunItYetAsync` - which pinned the disarming for
+one day, deliberately, so it could not be undone silently - is replaced by two cases that pin the
+arming in both directions.
+
+### What the run taught, and it is about the instrument
+
+**The obvious experiment could not have failed.** Rebuild a table, leave through `File > Exit`, read the
+file: 36 = 36, opens, done. Then the same run ending in `taskkill` gave **36 = 36 and opened as well** -
+so the setup could not produce corruption at all, and the clean result certified nothing. A rebuild is
+four statements; that is not enough churn to leave a page unevicted.
+
+What gave the pair its power was moving the probe's workload into the application: twelve
+`CREATE TABLE`/`DROP TABLE` pairs typed into Studio's own query editor, then killed - **header 32 against
+61 pages on disk, and the file will not open**. With the rebuild added and the menu used instead of the
+kill: **64 = 64, opens, 20 rows scanned back**. Same application, same cache, same database - only the
+ending differs.
+
+So the negative control now lives inside Studio rather than in a console probe: the same application
+can be made to produce the failure on demand, which is the only thing that makes its absence mean
+anything.
+
+### A localisation class the lint could not see, found by using the dialog
+
+Arming the button made the rebuild dialog a primary path, and it came up with a Russian heading over
+four English step titles. Two causes, both now measured:
+
+- **rule 3 matched `=` and not `=>`**, so every EXPRESSION-BODIED destination was invisible to it -
+  `NotArmedReason` and `BackupWarning` had been sitting in English since the sweep. Fixed, and
+  `RowCountText` (a ternary, which the rule still cannot see) went into the catalogue with them;
+- **the rule read `ViewModels` and `Views` only.** It reads `Services` now, and that named a class
+  rather than a slip: `SchemaChangeSet.Description`, `TableRebuild.Title` and `QueryPlan.Warning`
+  **compose** the sentences the designer, the rebuild dialog and the plan panel show.
+
+That last one is a **named remainder, not a sweep**, in the shape stage 9 used for the fourteen unswept
+views. A service that renders is stage 10's "a model must not render itself" one layer out: the fix is
+for the plan to carry the change and its parameters and for the ViewModel to say it, and several cases
+in `TableRebuildTests` and `SchemaDesignerTests` assert on the English wording today. The three files
+are listed in `LocalizationCoverageTests` and the list is asserted **exactly** - a fourth composing
+service fails the rule, and so does a listed one that has been fixed and left on the list. Both
+directions were measured by sabotage.
+
+Studio 684 -> 685.
+
+---
+
 ## Findings for the engine, not fixed here
 **A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
 class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner

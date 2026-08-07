@@ -475,22 +475,55 @@ named the cause. It is now first, and synchronous.
 must count the pages the file has**: before, header 2 against 8 pages; after, 6 = 6,
 and the file shrank to its real size.
 
-### The rebuild button stays disarmed for now
+### The rebuild button is armed again, and this is what settled it
 
-`TheRebuildDialogWillNotRunItYetAsync` still pins the disarming, and the dialog
-still plans the work and hands the script to the query editor. Nothing here proves
-the rebuild is safe - it proves that what destroyed those two files was the exit.
-"The rebuild did not cause this" and "the rebuild is correct" are different
-statements, and only the first is measured. Arming it needs its own run through the
-designer, ending with the invariant above and a reopen.
+The disarming was right at the time and wrong about its subject, so arming it needed
+its own run rather than an inference. `CanRebuild` is now `Plan.Steps.Count > 0` -
+the only reason left to refuse is an empty plan - and
+`TheRebuildDialogWillNotRunItYetAsync` is replaced by `TheRebuildDialogIsArmedAsync`,
+which pins both directions.
+
+Six runs, 2026-08-07, all in the shipping application except the last, all read
+afterwards with a raw dump and a reopen. The rebuild is a column type change
+(`VARCHAR(200)` -> `INTEGER`) driven from the designer with the **Пересобрать…**
+button, not with Apply:
+
+| run | workload | how it ended | header vs file | reopen |
+|---|---|---|---|---|
+| 1 | rebuild, default cache | `File > Exit` | 36 = 36 | OPENS |
+| 2 | rebuild, `CacheSize=8` | `File > Exit` | 36 = 36 | OPENS |
+| 3 | rebuild, `CacheSize=8` | **killed** | 36 = 36 | OPENS |
+| 4 | 24 DDL statements, `CacheSize=8` | **killed** | **32 against 61** | **BROKEN** |
+| 5 | 24 DDL + rebuild, `CacheSize=8` | `File > Exit` | 64 = 64 | OPENS, 20 rows |
+| 6 | the console probe | `Environment.Exit` | **5 against 32** | **BROKEN** |
+
+**Run 3 is the one worth reading.** Killing Studio right after a rebuild left the
+file perfectly readable - so runs 1 and 2 prove nothing on their own. A rebuild is
+four statements; that is not enough churn to leave anything unevicted, and an
+instrument that cannot produce the failure cannot certify its absence. Run 4 is what
+gave the pair its power: the same twelve `CREATE TABLE`/`DROP TABLE` pairs the probe
+uses, typed into Studio's own query editor and then killed, reproduce the casualties'
+signature inside the application. Run 5 is therefore the real verdict - a workload
+that *is* heavy enough to break, plus the rebuild, ending through the menu, comes
+back whole. The rows were counted by scanning them, not with `COUNT(*)`, which on
+this engine is separate state.
+
+The 20 `Email` values came back as `0`. That is not damage: they were strings, the
+dialog counted them before anything ran and said so on screen, and this engine's
+`CAST` never fails.
 
 ### What is still open, and it is the engine's half
 
 Studio no longer ends without flushing, but **an abrupt end still leaves an
-unreadable file** - a crash, a kill, a power cut. Pages reach the disk by eviction
-with nothing ordering them against the header, so any interruption can leave the
-two at different vintages. That is a durability question for the storage layer
-rather than for the application, and it is not fixed here.
+unreadable file** - a crash, a kill, a power cut. Run 4 above is that defect
+reproduced in the shipping application on demand, with no probe involved: work in
+the query editor, kill the process, and the file will not open. Pages reach the disk
+by eviction with nothing ordering them against the header, so any interruption can
+leave the two at different vintages. That is a durability question for the storage
+layer rather than for the application, and it is not fixed here.
+
+---
+
 ## Verifying a fix
 
 WitAnalytics is a ready-made regression harness: its stats test fixture runs the
