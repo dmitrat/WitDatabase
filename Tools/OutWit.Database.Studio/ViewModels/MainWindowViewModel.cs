@@ -62,6 +62,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         ClearRecentFilesCommand = new RelayCommandAsync(ClearRecentFilesAsync);
         SettingsCommand = new RelayCommandAsync(ShowSettingsAsync);
         ConnectionsCommand = new RelayCommandAsync(ShowConnectionsAsync);
+        DumpDatabaseCommand = new RelayCommandAsync(DumpDatabaseAsync);
         AboutCommand = new RelayCommandAsync(ShowAboutAsync);
         ExitCommand = new RelayCommandAsync(ExitAsync);
         ShowNotificationsCommand = new RelayCommand(ShowNotifications);
@@ -299,6 +300,46 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     private Task ShowSettingsAsync()
     {
         return ShowSettingsAsync(SettingsViewModel.SECTION_GENERAL);
+    }
+
+    /// <summary>
+    /// The whole database as a WitSQL script (WS-51). Written from the ACTIVE connection, because with
+    /// several open "the database" is not a question the application can answer for itself.
+    ///
+    /// <para>
+    /// A dump is not a copy: this is text that has to be executed again, where a byte copy keeps the
+    /// pages, the encryption and the statistics. The two live in different places for that reason, and
+    /// the script says so in its first two lines.
+    /// </para>
+    /// </summary>
+    private async Task DumpDatabaseAsync()
+    {
+        var session = ApplicationVm.ActiveSession;
+
+        if (session?.IsConnected != true)
+            return;
+
+        var target = await ApplicationVm.Dialogs.SaveFileAsync(
+            "Dump the database",
+            suggestedFileName: session.DisplayName + ".sql",
+            defaultExtension: "sql",
+            filters: [new FileFilter("SQL Files", ["*.sql"])]);
+
+        if (string.IsNullOrEmpty(target))
+            return;
+
+        try
+        {
+            var script = await Services.DatabaseDump.WriteAsync(session, new Services.DumpOptions());
+
+            await File.WriteAllTextAsync(target, script);
+
+            ApplicationVm.Notifications.Information("Database dumped", target, session.DisplayName);
+        }
+        catch (Exception ex)
+        {
+            ApplicationVm.Notifications.Error("The dump failed", ex.Message, session.DisplayName);
+        }
     }
 
     /// <summary>
@@ -565,6 +606,9 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     /// <summary>The saved connections (WS-68).</summary>
     public ICommand ConnectionsCommand { get; private set; } = null!;
+
+    /// <summary>The whole database as a WitSQL script (WS-51).</summary>
+    public ICommand DumpDatabaseCommand { get; private set; } = null!;
 
     public ICommand AboutCommand { get; private set; } = null!;
 

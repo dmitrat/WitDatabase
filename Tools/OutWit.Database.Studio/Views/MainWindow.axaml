@@ -212,6 +212,11 @@
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_EXPORT}" />
 		                </MenuItem.Icon>
 					</MenuItem>
+					<!-- The whole database as a WitSQL script (WS-51). A byte copy is a different
+					     thing and belongs in the Database tab. -->
+					<MenuItem AutomationProperties.AutomationId="MainWindowDumpDatabase" Header="_Dump Database..."
+					          Command="{Binding MainWindowVm.DumpDatabaseCommand}"/>
+
 					<MenuItem AutomationProperties.AutomationId="MainWindowImport" Header="_Import..."
 					          Command="{Binding MainWindowVm.ImportCommand}"
 					          IsEnabled="{Binding MainWindowVm.IsConnected}">
