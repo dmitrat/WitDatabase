@@ -283,23 +283,22 @@ public class TableRebuildTests
 
     #endregion
 
-    #region The button, which is not armed
+    #region The button, which is armed again
 
     /// <summary>
-    /// PINS A DECISION, NOT CORRECT BEHAVIOUR - and it should be inverted the moment the cause is
-    /// found.
+    /// This case replaces <c>TheRebuildDialogWillNotRunItYetAsync</c>, which pinned the button
+    /// DISARMED between 2026-08-06 and 2026-08-07. The disarming was right at the time and wrong about
+    /// its subject: what left two files unreadable was Studio's exit never flushing the database, not
+    /// the rebuild. Issue 10 in <c>Docs/KnownIssues.md</c> carries the six runs that settled it,
+    /// including the one that matters - killing Studio right after a rebuild leaves the file READABLE,
+    /// so a clean run of the rebuild alone proves nothing, and the workload that does break the file
+    /// breaks it with no rebuild in sight.
     ///
-    /// Everything above works: the plan is right, the rows come across, the keys keep generating, the
-    /// report is honest. And a rebuild run from the DIALOG in the shipping application left the
-    /// database unreadable, twice, on two files - the schema catalogue's overflow chain broken, the
-    /// bare provider unable to open it either. Fourteen headless variants of the same rebuild all
-    /// reopen correctly, so what the application does differently is not known.
-    ///
-    /// Until it is, the dialog plans and explains and hands over the script; it does not run it. When
-    /// this goes green again, delete this test and set <c>CanRebuild = true</c>.
+    /// Both directions, because the only refusal left is an empty plan and a rule that can only pass
+    /// is not a rule.
     /// </summary>
     [Test]
-    public async Task TheRebuildDialogWillNotRunItYetAsync()
+    public async Task TheRebuildDialogIsArmedAsync()
     {
         var drafts = await DraftsAsync("Orders");
         drafts.First(d => d.Name == "Total").DataType = "INTEGER";
@@ -310,10 +309,38 @@ public class TableRebuildTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(vm.CanRebuild, Is.False, "the button is not armed");
-            Assert.That(vm.NotArmedReason, Does.Contain("unreadable"), "and it says why on screen");
+            Assert.That(plan.Steps, Is.Not.Empty, "the plan has work in it");
+            Assert.That(vm.CanRebuild, Is.True, "so the button runs it");
             Assert.That(vm.Script, Does.Contain("CREATE TABLE"),
-                "while the script is still there to be run by hand, which is measured to be safe");
+                "and the script is still there to be run by hand instead");
+        });
+    }
+
+    /// <summary>
+    /// The negative half: a plan with no steps cannot be run, and the dialog says why rather than
+    /// showing a grey button with no explanation.
+    /// </summary>
+    [Test]
+    public async Task ARebuildWithNothingToDoIsRefusedAsync()
+    {
+        // The drafts are the table as it already is, so nothing needs rewriting.
+        var drafts = await DraftsAsync("Orders");
+
+        var plan = await TableRebuild.PlanAsync(Session, "Orders", drafts);
+
+        var empty = new TableRebuildPlan
+        {
+            Table = plan.Table,
+            Carrier = plan.Carrier,
+            Steps = []
+        };
+
+        var vm = new Studio.ViewModels.TableRebuildViewModel(m_fixture.App, Session, empty);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(vm.CanRebuild, Is.False, "there is nothing to run");
+            Assert.That(vm.NotArmedReason, Is.Not.Empty, "and the reason is on screen");
         });
     }
 

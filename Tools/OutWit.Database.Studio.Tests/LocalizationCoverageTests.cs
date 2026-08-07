@@ -87,13 +87,22 @@ public class LocalizationCoverageTests
     /// Properties a view binds and a person therefore reads. Rule 3 is about where a string GOES, not
     /// what it looks like - which is the only way to tell a sentence from a log template, since both
     /// are prose with values in them.
+    ///
+    /// <para>
+    /// <c>=>?</c>, not <c>=</c>: an EXPRESSION-BODIED property was invisible to this rule, because a
+    /// destination is written <c>Foo => "text"</c> as often as <c>Foo = "text"</c> and the first is not
+    /// an assignment. Found on 2026-08-07 by reading <c>TableRebuildViewModel</c> while arming the
+    /// rebuild button - three of the rebuild dialog's own sentences were in English on a Russian
+    /// interface, and this rule had been passing over them since the sweep.
+    /// </para>
     /// </summary>
     private static readonly Regex VIEWMODEL_ASSIGNMENT =
         new(@"(?<!\w)(ErrorMessage|StatusText|StatusMessage|Summary|Heading|Title|Hint|Note|Caption"
             + @"|Description|Watermark|PlaceholderText|Warning|HeaderText|Subtitle|KeyNote|PlannerNote"
             + @"|UnindexedKeyWarning|ConflictSummary|PlanMessage|HistoryMessage|BackupWarning"
-            + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason)"
-            + @"(\.Text)?\s*=\s*[$]?""((?:[^""\\]|\\.)*)""",
+            + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason"
+            + @"|RowCountText)"
+            + @"(\.Text)?\s*=>?\s*[$]?""((?:[^""\\]|\\.)*)""",
             RegexOptions.Compiled);
 
     /// <summary>
@@ -138,7 +147,8 @@ public class LocalizationCoverageTests
         new(@"(?<!\w)(ErrorMessage|StatusText|StatusMessage|Summary|Heading|Title|Hint|Note|Caption"
             + @"|Description|Watermark|PlaceholderText|Warning|HeaderText|Subtitle|KeyNote|PlannerNote"
             + @"|UnindexedKeyWarning|ConflictSummary|PlanMessage|HistoryMessage|BackupWarning"
-            + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason)(\.Text)?\s*=[^=]"
+            + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason"
+            + @"|RowCountText)(\.Text)?\s*=>?(?!=)"
             + @"|(Notifications\.\w+|Confirmations?\.\w+|Dialogs\.\w+|new FileFilter"
             + @"|Set\w*Status|Describe\w*)\(",
             RegexOptions.Compiled);
@@ -162,8 +172,47 @@ public class LocalizationCoverageTests
     /// Every source of text this rule reads. Rule 3 covers a view's code-behind as well as the
     /// ViewModels, because <c>UnsavedChangesDialog.AskAsync</c> built "1 unsaved change" there and no
     /// rule about ViewModels would ever have found it.
+    ///
+    /// <para>
+    /// <c>Services</c> was added on 2026-08-07 and immediately named a class the rule had never been
+    /// able to see: see <see cref="SENTENCES_BUILT_IN_A_SERVICE"/>.
+    /// </para>
     /// </summary>
-    private static readonly string[] CODE_FOLDERS = ["ViewModels", "Views"];
+    private static readonly string[] CODE_FOLDERS = ["ViewModels", "Views", "Services"];
+
+    /// <summary>
+    /// The remainder, NAMED rather than finished - the same shape stage 9 used for the fourteen
+    /// unswept views, so the rule bites everywhere else in the meantime.
+    ///
+    /// <para>
+    /// These three services do not merely hold text, they COMPOSE it: <c>SchemaChangeSet.Description</c>
+    /// writes the designer's per-row sentence and the DDL panel's comment, <c>TableRebuild.Title</c>
+    /// writes the rebuild dialog's steps, and <c>QueryPlan.Warning</c> writes the plan panel's notes.
+    /// Putting them in the catalogue is not a sweep: a service that renders is the defect
+    /// (stage 10's "a model must not render itself"), so the plan has to carry the CHANGE and its
+    /// parameters and let the ViewModel say it. That is a piece of work with its own tests - several
+    /// cases in <c>TableRebuildTests</c> and <c>SchemaDesignerTests</c> assert on the English wording -
+    /// and it is deliberately not done here.
+    /// </para>
+    /// <para>
+    /// Measured 2026-08-07 while arming the rebuild button: the dialog came up with a Russian heading,
+    /// a Russian row count and a Russian backup warning above four English step titles.
+    /// </para>
+    /// </summary>
+    private static readonly HashSet<string> SENTENCES_BUILT_IN_A_SERVICE = new(StringComparer.Ordinal)
+    {
+        "SchemaChangeSet.cs", "TableRebuild.cs", "QueryPlan.cs"
+    };
+
+    /// <summary>
+    /// The log file's own level tags - <c>Warning = "WRN"</c> is the four-letter column in a text log,
+    /// not a caption, and it happens to be spelled like one of rule 3's destinations. An exemption
+    /// written for a false positive, and named as one.
+    /// </summary>
+    private static readonly HashSet<string> NOT_A_SURFACE_AT_ALL = new(StringComparer.Ordinal)
+    {
+        "FileLoggerProvider.cs"
+    };
 
     #endregion
 
@@ -268,10 +317,16 @@ public class LocalizationCoverageTests
     public void NoViewModelBuildsATextTest()
     {
         var built = new List<string>();
+        var remainder = new HashSet<string>(StringComparer.Ordinal);
         var read = 0;
 
         foreach (var file in Sources())
         {
+            var name = Path.GetFileName(file);
+
+            if (NOT_A_SURFACE_AT_ALL.Contains(name))
+                continue;
+
             var code = File.ReadAllText(file);
 
             foreach (var line in Lines(code))
@@ -292,8 +347,13 @@ public class LocalizationCoverageTests
                     if (match.Index >= line.Text.Length || !IsStudioText(match.Value))
                         continue;
 
-                    built.Add($"{Path.GetFileName(file)}:{line.Number} " +
-                        $"{match.Attribute} = \"{Shorten(match.Value)}\"");
+                    if (SENTENCES_BUILT_IN_A_SERVICE.Contains(name))
+                    {
+                        remainder.Add(name);
+                        continue;
+                    }
+
+                    built.Add($"{name}:{line.Number} {match.Attribute} = \"{Shorten(match.Value)}\"");
                 }
             }
         }
@@ -309,6 +369,13 @@ public class LocalizationCoverageTests
                 "these reach a person and are not in the catalogue, so they stay in one language "
                 + "whatever the interface is set to:"
                 + Environment.NewLine + string.Join(Environment.NewLine, built));
+
+            // The named remainder, asserted EXACTLY: a fourth service composing sentences fails this
+            // rule, and so does a listed one that has been fixed and left on the list. A remainder
+            // nobody re-measures becomes a permanent excuse.
+            Assert.That(remainder, Is.EquivalentTo(SENTENCES_BUILT_IN_A_SERVICE),
+                "the remainder is not what it says it is - a service composing sentences has been "
+                + "added, or one on the list no longer does and should come off it");
         });
     }
 

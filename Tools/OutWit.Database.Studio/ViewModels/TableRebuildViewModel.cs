@@ -94,8 +94,8 @@ public class TableRebuildViewModel : ViewModelBase<ApplicationViewModel>
         Table = Plan.Table;
 
         RowCountText = Plan.RowCount is { } rows
-            ? $"{rows:N0} row(s) will be carried across"
-            : "the number of rows is not known - the count did not come back in time";
+            ? Localization.Format("Dialog.Rebuild.RowCount", rows)
+            : Localization["Dialog.Rebuild.RowCount.Unknown"];
 
         Casualties = Plan.Casualties.ToList();
         Dependencies = Plan.Dependencies.ToList();
@@ -106,18 +106,17 @@ public class TableRebuildViewModel : ViewModelBase<ApplicationViewModel>
         HasDependencies = Dependencies.Count > 0;
         HasLosses = Losses.Count > 0;
 
-        // NOT ARMED, and this is deliberate. Measured 2026-08-06 in the shipping application, twice, on
-        // two databases: a rebuild run from this dialog left the file unreadable - the schema
-        // catalogue's overflow chain is broken and the bare provider cannot open it either
-        // ("Page 9 is not an overflow page"). Fourteen headless runs of the same rebuild - with and
-        // without the trigger and the index, over 2000 rows, with readers scanning throughout, with a
-        // second database open, at four page sizes, and with the same statements typed by hand - all
-        // reopen correctly, so what the application does differently is not yet known.
+        // ARMED again on 2026-08-07, and the disarming is worth recording because it was right at the
+        // time and wrong about its subject. A rebuild run from this dialog left two files unreadable in
+        // stage 8, and sixteen headless runs of the same rebuild could not reproduce it. The cause was
+        // not the rebuild: Studio's exit never flushed the database at all, so the header on disk stayed
+        // older than the pages and whatever had been evicted since no longer matched it. Any workload
+        // heavy enough to evict a page produced the same file; the rebuild is simply the heaviest one
+        // the designer offers. The exit is fixed, and a rebuild followed by File > Exit was then
+        // measured to leave the file readable, header = pages.
         //
-        // Until it is, the dialog does everything except run it: the plan, the casualties, the
-        // dependencies and the script. Running that script by hand in the query editor IS measured to
-        // be safe, so the user loses the button and keeps the operation.
-        CanRebuild = false;
+        // So the only reason left to refuse is that there is nothing to do.
+        CanRebuild = Plan.Steps.Count > 0;
     }
 
     private void InitCommands()
@@ -305,23 +304,17 @@ public class TableRebuildViewModel : ViewModelBase<ApplicationViewModel>
 
     /// <summary>
     /// Why the button is not armed. On screen, above it - a disabled button with no explanation is the
-    /// thing this whole section is against.
+    /// thing this whole section is against. There is one reason left: the designer found no step to
+    /// run, which is not a refusal so much as an empty plan.
     /// </summary>
-    public string NotArmedReason =>
-        $"Studio will not run this itself yet. Measured on 2026-08-06: a rebuild run from here left the " +
-        $"database unreadable - twice, on two files - and the same statements run in the query editor " +
-        $"did not. Until that is understood, use \"To the editor\" and run the script yourself, after " +
-        $"making a copy.";
+    public string NotArmedReason => Localization["Dialog.Rebuild.NothingToDo"];
 
     public bool IsArmed => CanRebuild;
 
     /// <summary>
     /// The sentence the design insists on, and it is not decoration: nothing below can be undone.
     /// </summary>
-    public string BackupWarning =>
-        $"Make a copy of the database first. The rebuild cannot be undone, and this engine does not roll " +
-        $"DDL back - a statement that has run has run. If it stops between steps, {Table} may exist only " +
-        $"as {Plan.Carrier}, and the dialog will say so.";
+    public string BackupWarning => Localization.Format("Dialog.Rebuild.Backup", Table, Plan.Carrier);
 
     #endregion
 

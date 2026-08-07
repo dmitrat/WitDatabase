@@ -153,6 +153,45 @@ public sealed class ApplicationViewModel
         return true;
     }
 
+    /// <summary>
+    /// Closes every database Studio holds, synchronously, in the order that flushes them.
+    ///
+    /// <para>
+    /// <b>This is issue 10's fix and it is deliberately not left to the container.</b> Disposing a
+    /// connection is what writes the file header - <c>PageManager.Dispose</c> flushes - and the
+    /// container's disposal was measured never to reach the connection manager at all. A database
+    /// that is not flushed keeps a header older than its own pages, which loses everything since the
+    /// last flush and, once the page cache has evicted anything, cannot be opened again.
+    /// </para>
+    /// <para>
+    /// The query history is a database too, and it goes the same way for the same reason.
+    /// </para>
+    /// </summary>
+    public void CloseDatabases()
+    {
+        try
+        {
+            Connections.Dispose();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Closing the open databases failed");
+        }
+
+        try
+        {
+            // On a pool thread rather than inline: blocking the UI thread on a task that may want it
+            // back is a deadlock, and this runs while the window is still closing.
+            Task.Run(async () => await History.DisposeAsync()).GetAwaiter().GetResult();
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Closing the query history failed");
+        }
+
+        Logger.LogInformation("Databases closed");
+    }
+
     #endregion
 
     #region View Models

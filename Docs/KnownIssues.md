@@ -266,7 +266,7 @@ one of those tests was run against the unfixed engine first.
 | [7](#7-add-column--not-null-with-no-default-closes-a-table-for-writing) | DDL | Major | **FIXED** | An accepted ALTER makes every later write fail |
 | [8](#8-drop-column-leaves-the-index-on-that-column-behind) | DDL + catalogue | Major | **FIXED** | An index over a column that no longer exists |
 | [9](#9-ordinal_position-is-1-for-every-column) | INFORMATION_SCHEMA | Minor | **FIXED** | The catalogue cannot say what order columns are in |
-| [10](#10-a-table-rebuild-through-studio-left-two-files-unreadable) | Storage | **Blocker** | **open — not reproduced headlessly** | A rebuilt database cannot be opened again |
+| [10](#10-studios-exit-never-wrote-a-database-down) | Studio + storage | **Blocker** | **FIXED** | Leaving Studio lost everything since the last flush |
 
 ---
 
@@ -413,49 +413,143 @@ TABLE` left every one of them at the default zero, and the view publishes
 
 ---
 
-## 10. A table rebuild through Studio left two files unreadable
+## 10. Studio's exit never wrote a database down
 
-> **OPEN.** Reproduced twice in the shipping application; **not reproduced in
-> sixteen controlled runs outside it**. Studio's rebuild is disarmed because of
-> this — it plans the work and hands the script to the query editor rather than
-> running it.
+> **FIXED**, 2026-08-07. `ApplicationViewModel.CloseDatabases`, called first and
+> synchronously from `MainWindow.OnClosing`. Regression tests:
+> `ExitFlushTests.ClosingTheDatabasesWritesTheHeaderTest` and
+> `TheDatabasesAreClosedBeforeTheFirstAwaitTest`, both measured against the defect.
 
-Create a database through Studio's Create dialog, run a schema script, rebuild a
-table through the designer, leave through **File > Exit**, reopen: the file cannot
-be opened, by Studio or by anything else.
+**This was filed as "a table rebuild through Studio left two files unreadable" and
+the rebuild had nothing to do with it.** It is the workload that churns the schema
+catalogue hardest - the catalogue is one big value in an overflow chain, rewritten
+and freed on every DDL statement - so it correlated, and sixteen controlled runs
+outside the application could not reproduce it because every one of them closed the
+database properly.
 
-```
-System.IO.InvalidDataException: Page 9 is not an overflow page
-   at PageManagerOverflow.GetOverflowInfo(UInt32 firstPage)
-   at PageManagerOverflow.ReadOverflow(UInt32 firstPage)
-   at BTree.CollectPageEntries(...)
-   at MvccKeyValueStore.GetRecordAsOf(...)
-   at SchemaCatalog.GetSchemaRecord(...)
-   at SchemaCatalog.LoadSchema()
-```
+### What the files said
 
-So a schema record's overflow chain points at a page that is no longer an
-overflow page — freed and reused while something still referenced it. The second
-file failed identically at page 7.
+Read underneath the engine - no page manager, no catalogue - both casualties carry
+the same signature and the control from the same session does not:
 
-**What has been ruled out.** Sixteen runs, each reopening the file afterwards, all
-correct: the rebuild alone; without the trigger; without the index; without
-either; with an extra `ADD COLUMN` before it; the same statements typed by hand;
-over 2000 rows; with one and with four readers scanning the table throughout;
-with a second database open in the process; at page sizes 512, 1024, 4096 and
-8192; through the engine directly and through the ADO.NET provider; and with the
-catalogue being read by four connections while the rebuild ran. The control
-**without** a rebuild — same creation path, same script, same clean exit —
-reopens correctly, which is what implicates the rebuild rather than anything
-around it.
+| | header `TotalPageCount` | pages in the file | free list | freed pages |
+|---|---|---|---|---|
+| `stage8.witdb` (broken) | 10 | **12** | empty | 9 and 10, holding `$schema:_tables` |
+| `stage8b.witdb` (broken) | 9 | **11** | empty | 7 and 9, the same |
+| `stage8c.witdb` (control) | 3 | 3 | empty | none |
 
-The instrument was checked rather than assumed: `SharedDatabase.Release` disposes
-the database when the last lease goes and `Acquire` builds a new one with a fresh
-`SchemaCatalog`, so those sixteen reopens really did re-read the file.
+**The header on disk was older than the pages.** A freed page is distinguishable
+from a page the file merely grew into: `FreePage` writes a full `PageHeader` -
+`FreeSpaceStart = pageSize` - and touches only the first 16 bytes, so the body
+survives. Pages 9 and 10 still read `Customers | Name3 | Email3`. A page the file
+grew into is 16 zero bytes and an empty body. Both files have both kinds.
 
-**Evidence kept.** Both damaged files are held from the session that produced
-them; they are the fastest way in for whoever picks this up — the chain can be
-walked from the page manager to find which record points at the freed page.
+### Why that makes a file unreadable
+
+Only `Flush` writes the header - `PageManager.Flush` writes it first, then the
+cache, then storage. A page reaches the disk on its own whenever the cache
+**evicts** it (`EvictSlot` writes if `IsDirty`). So a process that ends without
+disposing leaves a mixture: evicted pages are current, unevicted pages and the
+header are not. The catalogue then points at a page whose free was recorded while
+the update that moved the pointer off it was not - `Page N is not an overflow page`.
+
+Reproduced on demand: create, churn, then `Environment.Exit(0)`. With the default
+cache the whole file fits, nothing is ever evicted, and the file is a consistent
+OLDER snapshot that opens cleanly - which is the quiet form of the same defect,
+silently missing everything since the last flush. With `CacheSize=8` the abandoned
+file is **BROKEN** and the same work closed properly **OPENS**.
+
+### The cause
+
+`MainWindow.OnClosing` is `async void`. Its first `await` - saving the window state
+- hands control back to Avalonia, which closes the window and ends the process.
+**Everything after that await never runs.** `Program.Main`'s `finally` is entered,
+`ServiceProvider.Dispose()` is entered and never returns, and
+`ConnectionManager.Dispose` was never reached at all. Traced with a writer that
+bypasses the logger, since the logger is itself being disposed.
+
+Putting the close *after* the await changed nothing, and that measurement is what
+named the cause. It is now first, and synchronous.
+
+**Measured in the shipping application, by the invariant that a closed file's header
+must count the pages the file has**: before, header 2 against 8 pages; after, 6 = 6,
+and the file shrank to its real size.
+
+### The rebuild button is armed again, and this is what settled it
+
+The disarming was right at the time and wrong about its subject, so arming it needed
+its own run rather than an inference. `CanRebuild` is now `Plan.Steps.Count > 0` -
+the only reason left to refuse is an empty plan - and
+`TheRebuildDialogWillNotRunItYetAsync` is replaced by `TheRebuildDialogIsArmedAsync`,
+which pins both directions.
+
+Six runs, 2026-08-07, all in the shipping application except the last, all read
+afterwards with a raw dump and a reopen. The rebuild is a column type change
+(`VARCHAR(200)` -> `INTEGER`) driven from the designer with the **Пересобрать…**
+button, not with Apply:
+
+| run | workload | how it ended | header vs file | reopen |
+|---|---|---|---|---|
+| 1 | rebuild, default cache | `File > Exit` | 36 = 36 | OPENS |
+| 2 | rebuild, `CacheSize=8` | `File > Exit` | 36 = 36 | OPENS |
+| 3 | rebuild, `CacheSize=8` | **killed** | 36 = 36 | OPENS |
+| 4 | 24 DDL statements, `CacheSize=8` | **killed** | **32 against 61** | **BROKEN** |
+| 5 | 24 DDL + rebuild, `CacheSize=8` | `File > Exit` | 64 = 64 | OPENS, 20 rows |
+| 6 | the console probe | `Environment.Exit` | **5 against 32** | **BROKEN** |
+
+**Run 3 is the one worth reading.** Killing Studio right after a rebuild left the
+file perfectly readable - so runs 1 and 2 prove nothing on their own. A rebuild is
+four statements; that is not enough churn to leave anything unevicted, and an
+instrument that cannot produce the failure cannot certify its absence. Run 4 is what
+gave the pair its power: the same twelve `CREATE TABLE`/`DROP TABLE` pairs the probe
+uses, typed into Studio's own query editor and then killed, reproduce the casualties'
+signature inside the application. Run 5 is therefore the real verdict - a workload
+that *is* heavy enough to break, plus the rebuild, ending through the menu, comes
+back whole. The rows were counted by scanning them, not with `COUNT(*)`, which on
+this engine is separate state.
+
+The 20 `Email` values came back as `0`. That is not damage: they were strings, the
+dialog counted them before anything ran and said so on screen, and this engine's
+`CAST` never fails.
+
+### What is still open, and it is the engine's half
+
+Studio no longer ends without flushing, but **an abrupt end still leaves an
+unreadable file** - a crash, a kill, a power cut. Run 4 above is that defect
+reproduced in the shipping application on demand, with no probe involved: work in
+the query editor, kill the process, and the file will not open. Pages reach the disk
+by eviction with nothing ordering them against the header, so any interruption can
+leave the two at different vintages.
+
+**And it belongs to ONE configuration, which is the default.** Measured 2026-08-07,
+the same probe and the same workload each time - 400 rows and 240 DDL statements at
+`CacheSize=8`, so the file is far larger than the cache and eviction is certain -
+each run ended with `Environment.Exit(0)`, which runs no `Dispose` and no flush:
+
+| configuration | header vs file | reopen | rows |
+|---|---|---|---|
+| **MVCC - the default** | **52 against 635** | **BROKEN** | - |
+| `MVCC=false` | 14 = 14 | opens | 400 of 400 |
+| `MVCC=false;Journal=wal` | 14 = 14 | opens | 400 of 400 |
+| `MVCC=false;Journal=rollback` | 14 = 14 | opens | 400 of 400 |
+
+So the transactional store **already survives an abrupt end** at a cache size that
+forces eviction, and it does so with no journal at all. The MVCC store does not.
+
+**The two journals cannot be combined with MVCC**, and the builder says so out loud:
+*"A transaction journal cannot be combined with MVCC: the MVCC store keeps its own
+versions and takes no journal."* So the default configuration has no crash-recovery
+mechanism, and no setting turns one on.
+
+The first comparison of these journal modes was **worthless and looked fine**: at the
+original scale a non-MVCC database is two pages, so nothing is ever evicted and every
+arm came back clean, journal or no journal. What the scale bought was the ability to
+fail. Nothing about a passing run says which of the two it was.
+
+Whether this is fixed in the storage layer or recorded as a deliberate limit of the
+MVCC store is **not decided here**.
+
+---
 
 ## Verifying a fix
 
