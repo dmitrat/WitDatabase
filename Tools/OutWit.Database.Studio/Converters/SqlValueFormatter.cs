@@ -18,36 +18,65 @@ public static class SqlValueFormatter
     #region Display Formatting
 
     /// <summary>
-    /// Formats a value for display in UI (DataGrid, etc.).
-    /// Returns the original value for types that DataGrid renders well natively,
-    /// and formatted strings only for complex types (blobs, booleans).
+    /// Writes a value for the screen, in the chosen format (WS-65).
+    ///
+    /// <para>
+    /// <b>Every value comes back as a string, and that is the change.</b> Numbers and dates used to be
+    /// returned unchanged with a comment saying the DataGrid would format them "culture-aware" - which
+    /// it does, so on a ru-RU machine a DECIMAL was drawn as <c>4812,50</c> and a DATETIME as
+    /// <c>28.06.2026</c>. Both are values a person copies into a statement, and neither parses. The
+    /// grid now draws exactly what this returns and formats nothing itself.
+    /// </para>
+    /// <para>
+    /// Sorting is unaffected: the columns bind to <c>Row.ItemArray[n]</c> and the converter only
+    /// decorates the cell, so a sort still compares the typed value.
+    /// </para>
     /// </summary>
-    /// <remarks>
-    /// Types returned as-is (DataGrid handles them with culture-aware formatting):
-    /// - Numeric types (int, long, float, double, decimal, etc.)
-    /// - String
-    /// - DateTime, DateOnly, TimeOnly, DateTimeOffset, TimeSpan (culture-aware)
-    /// - Guid
-    /// 
-    /// Types formatted explicitly:
-    /// - null/DBNull -> "(NULL)"
-    /// - byte[] -> hex preview
-    /// - bool -> "true"/"false" (consistent lowercase)
-    /// </remarks>
     public static object? FormatForDisplay(object? value)
+    {
+        return FormatForDisplay(value, ValueFormat.Current);
+    }
+
+    /// <summary>
+    /// The same, with the format given rather than taken from the static. Everything but the Avalonia
+    /// converter uses this, and so does every test - a format nobody set is a global nobody notices.
+    /// </summary>
+    public static object? FormatForDisplay(object? value, ValueFormat format)
     {
         if (value == null || value == DBNull.Value)
             return NULL_DISPLAY_TEXT;
 
         return value switch
         {
-            // Only format types that need special handling
-            byte[] bytes => FormatBlobForDisplay(bytes),
-            bool b => b ? "true" : "false",  // Consistent lowercase
-            
-            // All other types - return as-is, let DataGrid format them
-            // This includes: numbers, strings, DateTime, DateOnly, TimeOnly,
-            // DateTimeOffset, TimeSpan, Guid, JsonDocument, etc.
+            byte[] bytes => FormatBlobForDisplay(bytes, format),
+
+            bool b => b ? "true" : "false",
+
+            // Dates: ISO by default, whatever the machine says. ISO sorts as text and pastes into a
+            // statement; 28.06.2026 does neither.
+            DateTime dt => format.DatesAreIso
+                ? dt.ToString(dt.TimeOfDay == TimeSpan.Zero ? "yyyy-MM-dd" : "yyyy-MM-dd HH:mm:ss",
+                    CultureInfo.InvariantCulture)
+                : dt.ToString(format.DateCulture),
+            DateOnly d => format.DatesAreIso
+                ? d.ToString("yyyy-MM-dd", CultureInfo.InvariantCulture)
+                : d.ToString(format.DateCulture),
+            TimeOnly t => format.DatesAreIso
+                ? t.ToString("HH:mm:ss", CultureInfo.InvariantCulture)
+                : t.ToString(format.DateCulture),
+            DateTimeOffset dto => format.DatesAreIso
+                ? dto.ToString("yyyy-MM-dd HH:mm:ss zzz", CultureInfo.InvariantCulture)
+                : dto.ToString(format.DateCulture),
+
+            // Numbers: a dot and no group separator by default. The group separator is the half of
+            // this that people forget - "4 812.50" does not paste either.
+            decimal m => m.ToString(format.NumberCulture),
+            double db => db.ToString(format.NumberCulture),
+            float f => f.ToString(format.NumberCulture),
+            Half h => ((double)h).ToString(format.NumberCulture),
+
+            // Integers have no separator to get wrong under the default numeric format, so they are
+            // left to render themselves.
             _ => value
         };
     }
@@ -57,14 +86,35 @@ public static class SqlValueFormatter
     /// </summary>
     public static string FormatBlobForDisplay(byte[] bytes)
     {
+        return FormatBlobForDisplay(bytes, ValueFormat.Current);
+    }
+
+    /// <summary>
+    /// A BLOB in a cell, in one of the three ways the Data section offers: its size, its hex, or
+    /// Base64. Size is the default because a column of truncated hex tells a person nothing they can
+    /// use, and the cell viewer shows the bytes when they want them.
+    /// </summary>
+    public static string FormatBlobForDisplay(byte[] bytes, ValueFormat format)
+    {
         if (bytes.Length == 0)
             return EMPTY_BLOB_TEXT;
 
-        if (bytes.Length <= MAX_BLOB_DISPLAY_LENGTH)
-            return $"0x{BitConverter.ToString(bytes).Replace("-", "")}";
+        switch (format.Binary)
+        {
+            case ValueFormat.BINARY_BASE64:
+                return Convert.ToBase64String(bytes);
 
-        var preview = BitConverter.ToString(bytes, 0, MAX_BLOB_DISPLAY_LENGTH).Replace("-", "");
-        return $"0x{preview}... ({bytes.Length} bytes)";
+            case ValueFormat.BINARY_SIZE:
+                return $"({bytes.Length} bytes)";
+
+            default:
+                if (bytes.Length <= MAX_BLOB_DISPLAY_LENGTH)
+                    return $"0x{BitConverter.ToString(bytes).Replace("-", "")}";
+
+                var preview = BitConverter.ToString(bytes, 0, MAX_BLOB_DISPLAY_LENGTH).Replace("-", "");
+
+                return $"0x{preview}... ({bytes.Length} bytes)";
+        }
     }
 
     #endregion

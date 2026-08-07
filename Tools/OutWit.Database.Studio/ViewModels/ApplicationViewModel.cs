@@ -58,10 +58,21 @@ public sealed class ApplicationViewModel
 
         // The language is a setting, so it is changed by changing the setting - there is no second way
         // to do it and nothing to keep in step. This is the whole of "applied immediately" for WS-63.
+        //
+        // The value FORMAT is a different setting and is followed separately, which is WS-65 in the
+        // wiring: choosing Russian does not make a decimal Russian, and neither does the machine's
+        // locale. A value in the grid is something a person pastes into a statement.
+        ApplyValueFormat();
+
         Settings.Changed += (_, e) =>
         {
             if (e.PropertyName == nameof(Models.Settings.Language))
                 Localization.SetLanguage(Settings.Current.Language);
+
+            if (e.PropertyName is nameof(Models.Settings.DateTimeFormat)
+                or nameof(Models.Settings.NumberFormat)
+                or nameof(Models.Settings.BinaryDisplay))
+                ApplyValueFormat();
         };
 
         InitViewModels();
@@ -103,6 +114,18 @@ public sealed class ApplicationViewModel
     #endregion
 
     #region Functions
+
+    /// <summary>
+    /// Hands the three format settings to the one place a converter can read them from. Everything
+    /// else takes the format as an argument; an Avalonia value converter has nowhere to be handed one.
+    /// </summary>
+    private void ApplyValueFormat()
+    {
+        Converters.ValueFormat.Current = new Converters.ValueFormat(
+            Settings.Current.DateTimeFormat,
+            Settings.Current.NumberFormat,
+            Settings.Current.BinaryDisplay);
+    }
 
     public ApplicationViewModel ResetOwnerWindow(Avalonia.Controls.Window? window)
     {
