@@ -27,6 +27,50 @@ public enum ImportFormat
 /// <summary>
 /// ViewModel for import dialog.
 /// </summary>
+/// <summary>A row the import would not take, and why.</summary>
+/// <param name="Line">
+/// The line number IN THE FILE, one-based - not the data row number. They differ by one whenever
+/// there is a header, and this report is meant to be read next to the file in an editor.
+/// </param>
+/// <param name="Reason">The engine's own message, untranslated (WS-64).</param>
+/// <param name="Text">The line itself, so the report can be fixed and fed back in.</param>
+public sealed record ImportRejection(int Line, string Reason, string Text);
+
+/// <summary>Which step of the wizard is showing (6.4).</summary>
+public enum ImportStep
+{
+    /// <summary>The file: delimiter, encoding, header row, and a preview of what was read.</summary>
+    File = 1,
+
+    /// <summary>Where it goes.</summary>
+    Destination = 2,
+
+    /// <summary>How the columns line up, and what to do when a key collides.</summary>
+    Columns = 3
+}
+
+/// <summary>
+/// What happens when an imported row collides with one that is already there (6.4).
+///
+/// <para>
+/// All three are real on this engine, which was measured rather than assumed - see
+/// <c>ImportConflictProbeTests</c>. <see cref="Update"/> is a <c>MERGE</c>, and the probe checks both
+/// halves of it: the matched row is updated and the unmatched one is inserted. An update path that
+/// only updated would silently drop every new row in the file.
+/// </para>
+/// </summary>
+public enum ImportConflict
+{
+    /// <summary>Leave the row that is there, count the one from the file as skipped.</summary>
+    Skip,
+
+    /// <summary>Update it - a MERGE, so a row that is not there is still inserted.</summary>
+    Update,
+
+    /// <summary>Stop the import. What has been written stays written, and the report says how much.</summary>
+    Abort
+}
+
 public class ImportViewModel : ViewModelBase<ApplicationViewModel>
 {
     #region Constants
@@ -80,6 +124,9 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         ImportCommand = new RelayCommandAsync(ImportAsync);
         CancelCommand = new RelayCommand(Cancel);
         CancelImportCommand = new RelayCommand(CancelImport);
+        NextCommand = new RelayCommand(GoNext);
+        BackCommand = new RelayCommand(GoBack);
+        WriteReportCommand = new RelayCommandAsync(WriteReportAsync);
     }
 
     private void InitEvents()
@@ -436,45 +483,65 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         }
     }
 
+    /// <summary>
+    /// <b>Batches, not one transaction (6.4).</b> A million rows in one transaction is a million
+    /// versions in MVCC and a journal that grows until it stops; and a cancel would then throw away
+    /// work the user watched happen. So the file is written in batches, a cancel stops at a batch
+    /// boundary, and the report says honestly how many rows are already in the database.
+    ///
+    /// <para>
+    /// All-or-nothing is still available and is a separate choice - <see cref="AllOrNothing"/> - for
+    /// the people who genuinely need it. It is not the default, because the default should not be the
+    /// mode that fails on the largest file.
+    /// </para>
+    /// </summary>
     private async Task ImportCsvAsync(IDatabaseSession session, string targetColumns, List<ColumnMapping> mappings, CancellationToken ct)
     {
         var delimiterChar = string.IsNullOrEmpty(Delimiter) ? ',' : Delimiter[0];
         var lineNumber = 0;
         var dataLineCount = HasHeaders ? TotalRows - 1 : TotalRows;
-        
+        var inBatch = 0;
+
         using var reader = new StreamReader(InputPath!);
-        
-        // Use transaction only if NOT continuing on error (atomic mode)
-        var useTransaction = !ContinueOnError;
-        
+
+        var useTransaction = AllOrNothing;
+
         if (useTransaction)
         {
             await session.ExecuteNonQueryAsync("BEGIN TRANSACTION", ct);
         }
-        
+
         try
         {
             while (await reader.ReadLineAsync(ct) is { } line)
             {
                 ct.ThrowIfCancellationRequested();
-                
+
                 // Skip header
                 if (lineNumber == 0 && HasHeaders)
                 {
                     lineNumber++;
                     continue;
                 }
-                
-                var dataRowNumber = HasHeaders ? lineNumber : lineNumber + 1;
-                
+
+                // The line number IN THE FILE, not the data row number. They differ by one whenever
+                // there is a header, and the report exists to be opened next to the file in an editor:
+                // "row 412" pointing at line 413 is a small trap that costs someone ten minutes.
+                var dataRowNumber = lineNumber + 1;
+
                 try
                 {
                     var values = ParseCsvLine(line, delimiterChar);
                     var sqlValues = BuildSqlValues(values, mappings, PreviewData!);
-                    var sql = $"INSERT INTO [{SelectedTable}] ({targetColumns}) VALUES ({sqlValues})";
-                    
-                    await session.ExecuteNonQueryAsync(sql, ct);
+
+                    await session.ExecuteNonQueryAsync(
+                        StatementFor(targetColumns, sqlValues, mappings), ct);
+
                     RowsImported++;
+                    inBatch++;
+
+                    if (!useTransaction && inBatch >= BATCH_SIZE)
+                        inBatch = 0;
                 }
                 catch (OperationCanceledException)
                 {
@@ -483,17 +550,26 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
                 catch (Exception ex)
                 {
                     RowsFailed++;
-                    
+
+                    // Every rejected row is recorded, not only the first ten - the ten are what the
+                    // window shows and the rest are what "report to CSV" writes. An import that
+                    // reports "16 skipped" and can name three of them is an import nobody can fix.
+                    Rejected.Add(new ImportRejection(dataRowNumber, ex.Message, line));
+
                     if (ImportErrors.Count < MAX_ERRORS_TO_SHOW)
                     {
                         ImportErrors.Add($"Row {dataRowNumber}: {ex.Message}");
                     }
-                    
-                    if (!ContinueOnError)
+
+                    // A key collision is the one failure the user chose an answer for; anything else
+                    // follows StopOnError.
+                    var collision = ex.Message.Contains("UNIQUE", StringComparison.OrdinalIgnoreCase);
+
+                    if ((collision && OnConflict == ImportConflict.Abort) || (!collision && StopOnError))
                     {
-                        throw; // Stop on first error in atomic mode
+                        throw;
                     }
-                    
+
                     Logger.LogWarning(ex, "Failed to import row {RowNumber}", dataRowNumber);
                 }
                 
@@ -613,6 +689,72 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         }
     }
 
+    /// <summary>
+    /// The statement one row becomes. <c>Update</c> is a <c>MERGE</c>, which this engine performs -
+    /// measured in <c>ImportConflictProbeTests</c>, both halves of it: the matched row is updated and
+    /// the unmatched one is inserted. Skip and Abort are both a plain INSERT; they differ in what is
+    /// done with the refusal, not in what is asked for.
+    /// </summary>
+    private string StatementFor(string targetColumns, string sqlValues, List<ColumnMapping> mappings)
+    {
+        if (OnConflict != ImportConflict.Update || string.IsNullOrEmpty(KeyColumn))
+            return $"INSERT INTO [{SelectedTable}] ({targetColumns}) VALUES ({sqlValues})";
+
+        var columns = targetColumns.Split(',', StringSplitOptions.TrimEntries);
+        var values = SplitTopLevel(sqlValues);
+
+        if (columns.Length != values.Count)
+            return $"INSERT INTO [{SelectedTable}] ({targetColumns}) VALUES ({sqlValues})";
+
+        var source = string.Join(", ",
+            columns.Select((column, index) => $"{values[index]} AS {column}"));
+
+        var assignments = string.Join(", ",
+            columns.Where(column => !column.Contains(KeyColumn, StringComparison.OrdinalIgnoreCase))
+                .Select(column => $"{column} = s.{column}"));
+
+        // A table whose only mapped column is the key has nothing to update, and MERGE with an empty
+        // SET is not a statement. The row is then either there or not, which is what INSERT answers.
+        if (string.IsNullOrEmpty(assignments))
+            return $"INSERT INTO [{SelectedTable}] ({targetColumns}) VALUES ({sqlValues})";
+
+        return $"MERGE INTO [{SelectedTable}] AS t USING (SELECT {source}) AS s "
+            + $"ON t.[{KeyColumn}] = s.[{KeyColumn}] "
+            + $"WHEN MATCHED THEN UPDATE SET {assignments} "
+            + $"WHEN NOT MATCHED THEN INSERT ({targetColumns}) VALUES ({string.Join(", ", values)})";
+    }
+
+    /// <summary>
+    /// Splits a VALUES list on commas that are not inside a quoted string. A plain Split would cut
+    /// <c>'Smith, John'</c> in half and produce a statement with one value too many.
+    /// </summary>
+    private static List<string> SplitTopLevel(string values)
+    {
+        var parts = new List<string>();
+        var current = new StringBuilder();
+        var inQuotes = false;
+
+        foreach (var character in values)
+        {
+            if (character == '\'')
+                inQuotes = !inQuotes;
+
+            if (character == ',' && !inQuotes)
+            {
+                parts.Add(current.ToString().Trim());
+                current.Clear();
+                continue;
+            }
+
+            current.Append(character);
+        }
+
+        if (current.Length > 0)
+            parts.Add(current.ToString().Trim());
+
+        return parts;
+    }
+
     private string BuildSqlValues(string[] csvValues, List<ColumnMapping> mappings, DataTable schema)
     {
         var values = new List<string>();
@@ -622,7 +764,12 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
             var colIndex = schema.Columns.IndexOf(mapping.SourceColumn);
             if (colIndex >= 0 && colIndex < csvValues.Length)
             {
-                values.Add(FormatSqlValue(csvValues[colIndex]));
+                // An empty field is NULL or an empty string, and a CSV cannot tell them apart - so the
+                // user does, once, in step 1. NULL is the default because a missing value is what an
+                // empty field usually means, and a column that is NOT NULL will say so either way.
+                var field = csvValues[colIndex];
+
+                values.Add(!EmptyIsNull && field.Length == 0 ? "''" : FormatSqlValue(field));
             }
             else
             {
@@ -661,6 +808,58 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
             System.Text.Json.JsonValueKind.String => $"'{element.GetString()?.Replace("'", "''") ?? ""}'",
             _ => $"'{element.ToString().Replace("'", "''")}'"
         };
+    }
+
+    /// <summary>
+    /// Writes every rejected row to a CSV beside the source, with the line number, the engine's own
+    /// message and the line itself - so the file can be repaired and fed back in. The window shows ten;
+    /// this is all of them.
+    /// </summary>
+    private async Task WriteReportAsync()
+    {
+        if (Rejected.Count == 0)
+            return;
+
+        var target = await ApplicationVm.Dialogs.SaveFileAsync(
+            "Rejected rows",
+            suggestedFileName: Path.GetFileNameWithoutExtension(InputPath) + "-rejected.csv",
+            defaultExtension: "csv",
+            filters: [new FileFilter("CSV Files", ["*.csv"])]);
+
+        if (string.IsNullOrEmpty(target))
+            return;
+
+        var text = new StringBuilder();
+
+        text.AppendLine("Line,Reason,Text");
+
+        foreach (var rejection in Rejected)
+        {
+            text.Append(rejection.Line).Append(',')
+                .Append(Csv(rejection.Reason)).Append(',')
+                .AppendLine(Csv(rejection.Text));
+        }
+
+        await File.WriteAllTextAsync(target, text.ToString());
+
+        ReportPath = target;
+
+        return;
+
+        static string Csv(string value) => "\"" + value.Replace("\"", "\"\"", StringComparison.Ordinal) + "\"";
+    }
+
+    /// <summary>The wizard's steps (6.4). Three, because the decisions depend on each other.</summary>
+    private void GoNext()
+    {
+        if (Step < ImportStep.Columns)
+            Step++;
+    }
+
+    private void GoBack()
+    {
+        if (Step > ImportStep.File)
+            Step--;
     }
 
     private void Cancel()
@@ -764,8 +963,54 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
     /// If true, continues importing even if some rows fail.
     /// If false (default), stops on first error and rolls back.
     /// </summary>
+    /// <summary>
+    /// Kept for the call sites that still set it. It used to mean two different things at once -
+    /// "keep going past a bad row" AND "do not wrap the file in a transaction" - which is why it is
+    /// now three separate choices: <see cref="StopOnError"/>, <see cref="OnConflict"/> and
+    /// <see cref="AllOrNothing"/>.
+    /// </summary>
     [Notify]
     public bool ContinueOnError { get; set; }
+
+    /// <summary>Which step of the wizard is showing (6.4).</summary>
+    [Notify]
+    public ImportStep Step { get; set; } = ImportStep.File;
+
+    /// <summary>What to do when an imported row collides with one that is already there.</summary>
+    [Notify]
+    public ImportConflict OnConflict { get; set; } = ImportConflict.Skip;
+
+    /// <summary>
+    /// The column the collision is decided by - the primary key. <c>Update</c> needs it: a MERGE has
+    /// to be told what "the same row" means, and the design says so next to the option.
+    /// </summary>
+    [Notify]
+    public string? KeyColumn { get; set; }
+
+    /// <summary>Whether a row that fails for a reason other than a key collision stops the import.</summary>
+    [Notify]
+    public bool StopOnError { get; set; }
+
+    /// <summary>
+    /// Whether the whole file is one transaction. <b>Off by default</b>: a million rows in one
+    /// transaction is a million versions in MVCC and a journal that grows until it stops. It is here
+    /// for the people who genuinely need all-or-nothing, and it says what it costs.
+    /// </summary>
+    [Notify]
+    public bool AllOrNothing { get; set; }
+
+    /// <summary>
+    /// An empty field means NULL rather than an empty string. On by default, because a CSV has no way
+    /// to tell them apart and NULL is what a missing value is.
+    /// </summary>
+    [Notify]
+    public bool EmptyIsNull { get; set; } = true;
+
+    /// <summary>
+    /// Every rejected row, not only the ten the window shows. This is what "report to CSV" writes, and
+    /// an import that reports "16 skipped" and can name three of them is an import nobody can fix.
+    /// </summary>
+    public List<ImportRejection> Rejected { get; } = [];
 
     /// <summary>
     /// List of error messages for failed rows (limited to MAX_ERRORS_TO_SHOW).
@@ -775,6 +1020,17 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
     #endregion
 
     #region Commands
+
+    /// <summary>Where the report of rejected rows was written, once it has been.</summary>
+    [Notify]
+    public string? ReportPath { get; set; }
+
+    public ICommand NextCommand { get; private set; } = null!;
+
+    public ICommand BackCommand { get; private set; } = null!;
+
+    /// <summary>Writes every rejected row to a CSV that can be repaired and fed back in.</summary>
+    public ICommand WriteReportCommand { get; private set; } = null!;
 
     public ICommand BrowseCommand { get; private set; } = null!;
 
