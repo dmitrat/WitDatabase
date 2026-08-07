@@ -188,6 +188,13 @@ public partial class MainWindow : Window
             return;
         }
 
+        // FIRST, and synchronously (issue 10). This is what flushes the databases, and it cannot
+        // sit after an await: OnClosing is 'async void', so the first await hands control back to
+        // Avalonia, which closes the window and ends the process - the continuation never runs.
+        // Measured twice: with this call after the await, the file still came out with a header
+        // older than its own pages.
+        ApplicationViewModel.Instance.CloseDatabases();
+
         try
         {
             var state = WindowState == WindowState.Maximized ? "Maximized" : "Normal";
@@ -200,6 +207,7 @@ public partial class MainWindow : Window
         {
             // Ignore save errors on close
         }
+
     }
 
     private void OnRecentFilesChanged(object? sender, NotifyCollectionChangedEventArgs e)
