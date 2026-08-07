@@ -127,6 +127,20 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
+
+        // A label built here is rendered once and would sit in the old language for the rest of the
+        // session. Markup gets this for free from DynamicResource; a ViewModel has to ask.
+        Localization.LanguageChanged += (_, _) => RefreshLanguage();
+    }
+
+    /// <summary>Everything on this window whose text came out of the catalogue rather than the markup.</summary>
+    private void RefreshLanguage()
+    {
+        OnPropertyChanged(nameof(SelectionLabel));
+        OnPropertyChanged(nameof(PageLabel));
+        OnPropertyChanged(nameof(EverythingLabel));
+        OnPropertyChanged(nameof(QuerySourceSummary));
+        OnPropertyChanged(nameof(ProgressText));
     }
 
     #endregion
@@ -192,6 +206,8 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
         OnPropertyChanged(nameof(PageCount));
         OnPropertyChanged(nameof(EverythingCount));
         OnPropertyChanged(nameof(CanExportSelection));
+
+        RefreshLanguage();
     }
 
     /// <summary>
@@ -226,14 +242,16 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
             ? $"{SelectedTable}.{extension}" 
             : $"export.{extension}";
 
+        // The title of a file picker and the name of a filter are read by a person and belong in the
+        // catalogue like any other caption; the MASK beside them is not text and stays as it is.
         var filePath = await ApplicationVm.Dialogs.SaveFileAsync(
-            "Export to file",
+            Localization["Dialog.Export.PickFile"],
             suggestedFileName: defaultName,
             defaultExtension: extension,
             filters:
             [
-                new FileFilter($"{extension.ToUpper()} Files", [$"*.{extension}"]),
-                new FileFilter("All Files", ["*.*"])
+                new FileFilter(Localization.Format("Common.Filter.Files", extension.ToUpper()), [$"*.{extension}"]),
+                new FileFilter(Localization["Common.Filter.AllFiles"], ["*.*"])
             ]);
 
         if (!string.IsNullOrEmpty(filePath))
@@ -268,21 +286,21 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
 
                 if (session?.IsConnected != true)
                 {
-                    ErrorMessage = "Not connected to a database";
+                    ErrorMessage = Localization["Common.NotConnected"];
                     return;
                 }
 
                 var result = await session.ExecuteQueryAsync($"SELECT * FROM [{SelectedTable}]", ct);
                 if (result.Data == null)
                 {
-                    ErrorMessage = "Failed to load table data";
+                    ErrorMessage = Localization["Dialog.Export.NoTableData"];
                     return;
                 }
                 dataToExport = result.Data;
             }
             else
             {
-                ErrorMessage = "No data source selected";
+                ErrorMessage = Localization["Dialog.Export.NoSource"];
                 return;
             }
 
@@ -308,10 +326,11 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
 
             if (!ct.IsCancellationRequested)
             {
-                ApplicationVm.MainWindowVm.StatusText = $"Exported {RowsExported} rows to {Path.GetFileName(OutputPath)}";
+                ApplicationVm.MainWindowVm.StatusText = Localization.Format("Dialog.Export.Done",
+                    RowsExported, Path.GetFileName(OutputPath));
 
                 ApplicationVm.Notifications.Information(
-                    $"Exported {RowsExported} rows",
+                    Localization.Plural("Count.RowsExported", RowsExported),
                     OutputPath,
                     ApplicationVm.ActiveSession?.DisplayName);
                 Logger.LogInformation("Exported {RowCount} rows to {FilePath}", RowsExported, OutputPath);
@@ -320,7 +339,7 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (OperationCanceledException)
         {
-            ErrorMessage = $"Export cancelled after {RowsExported} rows.";
+            ErrorMessage = Localization.Format("Dialog.Export.Cancelled", RowsExported);
             Logger.LogInformation("Export cancelled after {RowCount} rows", RowsExported);
             
             // Delete partial file
@@ -331,7 +350,8 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Export failed: {ex.Message}";
+            // The engine's own words are inside the sentence and are not translated (WS-64).
+            ErrorMessage = Localization.Format("Dialog.Export.Failed", ex.Message);
             Logger.LogError(ex, "Export failed");
         }
         finally
@@ -611,6 +631,13 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
             UpdateStatus();
         }
 
+        if (e.IsProperty((ExportViewModel vm) => vm.RowsExported) ||
+            e.IsProperty((ExportViewModel vm) => vm.TotalRows))
+        {
+            OnPropertyChanged(nameof(ProgressText));
+            OnPropertyChanged(nameof(QuerySourceSummary));
+        }
+
         // Update suggested file extension when format changes
         if (e.IsProperty((ExportViewModel vm) => vm.SelectedFormat) && !string.IsNullOrEmpty(OutputPath))
         {
@@ -665,6 +692,30 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
     public int PageCount => DataToExport?.Rows.Count ?? 0;
 
     public int EverythingCount => RowsInSource;
+
+    /// <summary>
+    /// The three scope labels, each carrying its own count (WS-51).
+    ///
+    /// <para>
+    /// They were <c>StringFormat='Selection · {0}'</c> in the markup, which no lint over attributes can
+    /// see and no translator can reach. The count is what makes them useful, so the whole label is one
+    /// catalogue entry with the number in it rather than a word and a number stuck together.
+    /// </para>
+    /// </summary>
+    public string SelectionLabel => Localization.Format("Dialog.Export.Scope.Selection", SelectionCount);
+
+    public string PageLabel => Localization.Format("Dialog.Export.Scope.Page", PageCount);
+
+    public string EverythingLabel => Localization.Format("Dialog.Export.Scope.Everything", EverythingCount);
+
+    /// <summary>
+    /// What the query result being exported is, in one sentence. Five <c>&lt;Run&gt;</c>s before, which
+    /// fixed the English word order into the window.
+    /// </summary>
+    public string QuerySourceSummary => Localization.Format("Dialog.Export.QueryResult", SourceName, TotalRows);
+
+    /// <summary>How far the export has got. Shown over the window while it runs.</summary>
+    public string ProgressText => Localization.Format("Dialog.Export.Progress", RowsExported, TotalRows);
 
     /// <summary>
     /// Whether "Selection" can be chosen at all. An empty selection offered as a scope is a button
@@ -766,6 +817,8 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
     private IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     private IExportService Export => ApplicationVm.Export;
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     private ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

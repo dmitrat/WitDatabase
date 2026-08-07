@@ -1321,6 +1321,140 @@ store is still deferred, so a saved connection still asks for its password every
 
 ---
 
+## Stage 10 - the sweep, and the two classes a markup lint cannot reach
+
+Stage 9 shipped the mechanism and named its remainder: fourteen views still carried their own text, and
+`LocalizationCoverageTests` said in its own summary that it could not see a string built in a ViewModel
+or an `AutomationProperties.Name`. This stage is that remainder. The criterion was written first:
+
+> **Switching the language changes every word Studio wrote and no word it did not** - and what a screen
+> reader announces is one of those words.
+
+### What was swept, and what the numbers were
+
+**318 literals in the markup of 17 views**, of which 7 were already-exempt engine terms and gestures.
+`NOT_YET_SWEPT` is deleted: there is no list of excused files any more, because there is nothing on it.
+
+Three classes turned up that the count did not include and no rule had been looking for:
+
+- **85 `AutomationProperties.Name` attributes**, every one of them English. They are what a blind person
+  hears, and the six windows stage 9 swept announced themselves in English throughout while every test
+  passed;
+- **captions inside bindings** - `StringFormat='page {0}'`, `TargetNullValue='not counted'` - which are
+  markup and which no rule over attributes can see;
+- **sentences built out of `<Run>` fragments.** "Total:" + a number + "rows" reads correctly in English
+  and cannot be translated at all: another language moves the number, inflects the noun after it, or
+  puts the unit first. Eight of these were rewritten as one catalogue entry each.
+
+The catalogue went from **202 entries to 650**, in both languages.
+
+### The mechanism the fragments needed
+
+A value converter is asked once, when its binding evaluates. A sentence assembled by one would stay in
+the language it was built in until something else moved on screen - which is the same failure as not
+translating it, arriving later.
+
+`LocalizedText` therefore takes the **template through the binding**:
+
+```xml
+<MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
+    <DynamicResource ResourceKey="S.Query.SyntaxError"/>
+    <Binding Path="SyntaxErrorMessage"/>
+    <Binding Path="SyntaxErrorLine"/>
+</MultiBinding>
+```
+
+Swapping the catalogue re-evaluates the whole binding, so these refresh with everything else. A plural
+needs a *rule* rather than a template, so its converter takes the **language** as its first input -
+nothing reads it; it is the trigger. `LocalizedResources` publishes `S.$language` for exactly this.
+
+Four converters, and the last two were written because the running application asked for them:
+`Format`, `Plural`, `Keyed` (a list whose items are their own identity - the settings sections are
+compared by value and drawn from it) and `Or` (a translated fallback, which a binding cannot have -
+see the defects below).
+
+### The two new rules, and what they are written around
+
+`LocalizationCoverageTests` has three rules now, and the third is **written around destinations rather
+than around literals**. "Explorer refreshed {Connection}: {Tables} tables" and "Renamed {old} to {new}"
+are the same shape; the first is a log template that must stay in one language and the second is a
+sentence in the status bar. Nothing about the strings tells them apart - where they GO does. So the
+rule names the properties a view binds and the services that show a message, and skips any line
+carrying `Logger.`.
+
+**Every rule was measured in both directions**: a caption put back into `QueryEditor.axaml`, an
+announcement put back into `DatabaseExplorer.axaml`, and `StatusText = "Ready"` put back into
+`MainWindowViewModel` - each turns its own rule red and only its own, and green again when restored.
+The rules were re-measured after they were widened, not before.
+
+**Each rule carries a control that counts the SURFACE, not the findings.** A rule that matches only
+literals matches nothing once the sweep is done - and "nothing left to find" and "the rule is reading
+the wrong folder" produce the same number. The controls count every caption, every announcement and
+every destination *including* the ones that already come from the catalogue.
+
+**Three false positives were designed out rather than exempted**, and each is a case the rule got wrong
+on a real file: `SizeToContent="Height"` read as a `Content` of "Height" (fixed with a look-behind),
+`&lt;` read as the word "lt" (fixed by decoding entities), and `{0:F1} %` read as prose (fixed by
+requiring the letters to be OUTSIDE the placeholders). `EveryRuleCatchesWhatItIsForAndNothingElseTest`
+pins all three plus one line of real text per rule.
+
+**The rule was widened twice by things it had missed, and both were found by the application rather
+than by reading it.** It read one line at a time, so an assignment whose string begins on the next line
+went past it - which is how the status bar's "stage9: 0 tables, 0 views..." survived. And its
+look-behind, borrowed from the markup rule, rejected `ApplicationVm.MainWindowVm.StatusText = "..."`
+because of the dot in front of it.
+
+### What it still cannot reach, said out loud
+
+It reads text, not a program. A caption assembled in a helper the rules do not name, or rendered by a
+model's `ToString`, goes past it - `DataAccessNote` rendered "primary key with no index" that way and
+the inspector's panel stayed English under a Russian interface until the executable showed it. The fix
+there is worth naming as a rule of its own: **a model cannot reach the catalogue, so a model must not
+render itself.**
+
+### Seven defects, and every one of them came from running the application
+
+None was visible to any of the 682 tests.
+
+1. **The tree's six folders** - Tables, Views, Indexes, Triggers, Sequences, Routines - were the only
+   English left in the explorer. They are built as node names, which no destination rule covers. The
+   fix carries a second lesson: a folder is now remembered as expanded **by a catalogue key**, because
+   the memory used to be keyed by the name on screen and would have forgotten every open folder the
+   moment somebody switched language;
+2. **the status bar's schema summary**, built across two lines (see above);
+3. **`Autocommit`**, the transaction state, in two places - the ViewModel's default and a
+   `FallbackValue` in the markup;
+4. **the settings section list** - General, Editor, Data, Diagnostics, About - sitting in English beside
+   its own heading in Russian. The value is the identity there, so only the caption is translated;
+5. **the theme name** on the title bar button, written in the window's code-behind;
+6. **the inspector's whole DATA ACCESS panel** and the object's subtitle ("stage9 - table");
+7. **the grid's own sentence** - "ordered by Id" - built in `GridQuery`, a helper with no ViewModel.
+
+**And one defect I introduced while fixing the third and had to find the same way.**
+`FallbackValue={DynamicResource S.Query.Autocommit}` does not evaluate: Avalonia assigns the markup
+extension OBJECT, and the status bar read
+`Avalonia.Markup.Xaml.MarkupExtensions.DynamicResourceExtension`. A binding cannot have a translated
+fallback; `LocalizedText.Or` is what it needs instead. **Check the artifact, not the diff** - the build
+was clean and the tests were green.
+
+### Two things that were already wrong and are not localisation
+
+- **The tab strip drew a question mark beside every tab with unsaved work.** `Text="?"` has been in
+  `WorkspaceTabStrip.axaml` since Studio's first commit - a bullet mangled on the way in. It has no
+  letters, so no lint could ever have seen it; it is now `●`. Same class as [[repo-file-encodings]],
+  one layer out;
+- `Count.Statements` said "стейтмент" in Russian - a transliteration where "оператор" is the word.
+
+### The border held (WS-64)
+
+Nothing on the engine's side of it moved. What stayed in English, deliberately: `B-Tree`, `LSM`, `SQL`,
+`CSV`, `JSON`, `MVCC`, `EXPLAIN`, `DDL`, every SQL keyword and clause shown as an example, the isolation
+levels, object names, and the engine's own error text inside the sentences that frame it. Measured in
+the running application: a `DECIMAL` still draws as `4812.50` with a decimal POINT under a Russian
+interface, which is the WS-65 control and the thing that would have broken first.
+
+---
+
 ## Findings for the engine, not fixed here
 **A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
 class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner

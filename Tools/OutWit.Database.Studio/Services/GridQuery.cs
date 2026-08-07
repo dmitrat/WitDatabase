@@ -172,19 +172,33 @@ public static class GridQuery
         return $"[{SqlValueFormatter.EscapeIdentifier(column)}]{direction}";
     }
 
+    /// <summary>
+    /// The sentence under the grid saying what question the engine was asked (WS-30).
+    ///
+    /// <para>
+    /// It is a helper with no ViewModel behind it, so it reads the current service rather than being
+    /// handed one. Found still in English by switching the running application - the grid said
+    /// "ordered by Id" under a Russian footer.
+    /// </para>
+    /// </summary>
     private static string Describe(GridView view, string filters)
     {
+        var localization = Localization.LocalizationService.Shared;
+
         var parts = new List<string>();
 
         if (!string.IsNullOrEmpty(filters))
-            parts.Add(view.Filters.Count == 1 ? $"1 filter: {filters}" : $"{view.Filters.Count} filters: {filters}");
+            parts.Add(localization.Format("Grid.View.Filters",
+                localization.Plural("Count.Filters", view.Filters.Count), filters));
 
         if (view.SortColumn != null)
-            parts.Add($"sorted by {view.SortColumn}{(view.SortDescending ? " descending" : "")}");
+            parts.Add(localization.Format(view.SortDescending
+                ? "Grid.View.SortedDescending"
+                : "Grid.View.Sorted", view.SortColumn));
         else if (view.KeyColumn != null)
-            parts.Add($"ordered by {view.KeyColumn}");
+            parts.Add(localization.Format("Grid.View.Ordered", view.KeyColumn));
         else
-            parts.Add("no order - the engine returns rows in insertion order, which it does not promise");
+            parts.Add(localization["Grid.View.NoOrder"]);
 
         return string.Join(" · ", parts);
     }

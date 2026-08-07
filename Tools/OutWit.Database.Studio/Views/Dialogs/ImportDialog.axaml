@@ -10,7 +10,7 @@
         d:DesignHeight="650"
         x:Class="OutWit.Database.Studio.Views.Dialogs.ImportDialog"
         x:DataType="vm:ImportViewModel"
-        Title="Import Data"
+        Title="{DynamicResource S.Dialog.Import.Title}"
         Width="700"
         Height="650"
         WindowStartupLocation="CenterOwner"
@@ -23,18 +23,18 @@
         <!-- The only wizard in the product, and it has three steps because the decisions depend on
              each other: how the file was read, where the rows go, how the columns line up (6.4). -->
         <StackPanel Grid.Row="0" Orientation="Horizontal" Spacing="14" Margin="0,0,0,14">
-            <TextBlock Text="1 · File" FontWeight="SemiBold"
+            <TextBlock Text="{DynamicResource S.Dialog.Import.Step.File}" FontWeight="SemiBold"
                        Opacity="{Binding Step, Converter={x:Static vm:ImportSteps.OpacityForFile}}"/>
-            <TextBlock Text="2 · Destination" FontWeight="SemiBold"
+            <TextBlock Text="{DynamicResource S.Dialog.Import.Step.Destination}" FontWeight="SemiBold"
                        Opacity="{Binding Step, Converter={x:Static vm:ImportSteps.OpacityForDestination}}"/>
-            <TextBlock Text="3 · Columns" FontWeight="SemiBold"
+            <TextBlock Text="{DynamicResource S.Dialog.Import.Step.Columns}" FontWeight="SemiBold"
                        Opacity="{Binding Step, Converter={x:Static vm:ImportSteps.OpacityForColumns}}"/>
         </StackPanel>
 
         <!-- Source File -->
         <StackPanel Grid.Row="1" Spacing="8"
                     IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsFile}}">
-            <TextBlock Text="Source File" FontWeight="SemiBold"/>
+            <TextBlock Text="{DynamicResource S.Dialog.Import.SourceFile}" FontWeight="SemiBold"/>
             <Grid ColumnDefinitions="Auto,*,Auto">
                 <ComboBox Grid.Column="0"
                           Width="100"
@@ -46,10 +46,10 @@
                 </ComboBox>
                 <TextBox Grid.Column="1"
                          Text="{Binding InputPath}"
-                         Watermark="Select file to import..."
+                         Watermark="{DynamicResource S.Dialog.Import.SelectFile}"
                          IsReadOnly="True"/>
                 <Button AutomationProperties.AutomationId="ImportBrowse" Grid.Column="2"
-                        Content="Browse..."
+                        Content="{DynamicResource S.Common.Browse}"
                         Command="{Binding BrowseCommand}"
                         IsEnabled="{Binding !IsImporting}"
                         Margin="8,0,0,0"/>
@@ -61,15 +61,15 @@
                     Spacing="8"
                     Margin="0,16,0,0"
                     IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsFile}}">
-            <TextBlock Text="CSV Options" FontWeight="SemiBold"
+            <TextBlock Text="{DynamicResource S.Dialog.Import.CsvOptions}" FontWeight="SemiBold"
                        IsVisible="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ImportFormat.Csv}}"/>
             <StackPanel Orientation="Horizontal" Spacing="16"
                         IsVisible="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ImportFormat.Csv}}">
-                <CheckBox Content="First row contains headers"
+                <CheckBox Content="{DynamicResource S.Dialog.Import.HasHeaders}"
                           IsChecked="{Binding HasHeaders}"
                           IsEnabled="{Binding !IsImporting}"/>
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="Delimiter:" VerticalAlignment="Center"/>
+                    <TextBlock Text="{DynamicResource S.Dialog.Import.Delimiter}" VerticalAlignment="Center"/>
                     <TextBox Text="{Binding Delimiter}"
                              Width="50"
                              IsEnabled="{Binding !IsImporting}"/>
@@ -78,12 +78,12 @@
 
             <!-- A CSV cannot tell an empty string from a missing value, so the user says which, once. -->
             <CheckBox AutomationProperties.AutomationId="ImportEmptyIsNull"
-                      AutomationProperties.Name="An empty field is NULL rather than an empty string"
+                      AutomationProperties.Name="{DynamicResource S.Dialog.Import.EmptyIsNull.Name}"
                       IsChecked="{Binding EmptyIsNull}"
                       IsEnabled="{Binding !IsImporting}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="An empty field is NULL"/>
-                    <TextBlock Text="(rather than an empty string)"
+                    <TextBlock Text="{DynamicResource S.Dialog.Import.EmptyIsNull}"/>
+                    <TextBlock Text="{DynamicResource S.Dialog.Import.EmptyIsNull.Hint}"
                                Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                                FontSize="12"/>
                 </StackPanel>
@@ -93,52 +93,52 @@
         <!-- STEP 3: what to do when an imported row collides with one that is already there. -->
         <StackPanel Grid.Row="3" Spacing="8" Margin="0,16,0,0"
                     IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsColumns}}">
-            <TextBlock Text="On a key collision" FontWeight="SemiBold"/>
+            <TextBlock Text="{DynamicResource S.Dialog.Import.OnConflict}" FontWeight="SemiBold"/>
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <RadioButton AutomationProperties.AutomationId="ImportConflictSkip"
-                             GroupName="Conflict" Content="Skip the row"
+                             GroupName="Conflict" Content="{DynamicResource S.Dialog.Import.Conflict.Skip}"
                              IsChecked="{Binding OnConflict, Converter={x:Static vm:ImportSteps.ConflictIsSkip}}"
                              Command="{Binding ChooseConflictCommand}" CommandParameter="Skip"/>
                 <RadioButton AutomationProperties.AutomationId="ImportConflictUpdate"
-                             GroupName="Conflict" Content="Update"
+                             GroupName="Conflict" Content="{DynamicResource S.Dialog.Import.Conflict.Update}"
                              IsChecked="{Binding OnConflict, Converter={x:Static vm:ImportSteps.ConflictIsUpdate}}"
                              Command="{Binding ChooseConflictCommand}" CommandParameter="Update"/>
                 <RadioButton AutomationProperties.AutomationId="ImportConflictAbort"
-                             GroupName="Conflict" Content="Stop the import"
+                             GroupName="Conflict" Content="{DynamicResource S.Dialog.Import.Conflict.Abort}"
                              IsChecked="{Binding OnConflict, Converter={x:Static vm:ImportSteps.ConflictIsAbort}}"
                              Command="{Binding ChooseConflictCommand}" CommandParameter="Abort"/>
             </StackPanel>
 
             <StackPanel Orientation="Horizontal" Spacing="8"
                         IsVisible="{Binding OnConflict, Converter={x:Static vm:ImportSteps.ConflictIsUpdate}}">
-                <TextBlock Text="Key column:" VerticalAlignment="Center"/>
+                <TextBlock Text="{DynamicResource S.Dialog.Import.KeyColumn}" VerticalAlignment="Center"/>
                 <ComboBox AutomationProperties.AutomationId="ImportKeyColumn"
                           ItemsSource="{Binding AvailableTargetColumns}"
                           SelectedItem="{Binding KeyColumn}"
                           Width="180"
-                          PlaceholderText="which column decides"/>
+                          PlaceholderText="{DynamicResource S.Dialog.Import.KeyColumnHint}"/>
                 <TextBlock VerticalAlignment="Center" FontSize="12"
                            Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                           Text="Update is a MERGE and has to be told what the same row means."/>
+                           Text="{DynamicResource S.Dialog.Import.MergeNote}"/>
             </StackPanel>
 
             <!-- Off by default: a million rows in one transaction is a million versions in MVCC and a
                  journal that grows until it stops. The default must not be the mode that fails on the
                  largest file (6.4). -->
             <CheckBox AutomationProperties.AutomationId="ImportAllOrNothing"
-                      AutomationProperties.Name="All or nothing, in one transaction"
+                      AutomationProperties.Name="{DynamicResource S.Dialog.Import.AllOrNothing.Name}"
                       IsChecked="{Binding AllOrNothing}"
                       IsEnabled="{Binding !IsImporting}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
-                    <TextBlock Text="All or nothing"/>
-                    <TextBlock Text="(one transaction - slower, and heavy on a large file)"
+                    <TextBlock Text="{DynamicResource S.Dialog.Import.AllOrNothing}"/>
+                    <TextBlock Text="{DynamicResource S.Dialog.Import.AllOrNothing.Hint}"
                                Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
                                FontSize="12"/>
                 </StackPanel>
             </CheckBox>
 
             <CheckBox AutomationProperties.AutomationId="ImportStopOnError"
-                      Content="Stop on any other error"
+                      Content="{DynamicResource S.Dialog.Import.StopOnError}"
                       IsChecked="{Binding StopOnError}"
                       IsEnabled="{Binding !IsImporting}"/>
         </StackPanel>
@@ -150,12 +150,12 @@
             <!-- Target Table -->
             <StackPanel Grid.Row="0" Spacing="8"
                         IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsDestination}}">
-                <TextBlock Text="Target Table" FontWeight="SemiBold"/>
+                <TextBlock Text="{DynamicResource S.Dialog.Import.TargetTable}" FontWeight="SemiBold"/>
                 <ComboBox ItemsSource="{Binding AvailableTables}"
                           SelectedItem="{Binding SelectedTable}"
                           HorizontalAlignment="Stretch"
                           IsEnabled="{Binding !IsImporting}"
-                          PlaceholderText="Select target table..."/>
+                          PlaceholderText="{DynamicResource S.Dialog.Import.SelectTarget}"/>
             </StackPanel>
 
             <!-- Column Mapping -->
@@ -164,7 +164,7 @@
                  Found by driving the application. -->
             <Grid Grid.Row="1" Margin="0,16,0,0" RowDefinitions="Auto,*"
                   IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsColumns}}">
-                <TextBlock Grid.Row="0" Text="Column Mapping" FontWeight="SemiBold" Margin="0,0,0,8"/>
+                <TextBlock Grid.Row="0" Text="{DynamicResource S.Dialog.Import.Mapping}" FontWeight="SemiBold" Margin="0,0,0,8"/>
                 
                 <Border Grid.Row="1"
                         BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
@@ -179,14 +179,14 @@
                               IsReadOnly="False"
                               IsEnabled="{Binding !IsImporting}">
                         <DataGrid.Columns>
-                            <DataGridCheckBoxColumn Header="Include" 
+                            <DataGridCheckBoxColumn Header="{DynamicResource S.Dialog.Import.Include}" 
                                                     Binding="{Binding IsIncluded}"
                                                     Width="70"/>
-                            <DataGridTextColumn Header="Source Column" 
+                            <DataGridTextColumn Header="{DynamicResource S.Dialog.Import.SourceColumn}" 
                                                 Binding="{Binding SourceColumn}"
                                                 Width="*"
                                                 IsReadOnly="True"/>
-                            <DataGridTemplateColumn Header="Target Column" Width="*">
+                            <DataGridTemplateColumn Header="{DynamicResource S.Dialog.Import.TargetColumn}" Width="*">
                                 <DataGridTemplateColumn.CellTemplate>
                                     <DataTemplate x:DataType="models:ColumnMapping">
                                         <ComboBox ItemsSource="{Binding $parent[Window].((vm:ImportViewModel)DataContext).AvailableTargetColumns}"
@@ -212,16 +212,13 @@
                 Padding="12,8"
                 Margin="0,16,0,0"
                 IsVisible="{Binding PreviewData, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <!-- One string each, not five Runs. A sentence assembled out of fragments cannot be
+                 translated: another language moves the pieces, and the count is a plural. -->
             <StackPanel Orientation="Horizontal" Spacing="16">
-                <TextBlock Foreground="#2E7D32">
-                    <Run Text="File contains approximately"/>
-                    <Run Text="{Binding TotalRows}" FontWeight="SemiBold"/>
-                    <Run Text="rows"/>
-                </TextBlock>
-                <TextBlock Foreground="#2E7D32">
-                    <Run Text="{Binding ColumnMappings.Count}"/>
-                    <Run Text="columns"/>
-                </TextBlock>
+                <TextBlock AutomationProperties.AutomationId="ImportPreviewRows"
+                           Text="{Binding PreviewRowsSummary}" Foreground="#2E7D32"/>
+                <TextBlock AutomationProperties.AutomationId="ImportPreviewColumns"
+                           Text="{Binding PreviewColumnsSummary}" Foreground="#2E7D32"/>
             </StackPanel>
         </Border>
 
@@ -262,34 +259,34 @@
         <!-- Buttons -->
         <Grid Grid.Row="6" ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="0,20,0,0">
             <Button AutomationProperties.AutomationId="ImportRefreshPreview" Grid.Column="0"
-                    Content="Refresh Preview"
+                    Content="{DynamicResource S.Dialog.Import.RefreshPreview}"
                     Command="{Binding PreviewCommand}"
                     IsEnabled="{Binding CanPreview}"/>
 
             <!-- The rejected rows, all of them - the window shows ten. An import that reports
                  "16 skipped" and can name three is an import nobody can fix. -->
             <Button AutomationProperties.AutomationId="ImportWriteReport" Grid.Column="1"
-                    Content="Report to CSV"
+                    Content="{DynamicResource S.Dialog.Import.Report}"
                     Margin="8,0,0,0"
                     Command="{Binding WriteReportCommand}"
                     IsVisible="{Binding Rejected.Count}"/>
 
             <Button AutomationProperties.AutomationId="ImportBack" Grid.Column="3"
-                    Content="Back"
+                    Content="{DynamicResource S.Common.Back}"
                     Command="{Binding BackCommand}"
                     Width="80"
                     Margin="0,0,8,0"
                     IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsNotFile}}"/>
 
             <Button AutomationProperties.AutomationId="ImportCancel" Grid.Column="4"
-                    Content="Cancel"
+                    Content="{DynamicResource S.Common.Cancel}"
                     Command="{Binding CancelCommand}"
                     Width="80"
                     Margin="0,0,8,0"
                     IsVisible="{Binding !IsImporting}"/>
 
             <Button AutomationProperties.AutomationId="ImportNext" Grid.Column="5"
-                    Content="Next"
+                    Content="{DynamicResource S.Common.Next}"
                     Command="{Binding NextCommand}"
                     Width="90"
                     Classes="accent"
@@ -297,7 +294,7 @@
 
             <!-- The verb, and only on the last step (6.1). -->
             <Button AutomationProperties.AutomationId="ImportImport" Grid.Column="5"
-                    Content="Import"
+                    Content="{DynamicResource S.Dialog.Import.Import}"
                     Command="{Binding ImportCommand}"
                     IsEnabled="{Binding CanImport}"
                     Width="90"
@@ -321,36 +318,29 @@
                              Height="8"/>
                 
                 <!-- Progress Text -->
-                <TextBlock Foreground="White"
+                <TextBlock AutomationProperties.AutomationId="ImportProgressText"
+                           Text="{Binding ProgressText}"
+                           Foreground="White"
                            HorizontalAlignment="Center"
-                           FontSize="16">
-                    <Run Text="Importing..."/>
-                    <Run Text="{Binding RowsImported}"/>
-                    <Run Text="/"/>
-                    <Run Text="{Binding TotalRows}"/>
-                    <Run Text="rows"/>
-                </TextBlock>
-                
+                           FontSize="16"/>
+
                 <!-- Failed count (if any) -->
-                <TextBlock Foreground="#FF8A80"
+                <TextBlock AutomationProperties.AutomationId="ImportFailedText"
+                           Text="{Binding FailedText}"
+                           Foreground="#FF8A80"
                            HorizontalAlignment="Center"
                            FontSize="13"
-                           IsVisible="{Binding RowsFailed}">
-                    <Run Text="{Binding RowsFailed}"/>
-                    <Run Text="rows failed"/>
-                </TextBlock>
-                
+                           IsVisible="{Binding RowsFailed}"/>
+
                 <!-- Percentage -->
-                <TextBlock Foreground="White"
+                <TextBlock Text="{Binding ImportProgress, StringFormat='{}{0:F1} %'}"
+                           Foreground="White"
                            HorizontalAlignment="Center"
                            FontSize="14"
-                           Opacity="0.8">
-                    <Run Text="{Binding ImportProgress, StringFormat='{}{0:F1}'}"/>
-                    <Run Text="%"/>
-                </TextBlock>
+                           Opacity="0.8"/>
                 
                 <!-- Cancel Button -->
-                <Button AutomationProperties.AutomationId="ImportCancelImport" Content="Cancel Import"
+                <Button AutomationProperties.AutomationId="ImportCancelImport" Content="{DynamicResource S.Dialog.Import.CancelImport}"
                         Command="{Binding CancelImportCommand}"
                         HorizontalAlignment="Center"
                         Width="120"

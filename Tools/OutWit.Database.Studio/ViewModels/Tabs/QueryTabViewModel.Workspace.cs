@@ -206,7 +206,7 @@ public partial class QueryTabViewModel : ISqlCompletionSource
 
         if (session is not { IsConnected: true })
         {
-            PlanMessage = "Not connected";
+            PlanMessage = Localization["Common.NotConnected"];
             return;
         }
 
@@ -214,7 +214,7 @@ public partial class QueryTabViewModel : ISqlCompletionSource
 
         if (string.IsNullOrWhiteSpace(statement))
         {
-            PlanMessage = "There is no statement here to explain";
+            PlanMessage = Localization["Query.NothingToExplain"];
             return;
         }
 
@@ -317,7 +317,7 @@ public partial class QueryTabViewModel : ISqlCompletionSource
 
         await session.BeginTransactionAsync();
 
-        ApplicationVm.MainWindowVm.StatusText = $"Transaction opened at {Isolation}";
+        ApplicationVm.MainWindowVm.StatusText = Localization.Format("Query.TransactionOpened", Isolation);
     }
 
     private async Task CommitTransactionAsync()
@@ -331,7 +331,8 @@ public partial class QueryTabViewModel : ISqlCompletionSource
 
         await session.CommitTransactionAsync();
 
-        ApplicationVm.MainWindowVm.StatusText = $"Transaction committed after {count} statements";
+        ApplicationVm.MainWindowVm.StatusText = Localization.Format("Query.TransactionCommitted",
+            Localization.Plural("Count.Statements", count));
     }
 
     private async Task RollbackTransactionAsync()
@@ -345,7 +346,8 @@ public partial class QueryTabViewModel : ISqlCompletionSource
 
         await session.RollbackTransactionAsync();
 
-        ApplicationVm.MainWindowVm.StatusText = $"Transaction rolled back after {count} statements";
+        ApplicationVm.MainWindowVm.StatusText = Localization.Format("Query.TransactionRolledBack",
+            Localization.Plural("Count.Statements", count));
     }
 
     /// <summary>
@@ -361,8 +363,9 @@ public partial class QueryTabViewModel : ISqlCompletionSource
         TransactionStatementCount = session?.TransactionStatementCount ?? 0;
 
         TransactionState = HasOpenTransaction
-            ? $"Transaction open · {TransactionStatementCount} statement{(TransactionStatementCount == 1 ? "" : "s")}"
-            : "Autocommit";
+            ? Localization.Format("Query.TransactionOpen",
+                Localization.Plural("Count.Statements", TransactionStatementCount))
+            : Localization["Query.Autocommit"];
     }
 
     #endregion
@@ -430,8 +433,8 @@ public partial class QueryTabViewModel : ISqlCompletionSource
             TimeSpan.FromSeconds(1));
 
         // The first letter of a message is a capital, and the sentence may now start with "line".
-        if (ErrorMessage.StartsWith("line ", StringComparison.Ordinal))
-            ErrorMessage = "L" + ErrorMessage[1..];
+        if (ErrorMessage.Length > 0)
+            ErrorMessage = char.ToUpperInvariant(ErrorMessage[0]) + ErrorMessage[1..];
     }
 
     private IEnumerable<string> CandidatesFor(string kind)
@@ -583,7 +586,7 @@ public partial class QueryTabViewModel : ISqlCompletionSource
     public int TransactionStatementCount { get; private set; }
 
     [Notify]
-    public string TransactionState { get; private set; } = "Autocommit";
+    public string TransactionState { get; private set; } = string.Empty;
 
     #endregion
 

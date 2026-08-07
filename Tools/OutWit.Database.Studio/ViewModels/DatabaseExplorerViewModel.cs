@@ -149,7 +149,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         await ApplicationVm.WorkspaceTabsVm.OpenTableEditTabAsync(session, tableName);
 
-        ApplicationVm.MainWindowVm.StatusText = $"Editing table: {tableName}";
+        ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Editing", tableName);
         Logger.LogInformation("Edit data for table {TableName} in {Connection}", tableName, session.DisplayName);
     }
 
@@ -189,13 +189,13 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to get definition for {ObjectName}", SelectedNode.Name);
-            ApplicationVm.MainWindowVm.StatusText = $"Failed to get definition: {ex.Message}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.DefinitionFailed", ex.Message);
             return;
         }
 
         if (string.IsNullOrEmpty(definition))
         {
-            ApplicationVm.MainWindowVm.StatusText = $"No definition found for {SelectedNode.Name}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.NoDefinition", SelectedNode.Name);
             return;
         }
 
@@ -237,13 +237,13 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
             await RefreshAsync(session);
 
-            ApplicationVm.MainWindowVm.StatusText = $"Dropped {objectType.ToLower()}: {objectName}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Dropped", objectType.ToLower(), objectName);
             Logger.LogInformation("Dropped {ObjectType}: {ObjectName} in {Connection}",
                 objectType, objectName, session.DisplayName);
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to drop {objectType.ToLower()}: {ex.Message}";
+            ErrorMessage = Localization.Format("Explorer.DropFailed", objectType.ToLower(), ex.Message);
             Logger.LogError(ex, "Failed to drop {ObjectType}: {ObjectName}", objectType, objectName);
         }
     }
@@ -280,12 +280,12 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             await session.Catalog.RefreshAsync();
             await RefreshAsync(session);
 
-            ApplicationVm.MainWindowVm.StatusText = $"Renamed {oldName} to {newName}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Renamed", oldName, newName);
             Logger.LogInformation("Renamed table {Old} to {New}", oldName, newName);
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to rename {oldName}: {ex.Message.Split('\n')[0]}";
+            ErrorMessage = Localization.Format("Explorer.RenameFailed", oldName, ex.Message.Split('\n')[0]);
             Logger.LogError(ex, "Failed to rename {Old}", oldName);
         }
     }
@@ -343,14 +343,15 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
             await RefreshAsync(session);
 
-            ApplicationVm.MainWindowVm.StatusText = $"Emptied {table}";
-            ApplicationVm.Notifications.Warning($"{table} was emptied", "TRUNCATE cannot be undone.");
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Emptied", table);
+            ApplicationVm.Notifications.Warning(Localization.Format("Explorer.Emptied", table),
+                Localization["Explorer.TruncateWarning"]);
 
             Logger.LogInformation("Truncated {Table}", table);
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to empty {table}: {ex.Message.Split('\n')[0]}";
+            ErrorMessage = Localization.Format("Explorer.EmptyFailed", table, ex.Message.Split('\n')[0]);
             Logger.LogError(ex, "Failed to truncate {Table}", table);
         }
     }
@@ -457,20 +458,20 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             var triggers = await session.GetTriggersAsync();
             var sequences = await session.GetSequencesAsync();
 
-            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Tables",
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Explorer.Folder.Tables",
                 DatabaseNodeType.TablesFolder, DatabaseNodeType.Table,
                 tables.Select(table => table.Name), expandedByDefault: firstLoad));
 
-            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Views",
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Explorer.Folder.Views",
                 DatabaseNodeType.ViewsFolder, DatabaseNodeType.View, views));
 
-            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Indexes",
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Explorer.Folder.Indexes",
                 DatabaseNodeType.IndexesFolder, DatabaseNodeType.Index, indexes));
 
-            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Triggers",
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Explorer.Folder.Triggers",
                 DatabaseNodeType.TriggersFolder, DatabaseNodeType.Trigger, triggers));
 
-            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Sequences",
+            rootNode.Children.Add(BuildFolder(session, expandedNodes, "Explorer.Folder.Sequences",
                 DatabaseNodeType.SequencesFolder, DatabaseNodeType.Sequence, sequences));
 
             // The sixth folder (WS-21). The engine has had functions and procedures since phase 9d
@@ -478,7 +479,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             // any.
             var routines = await session.GetRoutinesAsync();
 
-            var routinesFolder = BuildFolder(session, expandedNodes, "Routines",
+            var routinesFolder = BuildFolder(session, expandedNodes, "Explorer.Folder.Routines",
                 DatabaseNodeType.RoutinesFolder, DatabaseNodeType.Routine,
                 routines.Select(routine => routine.Name));
 
@@ -505,9 +506,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                     session.DisplayName),
                 TaskContinuationOptions.OnlyOnFaulted);
 
-            ApplicationVm.MainWindowVm.StatusText =
-                $"{session.DisplayName}: {tables.Count} tables, {views.Count} views, {indexes.Count} indexes, "
-                + $"{triggers.Count} triggers, {sequences.Count} sequences";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Summary",
+                session.DisplayName, tables.Count, views.Count, indexes.Count, triggers.Count,
+                sequences.Count);
 
             Logger.LogInformation(
                 "Explorer refreshed {Connection}: {Tables} tables, {Views} views, {Indexes} indexes, {Triggers} triggers, {Sequences} sequences",
@@ -515,14 +516,14 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to load schema: {ex.Message}";
-            ApplicationVm.MainWindowVm.StatusText = "Error loading schema";
+            ErrorMessage = Localization.Format("Explorer.SchemaFailed", ex.Message);
+            ApplicationVm.MainWindowVm.StatusText = Localization["Explorer.SchemaFailedShort"];
             Logger.LogError(ex, "Failed to refresh the branch of {Connection}", session.DisplayName);
 
             // Reloading the tree is something Studio does on its own, after a DDL statement or a
             // drop. A failure in it has no dialog to belong to, and the status bar is overwritten by
             // whatever happens next (WS-7).
-            ApplicationVm.Notifications.Error("The schema could not be reloaded", ex.Message,
+            ApplicationVm.Notifications.Error(Localization["Explorer.SchemaReloadFailed"], ex.Message,
                 session.DisplayName);
         }
         finally
@@ -708,17 +709,29 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         Nodes.Insert(position < 0 || position > Nodes.Count ? Nodes.Count : position, rootNode);
     }
 
-    private static DatabaseNode BuildFolder(IDatabaseSession session, HashSet<string> expanded, string name,
+    /// <summary>
+    /// A folder of the tree.
+    ///
+    /// <para>
+    /// <paramref name="key"/> is a catalogue key rather than the caption, and the folder is remembered
+    /// as expanded BY IT: the name on screen changes with the language, and a memory keyed by what is
+    /// drawn would forget every open folder the moment somebody switched. Found by switching the
+    /// running application to Russian, where the six folders were the only English left in the tree.
+    /// </para>
+    /// </summary>
+    private DatabaseNode BuildFolder(IDatabaseSession session, HashSet<string> expanded, string key,
         DatabaseNodeType folderType, DatabaseNodeType childType, IEnumerable<string> children,
         bool expandedByDefault = false)
     {
+        var name = Localization[key];
+
         var folder = new DatabaseNode
         {
             Name = name,
             NodeType = folderType,
             ConnectionId = session.Id,
             ChildrenLoaded = true,
-            IsExpanded = expandedByDefault || IsExpanded(expanded, session, folderType, name)
+            IsExpanded = expandedByDefault || IsExpanded(expanded, session, folderType, key)
         };
 
         foreach (var child in children)
@@ -952,6 +965,12 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     public IConnectionManager Connections => ApplicationVm.Connections;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

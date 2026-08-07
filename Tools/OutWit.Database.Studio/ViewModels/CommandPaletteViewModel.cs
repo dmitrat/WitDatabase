@@ -210,7 +210,7 @@ public class CommandPaletteViewModel : ViewModelBase<ApplicationViewModel>
                     {
                         Kind = PaletteItemKind.Object,
                         Title = target.Name,
-                        Subtitle = $"{Describe(target.NodeType)} in {root.Name}",
+                        Subtitle = Localization.Format("Palette.ObjectIn", Describe(target.NodeType), root.Name),
                         Invoke = () =>
                         {
                             // Selecting the node is what "go to" means: the tree scrolls to it, and
@@ -381,6 +381,12 @@ public class CommandPaletteViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand MoveDownCommand { get; private set; } = null!;
 
     public ICommand MoveUpCommand { get; private set; } = null!;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

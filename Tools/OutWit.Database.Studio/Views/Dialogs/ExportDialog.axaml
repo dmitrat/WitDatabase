@@ -9,7 +9,7 @@
         d:DesignHeight="480"
         x:Class="OutWit.Database.Studio.Views.Dialogs.ExportDialog"
         x:DataType="vm:ExportViewModel"
-        Title="Export Data"
+        Title="{DynamicResource S.Dialog.Export.Title}"
         Width="500"
         Height="480"
         WindowStartupLocation="CenterOwner"
@@ -31,23 +31,23 @@
                                  IsEnabled="{Binding CanExportSelection}"
                                  IsChecked="{Binding SelectedScope, Converter={x:Static vm:ExportScopes.IsSelection}}"
                                  Command="{Binding ChooseScopeCommand}" CommandParameter="Selection"
-                                 Content="{Binding SelectionCount, StringFormat='Selection · {0}'}"/>
+                                 Content="{Binding SelectionLabel}"/>
                     <RadioButton AutomationProperties.AutomationId="ExportScopePage"
                                  GroupName="Scope"
                                  IsChecked="{Binding SelectedScope, Converter={x:Static vm:ExportScopes.IsPage}}"
                                  Command="{Binding ChooseScopeCommand}" CommandParameter="Page"
-                                 Content="{Binding PageCount, StringFormat='Page · {0}'}"/>
+                                 Content="{Binding PageLabel}"/>
                     <RadioButton AutomationProperties.AutomationId="ExportScopeEverything"
                                  GroupName="Scope"
                                  IsChecked="{Binding SelectedScope, Converter={x:Static vm:ExportScopes.IsEverything}}"
                                  Command="{Binding ChooseScopeCommand}" CommandParameter="Everything"
-                                 Content="{Binding EverythingCount, StringFormat='All · {0}'}"/>
+                                 Content="{Binding EverythingLabel}"/>
                 </StackPanel>
             </StackPanel>
 
             <!-- Source Selection -->
             <StackPanel Spacing="8">
-                <TextBlock Text="Source" FontWeight="SemiBold"/>
+                <TextBlock Text="{DynamicResource S.Dialog.Export.Source}" FontWeight="SemiBold"/>
                 
                 <!-- Query Result indicator -->
                 <Border Background="#E3F2FD"
@@ -60,13 +60,11 @@
                         <PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}"
                                   Width="16" Height="16"
                                   Foreground="#1976D2"/>
-                        <TextBlock Foreground="#1976D2">
-                            <Run Text="Query Result:"/>
-                            <Run Text="{Binding SourceName}" FontWeight="SemiBold"/>
-                            <Run Text="("/>
-                            <Run Text="{Binding TotalRows}"/>
-                            <Run Text="rows)"/>
-                        </TextBlock>
+                        <!-- One string, not five Runs. A sentence assembled out of fragments cannot
+                             be translated: the word order of another language moves the pieces. -->
+                        <TextBlock AutomationProperties.AutomationId="ExportQuerySource"
+                                   Text="{Binding QuerySourceSummary}"
+                                   Foreground="#1976D2"/>
                     </StackPanel>
                 </Border>
                 
@@ -76,43 +74,43 @@
                           HorizontalAlignment="Stretch"
                           IsVisible="{Binding !IsQueryResult}"
                           IsEnabled="{Binding !IsExporting}"
-                          PlaceholderText="Select table to export..."/>
+                          PlaceholderText="{DynamicResource S.Dialog.Export.SelectTable}"/>
             </StackPanel>
 
             <!-- Format Selection -->
             <StackPanel Spacing="8">
-                <TextBlock Text="Format" FontWeight="SemiBold"/>
+                <TextBlock Text="{DynamicResource S.Dialog.Export.Format}" FontWeight="SemiBold"/>
                 <StackPanel Spacing="4">
                     <RadioButton AutomationProperties.AutomationId="ExportFormatCsv"
-                                 AutomationProperties.Name="CSV format"
+                                 AutomationProperties.Name="{DynamicResource S.Dialog.Export.CsvName}"
                                  GroupName="Format"
                                  IsEnabled="{Binding !IsExporting}"
                                  IsChecked="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ExportFormat.Csv}}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="CSV" FontWeight="SemiBold"/>
-                            <TextBlock Text="(Comma Separated Values)" 
+                            <TextBlock Text="{DynamicResource S.Dialog.Export.CsvHint}" 
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton AutomationProperties.AutomationId="ExportFormatJson"
-                                 AutomationProperties.Name="JSON format"
+                                 AutomationProperties.Name="{DynamicResource S.Dialog.Export.JsonName}"
                                  GroupName="Format"
                                  IsEnabled="{Binding !IsExporting}"
                                  IsChecked="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ExportFormat.Json}}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="JSON" FontWeight="SemiBold"/>
-                            <TextBlock Text="(Array of Objects)" 
+                            <TextBlock Text="{DynamicResource S.Dialog.Export.JsonHint}" 
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton AutomationProperties.AutomationId="ExportFormatSql"
-                                 AutomationProperties.Name="SQL format"
+                                 AutomationProperties.Name="{DynamicResource S.Dialog.Export.SqlName}"
                                  GroupName="Format"
                                  IsEnabled="{Binding !IsExporting}"
                                  IsChecked="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ExportFormat.Sql}}">
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="SQL" FontWeight="SemiBold"/>
-                            <TextBlock Text="(INSERT Statements)" 
+                            <TextBlock Text="{DynamicResource S.Dialog.Export.SqlHint}" 
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                         </StackPanel>
                     </RadioButton>
@@ -121,26 +119,26 @@
 
             <!-- Options -->
             <StackPanel Spacing="8">
-                <TextBlock Text="Options" FontWeight="SemiBold"/>
-                <CheckBox Content="Include column headers"
+                <TextBlock Text="{DynamicResource S.Dialog.Export.Options}" FontWeight="SemiBold"/>
+                <CheckBox Content="{DynamicResource S.Dialog.Export.IncludeHeaders}"
                           IsChecked="{Binding IncludeHeaders}"
                           IsEnabled="{Binding !IsExporting}"
                           IsVisible="{Binding SelectedFormat, Converter={x:Static ObjectConverters.Equal}, ConverterParameter={x:Static vm:ExportFormat.Csv}}"/>
-                <CheckBox Content="Format dates as ISO 8601"
+                <CheckBox Content="{DynamicResource S.Dialog.Export.IsoDates}"
                           IsChecked="{Binding FormatDatesAsIso}"
                           IsEnabled="{Binding !IsExporting}"/>
             </StackPanel>
 
             <!-- Output File -->
             <StackPanel Spacing="8">
-                <TextBlock Text="Output File" FontWeight="SemiBold"/>
+                <TextBlock Text="{DynamicResource S.Dialog.Export.Output}" FontWeight="SemiBold"/>
                 <Grid ColumnDefinitions="*,Auto">
                     <TextBox Grid.Column="0"
                              Text="{Binding OutputPath}"
-                             Watermark="Select output file..."
+                             Watermark="{DynamicResource S.Dialog.Export.SelectOutput}"
                              IsReadOnly="True"/>
                     <Button AutomationProperties.AutomationId="ExportBrowse" Grid.Column="1"
-                            Content="Browse..."
+                            Content="{DynamicResource S.Common.Browse}"
                             Command="{Binding BrowseCommand}"
                             IsEnabled="{Binding !IsExporting}"
                             Margin="8,0,0,0"/>
@@ -169,13 +167,13 @@
         <!-- Buttons -->
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="0,20,0,0">
             <Button AutomationProperties.AutomationId="ExportCancel" Grid.Column="1"
-                    Content="Cancel"
+                    Content="{DynamicResource S.Common.Cancel}"
                     Command="{Binding CancelCommand}"
                     Width="80"
                     Margin="0,0,8,0"
                     IsVisible="{Binding !IsExporting}"/>
             <Button AutomationProperties.AutomationId="ExportExport" Grid.Column="2"
-                    Content="Export"
+                    Content="{DynamicResource S.Dialog.Export.Export}"
                     Command="{Binding ExportCommand}"
                     IsEnabled="{Binding CanExport}"
                     Width="80"
@@ -199,27 +197,21 @@
                              Height="8"/>
                 
                 <!-- Progress Text -->
-                <TextBlock Foreground="White"
+                <TextBlock AutomationProperties.AutomationId="ExportProgressText"
+                           Text="{Binding ProgressText}"
+                           Foreground="White"
                            HorizontalAlignment="Center"
-                           FontSize="16">
-                    <Run Text="Exporting..."/>
-                    <Run Text="{Binding RowsExported}"/>
-                    <Run Text="/"/>
-                    <Run Text="{Binding TotalRows}"/>
-                    <Run Text="rows"/>
-                </TextBlock>
-                
+                           FontSize="16"/>
+
                 <!-- Percentage -->
-                <TextBlock Foreground="White"
+                <TextBlock Text="{Binding ExportProgress, StringFormat='{}{0:F1} %'}"
+                           Foreground="White"
                            HorizontalAlignment="Center"
                            FontSize="14"
-                           Opacity="0.8">
-                    <Run Text="{Binding ExportProgress, StringFormat='{}{0:F1}'}"/>
-                    <Run Text="%"/>
-                </TextBlock>
+                           Opacity="0.8"/>
                 
                 <!-- Cancel Button -->
-                <Button AutomationProperties.AutomationId="ExportCancelExport" Content="Cancel Export"
+                <Button AutomationProperties.AutomationId="ExportCancelExport" Content="{DynamicResource S.Dialog.Export.CancelExport}"
                         Command="{Binding CancelExportCommand}"
                         HorizontalAlignment="Center"
                         Width="120"

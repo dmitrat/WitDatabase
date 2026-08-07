@@ -4,27 +4,34 @@ using OutWit.Database.Studio.Services.Localization;
 namespace OutWit.Database.Studio.Tests;
 
 /// <summary>
-/// No view carries its own text (WS-63).
+/// Nothing carries its own text (WS-63) - not the markup, not what a screen reader announces, and not
+/// a ViewModel.
 ///
 /// <para>
-/// A lint over the markup, in the same shape as <c>AutomationSurfaceTests</c> and for the same reason:
-/// the defect it guards against is not one a running test can see. A hardcoded caption looks perfectly
-/// correct in English and is simply never translated, and nobody notices until someone switches the
-/// language and finds half a window in the wrong one.
+/// A lint, in the same shape as <c>AutomationSurfaceTests</c> and for the same reason: the defect it
+/// guards against is not one a running test can see. A hardcoded caption looks perfectly correct in
+/// English and is simply never translated, and nobody notices until someone switches the language and
+/// finds half a window in the wrong one.
 /// </para>
 /// <para>
-/// <b>The not-yet-swept files are NAMED rather than implied.</b> The sweep of the older views is
-/// mechanical and large; naming them means the rule is real today for everything already done - a new
-/// hardcoded caption in a swept file goes red immediately - and the list is the work that is left,
-/// which shrinks and can be seen shrinking. A lint that waits for the whole sweep before it guards
-/// anything guards nothing for as long as the sweep takes.
+/// <b>There are three rules because there are three ways to write text into this application, and the
+/// first version only had the first.</b> Stage 9's lint said so in its own summary and listed the
+/// fifteen views it had not reached; the sweep is done and the list is gone. What it could not reach
+/// then it reaches now:
 /// </para>
+/// <list type="number">
+/// <item>markup - a caption, a header, a tooltip, a window title, a <c>StringFormat</c>;</item>
+/// <item><c>AutomationProperties.Name</c> - which nobody sees and a blind person hears, which is
+/// exactly why it was English in every view after the rest had been swept;</item>
+/// <item>a string built in a ViewModel or in a view's code-behind - the status bar's "Ready", the text
+/// of a notification, the title of a file picker.</item>
+/// </list>
 /// <para>
-/// <b>What this does NOT cover, said out loud.</b> It reads markup only. Text built in a ViewModel -
-/// the status bar's "Ready", a notification's summary, a message put together from parts - is outside
-/// it, and so is <c>AutomationProperties.Name</c>, which a screen reader announces and which is still
-/// English in every view. Both were visible when the running application was switched to Russian: the
-/// menu, the welcome screen and the recent list came out Russian and those did not.
+/// <b>What it still does not reach, said out loud.</b> It reads text, not a program: a caption assembled
+/// from a helper the rules do not name, or handed in from a model, goes past it. The third rule is
+/// written around DESTINATIONS - the properties a view binds and the services that show a message -
+/// rather than around what a literal looks like, because the shape of a string cannot tell prose from a
+/// log template and the destination can.
 /// </para>
 /// </summary>
 [TestFixture]
@@ -32,119 +39,331 @@ public class LocalizationCoverageTests
 {
     #region Constants
 
-    /// <summary>The attributes a person reads.</summary>
+    /// <summary>
+    /// The attributes a person reads. The look-behind is not decoration: without it
+    /// <c>SizeToContent="Height"</c> is read as a <c>Content</c> of "Height", and a rule with a false
+    /// positive in it gets an exemption written for the false positive.
+    /// </summary>
     private static readonly Regex USER_FACING =
-        new(@"(Text|Content|Header|Watermark|ToolTip\.Tip|PlaceholderText)=""([^""{][^""]*)""",
+        new(@"(?<![\w.])(Text|Content|Header|Watermark|ToolTip\.Tip|PlaceholderText|Title)=""([^""{][^""]*)""",
+            RegexOptions.Compiled);
+
+    /// <summary>What a screen reader says. Rule 2.</summary>
+    private static readonly Regex ANNOUNCED =
+        new(@"(AutomationProperties\.Name)=""([^""{][^""]*)""", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The same two attribute sets with the <c>{</c> allowed, i.e. INCLUDING the ones that already come
+    /// from the catalogue.
+    ///
+    /// <para>
+    /// This is what the controls count, and the distinction is the whole point of having them. The
+    /// rules above match a literal only, so once a sweep is finished they match nothing - and "nothing
+    /// left to find" and "the rule is looking in the wrong folder" produce exactly the same number.
+    /// Counting the whole surface tells them apart.
+    /// </para>
+    /// </summary>
+    private static readonly Regex USER_FACING_SURFACE =
+        new(@"(?<![\w.])(Text|Content|Header|Watermark|ToolTip\.Tip|PlaceholderText|Title)=""[^""]*""",
+            RegexOptions.Compiled);
+
+    private static readonly Regex ANNOUNCED_SURFACE =
+        new(@"AutomationProperties\.Name=""[^""]*""", RegexOptions.Compiled);
+
+    /// <summary>
+    /// A caption built inside a binding. It is markup, and no attribute rule can see it: the text is
+    /// inside single quotes inside another attribute's value.
+    /// </summary>
+    private static readonly Regex STRING_FORMAT =
+        new(@"(StringFormat)='([^']*)'", RegexOptions.Compiled);
+
+    /// <summary>
+    /// Properties a view binds and a person therefore reads. Rule 3 is about where a string GOES, not
+    /// what it looks like - which is the only way to tell a sentence from a log template, since both
+    /// are prose with values in them.
+    /// </summary>
+    private static readonly Regex VIEWMODEL_ASSIGNMENT =
+        new(@"(?<!\w)(ErrorMessage|StatusText|StatusMessage|Summary|Heading|Title|Hint|Note|Caption"
+            + @"|Description|Watermark|PlaceholderText|Warning|HeaderText|Subtitle|KeyNote|PlannerNote"
+            + @"|UnindexedKeyWarning|ConflictSummary|PlanMessage|HistoryMessage|BackupWarning"
+            + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason)"
+            + @"(\.Text)?\s*=\s*[$]?""((?:[^""\\]|\\.)*)""",
             RegexOptions.Compiled);
 
     /// <summary>
-    /// Views not yet swept into the catalogue. Every name here is work that is left, and the list only
-    /// ever gets shorter. Deleting a name without doing the sweep turns this test red.
+    /// The services that put a string in front of somebody: a notification, a confirmation, a file
+    /// picker's title and the name of one of its filters.
     /// </summary>
-    private static readonly HashSet<string> NOT_YET_SWEPT = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "ImportDialog.axaml",
-        "QueryEditor.axaml",
-        "TableEditView.axaml",
-        "StructureView.axaml",
-        "ExportDialog.axaml",
-        "CreateIndexDialog.axaml",
-        "DatabaseExplorer.axaml",
-        "CreateTableDialog.axaml",
-        "EditTriggerDialog.axaml",
-        "WorkspaceTabStrip.axaml",
-        "ObjectInspector.axaml",
-        "CreateViewDialog.axaml",
-        "TableRebuildDialog.axaml",
-        "UnsavedChangesDialog.axaml"
-    };
+    private static readonly Regex VIEWMODEL_CALL =
+        new(@"(Notifications\.\w+|Confirmations?\.\w+|Dialogs\.\w+|new FileFilter"
+            + @"|Set\w*Status|Describe\w*)\([^;]*?"
+            + @"[$]?""((?:[^""\\]|\\.)*)""",
+            RegexOptions.Compiled);
 
     /// <summary>
     /// Text that is NOT Studio's own and must not be translated (WS-64): the terms of the engine, the
     /// language and the formats. A caption that is exactly one of these is left in the markup, because
-    /// putting it in the catalogue would invite a translator to translate it.
+    /// putting it in the catalogue would invite a translator to translate it - and a translated
+    /// keyword, operator or format name is one nobody can find in the documentation, in an issue or in
+    /// the sources.
     /// </summary>
     private static readonly HashSet<string> NOT_STUDIO_TEXT = new(StringComparer.Ordinal)
     {
         "B-Tree", "LSM", "SQL", "CSV", "JSON", "MVCC", "WitDatabase", "WitDatabase Studio",
-        "AES-256-GCM", "ChaCha20", "Apache 2.0", "SQL INSERT", "Markdown",
-        "1 · File", "2 · Destination", "3 · Columns",
+        "AES-256-GCM", "ChaCha20", "Apache 2.0", "SQL INSERT", "Markdown", "QueryResult",
+
+        // SQL, whole or in part: a keyword, a clause, or an example of the language shown in a
+        // placeholder. Translating one would be teaching the user a language the engine does not speak.
+        "DDL", "EXPLAIN", "NOT NULL", "PRIMARY KEY", "AUTOINCREMENT", "UNIQUE", "INCLUDE",
+        "FOR EACH ROW", "SELECT * FROM TableName WHERE ...", "NEW.Total > 100",
+        "INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);", "Status <> 'archived'",
+        "IX_Orders_CreatedAt", "Line,Reason,Text",
 
         // A key gesture is not translated either: Ctrl is Ctrl, and the one place a gesture DOES
         // change is macOS, where the whole map is rewritten rather than each label.
         "Ctrl+K", "Ctrl+O", "Ctrl+N", "Ctrl+T", "Ctrl+S", "Ctrl+F", "F5", "Esc"
     };
 
+    /// <summary>
+    /// The same destinations with any argument at all, literal or not - what rule 3's control counts,
+    /// for the reason given on <see cref="USER_FACING_SURFACE"/>.
+    /// </summary>
+    private static readonly Regex VIEWMODEL_SURFACE =
+        new(@"(?<!\w)(ErrorMessage|StatusText|StatusMessage|Summary|Heading|Title|Hint|Note|Caption"
+            + @"|Description|Watermark|PlaceholderText|Warning|HeaderText|Subtitle|KeyNote|PlannerNote"
+            + @"|UnindexedKeyWarning|ConflictSummary|PlanMessage|HistoryMessage|BackupWarning"
+            + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason)(\.Text)?\s*=[^=]"
+            + @"|(Notifications\.\w+|Confirmations?\.\w+|Dialogs\.\w+|new FileFilter"
+            + @"|Set\w*Status|Describe\w*)\(",
+            RegexOptions.Compiled);
+
+    /// <summary>
+    /// A lookup in the catalogue, which is the ANSWER to this rule rather than an instance of what it
+    /// looks for. It is blanked out before the rules run, so that
+    /// <c>Notifications.Information(Localization["X"], path)</c> is not reported for the key it asks
+    /// for - the mistake this rule made on its own first run.
+    /// </summary>
+    private static readonly Regex CATALOGUE_LOOKUP =
+        new(@"Localization(\[|\.\w+\()\s*""[^""]*""", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The two places a literal in a ViewModel is not a caption: a log template, which is read by
+    /// whoever opens the file and must stay in one language, and a name used for structured logging.
+    /// </summary>
+    private static readonly string[] NOT_A_CAPTION = ["Logger.", "Log.", "nameof("];
+
+    /// <summary>
+    /// Every source of text this rule reads. Rule 3 covers a view's code-behind as well as the
+    /// ViewModels, because <c>UnsavedChangesDialog.AskAsync</c> built "1 unsaved change" there and no
+    /// rule about ViewModels would ever have found it.
+    /// </summary>
+    private static readonly string[] CODE_FOLDERS = ["ViewModels", "Views"];
+
     #endregion
 
     #region Tests
 
     [Test]
-    public void NoSweptViewCarriesItsOwnTextTest()
+    public void NoViewCarriesItsOwnTextTest()
     {
-        var views = FindViewsFolder();
-
-        Assert.That(views, Is.Not.Null, "the Views folder was not found from " + AppContext.BaseDirectory);
-
         var hardcoded = new List<string>();
-        var swept = 0;
-        var checkedAttributes = 0;
+        var read = 0;
 
-        foreach (var file in Directory.EnumerateFiles(views!, "*.axaml", SearchOption.AllDirectories))
+        foreach (var file in Views())
         {
-            if (NOT_YET_SWEPT.Contains(Path.GetFileName(file)))
-                continue;
-
-            swept++;
-
             var markup = File.ReadAllText(file);
 
-            foreach (Match match in USER_FACING.Matches(markup))
-            {
-                var value = match.Groups[2].Value.Trim();
+            read += USER_FACING_SURFACE.Matches(markup).Count + STRING_FORMAT.Matches(markup).Count;
 
-                if (value.Length == 0 || NOT_STUDIO_TEXT.Contains(value))
+            foreach (var match in Matches(markup, USER_FACING, STRING_FORMAT))
+            {
+                if (!IsStudioText(match.Value))
                     continue;
 
-                checkedAttributes++;
-
-                var line = markup[..match.Index].Count(c => c == '\n') + 1;
-
-                hardcoded.Add($"{Path.GetFileName(file)}:{line} {match.Groups[1].Value}=\"{value}\"");
+                hardcoded.Add($"{Path.GetFileName(file)}:{Line(markup, match.Index)} " +
+                    $"{match.Attribute}=\"{match.Value}\"");
             }
         }
 
         Assert.Multiple(() =>
         {
-            // CONTROL: with every view on the not-yet-swept list this would pass having read nothing.
-            Assert.That(swept, Is.GreaterThan(3),
-                "CONTROL: almost every view is excused, so this rule is guarding nothing");
+            // CONTROL: a rule that read nothing passes perfectly. The number is the whole markup
+            // surface, exemptions included, so it only moves when a view is added or deleted.
+            Assert.That(read, Is.GreaterThan(50),
+                "CONTROL: this rule read almost nothing, so it is guarding nothing");
 
             Assert.That(hardcoded, Is.Empty,
-                "these are Studio's own text and are not in the catalogue, so they will never be translated:"
+                "these are Studio's own text and are not in the catalogue, so they will never be "
+                + "translated:" + Environment.NewLine + string.Join(Environment.NewLine, hardcoded));
+        });
+    }
+
+    /// <summary>
+    /// What a screen reader announces is text too (S10).
+    ///
+    /// <para>
+    /// It is a rule of its own rather than another attribute in the first one because it fails
+    /// differently: a hardcoded <c>Text</c> is visible to anyone who switches the language, and a
+    /// hardcoded <c>AutomationProperties.Name</c> is visible to nobody at all. Stage 9 swept the
+    /// captions of six windows and left all 85 of their announcements in English, and every test passed.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void NoViewAnnouncesItsOwnTextTest()
+    {
+        var hardcoded = new List<string>();
+        var read = 0;
+
+        foreach (var file in Views())
+        {
+            var markup = File.ReadAllText(file);
+
+            read += ANNOUNCED_SURFACE.Matches(markup).Count;
+
+            foreach (var match in Matches(markup, ANNOUNCED))
+            {
+                if (!IsStudioText(match.Value))
+                    continue;
+
+                hardcoded.Add($"{Path.GetFileName(file)}:{Line(markup, match.Index)} " +
+                    $"AutomationProperties.Name=\"{match.Value}\"");
+            }
+        }
+
+        Assert.Multiple(() =>
+        {
+            // CONTROL: the announcements are the point, and a run that found none of them - a renamed
+            // attached property, a moved folder - would pass in silence.
+            Assert.That(read, Is.GreaterThan(20),
+                "CONTROL: no announcement was read at all, so this rule is guarding nothing");
+
+            Assert.That(hardcoded, Is.Empty,
+                "a screen reader would announce these in English whatever the interface language is:"
                 + Environment.NewLine + string.Join(Environment.NewLine, hardcoded));
         });
     }
 
     /// <summary>
-    /// The list of unswept views only shrinks. A name for a file that no longer exists is a name
-    /// somebody forgot to delete, and it would go on excusing a file that came back under it.
+    /// A string a person reads is not built in code (WS-63).
+    ///
+    /// <para>
+    /// The status bar's "Ready", a notification's summary, the title of a file picker: markup gets its
+    /// language for free from <c>DynamicResource</c>, and a ViewModel has to ask for it. This is the
+    /// class the markup lint said, in its own summary, that it could not reach.
+    /// </para>
+    /// <para>
+    /// <b>It reads destinations, not literals.</b> "Explorer refreshed {Connection}: {Tables} tables"
+    /// and "Renamed {old} to {new}" are the same shape; the first is a log template that must stay in
+    /// one language and the second is a sentence in the status bar. Nothing about the strings tells
+    /// them apart - where they GO does.
+    /// </para>
     /// </summary>
     [Test]
-    public void EveryNameOnTheUnsweptListIsARealViewTest()
+    public void NoViewModelBuildsATextTest()
     {
-        var views = FindViewsFolder();
+        var built = new List<string>();
+        var read = 0;
 
-        var present = Directory.EnumerateFiles(views!, "*.axaml", SearchOption.AllDirectories)
-            .Select(Path.GetFileName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+        foreach (var file in Sources())
+        {
+            var code = File.ReadAllText(file);
 
-        Assert.That(NOT_YET_SWEPT.Where(name => !present.Contains(name)), Is.Empty,
-            "these are excused from the sweep and do not exist");
+            foreach (var line in Lines(code))
+            {
+                if (line.Text.TrimStart().StartsWith("//") || NOT_A_CAPTION.Any(line.Text.Contains))
+                    continue;
+
+                read += VIEWMODEL_SURFACE.Matches(line.Text).Count;
+
+                // TWO lines, not one. The explorer's status summary is an assignment whose string
+                // begins on the next line, and the one-line version of this rule walked straight past
+                // it - found by switching the running application, which is the wrong way round.
+                // A match is attributed to the line its DESTINATION is on, so nothing is counted twice.
+                var window = CATALOGUE_LOOKUP.Replace(line.Text + "\n" + line.Next, "Localization.Key");
+
+                foreach (var match in Matches(window, VIEWMODEL_ASSIGNMENT, VIEWMODEL_CALL))
+                {
+                    if (match.Index >= line.Text.Length || !IsStudioText(match.Value))
+                        continue;
+
+                    built.Add($"{Path.GetFileName(file)}:{line.Number} " +
+                        $"{match.Attribute} = \"{Shorten(match.Value)}\"");
+                }
+            }
+        }
+
+        Assert.Multiple(() =>
+        {
+            // CONTROL: this rule finds nothing if the destinations it names have been renamed, and
+            // "nothing hardcoded" and "nothing read" look identical from the outside.
+            Assert.That(read, Is.GreaterThan(40),
+                "CONTROL: no string reaching a person was read at all, so this rule is guarding nothing");
+
+            Assert.That(built, Is.Empty,
+                "these reach a person and are not in the catalogue, so they stay in one language "
+                + "whatever the interface is set to:"
+                + Environment.NewLine + string.Join(Environment.NewLine, built));
+        });
     }
 
     /// <summary>
-    /// And the catalogue is what the swept views read from, so it has to be reachable from the test
+    /// The three rules, measured against text rather than against the repository.
+    ///
+    /// <para>
+    /// A lint is only as good as what it can SEE, and every exemption it carries is a chance to have
+    /// widened it too far. These are the cases that were actually got wrong while the sweep was being
+    /// done - <c>SizeToContent="Height"</c> read as a caption, <c>&amp;lt;</c> read as the word "lt",
+    /// a date pattern read as prose - plus one line of real text per rule that must still be caught.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void EveryRuleCatchesWhatItIsForAndNothingElseTest()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(Caught(USER_FACING, @"<TextBlock Text=""Not Connected""/>"), Is.True,
+                "a hardcoded caption must be caught");
+            Assert.That(Caught(USER_FACING, @"<Window SizeToContent=""Height""/>"), Is.False,
+                "SizeToContent is not a Content");
+            Assert.That(Caught(USER_FACING, @"<Button Content=""&lt;""/>"), Is.False,
+                "an entity is punctuation, not the word lt");
+            Assert.That(Caught(USER_FACING, @"<TextBlock Text=""{DynamicResource S.Query.NoRows}""/>"), Is.False,
+                "a caption that comes from the catalogue is the point of the rule");
+            Assert.That(Caught(USER_FACING, @"<TextBlock Text=""SQL""/>"), Is.False,
+                "an engine term is deliberately left alone (WS-64)");
+
+            Assert.That(Caught(STRING_FORMAT, "StringFormat='page {0}'"), Is.True,
+                "a caption inside a binding must be caught");
+            Assert.That(Caught(STRING_FORMAT, "StringFormat='{}{0:F1} %'"), Is.False,
+                "a number's format specifier is not prose");
+            Assert.That(Caught(STRING_FORMAT, "StringFormat='{}{0:yyyy-MM-dd HH:mm}'"), Is.False,
+                "a date pattern is not prose");
+
+            Assert.That(Caught(ANNOUNCED, @"AutomationProperties.Name=""Clear filter"""), Is.True,
+                "a hardcoded announcement must be caught");
+            Assert.That(Caught(ANNOUNCED, @"AutomationProperties.Name=""{DynamicResource S.X}"""), Is.False,
+                "an announcement from the catalogue is the point of the rule");
+
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT, @"StatusText = ""Ready"";"), Is.True,
+                "the status bar is read by a person");
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT, @"ErrorMessage = $""Export failed: {ex.Message}"";"), Is.True,
+                "an interpolated sentence is still a sentence");
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT, @"StatusText = Localization[""Common.Ready""];"), Is.False,
+                "a catalogue key is not a caption");
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT, @"var sql = ""SELECT * FROM [Orders]"";"), Is.False,
+                "a statement is not a caption");
+
+            Assert.That(Caught(VIEWMODEL_CALL, @"Notifications.Information(""Database dumped"", path);"), Is.True,
+                "a notification is read by a person");
+            Assert.That(Caught(VIEWMODEL_CALL, @"new FileFilter(""All Files"", [""*.*""]);"), Is.True,
+                "the name of a filter is read by a person");
+            Assert.That(Caught(VIEWMODEL_CALL, @"Notifications.Information(Localization[""X""], path);"), Is.False,
+                "a notification from the catalogue is the point of the rule");
+        });
+    }
+
+    /// <summary>
+    /// And the catalogue is what the views read from, so it has to be reachable from the test
     /// assembly too - the same embedded resources the application uses, not a copy.
     /// </summary>
     [Test]
@@ -163,21 +382,116 @@ public class LocalizationCoverageTests
 
     #region Tools
 
-    private static string? FindViewsFolder()
+    private readonly record struct Hit(string Attribute, string Value, int Index);
+
+    private readonly record struct SourceLine(string Text, string Next, int Number);
+
+    private static IEnumerable<Hit> Matches(string text, params Regex[] rules)
+    {
+        foreach (var rule in rules)
+        {
+            foreach (Match match in rule.Matches(text))
+            {
+                // The last group is the value; the first is what it was written into. A rule with an
+                // optional group in the middle (".Text") would otherwise shift the value's number.
+                var value = match.Groups[match.Groups.Count - 1].Value;
+
+                yield return new Hit(match.Groups[1].Value, Decode(value).Trim(), match.Index);
+            }
+        }
+    }
+
+    private static IEnumerable<SourceLine> Lines(string code)
+    {
+        var lines = code.Split('\n');
+
+        for (var i = 0; i < lines.Length; i++)
+            yield return new SourceLine(lines[i], i + 1 < lines.Length ? lines[i + 1] : string.Empty, i + 1);
+    }
+
+    /// <summary>
+    /// Whether a value is Studio's own text, i.e. something a translator should be given.
+    ///
+    /// <para>
+    /// The letters have to be OUTSIDE the placeholders: <c>{0:F1} %</c> and
+    /// <c>{0:yyyy-MM-dd HH:mm}</c> are full of letters and none of them is a word. A value with no
+    /// letters left is punctuation, a glyph or a number, and has no translation.
+    /// </para>
+    /// </summary>
+    private static bool IsStudioText(string value)
+    {
+        if (value.Length == 0 || NOT_STUDIO_TEXT.Contains(value))
+            return false;
+
+        // A file mask, an extension or a catalogue key: one word with a dot in it and no space. A
+        // caption is either a single word with no dot, or has spaces in it.
+        if (Regex.IsMatch(value, @"^[\w*]*\.[\w*.]+$"))
+            return false;
+
+        var outsidePlaceholders = Regex.Replace(value, @"\{[^}]*\}", string.Empty);
+
+        return outsidePlaceholders.Any(char.IsLetter);
+    }
+
+    /// <summary>
+    /// Markup is XML, so <c>&amp;lt;</c> is a caption of one character. Read literally it is the word
+    /// "lt", which is how a "&lt;" on a paging button came to look like untranslated text.
+    /// </summary>
+    private static string Decode(string value)
+    {
+        return value
+            .Replace("&lt;", "<")
+            .Replace("&gt;", ">")
+            .Replace("&quot;", "\"")
+            .Replace("&apos;", "'")
+            .Replace("&amp;", "&");
+    }
+
+    private static bool Caught(Regex rule, string line)
+    {
+        var text = CATALOGUE_LOOKUP.Replace(line, "Localization.Key");
+
+        return Matches(text, rule).Any(hit => IsStudioText(hit.Value));
+    }
+
+    private static int Line(string text, int index) => text[..index].Count(c => c == '\n') + 1;
+
+    private static string Shorten(string value) =>
+        value.Length <= 70 ? value : value[..70] + "...";
+
+    private static IEnumerable<string> Views()
+    {
+        var views = Path.Combine(StudioFolder(), "Views");
+
+        return Directory.EnumerateFiles(views, "*.axaml", SearchOption.AllDirectories);
+    }
+
+    private static IEnumerable<string> Sources()
+    {
+        var studio = StudioFolder();
+
+        return CODE_FOLDERS
+            .Select(folder => Path.Combine(studio, folder))
+            .Where(Directory.Exists)
+            .SelectMany(folder => Directory.EnumerateFiles(folder, "*.cs", SearchOption.AllDirectories));
+    }
+
+    private static string StudioFolder()
     {
         var directory = new DirectoryInfo(AppContext.BaseDirectory);
 
         while (directory != null)
         {
-            var candidate = Path.Combine(directory.FullName, "Tools", "OutWit.Database.Studio", "Views");
+            var candidate = Path.Combine(directory.FullName, "Tools", "OutWit.Database.Studio");
 
-            if (Directory.Exists(candidate))
+            if (Directory.Exists(Path.Combine(candidate, "Views")))
                 return candidate;
 
             directory = directory.Parent;
         }
 
-        return null;
+        throw new DirectoryNotFoundException(
+            "the Studio project was not found from " + AppContext.BaseDirectory);
     }
 
     #endregion

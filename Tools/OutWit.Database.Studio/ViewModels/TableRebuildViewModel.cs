@@ -167,13 +167,13 @@ public class TableRebuildViewModel : ViewModelBase<ApplicationViewModel>
 
             if (report.IsComplete)
             {
-                ApplicationVm.Notifications.Information($"{Table} was rebuilt");
-                ApplicationVm.MainWindowVm.StatusText = $"{Table} was rebuilt";
+                ApplicationVm.Notifications.Information(Localization.Format("Dialog.Rebuild.Done", Table));
+                ApplicationVm.MainWindowVm.StatusText = Localization.Format("Dialog.Rebuild.Done", Table);
             }
             else
             {
                 ErrorMessage = report.ErrorMessage;
-                ApplicationVm.Notifications.Error($"The rebuild of {Table} stopped", report.Summary);
+                ApplicationVm.Notifications.Error(Localization.Format("Dialog.Rebuild.Stopped", Table), report.Summary);
             }
         }
         catch (Exception ex)
@@ -211,7 +211,7 @@ public class TableRebuildViewModel : ViewModelBase<ApplicationViewModel>
                 continue;
 
             vm.IsRunning = true;
-            vm.State = "running";
+            vm.State = Localization["Dialog.Rebuild.Step.Running"];
         }
     }
 
@@ -225,6 +225,12 @@ public class TableRebuildViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public string Table { get; private set; } = string.Empty;
+
+    /// <summary>
+    /// The window's heading - a <c>StringFormat</c> in the markup before, which is a place a catalogue
+    /// cannot reach.
+    /// </summary>
+    public string Heading => Localization.Format("Dialog.Rebuild.Heading", Table);
 
     [Notify]
     public ObservableCollection<RebuildStepViewModel> Steps { get; private set; } = null!;
@@ -330,6 +336,12 @@ public class TableRebuildViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand CancelCommand { get; private set; } = null!;
 
     public ICommand CloseCommand { get; private set; } = null!;
+
+    #endregion
+
+    #region Services
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

@@ -86,7 +86,7 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     {
         ObjectName = objectName;
         ObjectType = objectType;
-        Title = $"{objectName} - Structure";
+        Title = Localization.Format("Tab.StructureOf", objectName);
 
         InitDefault();
         InitEvents();
@@ -190,13 +190,13 @@ public class StructureTabViewModel : WorkspaceTabViewModel
                     break;
 
                 default:
-                    ErrorMessage = "Unsupported object type";
+                    ErrorMessage = Localization["Structure.Unsupported"];
                     break;
             }
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to load structure: {ex.Message}";
+            ErrorMessage = Localization.Format("Structure.LoadFailed", ex.Message);
             Logger.LogError(ex, "Failed to load structure for {Type} {Name}", ObjectType, ObjectName);
         }
         finally
@@ -246,7 +246,8 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         UpdateKeyWarning();
         Recompute();
 
-        ApplicationVm.MainWindowVm.StatusText = $"Loaded {columns.Count} columns from table \"{ObjectName}\"";
+        ApplicationVm.MainWindowVm.StatusText = Localization.Format("Structure.Loaded",
+            Localization.Plural("Count.Columns", columns.Count), ObjectName);
         Logger.LogInformation("Loaded structure for table {Name}: {Count} columns", ObjectName, columns.Count);
     }
 
@@ -342,7 +343,8 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
         SelectedSection = StructureSection.Ddl;
 
-        ApplicationVm.MainWindowVm.StatusText = $"Loaded {columns.Count} columns from view \"{ObjectName}\"";
+        ApplicationVm.MainWindowVm.StatusText = Localization.Format("Structure.Loaded",
+            Localization.Plural("Count.Columns", columns.Count), ObjectName);
     }
 
     private async Task LoadIndexAsync(IDatabaseSession session)
@@ -377,7 +379,8 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
         m_suppressRecompute = false;
 
-        ApplicationVm.MainWindowVm.StatusText = $"Loaded {Columns.Count} columns from index \"{ObjectName}\"";
+        ApplicationVm.MainWindowVm.StatusText = Localization.Format("Structure.Loaded",
+            Localization.Plural("Count.Columns", Columns.Count), ObjectName);
     }
 
     #endregion
@@ -638,7 +641,7 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         {
             Kind = SchemaEditKind.DropConstraint,
             Table = ObjectName,
-            Description = $"drop and create index {index.Name}",
+            Description = Localization.Format("Structure.RecreateIndexPlan", index.Name),
             Statements = [DdlWriter.DropIndex(index.Name), DdlWriter.CreateIndex(draft)]
         });
 
@@ -994,6 +997,12 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     #region Fields
 
     private bool m_suppressRecompute;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

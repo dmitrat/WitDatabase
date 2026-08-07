@@ -95,12 +95,12 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
 
         if (session?.IsConnected != true)
         {
-            Summary = "The connection this object belongs to is closed.";
+            Summary = Localization["Inspector.ConnectionClosed"];
             return;
         }
 
         Title = node.Name;
-        Subtitle = $"{session.DisplayName} - {Describe(node.NodeType)}";
+        Subtitle = Localization.Format("Inspector.Subtitle", session.DisplayName, Describe(node.NodeType));
         IsLoading = true;
 
         try
@@ -134,7 +134,7 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
                     break;
 
                 default:
-                    Summary = "Select a table, a view, an index, a trigger, a routine or a column.";
+                    Summary = Localization["Inspector.SelectSomething"];
                     break;
             }
         }
@@ -144,7 +144,7 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            Summary = $"Could not describe this object: {ex.Message}";
+            Summary = Localization.Format("Inspector.DescribeFailed", ex.Message);
             Logger.LogError(ex, "Inspector failed on {Node}", node.Name);
         }
         finally
@@ -187,9 +187,7 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
 
         if (Definition == null)
         {
-            Summary = "The definition is not available: this database was written by an engine older "
-                + "than format 9.0.0, which did not keep the text of a definition. Showing an "
-                + "approximation would be worse than showing nothing.";
+            Summary = Localization["Inspector.NoTableDefinition"];
         }
     }
 
@@ -206,8 +204,7 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
 
         if (Definition == null)
         {
-            Summary = "The definition of this view is not available: the database was written before "
-                + "format 9.0.0, so the catalogue does not hold the parsed query.";
+            Summary = Localization["Inspector.NoViewDefinition"];
         }
     }
 
@@ -231,8 +228,11 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
 
         BuildDataAccess([column], indexes);
 
-        Summary = $"{column.DataType}{(column.IsNullable ? "" : " NOT NULL")}"
-            + (column.IsPrimaryKey ? ", primary key" : string.Empty);
+        // The type and the clause are the engine's words (WS-64); only "primary key" is Studio's.
+        var clause = column.IsNullable ? string.Empty : " NOT NULL";
+        var key = column.IsPrimaryKey ? ", " + Localization["Inspector.IsPrimaryKey"] : string.Empty;
+
+        Summary = column.DataType + clause + key;
     }
 
     private async Task LoadRoutineAsync(IDatabaseSession session, string name, CancellationToken ct)
@@ -263,18 +263,28 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
                 candidate.Columns.Count > 0
                 && string.Equals(candidate.Columns[0], column.Name, StringComparison.OrdinalIgnoreCase));
 
-            DataAccess.Add(new DataAccessNote
+            // The line is rendered HERE rather than in the model's ToString: a model that renders
+            // itself has no way to reach the catalogue, and the panel came out English under a
+            // Russian interface because of it.
+            var note = new DataAccessNote
             {
                 Column = column.Name,
                 IsIndexed = index != null,
                 IndexName = index?.Name,
                 IsPrimaryKey = column.IsPrimaryKey
-            });
+            };
+
+            note.Text = index != null
+                ? Localization.Format("Inspector.Access.Indexed", column.Name, index.Name)
+                : Localization.Format(column.IsPrimaryKey
+                    ? "Inspector.Access.KeyNoIndex"
+                    : "Inspector.Access.NoIndex", column.Name);
+
+            DataAccess.Add(note);
         }
 
         UnindexedKeyWarning = DataAccess.Any(note => note.IsPrimaryKey && !note.IsIndexed)
-            ? "The primary key has no index of its own. This engine does not create one, and inserting "
-              + "rows with explicit keys degrades sharply as the table grows."
+            ? Localization["Inspector.UnindexedKey"]
             : null;
     }
 
@@ -292,22 +302,16 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
         Definition = null;
         PrimaryKey = null;
         RowCount = null;
+        RowCountText = Localization["Inspector.NotCounted"];
         ColumnCount = 0;
         UnindexedKeyWarning = null;
     }
 
-    private static string Describe(DatabaseNodeType type) => type switch
-    {
-        DatabaseNodeType.Table => "table",
-        DatabaseNodeType.View => "view",
-        DatabaseNodeType.Index => "index",
-        DatabaseNodeType.Trigger => "trigger",
-        DatabaseNodeType.Sequence => "sequence",
-        DatabaseNodeType.Routine => "routine",
-        DatabaseNodeType.Column => "column",
-        DatabaseNodeType.Database => "connection",
-        _ => "object"
-    };
+    /// <summary>
+    /// What kind of thing this is, in words. The catalogue holds one entry per node type rather than a
+    /// switch of English nouns here.
+    /// </summary>
+    private string Describe(DatabaseNodeType type) => Localization["Node." + type];
 
     private async Task CopyDefinitionAsync()
     {
@@ -370,6 +374,17 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public long? RowCount { get; private set; }
 
+    /// <summary>
+    /// The count as the panel shows it, including the words for "not counted".
+    ///
+    /// <para>
+    /// It was a <c>TargetNullValue='not counted'</c> in the markup - inside a binding, where no lint
+    /// over attributes can see it and no catalogue can reach it.
+    /// </para>
+    /// </summary>
+    [Notify]
+    public string? RowCountText { get; private set; }
+
     [Notify]
     public int ColumnCount { get; private set; }
 
@@ -424,6 +439,12 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
     #region Services
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

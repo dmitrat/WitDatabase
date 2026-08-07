@@ -5,6 +5,7 @@
              xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
              xmlns:models="clr-namespace:OutWit.Database.Studio.Models"
              xmlns:ui="using:OutWit.Database.Studio.Ui.Icons"
+             xmlns:conv="using:OutWit.Database.Studio.Converters"
              mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
              x:Class="OutWit.Database.Studio.Views.Workspace.StructureView"
              x:DataType="tabs:StructureTabViewModel">
@@ -52,41 +53,50 @@
                     <TextBlock Text="{Binding ObjectName}" FontSize="14" Foreground="Gray"/>
                     <Border Background="#FFF3CD" CornerRadius="3" Padding="6,1"
                             IsVisible="{Binding HasPending}">
-                        <TextBlock Text="{Binding PendingCount, StringFormat='{}{0} pending'}"
-                                   FontSize="11" Foreground="#856404"/>
+                        <!-- A count needs a plural rule, not a template, so the LANGUAGE is an input
+                             here: it is what makes the badge change when the catalogue is swapped. -->
+                        <TextBlock FontSize="11" Foreground="#856404">
+                            <TextBlock.Text>
+                                <MultiBinding Converter="{x:Static conv:LocalizedText.Plural}"
+                                              ConverterParameter="Count.Pending">
+                                    <DynamicResource ResourceKey="S.$language"/>
+                                    <Binding Path="PendingCount"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
+                        </TextBlock>
                     </Border>
                 </StackPanel>
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
                     <Button AutomationProperties.AutomationId="StructureAddColumn"
-                            Content="Column" Command="{Binding AddColumnCommand}"
+                            Content="{DynamicResource S.Structure.Column}" Command="{Binding AddColumnCommand}"
                             IsVisible="{Binding IsTable}"
-                            ToolTip.Tip="Add a column"/>
+                            ToolTip.Tip="{DynamicResource S.Structure.AddColumn.Tip}"/>
 
                     <Button AutomationProperties.AutomationId="StructureApply"
-                            Content="Apply" Command="{Binding ApplyCommand}"
+                            Content="{DynamicResource S.Common.Apply}" Command="{Binding ApplyCommand}"
                             IsEnabled="{Binding CanApply}" Classes="accent"
                             IsVisible="{Binding IsTable}"/>
 
                     <Button AutomationProperties.AutomationId="StructureRebuild"
-                            Content="Rebuild..." Command="{Binding RebuildCommand}"
+                            Content="{DynamicResource S.Structure.Rebuild}" Command="{Binding RebuildCommand}"
                             IsEnabled="{Binding CanRebuild}"
                             IsVisible="{Binding NeedsRebuild}"
-                            ToolTip.Tip="This change needs the table to be built again"/>
+                            ToolTip.Tip="{DynamicResource S.Structure.Rebuild.Tip}"/>
 
                     <Button AutomationProperties.AutomationId="StructureRevert"
-                            Content="Revert" Command="{Binding RevertCommand}"
+                            Content="{DynamicResource S.Structure.Revert}" Command="{Binding RevertCommand}"
                             IsEnabled="{Binding HasPending}"
                             IsVisible="{Binding IsTable}"/>
 
                     <Button AutomationProperties.AutomationId="StructureCopyDdl"
-                            Content="Copy DDL" Command="{Binding CopyDdlCommand}"/>
+                            Content="{DynamicResource S.Structure.CopyDdl}" Command="{Binding CopyDdlCommand}"/>
 
                     <Button AutomationProperties.AutomationId="StructureRefresh"
-                            AutomationProperties.Name="Refresh"
+                            AutomationProperties.Name="{DynamicResource S.Common.Refresh}"
                             Command="{Binding RefreshCommand}"
                             IsEnabled="{Binding CanRefresh}"
-                            ToolTip.Tip="Refresh" Width="32" Height="32" Padding="0">
+                            ToolTip.Tip="{DynamicResource S.Common.Refresh}" Width="32" Height="32" Padding="0">
                         <PathIcon Data="{x:Static ui:StudioIcons.TABLE_STRUCTURE_REFRESH}" Width="16" Height="16"/>
                     </Button>
                 </StackPanel>
@@ -100,47 +110,47 @@
                 Padding="12,4">
             <StackPanel Orientation="Horizontal" Spacing="4">
                 <RadioButton AutomationProperties.AutomationId="StructureSectionColumns"
-                             AutomationProperties.Name="Columns section"
+                             AutomationProperties.Name="{DynamicResource S.Structure.Section.Columns}"
                              GroupName="StructureSection" Classes="tab"
                              IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Columns}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="Columns"/>
+                        <TextBlock Text="{DynamicResource S.Common.Columns}"/>
                         <TextBlock Text="{Binding ColumnCount}" Foreground="Gray"/>
                     </StackPanel>
                 </RadioButton>
 
                 <RadioButton AutomationProperties.AutomationId="StructureSectionKeys"
-                             AutomationProperties.Name="Keys section"
+                             AutomationProperties.Name="{DynamicResource S.Structure.Section.Keys}"
                              GroupName="StructureSection" Classes="tab"
                              IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Keys}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="Keys and constraints"/>
+                        <TextBlock Text="{DynamicResource S.Structure.Keys}"/>
                         <TextBlock Text="{Binding Constraints.Count}" Foreground="Gray"/>
                     </StackPanel>
                 </RadioButton>
 
                 <RadioButton AutomationProperties.AutomationId="StructureSectionIndexes"
-                             AutomationProperties.Name="Indexes section"
+                             AutomationProperties.Name="{DynamicResource S.Structure.Section.Indexes}"
                              GroupName="StructureSection" Classes="tab"
                              IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Indexes}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="Indexes"/>
+                        <TextBlock Text="{DynamicResource S.Structure.Indexes}"/>
                         <TextBlock Text="{Binding Indexes.Count}" Foreground="Gray"/>
                     </StackPanel>
                 </RadioButton>
 
                 <RadioButton AutomationProperties.AutomationId="StructureSectionTriggers"
-                             AutomationProperties.Name="Triggers section"
+                             AutomationProperties.Name="{DynamicResource S.Structure.Section.Triggers}"
                              GroupName="StructureSection" Classes="tab"
                              IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Triggers}">
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <TextBlock Text="Triggers"/>
+                        <TextBlock Text="{DynamicResource S.Structure.Triggers}"/>
                         <TextBlock Text="{Binding Triggers.Count}" Foreground="Gray"/>
                     </StackPanel>
                 </RadioButton>
 
                 <RadioButton AutomationProperties.AutomationId="StructureSectionDdl"
-                             AutomationProperties.Name="Ddl section"
+                             AutomationProperties.Name="{DynamicResource S.Structure.Section.Ddl}"
                              GroupName="StructureSection" Classes="tab"
                              IsChecked="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Ddl}">
                     <TextBlock Text="DDL"/>
@@ -159,12 +169,12 @@
                         BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                         BorderThickness="0,0,0,1" Padding="12,6">
                     <Grid ColumnDefinitions="1.3*,130,70,130,1.7*,96,34">
-                        <TextBlock Grid.Column="0" Text="NAME" FontWeight="SemiBold" FontSize="11"/>
-                        <TextBlock Grid.Column="1" Text="TYPE" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="0" Text="{DynamicResource S.Structure.Head.Name}" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="1" Text="{DynamicResource S.Structure.Head.Type}" FontWeight="SemiBold" FontSize="11"/>
                         <TextBlock Grid.Column="2" Text="NOT NULL" FontWeight="SemiBold" FontSize="11"/>
-                        <TextBlock Grid.Column="3" Text="DEFAULT" FontWeight="SemiBold" FontSize="11"/>
-                        <TextBlock Grid.Column="4" Text="CONSTRAINTS" FontWeight="SemiBold" FontSize="11"/>
-                        <TextBlock Grid.Column="5" Text="CHANGE" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="3" Text="{DynamicResource S.Structure.Head.Default}" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="4" Text="{DynamicResource S.Structure.Head.Constraints}" FontWeight="SemiBold" FontSize="11"/>
+                        <TextBlock Grid.Column="5" Text="{DynamicResource S.Structure.Head.Change}" FontWeight="SemiBold" FontSize="11"/>
                     </Grid>
                 </Border>
 
@@ -201,9 +211,9 @@
                                             <TextBlock Text="{Binding ReferencesTable, StringFormat='-> {0}'}"
                                                        FontSize="11" Foreground="Gray"
                                                        IsVisible="{Binding ReferencesTable, Converter={x:Static ObjectConverters.IsNotNull}}"/>
-                                            <TextBlock Text="computed" FontSize="11" Foreground="Gray"
+                                            <TextBlock Text="{DynamicResource S.Structure.Computed}" FontSize="11" Foreground="Gray"
                                                        IsVisible="{Binding IsComputed}"/>
-                                            <TextBlock Text="to be dropped" FontSize="11" Foreground="#B71C1C"
+                                            <TextBlock Text="{DynamicResource S.Structure.ToBeDropped}" FontSize="11" Foreground="#B71C1C"
                                                        IsVisible="{Binding IsDeleted}"/>
                                         </StackPanel>
 
@@ -218,12 +228,12 @@
 
                                         <Button Grid.Column="6" Width="24" Height="24" Padding="0"
                                                 AutomationProperties.AutomationId="StructureDropColumn"
-                                                AutomationProperties.Name="Drop this column"
-                                                Content="x" FontSize="11"
+                                                AutomationProperties.Name="{DynamicResource S.Structure.DropColumn}"
+                                                Content="✕" FontSize="11"
                                                 IsVisible="{Binding !IsDeleted}"
                                                 Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).DeleteColumnCommand}"
                                                 CommandParameter="{Binding}"
-                                                ToolTip.Tip="Drop this column"/>
+                                                ToolTip.Tip="{DynamicResource S.Structure.DropColumn}"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
@@ -272,7 +282,7 @@
                         BorderThickness="0,0,0,1">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button AutomationProperties.AutomationId="StructureCreateIndex"
-                                Content="Create index..." Command="{Binding CreateIndexCommand}"/>
+                                Content="{DynamicResource S.Structure.CreateIndex}" Command="{Binding CreateIndexCommand}"/>
                     </StackPanel>
                 </Border>
 
@@ -287,22 +297,28 @@
 
                                         <StackPanel Grid.Column="1" Spacing="2" VerticalAlignment="Center">
                                             <TextBlock Text="{Binding}" Foreground="Gray" FontSize="12"/>
-                                            <TextBlock Text="{Binding FilterCondition, StringFormat='partial - WHERE {0}'}"
-                                                       Foreground="Gray" FontSize="11"
-                                                       IsVisible="{Binding FilterCondition, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                                            <TextBlock Foreground="Gray" FontSize="11"
+                                                       IsVisible="{Binding FilterCondition, Converter={x:Static ObjectConverters.IsNotNull}}">
+                                                <TextBlock.Text>
+                                                    <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
+                                                        <DynamicResource ResourceKey="S.Structure.PartialIndex"/>
+                                                        <Binding Path="FilterCondition"/>
+                                                    </MultiBinding>
+                                                </TextBlock.Text>
+                                            </TextBlock>
                                         </StackPanel>
 
-                                        <Button Grid.Column="2" Content="Drop and create" FontSize="11"
+                                        <Button Grid.Column="2" Content="{DynamicResource S.Dialog.Trigger.DropAndCreate}" FontSize="11"
                                                 AutomationProperties.AutomationId="StructureRecreateIndex"
-                                                AutomationProperties.Name="Drop and create this index"
+                                                AutomationProperties.Name="{DynamicResource S.Structure.RecreateIndex}"
                                                 Margin="0,0,6,0"
                                                 Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).RecreateIndexCommand}"
                                                 CommandParameter="{Binding}"
-                                                ToolTip.Tip="This engine has no REINDEX and no ALTER INDEX, so rebuilding an index is a drop and a create"/>
+                                                ToolTip.Tip="{DynamicResource S.Structure.RecreateIndex.Tip}"/>
 
-                                        <Button Grid.Column="3" Content="Drop" FontSize="11"
+                                        <Button Grid.Column="3" Content="{DynamicResource S.Common.Drop}" FontSize="11"
                                                 AutomationProperties.AutomationId="StructureDropIndex"
-                                                AutomationProperties.Name="Drop this index"
+                                                AutomationProperties.Name="{DynamicResource S.Structure.DropIndex}"
                                                 Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).DropIndexCommand}"
                                                 CommandParameter="{Binding}"/>
                                     </Grid>
@@ -334,9 +350,9 @@
                                                        FontFamily="Consolas,Courier New" TextWrapping="Wrap"/>
                                         </StackPanel>
 
-                                        <Button Grid.Column="1" Content="Drop" FontSize="11"
+                                        <Button Grid.Column="1" Content="{DynamicResource S.Common.Drop}" FontSize="11"
                                                 AutomationProperties.AutomationId="StructureDropTrigger"
-                                                AutomationProperties.Name="Drop this trigger"
+                                                AutomationProperties.Name="{DynamicResource S.Structure.DropTrigger}"
                                                 Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).DropTriggerCommand}"
                                                 CommandParameter="{Binding}"/>
                                     </Grid>
@@ -345,7 +361,7 @@
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
-                    <TextBlock Text="There is no ALTER TRIGGER on this engine, and none to enable or disable one: a trigger is created or dropped."
+                    <TextBlock Text="{DynamicResource S.Structure.TriggerNote}"
                                FontSize="11" Foreground="Gray" TextWrapping="Wrap" Margin="0,8,0,0"/>
                 </StackPanel>
             </ScrollViewer>
@@ -366,7 +382,7 @@
                             CornerRadius="4" Padding="10"
                             IsVisible="{Binding !CanEditView}">
                         <TextBlock TextWrapping="Wrap" Foreground="#856404"
-                                   Text="The catalogue cannot render this view's body - it comes back empty for a UNION and for a subquery. Changing a view means dropping and creating it, and Studio will not do that from a body it does not have."/>
+                                   Text="{DynamicResource S.Structure.ViewNote}"/>
                     </Border>
                 </StackPanel>
             </ScrollViewer>
@@ -381,7 +397,7 @@
                 MinHeight="90"
                 IsVisible="{Binding IsTable}">
             <Grid RowDefinitions="Auto,*,Auto">
-                <TextBlock Grid.Row="0" Text="Will be run on Apply" FontSize="11" FontWeight="SemiBold"
+                <TextBlock Grid.Row="0" Text="{DynamicResource S.Structure.WillRun}" FontSize="11" FontWeight="SemiBold"
                            Foreground="Gray"/>
 
                 <ScrollViewer Grid.Row="1" MaxHeight="120">
@@ -409,7 +425,7 @@
 
         <!-- Loading overlay: on the content row only, never over the strip or the panel -->
         <Border Grid.Row="2" Background="#80000000" IsVisible="{Binding IsLoading}">
-            <TextBlock Text="Loading structure..." Foreground="White"
+            <TextBlock Text="{DynamicResource S.Structure.Loading}" Foreground="White"
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
 

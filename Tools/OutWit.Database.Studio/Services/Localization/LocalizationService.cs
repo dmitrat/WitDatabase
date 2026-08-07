@@ -55,6 +55,29 @@ public sealed class LocalizationService : ILocalizationService
 
     private readonly Dictionary<string, Catalogue> m_catalogues = new(StringComparer.Ordinal);
 
+    private static ILocalizationService? s_current;
+
+    #endregion
+
+    #region Properties
+
+    /// <summary>
+    /// The service the application is running on, for the few places that cannot be given one: a
+    /// value converter, a view's code-behind, and a helper that builds a sentence without holding a
+    /// ViewModel.
+    ///
+    /// <para>
+    /// It falls back to a service of its own rather than to English, because a fallback to English is
+    /// exactly the failure this whole layer exists to prevent - it looks correct and is simply never
+    /// translated. <c>App</c> sets it once at start-up.
+    /// </para>
+    /// </summary>
+    public static ILocalizationService Shared
+    {
+        get => s_current ??= new LocalizationService();
+        set => s_current = value;
+    }
+
     #endregion
 
     #region Constructors

@@ -6,7 +6,7 @@
         mc:Ignorable="d" d:DesignWidth="700" d:DesignHeight="500"
         x:Class="OutWit.Database.Studio.Views.Dialogs.CreateViewDialog"
         x:DataType="vm:CreateViewViewModel"
-        Title="Create View"
+        Title="{DynamicResource S.Dialog.CreateView.Title}"
         Width="700" Height="500"
         MinWidth="600" MinHeight="400"
         WindowStartupLocation="CenterOwner"
@@ -20,7 +20,7 @@
                 BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="16">
-            <TextBlock Text="Create New View"
+            <TextBlock Text="{DynamicResource S.Dialog.CreateView.Heading}"
                        FontSize="18"
                        FontWeight="SemiBold"/>
         </Border>
@@ -31,17 +31,17 @@
                 
                 <!-- View Name -->
                 <StackPanel Spacing="8">
-                    <TextBlock Text="View Name:" FontWeight="SemiBold"/>
+                    <TextBlock Text="{DynamicResource S.Dialog.CreateView.Name}" FontWeight="SemiBold"/>
                     <TextBox Text="{Binding ViewName}"
-                             Watermark="Enter view name"
+                             Watermark="{DynamicResource S.Dialog.CreateView.NameHint}"
                              Width="400"
                              HorizontalAlignment="Left"/>
                 </StackPanel>
 
                 <!-- SELECT Statement -->
                 <StackPanel Spacing="8">
-                    <TextBlock Text="SELECT Statement:" FontWeight="SemiBold"/>
-                    <TextBlock Text="Enter the SELECT query for the view (without CREATE VIEW...)"
+                    <TextBlock Text="{DynamicResource S.Dialog.CreateView.Select}" FontWeight="SemiBold"/>
+                    <TextBlock Text="{DynamicResource S.Dialog.CreateView.SelectHint}"
                                FontSize="12"
                                Foreground="Gray"
                                Margin="0,-4,0,0"/>
@@ -74,7 +74,7 @@
                 Margin="16,0"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
             <StackPanel Spacing="4">
-                <TextBlock Text="[!] Error"
+                <TextBlock Text="{DynamicResource S.Common.ErrorHeading}"
                            FontWeight="Bold"
                            Foreground="#856404"/>
                 <TextBlock Text="{Binding ErrorMessage}"
@@ -93,12 +93,12 @@
                         HorizontalAlignment="Right"
                         Spacing="8">
                 
-                <Button AutomationProperties.AutomationId="CreateCancel" Content="Cancel"
+                <Button AutomationProperties.AutomationId="CreateCancel" Content="{DynamicResource S.Common.Cancel}"
                         Command="{Binding CancelCommand}"
                         Width="100"
                         HorizontalContentAlignment="Center"/>
                 
-                <Button AutomationProperties.AutomationId="CreateCreateView" Content="Create View"
+                <Button AutomationProperties.AutomationId="CreateCreateView" Content="{DynamicResource S.Dialog.CreateView.Create}"
                         Command="{Binding CreateViewCommand}"
                         IsEnabled="{Binding CanCreateView}"
                         Width="120"
@@ -123,7 +123,7 @@
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
                 </Border>
-                <TextBlock Text="Creating view..."
+                <TextBlock Text="{DynamicResource S.Dialog.CreateView.Creating}"
                            Foreground="White"
                            FontSize="16"
                            HorizontalAlignment="Center"/>

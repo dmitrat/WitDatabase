@@ -238,7 +238,7 @@
 
 			<!-- Command palette entry (WS-9). Always in the middle, always in the same place. -->
 			<Button AutomationProperties.AutomationId="MainWindowCommandPalette"
-			        AutomationProperties.Name="Go to object or command"
+			        AutomationProperties.Name="{DynamicResource S.Shell.Palette}"
 			        Grid.Column="1"
 			        Command="{Binding PaletteVm.OpenCommand}"
 			        HorizontalAlignment="Center"
@@ -262,7 +262,7 @@
 			<!-- Right cluster: notifications, theme -->
 			<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
 				<Button AutomationProperties.AutomationId="MainWindowNotifications"
-				        AutomationProperties.Name="Notifications"
+				        AutomationProperties.Name="{DynamicResource S.Shell.Notifications}"
 				        ToolTip.Tip="{DynamicResource S.Shell.Notifications}"
 				        Background="Transparent"
 				        BorderThickness="0"
@@ -278,7 +278,7 @@
 					</Panel>
 				</Button>
 
-				<Button AutomationProperties.AutomationId="MainWindowThemeToggleButton" AutomationProperties.Name="Toggle Dark/Light Theme"
+				<Button AutomationProperties.AutomationId="MainWindowThemeToggleButton" AutomationProperties.Name="{DynamicResource S.Shell.ToggleTheme}"
 				        x:Name="ThemeToggleButton"
 				        ToolTip.Tip="{DynamicResource S.Shell.ToggleTheme}"
 				        Background="Transparent"
@@ -308,40 +308,40 @@
 					<!-- Query tab -->
 					<StackPanel Orientation="Horizontal" Spacing="4"
 					            IsVisible="{Binding WorkspaceTabsVm.IsQueryTabSelected}">
-						<Button AutomationProperties.AutomationId="ToolbarExecute" AutomationProperties.Name="Execute"
+						<Button AutomationProperties.AutomationId="ToolbarExecute" AutomationProperties.Name="{DynamicResource S.Toolbar.Execute}"
 						        Command="{Binding WorkspaceTabsVm.ExecuteCurrentStatementCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Execute.Tip}"
 						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Execute}" FontSize="12"/>
-						<Button AutomationProperties.AutomationId="ToolbarExecuteScript" AutomationProperties.Name="Execute script"
+						<Button AutomationProperties.AutomationId="ToolbarExecuteScript" AutomationProperties.Name="{DynamicResource S.Toolbar.Script.Name}"
 						        Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Script.Tip}"
 						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Script}" FontSize="12"/>
-						<Button AutomationProperties.AutomationId="ToolbarExecuteSelection" AutomationProperties.Name="Execute selection"
+						<Button AutomationProperties.AutomationId="ToolbarExecuteSelection" AutomationProperties.Name="{DynamicResource S.Toolbar.Selection.Name}"
 						        Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Selection.Tip}"
 						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Selection}" FontSize="12"/>
-						<Button AutomationProperties.AutomationId="ToolbarStop" AutomationProperties.Name="Stop"
+						<Button AutomationProperties.AutomationId="ToolbarStop" AutomationProperties.Name="{DynamicResource S.Toolbar.Stop}"
 						        Command="{Binding WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.IsExecuting}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Stop.Tip}"
 						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Stop}" FontSize="12"/>
-						<Button AutomationProperties.AutomationId="ToolbarClearResults" AutomationProperties.Name="Clear results"
+						<Button AutomationProperties.AutomationId="ToolbarClearResults" AutomationProperties.Name="{DynamicResource S.Toolbar.Clear.Name}"
 						        Command="{Binding WorkspaceTabsVm.ClearResultsCommand}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Clear.Tip}"
 						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Clear}" FontSize="12"/>
-						<Button AutomationProperties.AutomationId="ToolbarFormat" AutomationProperties.Name="Format"
+						<Button AutomationProperties.AutomationId="ToolbarFormat" AutomationProperties.Name="{DynamicResource S.Toolbar.Format}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.FormatCommand}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Format.Tip}"
 						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Format}" FontSize="12"/>
-						<Button AutomationProperties.AutomationId="ToolbarExplain" AutomationProperties.Name="Explain"
+						<Button AutomationProperties.AutomationId="ToolbarExplain" AutomationProperties.Name="{DynamicResource S.Query.Explain}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.ShowPlanCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Plan.Tip}"
 						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Plan}" FontSize="12"/>
-						<Button AutomationProperties.AutomationId="ToolbarSaveQuery" AutomationProperties.Name="Save query"
+						<Button AutomationProperties.AutomationId="ToolbarSaveQuery" AutomationProperties.Name="{DynamicResource S.Toolbar.Save.Name}"
 						        Command="{Binding WorkspaceTabsVm.SaveTabCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanSaveTab}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Save.Tip}"
@@ -352,23 +352,23 @@
 						<Border Width="1" Margin="4,4" Background="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
 
 						<ComboBox AutomationProperties.AutomationId="ToolbarIsolation"
-						          AutomationProperties.Name="Isolation level"
+						          AutomationProperties.Name="{DynamicResource S.Toolbar.Isolation}"
 						          ItemsSource="{Binding WorkspaceTabsVm.SelectedQueryTab.Isolations}"
 						          SelectedItem="{Binding WorkspaceTabsVm.SelectedQueryTab.Isolation, Mode=TwoWay}"
 						          IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
 						          ToolTip.Tip="{DynamicResource S.Toolbar.Isolation.Tip}"
 						          Height="24" FontSize="12" MinWidth="130"/>
-						<Button AutomationProperties.AutomationId="ToolbarBeginTransaction" AutomationProperties.Name="Begin transaction"
+						<Button AutomationProperties.AutomationId="ToolbarBeginTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Begin.Name}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.BeginTransactionCommand}"
 						        IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Begin.Tip}"
 						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Begin}" FontSize="12"/>
-						<Button AutomationProperties.AutomationId="ToolbarCommitTransaction" AutomationProperties.Name="Commit transaction"
+						<Button AutomationProperties.AutomationId="ToolbarCommitTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Commit.Name}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.CommitTransactionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Commit.Tip}"
 						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Commit}" FontSize="12"/>
-						<Button AutomationProperties.AutomationId="ToolbarRollbackTransaction" AutomationProperties.Name="Roll back transaction"
+						<Button AutomationProperties.AutomationId="ToolbarRollbackTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Rollback.Name}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.RollbackTransactionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Rollback.Tip}"
@@ -468,7 +468,7 @@
 
 							<!-- Action Buttons -->
 							<StackPanel Spacing="12" Margin="0,16,0,0">
-								<Button AutomationProperties.AutomationId="WelcomeNewDatabase" AutomationProperties.Name="New database" Command="{Binding MainWindowVm.NewDatabaseCommand}"
+								<Button AutomationProperties.AutomationId="WelcomeNewDatabase" AutomationProperties.Name="{DynamicResource S.Welcome.NewDatabase}" Command="{Binding MainWindowVm.NewDatabaseCommand}"
 								        Width="180"
 								        HorizontalContentAlignment="Left"
 								        Padding="16,10">
@@ -479,7 +479,7 @@
 									</StackPanel>
 								</Button>
 								
-								<Button AutomationProperties.AutomationId="WelcomeOpenDatabase" AutomationProperties.Name="Open database" Command="{Binding MainWindowVm.OpenDatabaseCommand}"
+								<Button AutomationProperties.AutomationId="WelcomeOpenDatabase" AutomationProperties.Name="{DynamicResource S.Welcome.OpenDatabase}" Command="{Binding MainWindowVm.OpenDatabaseCommand}"
 								        Width="180"
 								        HorizontalContentAlignment="Left"
 								        Padding="16,10"
@@ -616,7 +616,7 @@
 					           TextTrimming="CharacterEllipsis"
 					           VerticalAlignment="Center"/>
 					<Button Grid.Column="2"
-					        AutomationProperties.AutomationId="StatusCancel" AutomationProperties.Name="Cancel"
+					        AutomationProperties.AutomationId="StatusCancel" AutomationProperties.Name="{DynamicResource S.Common.Cancel}"
 					        Content="{DynamicResource S.Common.Cancel}"
 					        FontSize="11"
 					        Padding="8,0"
@@ -636,11 +636,21 @@
 				        IsVisible="{Binding MainWindowVm.IsConnected}"
 				        Background="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction,
 				                     Converter={x:Static converters:PanelConverters.TransactionBrush}}">
+					<!-- The fallback is the catalogue's word too: with no query tab selected this was
+					     the one English caption left on a Russian window. It cannot be a
+					     FallbackValue - a DynamicResource there is assigned as the markup extension
+					     OBJECT and the status bar reads its type name. -->
 					<TextBlock AutomationProperties.AutomationId="StatusTransaction"
-					           Text="{Binding WorkspaceTabsVm.SelectedQueryTab.TransactionState,
-					                  FallbackValue='Autocommit', TargetNullValue='Autocommit'}"
 					           FontSize="12"
-					           VerticalAlignment="Center"/>
+					           VerticalAlignment="Center">
+						<TextBlock.Text>
+							<MultiBinding Converter="{x:Static converters:LocalizedText.Or}"
+							              ConverterParameter="Query.Autocommit">
+								<DynamicResource ResourceKey="S.$language"/>
+								<Binding Path="WorkspaceTabsVm.SelectedQueryTab.TransactionState"/>
+							</MultiBinding>
+						</TextBlock.Text>
+					</TextBlock>
 				</Border>
 
 				<!-- Where the cursor is -->
@@ -668,7 +678,7 @@
 			        Padding="8">
 				<StackPanel Spacing="6">
 					<TextBox AutomationProperties.AutomationId="PaletteQuery"
-					         AutomationProperties.Name="Palette query"
+					         AutomationProperties.Name="{DynamicResource S.Shell.Palette.Query}"
 					         x:Name="PaletteQueryBox"
 					         Text="{Binding PaletteVm.Query, Mode=TwoWay}"
 					         Watermark="{DynamicResource S.Shell.Palette}"
@@ -738,7 +748,7 @@
 					           IsVisible="{Binding !MainWindowVm.HasNotifications}"/>
 
 					<Button AutomationProperties.AutomationId="NotificationsClose"
-					        AutomationProperties.Name="Close notifications"
+					        AutomationProperties.Name="{DynamicResource S.Shell.CloseNotifications}"
 					        Grid.Row="2" Content="{DynamicResource S.Common.Close}" FontSize="11" HorizontalAlignment="Right"
 					        Margin="0,6,0,0"
 					        Command="{Binding MainWindowVm.HideNotificationsCommand}"/>
