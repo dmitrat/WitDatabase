@@ -36,44 +36,37 @@ public class CoreLsmFindingsTests
         try { Directory.Delete(m_directory, recursive: true); } catch { /* best effort */ }
     }
 
-    #region Compaction has no manifest
+    #region The manifest
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. <b>A crashed compaction resurrects deleted rows.</b>
+    /// A row deleted before a crashed compaction stays deleted.
     /// </summary>
     /// <remarks>
     /// <para>
-    /// <b>This was recorded as "MECHANISM CONFIRMED, CONSEQUENCE NOT REPRODUCED" and the consequence
-    /// reproduces.</b> What stopped it was the instrument, not the engine: <c>Compact()</c> applied
-    /// the automatic <c>Level0CompactionTrigger</c> to an explicit call, and this case has two
-    /// SSTables against a default trigger of four - so the compaction it is named after never ran.
-    /// The moment an explicit compaction was made to compact (2026-08-07, <c>ExplicitCompactionTests</c>),
-    /// this case went red on its own.
+    /// <b>The history is the useful part.</b> This was recorded as "MECHANISM CONFIRMED, CONSEQUENCE
+    /// NOT REPRODUCED", and the consequence reproduced the moment the instrument was fixed:
+    /// <c>Compact()</c> applied the automatic <c>Level0CompactionTrigger</c> to an explicit call, and
+    /// this case has two SSTables against a default trigger of four - so the compaction it is named
+    /// after never ran. On 2026-08-07 an explicit compaction was made to compact and this case went
+    /// red on its own, with the deleted row readable again.
     /// </para>
     /// <para>
-    /// <b>And the old reasoning was wrong in a way worth naming.</b> It said the output RETAINS the
-    /// tombstone, "verified, not assumed, because Get(k0) returned null after compaction". Null was a
-    /// proxy: <c>Compactor.Compact</c> <b>drops</b> tombstones - "they've done their job" - so after a
-    /// full merge k0 is null because it is ABSENT, not because anything masks it. Absence and a
-    /// tombstone read identically through <c>Get</c>, and the difference is the whole defect.
+    /// <b>The old reasoning also leaned on a proxy.</b> It said the output RETAINS the tombstone,
+    /// "verified, not assumed, because Get(k0) returned null after compaction". Null was ambiguous:
+    /// <c>Compactor.Compact</c> <b>drops</b> tombstones - "they've done their job" - so after a full
+    /// merge k0 read null because it was ABSENT. Absence and a tombstone are identical through
+    /// <c>Get</c>, and that difference was the whole defect.
     /// </para>
     /// <para>
-    /// <b>The chain, all of it measured:</b> a full compaction merges every SSTable into one and drops
-    /// the tombstones, which is legitimate only because the output is meant to replace the whole live
-    /// set; the inputs are then deleted with every failure swallowed
-    /// (<c>try { File.Delete(file); } catch { }</c>); and the live set on the next open is a directory
-    /// listing with no manifest. So an input the compaction failed to delete - a crash between the two,
-    /// a virus scanner, a handle held open - is readmitted as live data, and the rows it holds come
-    /// back from the dead with nothing left to mask them.
-    /// </para>
-    /// <para>
-    /// <b>A fix must invert the last assertion.</b> The shape it needs is a manifest: the live set
-    /// stated in a file that is updated atomically, rather than inferred from what happens to be on
-    /// disk. Until then this pin says what the engine does.
+    /// <b>Fixed by <see cref="LsmManifest"/>, and by the ORDER it is written in.</b> A compaction
+    /// publishes a manifest naming only its output and only then deletes the inputs, so an input that
+    /// survives is no longer named and nobody reads it. What this case measures is exactly that: the
+    /// survivor is still on disk afterwards - asserted, because "the row is gone" would otherwise be
+    /// equally consistent with the file having been deleted after all.
     /// </para>
     /// </remarks>
     [Test]
-    public void CrashedCompactionResurrectsDeletedRowsTest()
+    public void ACrashedCompactionDoesNotResurrectDeletedRowsTest()
     {
         var holding = Path.Combine(m_directory, "..", Path.GetFileName(m_directory) + "-holding");
         Directory.CreateDirectory(holding);
@@ -117,17 +110,33 @@ public class CoreLsmFindingsTests
             foreach (var file in Directory.GetFiles(holding, "sst_*.sst"))
                 File.Copy(file, Path.Combine(m_directory, Path.GetFileName(file)), overwrite: true);
 
+            var restored = Directory.GetFiles(m_directory, "sst_*.sst").Length;
+
             using var reopened = new StoreLsm(m_directory);
 
-            // PINS A DEFECT, NOT CORRECT BEHAVIOUR. A fix - a manifest naming the live set - must
-            // invert this to Is.Null.
-            Assert.That(reopened.Get(Key("k0")), Is.Not.Null,
-                "the deleted row did NOT come back, so either the compaction now keeps its tombstones "
-                + "or the live set is no longer a directory listing - re-measure and invert this pin");
+            Assert.Multiple(() =>
+            {
+                // CONTROL: the survivor must still be lying there. Without this, "the row is gone"
+                // is equally consistent with the file having been deleted, and the case would pass
+                // on an engine with no manifest at all.
+                Assert.That(restored, Is.EqualTo(2),
+                    "CONTROL: the crashed compaction's surviving input is not on disk, so nothing is "
+                    + "being ignored and this case is not about the manifest");
+
+                Assert.That(reopened.Get(Key("k0")), Is.Null,
+                    "a row deleted before the crash came back because an input file survived. The "
+                    + "full merge dropped its tombstone, so an unnamed survivor has nothing left to "
+                    + "mask it - the live set is being read from the directory rather than from the "
+                    + "manifest.");
+
+                // And the rest of the data is still there, so "nothing came back" is not "nothing
+                // is readable".
+                Assert.That(reopened.Get(Key("k1")), Is.Not.Null,
+                    "the surviving rows went with it");
+            });
 
             TestContext.Out.WriteLine(
-                "LSM PIN: a row deleted before a crashed compaction is readable again - the full merge "
-                + "dropped its tombstone and the surviving input was readmitted by the directory listing");
+                $"manifest: {restored} sst files on disk after the crash, k0 stays deleted, k1 readable");
         }
         finally
         {
