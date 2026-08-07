@@ -1,4 +1,7 @@
 {
+  "$language": "English",
+  "$plural": "one-other",
+
   "Menu.File": "_File",
   "Menu.Edit": "_Edit",
   "Menu.Query": "_Query",

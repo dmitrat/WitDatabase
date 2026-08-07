@@ -1,4 +1,7 @@
 {
+  "$language": "Русский",
+  "$plural": "slavic",
+
   "Menu.File": "_Файл",
   "Menu.Edit": "_Правка",
   "Menu.Query": "_Запрос",

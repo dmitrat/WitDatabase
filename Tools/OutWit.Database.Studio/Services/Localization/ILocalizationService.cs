@@ -24,7 +24,7 @@ public interface ILocalizationService
     /// <summary>The languages Studio can be switched to, in the order they are offered.</summary>
     IReadOnlyList<LanguageOption> Available { get; }
 
-    /// <summary>The current language code - <c>en</c> or <c>ru</c>.</summary>
+    /// <summary>The current language code.</summary>
     string Language { get; }
 
     /// <summary>
@@ -62,10 +62,13 @@ public interface ILocalizationService
 }
 
 /// <summary>A language Studio offers, named in that language.</summary>
-/// <param name="Code">The code stored in the settings file - <c>en</c>, <c>ru</c>.</param>
+/// <param name="Code">
+/// The code stored in the settings file, taken from the catalogue's file name -
+/// <c>Strings.fr.json</c> is <c>fr</c>. Nothing lists the codes anywhere else.
+/// </param>
 /// <param name="NativeName">
-/// What the item says in the language picker. Deliberately NOT translated: a person looking for their
-/// own language looks for its own name, and "Russian" is no help to someone who cannot read the current
-/// interface.
+/// What the item says in the language picker, from the catalogue's own <c>$language</c> header.
+/// Deliberately NOT translated: a person looking for their own language looks for its own name, and
+/// "Russian" is no help to someone who cannot read the interface they are trying to change.
 /// </param>
 public sealed record LanguageOption(string Code, string NativeName);
