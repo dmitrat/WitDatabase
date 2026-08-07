@@ -576,8 +576,40 @@ Two things worth knowing before choosing a fix. `PageManager.Flush` writes the h
 page reaches the disk on its own whenever the cache **evicts** it (`EvictSlot` writes
 if `IsDirty`), with nothing ordering that write against the header.
 
-Whether this is fixed - wrapping autocommit DDL in a transaction, or flushing after an
-autocommit schema write - or recorded as a deliberate limit is **not decided here**.
+### FIXED, 2026-08-07
+
+**`SchemaCatalog.MakeDurable`** - an autocommit schema write is made durable where
+it is written, so no schema writer added later can forget it. That is the same
+reasoning the ambient-transaction routing already used, one line down.
+
+**A flush and not a transaction of our own**, though the measurement that found the
+cause used one. The commit's only contribution here is the flush at the end of it,
+and opening a transaction would cost more than it buys: on the non-MVCC store a
+transaction takes the database write lock for its lifetime, so the documented
+out-of-contract caller - one that opens a transaction on one execution flow and runs
+DDL on another - would move from a `LockRecursionException` to a **deadlock**.
+
+**And `PageManager.Flush` writes the header LAST**, after the pages it counts are
+durable. It used to write it first, which is the unsafe order: a header that
+promises pages the file does not hold is unreadable, while one that is merely older
+is not. The storage flush *between* the two is the half that is easy to omit -
+without it the ordering lives in the source and not on the disk.
+
+Pinned by `DdlAfterAKillTests` (the crash runner, a real process, killed - a
+`CREATE TABLE` that returned is gone without the fix, and the database will not open
+either) and `FlushWritesTheHeaderLastTests` (the order asserted on the storage,
+because both orders end with the same bytes). Both measured red first.
+
+**Two existing tests had been passing on this defect**, which is its own finding:
+`AttributionAreTheUncommittedRowsOnTheMediaTest` counted every reachable record and
+read zero - an answer about the schema wearing an answer about the rows - and the
+async-only-storage pin recorded the boundary as sitting between `CREATE TABLE` and
+the first `INSERT`, when the create only "survived" because it wrote nothing at all.
+
+**Still open, and deliberately:** a process that dies in the MIDDLE of a statement
+can leave a header of one vintage beside pages of another, because eviction happens
+while the statement runs. That window is identical for DML, and closing it needs a
+journal that can be replayed at open - which the MVCC store still refuses to have.
 
 ---
 
