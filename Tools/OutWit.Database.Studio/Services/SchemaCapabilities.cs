@@ -22,14 +22,17 @@ public sealed record SchemaCapability(string Change, SchemaEditCategory Category
 /// Everything below was measured on 2026-08-06 against the shipping engine, and three of the plan's
 /// assumptions did not survive:
 /// <list type="bullet">
-/// <item><b><c>ALTER COLUMN ... TYPE</c> DOES rewrite the rows</b> - the plan says it does not. It is
-/// still not offered in place, for a worse reason: a value that cannot convert is silently replaced
-/// (a word becomes 0, an integer becomes 01/01/0001) and changing the type back does not bring it
-/// back.</item>
-/// <item><b>An index on a dropped column is left behind</b>, so a drop has to take it explicitly.</item>
-/// <item><b>ADD COLUMN NOT NULL with no DEFAULT is accepted on a table that has rows</b>, leaves NULLs
-/// in the column and then refuses every later write to the table - including an UPDATE of an
-/// unrelated column. The designer refuses that combination itself.</item>
+/// <item><b><c>ALTER COLUMN ... TYPE</c> DOES rewrite the rows</b> - the plan says it does not. It
+/// used to replace a value it could not convert with a default, silently; the engine refuses such a
+/// value now (see KnownIssues 6). It is still not offered in place, because that refusal stops at the
+/// FIRST bad value and says nothing about the rest, while a rebuild counts them all first.</item>
+/// <item><b>An index on a dropped column used to be left behind</b> (KnownIssues 8); the engine takes
+/// it now, and the designer still drops it explicitly first so that the statement is one the user
+/// reads in the DDL panel.</item>
+/// <item><b>ADD COLUMN NOT NULL with no DEFAULT</b> used to be accepted on a table that has rows,
+/// leaving NULLs in the column and closing the table for writing; the engine refuses it now
+/// (KnownIssues 7). The designer still refuses it first, so the row says why while the user is
+/// deciding rather than Apply coming back with an error.</item>
 /// </list>
 /// </summary>
 public static class SchemaCapabilities
@@ -68,9 +71,9 @@ public static class SchemaCapabilities
             "ADD CONSTRAINT / DROP CONSTRAINT, and the constraint must be named"),
 
         new("Change a column's type", SchemaEditCategory.Rebuild,
-            "ALTER COLUMN ... TYPE is accepted and it rewrites the rows, but a value that cannot " +
-            "convert is silently replaced - 'not a number' becomes 0 - and the old value is gone. " +
-            "A rebuild converts with a CAST the user can see, after counting what will not survive"),
+            "ALTER COLUMN ... TYPE rewrites the rows, and stops at the first value it cannot read - " +
+            "with nothing changed, and nothing said about the rest. A rebuild converts with a CAST " +
+            "the user can see, after counting every value that will not survive it"),
 
         new("Add a primary key", SchemaEditCategory.Rebuild,
             "The engine refuses: 'Adding PRIMARY KEY constraint to existing table is not supported'"),

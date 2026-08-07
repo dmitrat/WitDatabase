@@ -117,6 +117,11 @@ public sealed class TableRebuildReport
 /// generated-key path skips the check the explicit path makes, and the rename is what leaves it
 /// pointing at an occupied key.
 ///
+/// <b>Fixed in the engine since (KnownIssues 5): the rename carries the counter, and a generated key
+/// that lands on an existing row is refused.</b> The rebuild still does not rename - that is now a
+/// choice rather than a necessity, and it is kept because copying out leaves the carrier as something
+/// to recover from when a step fails.
+///
 /// This rebuild therefore never renames a table. It copies the rows OUT to a carrier, drops the
 /// original, creates it again under its own name and copies them back - measured to leave the
 /// generator correct, including after a reopen. The cost is one more copy of the data and a window in
