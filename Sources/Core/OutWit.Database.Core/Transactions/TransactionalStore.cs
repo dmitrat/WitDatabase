@@ -9,7 +9,7 @@ namespace OutWit.Database.Core.Transactions;
 /// Wraps an IKeyValueStore with transaction support.
 /// Provides ACID guarantees through journaling and coordinated locking.
 /// </summary>
-public sealed class TransactionalStore : ITransactionalStore, IAsyncDisposable
+public sealed class TransactionalStore : ITransactionalStore, IStoreWrapper, IAsyncDisposable
 {
     #region Constants
 
@@ -322,6 +322,13 @@ public sealed class TransactionalStore : ITransactionalStore, IAsyncDisposable
         await m_store.FlushAsync(cancellationToken).ConfigureAwait(false);
         m_journal?.Sync();
     }
+
+    #endregion
+
+    #region IStoreWrapper
+
+    /// <inheritdoc/>
+    public IKeyValueStore Inner => m_store;
 
     #endregion
 

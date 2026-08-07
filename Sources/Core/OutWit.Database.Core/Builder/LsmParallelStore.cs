@@ -15,7 +15,7 @@ namespace OutWit.Database.Core.Builder;
 /// - Background buffer merging
 /// - Statistics tracking for performance analysis
 /// </remarks>
-public sealed class LsmParallelStore : IKeyValueStore, IKeyValueStoreStatistics, IAsyncDisposable
+public sealed class LsmParallelStore : IKeyValueStore, IKeyValueStoreStatistics, IStoreWrapper, IAsyncDisposable
 {
     #region Constants
 
@@ -200,6 +200,14 @@ public sealed class LsmParallelStore : IKeyValueStore, IKeyValueStoreStatistics,
         m_writer.FlushAllAsync().GetAwaiter().GetResult();
         m_store.Checkpoint();
     }
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The wrapped store, for a caller assembling a REPORT. Anyone writing through this has bypassed
+    /// the parallel writer's buffers, which is the read-your-own-writes hazard this class was built
+    /// around - see <see cref="Checkpoint"/>.
+    /// </remarks>
+    public IKeyValueStore Inner => m_store;
 
     /// <inheritdoc/>
     public async ValueTask FlushAsync(CancellationToken cancellationToken = default)

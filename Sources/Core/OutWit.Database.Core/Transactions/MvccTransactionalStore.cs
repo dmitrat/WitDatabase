@@ -17,7 +17,7 @@ namespace OutWit.Database.Core.Transactions
     /// - Snapshot isolation by default
     /// - Priority-based transaction wait queue
     /// </summary>
-    public sealed class MvccTransactionalStore : ITransactionalStore, IMvccStore, IAsyncDisposable
+    public sealed class MvccTransactionalStore : ITransactionalStore, IMvccStore, IStoreWrapper, IAsyncDisposable
     {
         #region Constants
 
@@ -450,6 +450,9 @@ namespace OutWit.Database.Core.Transactions
             ThrowIfDisposed();
             return m_mvccStore.ScanAsync(startKey, endKey, cancellationToken);
         }
+
+        /// <inheritdoc/>
+        public IKeyValueStore Inner => m_mvccStore;
 
         /// <inheritdoc/>
         public void Flush()

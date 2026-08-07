@@ -9,7 +9,7 @@ namespace OutWit.Database.Core.Stores
     /// Each value is stored with a version prefix (8 bytes).
     /// Thread-safe version counter with atomic increments.
     /// </summary>
-    public sealed class VersionedKeyValueStore : IVersionedKeyValueStore
+    public sealed class VersionedKeyValueStore : IVersionedKeyValueStore, IStoreWrapper
     {
         #region Constants
 
@@ -304,6 +304,9 @@ namespace OutWit.Database.Core.Stores
         #endregion
 
         #region Flush
+
+        /// <inheritdoc/>
+        public IKeyValueStore Inner => m_innerStore;
 
         /// <inheritdoc/>
         public void Flush()
