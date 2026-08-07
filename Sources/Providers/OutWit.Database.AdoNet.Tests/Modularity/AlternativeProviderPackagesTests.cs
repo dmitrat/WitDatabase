@@ -244,19 +244,32 @@ public class AlternativeProviderPackagesTests
     }
 
     /// <summary>
-    /// Probe: the other half does not hold. The database can be built and a table can be created; the
-    /// first <b>row</b> throws, and so does closing.
+    /// Probe: the other half does not hold. The database can be built; the first <b>statement that
+    /// writes</b> throws, and so does closing.
     /// </summary>
     /// <remarks>
     /// <para>
     /// <b>PINS A DEFECT, NOT CORRECT BEHAVIOUR.</b> <c>OutWit.Database.Core.IndexedDb</c> exists so a
-    /// database can live in a browser, where no synchronous I/O is available. Measured, the boundary is
-    /// exactly one statement wide: the build is asynchronous throughout and <c>CREATE TABLE</c>
-    /// survives - it survives because it writes <b>nothing</b>, the storage's write count is 1 before it
-    /// and 1 after - and the <b>first INSERT</b> throws. Its implicit per-statement transaction commits, the
-    /// commit flushes, and <c>PageManager.Flush</c> writes the header through
-    /// <c>IStorage.WritePage</c> - the synchronous one - before calling <c>IStorage.Flush</c>, also
+    /// database can live in a browser, where no synchronous I/O is available. The build is
+    /// asynchronous throughout; anything that makes a write durable is not, because
+    /// <c>PageManager.Flush</c> goes through <c>IStorage.WritePage</c> and <c>IStorage.Flush</c> - both
     /// synchronous. Every close ends in the same place.
+    /// </para>
+    /// <para>
+    /// <b>The boundary moved on 2026-08-07, and it moved because a defect was fixed.</b> It used to sit
+    /// between <c>CREATE TABLE</c> and the first <c>INSERT</c>: the create "survived" only because it
+    /// wrote <b>nothing</b> - the storage's write count was 1 before it and 1 after - and the insert's
+    /// implicit transaction was the first thing to commit and therefore to flush. That silence was
+    /// KnownIssues issue 10: a DDL statement in autocommit never reached a commit, so on every platform
+    /// it reported success and stored nothing until something else happened to flush. Now the schema
+    /// write is made durable where it is made, so on this storage <c>CREATE TABLE</c> is the statement
+    /// that throws.
+    /// </para>
+    /// <para>
+    /// <b>Which is the same defect, not a new one</b>, and worth stating that way round: the boundary is
+    /// where the missing asynchronous chain always was, and the create was on the wrong side of it only
+    /// while it was quietly writing nothing at all. A browser gets a refusal now instead of a schema
+    /// that exists until the page is reloaded.
     /// </para>
     /// <para>
     /// <b>The chain has four missing links</b>, which is why this is a hand-forward rather than a patch:
@@ -294,21 +307,18 @@ public class AlternativeProviderPackagesTests
 
         var afterBuild = storage.AsyncWrites;
 
-        // The table is created without a synchronous write - measured, and it is why the boundary has
-        // to be stated precisely rather than as "it does not work".
-        engine.Execute("CREATE TABLE Probe (Id BIGINT PRIMARY KEY, Name VARCHAR(50))");
-
-        TestContext.Out.WriteLine(
-            $"ASYNC-ONLY STORAGE  after CREATE TABLE: async writes {afterBuild} -> {storage.AsyncWrites}, " +
-            $"async reads={storage.AsyncReads}");
-
         // PINS A DEFECT, NOT CORRECT BEHAVIOUR. The engine has no asynchronous execution path at all -
         // WitSqlEngine offers Execute and Query and nothing else, and the ADO layer's
         // ExecuteNonQueryAsync is Task.Run around the synchronous one, which in a browser is worse than
-        // useless. Until that exists, a write cannot avoid the synchronous flush its commit performs.
-        Assert.That(() => engine.Execute("INSERT INTO Probe (Id, Name) VALUES (1, 'row1')"),
+        // useless. Until that exists, a statement that must be made durable cannot avoid the
+        // synchronous flush, and DDL is now such a statement.
+        Assert.That(() => engine.Execute("CREATE TABLE Probe (Id BIGINT PRIMARY KEY, Name VARCHAR(50))"),
             Throws.TypeOf<NotSupportedException>(),
             "a synchronous write no longer reaches a synchronous storage call - re-measure and invert this pin");
+
+        TestContext.Out.WriteLine(
+            $"ASYNC-ONLY STORAGE  after the refused CREATE TABLE: async writes {afterBuild} -> " +
+            $"{storage.AsyncWrites}, async reads={storage.AsyncReads}");
     }
 
     /// <summary>

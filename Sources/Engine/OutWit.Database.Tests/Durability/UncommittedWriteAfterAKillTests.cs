@@ -1,3 +1,4 @@
+using System.Text;
 using OutWit.Database.AdoNet;
 using OutWit.Database.Core.Stores;
 using OutWit.Database.CrashRunner;
@@ -180,16 +181,36 @@ public sealed class UncommittedWriteAfterAKillTests
         // page written by an eviction is in the file whether or not anything points at it.
         var fileLength = new FileInfo(m_databasePath).Length;
 
-        int reachable;
+        // The ROW records, not every record. This counted all of them and read zero - which looked
+        // like an answer about the rows and was really an answer about the SCHEMA: issue 10 meant a
+        // DDL statement in autocommit never reached the disk, so the catalogue was missing too and the
+        // total came to nothing. When that was fixed the count became 4 and this case went red without
+        // anything about uncommitted rows having changed. It was passing on a defect.
+        //
+        // The two internal namespaces are named rather than filtered by the "$" they share, so that a
+        // THIRD one appearing turns this red and gets read by somebody. A row key has no prefix.
+        string[] internalPrefixes = ["$schema:", "$mvcc:"];
+
+        List<string> reachableKeys;
 
         using (var store = new StoreBTree(m_databasePath))
-            reachable = store.Scan(null, null).Count();
+        {
+            reachableKeys = store.Scan(null, null)
+                .Select(record => Encoding.UTF8.GetString(record.Key))
+                .Where(key => !internalPrefixes.Any(prefix => key.StartsWith(prefix, StringComparison.Ordinal)))
+                .ToList();
+        }
+
+        var reachable = reachableKeys.Count;
 
         var (scanned, _) = RowsInReopenedDatabase();
 
         TestContext.Out.WriteLine(
             $"UNCOMMITTED attribution: {manyRows} rows written uncommitted, killed -> " +
-            $"file={fileLength / 1024} KB, reachable records={reachable}, rows the engine shows={scanned}");
+            $"file={fileLength / 1024} KB, reachable row records={reachable}, rows the engine shows={scanned}");
+
+        if (reachable > 0)
+            TestContext.Out.WriteLine($"  reachable keys: {string.Join(", ", reachableKeys.Take(10))}");
 
         Assert.That(scanned, Is.EqualTo(0),
             "the engine shows rows from a transaction that never committed");
@@ -197,9 +218,9 @@ public sealed class UncommittedWriteAfterAKillTests
         // Recorded rather than asserted: which mechanism does the hiding is the finding, and all of
         // them are legitimate. What would not be legitimate is the engine showing the rows.
         Assert.That(reachable, Is.EqualTo(0),
-            $"{reachable} records from a transaction that never committed are reachable at the storage " +
-            "layer - they are hidden by the visibility rules rather than absent, which is a much weaker " +
-            "guarantee than the one this fixture reports");
+            $"{reachable} row records from a transaction that never committed are reachable at the " +
+            "storage layer - they are hidden by the visibility rules rather than absent, which is a " +
+            "much weaker guarantee than the one this fixture reports");
 
         Assert.That(fileLength, Is.LessThan(64 * 1024),
             $"the file grew to {fileLength / 1024} KB for a transaction that never committed - the " +

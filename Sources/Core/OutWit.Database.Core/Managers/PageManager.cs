@@ -654,24 +654,46 @@ public sealed class PageManager : IDisposable, IAsyncDisposable
     /// <summary>
     /// Flushes all dirty pages and the header to storage.
     /// </summary>
+    /// <remarks>
+    /// <b>The header goes LAST, and that is the whole point of the ordering.</b> It used to go first,
+    /// which is the unsafe order: the header carries <c>TotalPageCount</c> and the free list, so writing
+    /// it before the pages publishes a count for pages that may never reach the disk. An interruption
+    /// in the middle then leaves a file whose header promises more than the file holds -
+    /// <i>"Page number N is out of range"</i> on the next open, which is exactly what issue 10's
+    /// casualties said.
+    ///
+    /// <para>
+    /// Written last, an interruption can only leave a header that is OLDER than the pages. That is not
+    /// a guarantee of consistency - a page evicted since the last flush still makes the two disagree,
+    /// and closing that window needs a journal the MVCC store cannot currently have - but it removes
+    /// the one case the engine was creating for itself.
+    /// </para>
+    /// <para>
+    /// The pages are made durable BEFORE the header is written, not merely handed to the storage:
+    /// without the first <c>Flush</c> the operating system is free to reorder the two, and the order
+    /// would exist only in this method rather than on the disk.
+    /// </para>
+    /// </remarks>
     public void Flush()
     {
         lock (m_lock)
         {
             ThrowIfDisposed();
-            
+
             if (!m_initialized) return;
-            
+
+            m_cache.FlushAll();
+
+            // The pages, durable, before anything counts them.
+            m_storage.Flush();
+
             if (m_headerDirty)
             {
                 SaveHeaderImmediate();
                 m_headerDirty = false;
+
+                m_storage.Flush();
             }
-            
-            m_cache.FlushAll();
-            
-            // Ensure all data is written to persistent storage
-            m_storage.Flush();
         }
     }
 
@@ -681,29 +703,31 @@ public sealed class PageManager : IDisposable, IAsyncDisposable
     public async ValueTask FlushAsync(CancellationToken cancellationToken = default)
     {
         bool needsSaveHeader;
-        
+
         lock (m_lock)
         {
             ThrowIfDisposed();
-            
+
             if (!m_initialized) return;
-            
+
             needsSaveHeader = m_headerDirty;
         }
-        
-        if (needsSaveHeader)
-        {
-            await SaveHeaderImmediateAsync(cancellationToken).ConfigureAwait(false);
-            
-            lock (m_lock)
-            {
-                m_headerDirty = false;
-            }
-        }
-        
+
         await m_cache.FlushAllAsync(cancellationToken).ConfigureAwait(false);
-        
-        // Ensure all data is written to persistent storage
+
+        // The pages, durable, before anything counts them - see Flush() for why the header is last.
+        await m_storage.FlushAsync(cancellationToken).ConfigureAwait(false);
+
+        if (!needsSaveHeader)
+            return;
+
+        await SaveHeaderImmediateAsync(cancellationToken).ConfigureAwait(false);
+
+        lock (m_lock)
+        {
+            m_headerDirty = false;
+        }
+
         await m_storage.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
