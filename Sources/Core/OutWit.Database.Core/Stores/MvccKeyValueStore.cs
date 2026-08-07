@@ -727,6 +727,20 @@ namespace OutWit.Database.Core.Stores
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Forwarded rather than left to the interface default, which would call <see cref="Flush"/>
+        /// and quietly reorganise nothing. The timestamp is persisted first for the same reason it is
+        /// in <see cref="Flush"/>: whatever the inner store writes out must not be missing the marker
+        /// that makes its versions readable.
+        /// </remarks>
+        public void Checkpoint()
+        {
+            ThrowIfDisposed();
+            PersistMaxTimestampIfNeeded();
+            m_innerStore.Checkpoint();
+        }
+
+        /// <inheritdoc/>
         public ValueTask FlushAsync(CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();

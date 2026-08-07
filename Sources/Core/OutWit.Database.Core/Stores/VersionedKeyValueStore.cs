@@ -314,6 +314,19 @@ namespace OutWit.Database.Core.Stores
         }
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Forwarded rather than left to the interface default, which would call <see cref="Flush"/>
+        /// and reorganise nothing. The global version is saved first for the same reason it is in
+        /// <see cref="Flush"/>.
+        /// </remarks>
+        public void Checkpoint()
+        {
+            ThrowIfDisposed();
+            SaveGlobalVersion();
+            m_innerStore.Checkpoint();
+        }
+
+        /// <inheritdoc/>
         public async ValueTask FlushAsync(CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
