@@ -28,6 +28,11 @@
   "Dialog.Open.Connect": "Connect",
   "Dialog.Open.NotFound": "There is no file at this path. To start a new database, use Create database.",
   "Dialog.Open.NotADatabaseFolder": "There is no WitDatabase in this folder: no manifest and no SSTable.",
+  "Dialog.Open.NotADatabaseFile": "This file is not a WitDatabase.",
+  "Dialog.Open.Found": "Found a {0} database · {1} · {2}",
+  "Dialog.Open.NoMvcc": "no MVCC",
+  "Dialog.Open.Encrypted": "Encrypted · {0}. Nothing else can be read until the password is given.",
+  "Dialog.Open.EncryptedOrNot": "Encrypted, or not a database at all · {0}. The two look the same from outside.",
   "Dialog.Open.WrongPassword": "Could not decrypt: wrong password, or the file is damaged.",
 
   "Dialog.Create.Title": "Create database",

@@ -16,11 +16,17 @@ public enum StorageKind
     Database,
 
     /// <summary>
-    /// A file whose magic bytes are not there. Almost certainly encrypted - and possibly not a
-    /// database at all, because the two are indistinguishable from outside. See
-    /// <see cref="StorageProbe.CouldAlsoBeSomethingElse"/>.
+    /// A file whose magic bytes are not there: <b>encrypted, or not a database at all</b>.
+    ///
+    /// <para>
+    /// These are one state and not two, and that was measured rather than assumed. The first version
+    /// of this type had a separate "definitely encrypted" state with a flag for the ambiguous case -
+    /// and the control written to prove the flag meant something went red, because it is true of
+    /// EVERY encrypted file. Encryption is what makes the header unreadable, and an unreadable header
+    /// is all there is to see. Studio says both, once.
+    /// </para>
     /// </summary>
-    Encrypted
+    Unreadable
 }
 
 /// <summary>
@@ -83,7 +89,7 @@ public sealed class StorageProbe
 
             if (detected.RequiresPassword)
             {
-                return new StorageProbe(StorageKind.Encrypted)
+                return new StorageProbe(StorageKind.Unreadable)
                 {
                     SizeInBytes = SizeOf(path),
                     IsDirectory = detected.IsDirectory,
@@ -92,11 +98,7 @@ public sealed class StorageProbe
                     // and "unknown" here, and both are guesses; printing them would be Studio
                     // claiming to have read something it did not read.
                     StoreType = null,
-                    EncryptionProvider = null,
-
-                    // An LSM database announces itself by its SSTables, so a directory that got this
-                    // far really is one. A FILE with no magic bytes could be anything.
-                    CouldAlsoBeSomethingElse = !detected.IsDirectory
+                    EncryptionProvider = null
                 };
             }
 
@@ -151,14 +153,7 @@ public sealed class StorageProbe
     public StorageKind Kind { get; }
 
     /// <summary>Whether a password has to be asked for before the database can be opened.</summary>
-    public bool RequiresPassword => Kind == StorageKind.Encrypted;
-
-    /// <summary>
-    /// True when "encrypted" is a guess rather than a reading: the magic bytes are absent, which is
-    /// what an encrypted database looks like AND what a file that is not a database looks like. The
-    /// dialog says both rather than picking one.
-    /// </summary>
-    public bool CouldAlsoBeSomethingElse { get; private init; }
+    public bool RequiresPassword => Kind == StorageKind.Unreadable;
 
     public bool IsDirectory { get; private init; }
 

@@ -121,7 +121,7 @@ public class StorageProbeTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(probe.Kind, Is.EqualTo(StorageKind.Encrypted));
+            Assert.That(probe.Kind, Is.EqualTo(StorageKind.Unreadable));
             Assert.That(probe.RequiresPassword, Is.True);
             Assert.That(probe.StoreType, Is.Null,
                 "the store cannot be read through the encryption, so Studio must not print one");
@@ -155,25 +155,28 @@ public class StorageProbeTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(probe.Kind, Is.EqualTo(StorageKind.Encrypted));
+            Assert.That(probe.Kind, Is.EqualTo(StorageKind.Unreadable),
+                "the SAME answer a real encrypted database gets - the two are one state, not two");
             Assert.That(probe.RequiresPassword, Is.True);
-            Assert.That(probe.CouldAlsoBeSomethingElse, Is.True,
-                "the dialog has to say 'encrypted, or not a database' - it cannot know which");
         });
     }
 
     /// <summary>
-    /// CONTROL for the case above: a real unencrypted database is NOT reported ambiguously, so the
-    /// flag is measuring the missing magic bytes and not simply always true.
+    /// CONTROL, and it earned its place by going RED and changing the design. It was first written to
+    /// prove that only a non-database is reported ambiguously - and a real encrypted database was too,
+    /// because encryption is exactly what makes the header unreadable. There is no reading that
+    /// separates them, so the separate state and its flag were deleted and the dialog says both.
+    ///
+    /// What is left is the half that can be true: a READABLE database is not reported as unreadable.
     /// </summary>
     [Test]
-    public void ARealDatabaseIsNotReportedAsAmbiguousTest()
+    public void AReadableDatabaseIsNotReportedAsUnreadableTest()
     {
         var path = Path.Combine(m_root, "plain.witdb");
 
         StudioFixture.CreateDatabaseOnDisk(path);
 
-        Assert.That(StorageProbe.Look(path).CouldAlsoBeSomethingElse, Is.False);
+        Assert.That(StorageProbe.Look(path).Kind, Is.EqualTo(StorageKind.Database));
     }
 
     /// <summary>

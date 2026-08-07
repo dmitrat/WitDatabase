@@ -411,8 +411,12 @@ public class StudioEngineContactTests
         Assert.Multiple(() =>
         {
             Assert.That(IsConnected(connections), Is.False, "a database that does not exist must not open");
-            Assert.That(vm.ErrorMessage, Does.Contain("not found"),
-                "the dialog must say which file it could not find");
+            // The wording is the design's (6.2) and comes from the string catalogue now. It no longer
+            // repeats the path - that is in the box directly above it - and it points at the dialog
+            // that WOULD create a database, because "there is nothing here" and "you meant Create" are
+            // the same thought.
+            Assert.That(vm.ErrorMessage, Does.Contain("Create database"),
+                "the refusal must point at the dialog that creates one");
             Assert.That(File.Exists(absent), Is.False,
                 "and it must not have created the file it refused to open");
         });

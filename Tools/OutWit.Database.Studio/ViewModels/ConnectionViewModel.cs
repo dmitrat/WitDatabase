@@ -140,39 +140,38 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     }
 
     /// <summary>
-    /// Reads the configuration a database records about itself and shows it in the dialog.
-    /// Called by the Browse path; separated so that it can be driven without a file picker.
+    /// Looks at the path and shows what is there, before anything is opened (WS-47).
+    ///
+    /// <para>
+    /// The dialog has THREE states rather than the design's one, and the engine is why. An
+    /// unencrypted database can be described in full; an encrypted one can be recognised as encrypted
+    /// and as nothing else, because its header is inside the encrypted page; and a file with no magic
+    /// bytes is indistinguishable from an encrypted database, so Studio says so instead of asking for
+    /// the password to a text file. <see cref="StorageProbe"/> carries the measurements.
+    /// </para>
+    /// <para>
+    /// Called by the Browse path and separated so that it can be driven without a file picker.
+    /// </para>
     /// </summary>
     public void ApplyAutoDetectedSettings(string filePath)
     {
-        // DatabaseExists rather than File.Exists: an LSM database is a directory, and guarding on
-        // File.Exists meant detection was silently skipped for one of the two stores.
-        if (!UseAutoDetectedSettings || !DatabaseExists(filePath))
+        Probe = StorageProbe.Look(filePath);
+
+        if (!UseAutoDetectedSettings)
             return;
 
-        try
-        {
-            StorageDetectionResult dbInfo = WitDatabase.GetDatabaseInfo(filePath);
-            ConnectionInfo.IsEncrypted = dbInfo.RequiresPassword;
+        ConnectionInfo.IsEncrypted = Probe.RequiresPassword;
 
-            // Set storage engine from detected store type
-            if (!string.IsNullOrEmpty(dbInfo.StoreType))
-            {
-                SelectedStorageEngine = dbInfo.StoreType.ToLowerInvariant();
-            }
+        if (!string.IsNullOrEmpty(Probe.StoreType))
+            SelectedStorageEngine = Probe.StoreType;
 
-            // Configure features
-            // If encrypted, we can't read features reliably, keep user's defaults
-            if (!dbInfo.RequiresPassword)
-            {
-                EnableTransactions = dbInfo.HasTransactions;
-                EnableMvcc = dbInfo.HasMvcc;
-                EnableFileLocking = dbInfo.HasFileLocking;
-            }
-        }
-        catch
+        // Only from a database that could actually be read. An encrypted one publishes none of this,
+        // and copying the guesses in would put three wrong facts on screen.
+        if (Probe.Kind == StorageKind.Database)
         {
-            // Ignore errors during detection
+            EnableTransactions = Probe.HasTransactions;
+            EnableMvcc = Probe.HasMvcc;
+            EnableFileLocking = Probe.HasFileLocking;
         }
     }
 
@@ -310,15 +309,32 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                     await CreateDatabaseOnDiskAsync();
                 }
             }
-            else if (IsFileBased && !DatabaseExists(ConnectionInfo.FilePath))
+            else if (IsFileBased)
             {
-                // The engine creates a database it is asked to open and cannot find, which is right
-                // for a provider and wrong for a dialog called Open: a user whose file has moved
-                // would be shown an empty database and read it as their data being gone.
-                ErrorMessage = $"Database not found: {ConnectionInfo.FilePath}";
-                Logger.LogWarning("Refused to open a database that does not exist: {FilePath}",
-                    ConnectionInfo.FilePath);
-                return;
+                var probe = StorageProbe.Look(ConnectionInfo.FilePath);
+
+                if (probe.Kind == StorageKind.NotFound)
+                {
+                    // The engine creates a database it is asked to open and cannot find, which is right
+                    // for a provider and wrong for a dialog called Open: a user whose file has moved
+                    // would be shown an empty database and read it as their data being gone.
+                    ErrorMessage = Localization["Dialog.Open.NotFound"];
+                    Logger.LogWarning("Refused to open a database that does not exist: {FilePath}",
+                        ConnectionInfo.FilePath);
+                    return;
+                }
+
+                if (probe.Kind == StorageKind.NotADatabase)
+                {
+                    // A folder with no SSTable, or a file too short to be one. This is knowable, unlike
+                    // the encrypted-or-not-a-database case, so it is refused rather than attempted.
+                    ErrorMessage = probe.IsDirectory
+                        ? Localization["Dialog.Open.NotADatabaseFolder"]
+                        : Localization["Dialog.Open.NotADatabaseFile"];
+                    Logger.LogWarning("Refused to open something that is not a database: {FilePath}",
+                        ConnectionInfo.FilePath);
+                    return;
+                }
             }
 
             // Connect to the database (both for new and existing). The manager adds the session and
@@ -399,6 +415,14 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         }
         else if (e.IsProperty((ConnectionViewModel vm) => vm.IsConnecting))
         {
+            UpdateStatus();
+        }
+        else if (e.IsProperty((ConnectionViewModel vm) => vm.Probe))
+        {
+            // Both are computed from the probe, and a computed property is not re-read unless it is
+            // told - which is the defect shape stage 8 found in the section strip.
+            OnPropertyChanged(nameof(ProbeMessage));
+            OnPropertyChanged(nameof(NeedsPassword));
             UpdateStatus();
         }
         else if (e.IsProperty((ConnectionViewModel vm) => vm.UseAutoDetectedSettings))
@@ -519,6 +543,60 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public bool CanConnect { get; set; }
 
+    /// <summary>
+    /// What is at the chosen path, as far as it can be known without opening it (WS-47). Never null,
+    /// so the banner has something to bind to before a path is picked.
+    /// </summary>
+    [Notify]
+    public StorageProbe Probe { get; set; } = StorageProbe.Look(null);
+
+    /// <summary>
+    /// The sentence under the path box. Three states, because the engine allows three
+    /// - see <see cref="ApplyAutoDetectedSettings"/>.
+    /// </summary>
+    public string ProbeMessage => Probe.Kind switch
+    {
+        StorageKind.Database => Localization.Format("Dialog.Open.Found",
+            Probe.StoreType == "lsm" ? "LSM" : "B-Tree",
+            Size(Probe.SizeInBytes),
+            Probe.HasMvcc ? "MVCC" : Localization["Dialog.Open.NoMvcc"]),
+
+        // ONE sentence covering both, because Studio genuinely cannot tell them apart: the magic bytes
+        // are absent, which is what encryption looks like and what a text file looks like. Claiming the
+        // more likely one is how a user ends up typing a password at a JPEG and being told the password
+        // is wrong.
+        StorageKind.Unreadable => Localization.Format("Dialog.Open.EncryptedOrNot", Size(Probe.SizeInBytes)),
+
+        StorageKind.NotADatabase => Probe.IsDirectory
+            ? Localization["Dialog.Open.NotADatabaseFolder"]
+            : Localization["Dialog.Open.NotADatabaseFile"],
+
+        _ => string.Empty
+    };
+
+    /// <summary>Whether the password box is shown at all: only an encrypted database needs one.</summary>
+    public bool NeedsPassword => Probe.RequiresPassword;
+
+    /// <summary>
+    /// A size a person reads, written invariantly like every other number Studio shows (WS-65).
+    /// </summary>
+    private static string Size(long bytes)
+    {
+        string[] units = ["B", "KB", "MB", "GB", "TB"];
+
+        double size = bytes;
+        var unit = 0;
+
+        while (size >= 1024 && unit < units.Length - 1)
+        {
+            size /= 1024;
+            unit++;
+        }
+
+        return size.ToString(unit == 0 ? "0" : "0.#", System.Globalization.CultureInfo.InvariantCulture)
+            + " " + units[unit];
+    }
+
     /// <summary>Raised when the dialog showing this ViewModel should close.</summary>
     public event EventHandler? CloseRequested;
 
@@ -543,6 +621,8 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     public IDialogService Dialogs => ApplicationVm.Dialogs;
 
     public ISettingsService Settings => ApplicationVm.Settings;
+
+    public Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
 

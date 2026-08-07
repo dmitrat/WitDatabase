@@ -28,6 +28,11 @@
   "Dialog.Open.Connect": "Подключить",
   "Dialog.Open.NotFound": "Файла нет по этому пути. Чтобы завести новую базу, используйте «Создать базу».",
   "Dialog.Open.NotADatabaseFolder": "В папке нет базы WitDatabase: не найдено ни манифеста, ни SSTable.",
+  "Dialog.Open.NotADatabaseFile": "Этот файл не является базой WitDatabase.",
+  "Dialog.Open.Found": "Найдена база {0} · {1} · {2}",
+  "Dialog.Open.NoMvcc": "без MVCC",
+  "Dialog.Open.Encrypted": "Зашифрована · {0}. Остальное не прочесть, пока не введён пароль.",
+  "Dialog.Open.EncryptedOrNot": "Зашифрована — или вовсе не база · {0}. Снаружи эти два случая неразличимы.",
   "Dialog.Open.WrongPassword": "Не удалось расшифровать: неверный пароль или файл повреждён.",
 
   "Dialog.Create.Title": "Создать базу данных",
