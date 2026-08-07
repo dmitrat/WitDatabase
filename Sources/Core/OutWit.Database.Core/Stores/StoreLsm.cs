@@ -971,7 +971,63 @@ namespace OutWit.Database.Core.Stores
         /// <summary>
         /// Gets the statistics for this LSM-Tree.
         /// </summary>
+        /// <remarks>
+        /// <b>Counters of this PROCESS, not of the database.</b> They start at zero when the store is
+        /// opened, so anything reporting them has to say "since this connection opened" or it is
+        /// describing a file by what one program happened to do to it. Measured: reopening a store
+        /// with 300 keys and one compaction behind it reports puts=0, compactions=0.
+        /// </remarks>
         public LsmStatistics Statistics => m_statistics;
+
+        /// <summary>
+        /// How many SSTables the store currently has.
+        /// </summary>
+        /// <remarks>
+        /// <b>There are no levels to report.</b> The design asks for files per level and an L0
+        /// threshold; this store keeps a flat list and compacts ALL of it into ONE file, so
+        /// <see cref="LsmOptions.Level0CompactionTrigger"/> is "how many files before a full merge"
+        /// rather than the size of a level. A panel that drew levels would be drawing something that
+        /// does not exist.
+        /// </remarks>
+        public int SstableCount
+        {
+            get
+            {
+                ThrowIfDisposed();
+
+                m_sstableLock.EnterReadLock();
+                try
+                {
+                    return m_sstables.Count;
+                }
+                finally
+                {
+                    m_sstableLock.ExitReadLock();
+                }
+            }
+        }
+
+        /// <summary>
+        /// How many bytes the memtable is holding, and the size at which it flushes itself.
+        /// </summary>
+        /// <remarks>
+        /// The pair rather than either alone: a number of bytes says nothing without the threshold it
+        /// is approaching, and this is the one part of an LSM store a person can act on - a checkpoint
+        /// is what moves it.
+        /// </remarks>
+        public (long Used, long Limit) MemTable
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return (m_activeMemTable.ApproximateSize, m_options.MemTableSizeLimit);
+            }
+        }
+
+        /// <summary>
+        /// How many SSTables trigger an automatic full merge.
+        /// </summary>
+        public int CompactionTrigger => m_options.Level0CompactionTrigger;
 
         /// <inheritdoc/>
         public string ProviderKey => PROVIDER_KEY;
