@@ -224,7 +224,8 @@ public sealed class OptimizerQuery
         }
 
         // Check for BETWEEN (combined predicates on same column)
-        TryOptimizeForBetween(strategy, firstColumn, predicates, estimatedRowCount, statistics, index.Name);
+        TryOptimizeForBetween(strategy, firstColumn, index.GetColumnExpression(0), predicates,
+            estimatedRowCount, statistics, index.Name);
 
         return strategy;
     }
@@ -290,6 +291,7 @@ public sealed class OptimizerQuery
     private void TryOptimizeForBetween(
         IndexStrategy strategy,
         string columnName,
+        string? indexExpression,
         IReadOnlyList<PredicateInfo> predicates,
         long estimatedRowCount,
         IIndexRangeStatistics? statistics,
@@ -299,10 +301,11 @@ public sealed class OptimizerQuery
         if (strategy.AccessType == IndexAccessType.Seek)
             return;
 
-        // Look for complementary predicate
+        // Look for complementary predicate. The same rule as everywhere else: a bound written around
+        // a call is not a bound on the raw column, so it cannot narrow a range over the raw values.
         foreach (var pred in predicates)
         {
-            if (!pred.ColumnName.Equals(columnName, StringComparison.OrdinalIgnoreCase))
+            if (!CanAnswer(pred, columnName, indexExpression))
                 continue;
 
             if (pred == strategy.MatchedPredicate)
@@ -340,6 +343,33 @@ public sealed class OptimizerQuery
     }
 
     /// <summary>
+    /// Whether an index column can answer a predicate.
+    ///
+    /// <b>A predicate that wraps the column in a call is not a question about the column.</b>
+    /// <c>WHERE LOWER(S) = 'x'</c> carries the column <c>S</c> - the call's argument - so matching on
+    /// the column name alone made a plain index on <c>S</c> answer it, by seeking <c>'x'</c> among the
+    /// raw values. That returns the wrong rows whenever the raw value differs from the wrapped one,
+    /// which is exactly when the call was worth writing: measured 2026-08-06,
+    /// <c>WHERE ABS(V) = 7</c> found the row holding -7 with no index and nothing at all once an
+    /// ordinary index on <c>V</c> existed.
+    ///
+    /// So the two kinds of index column answer two disjoint kinds of predicate: a plain column answers
+    /// only a predicate about the bare column, and a column indexed BY an expression answers only a
+    /// predicate about that same expression.
+    /// </summary>
+    private static bool CanAnswer(PredicateInfo predicate, string columnName, string? indexExpression)
+    {
+        if (indexExpression != null)
+        {
+            return predicate.ExpressionText != null &&
+                   predicate.ExpressionText.Equals(indexExpression, StringComparison.OrdinalIgnoreCase);
+        }
+
+        return predicate.ExpressionText == null &&
+               predicate.ColumnName.Equals(columnName, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>
     /// Finds a predicate that matches an index column.
     /// </summary>
     private PredicateInfo? FindMatchingPredicate(
@@ -349,20 +379,8 @@ public sealed class OptimizerQuery
     {
         foreach (var pred in predicates)
         {
-            // Match column name (simple index)
-            if (pred.ColumnName.Equals(columnName, StringComparison.OrdinalIgnoreCase))
-            {
-                // Ensure the column is on the left side of the comparison
-                // (we already normalize this in ExtractPredicates)
+            if (CanAnswer(pred, columnName, expressionText))
                 return pred;
-            }
-
-            // For expression indexes (e.g., LOWER(email)), match the expression
-            if (expressionText != null && pred.ExpressionText != null)
-            {
-                if (pred.ExpressionText.Equals(expressionText, StringComparison.OrdinalIgnoreCase))
-                    return pred;
-            }
         }
 
         return null;
@@ -386,14 +404,9 @@ public sealed class OptimizerQuery
                 if (pred.Operator != BinaryOperatorType.Equal)
                     continue;
 
-                if (pred.ColumnName.Equals(columnName, StringComparison.OrdinalIgnoreCase))
-                {
-                    found = true;
-                    break;
-                }
-
-                if (expressionText != null && pred.ExpressionText != null &&
-                    pred.ExpressionText.Equals(expressionText, StringComparison.OrdinalIgnoreCase))
+                // The same rule as FindMatchingPredicate, and it has to be the same or a composite
+                // index would seek on a key it cannot hold.
+                if (CanAnswer(pred, columnName, expressionText))
                 {
                     found = true;
                     break;
@@ -428,9 +441,7 @@ public sealed class OptimizerQuery
                 if (pred.Operator != BinaryOperatorType.Equal)
                     continue;
 
-                if (pred.ColumnName.Equals(columnName, StringComparison.OrdinalIgnoreCase) ||
-                    (expressionText != null && pred.ExpressionText != null &&
-                     pred.ExpressionText.Equals(expressionText, StringComparison.OrdinalIgnoreCase)))
+                if (CanAnswer(pred, columnName, expressionText))
                 {
                     values.Add(pred.CompareValue);
                     break;
