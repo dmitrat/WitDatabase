@@ -108,7 +108,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     private async Task BrowseFolderAsync()
     {
-        var folderPath = await Dialogs.OpenFolderAsync("Open LSM Database Folder");
+        var folderPath = await Dialogs.OpenFolderAsync(Localization["Dialog.Open.PickFolder"]);
 
         if (string.IsNullOrEmpty(folderPath))
             return;
@@ -122,10 +122,10 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     private async Task OpenExistingDatabaseAsync()
     {
-        var filePath = await Dialogs.OpenFileAsync("Open Database",
+        var filePath = await Dialogs.OpenFileAsync(Localization["Dialog.Open.PickFile"],
         [
-            new FileFilter("WitDatabase Files", ["*.witdb", "*.db"]),
-            new FileFilter("All Files", ["*.*"])
+            new FileFilter(Localization["Common.Filter.Database"], ["*.witdb", "*.db"]),
+            new FileFilter(Localization["Common.Filter.AllFiles"], ["*.*"])
         ]);
 
         if (string.IsNullOrEmpty(filePath))
@@ -193,7 +193,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         // what put an abandoned database in the user's Documents.
         if (SelectedStorageEngine == "lsm")
         {
-            var folder = await Dialogs.OpenFolderAsync("Create LSM Database In Folder");
+            var folder = await Dialogs.OpenFolderAsync(Localization["Dialog.Create.PickFolder"]);
 
             if (!string.IsNullOrEmpty(folder))
                 ConnectionInfo.FilePath = folder;
@@ -202,13 +202,13 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         }
 
         var filePath = await Dialogs.SaveFileAsync(
-            "Create New Database",
+            Localization["Dialog.Create.PickFile"],
             suggestedFileName: "database.witdb",
             defaultExtension: ".witdb",
             filters:
             [
-                new FileFilter("WitDatabase Files", ["*.witdb"]),
-                new FileFilter("All Files", ["*.*"])
+                new FileFilter(Localization["Common.Filter.Database"], ["*.witdb"]),
+                new FileFilter(Localization["Common.Filter.AllFiles"], ["*.*"])
             ]);
 
         if (!string.IsNullOrEmpty(filePath))
@@ -384,13 +384,13 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
             }
             else
             {
-                ErrorMessage = "Failed to connect to database. Check file path and credentials.";
+                ErrorMessage = Localization["Dialog.Open.ConnectFailed"];
                 Logger.LogWarning("Connection failed for {FilePath}", ConnectionInfo.FilePath);
             }
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Connection error: {ex.Message}";
+            ErrorMessage = Localization.Format("Dialog.Open.ConnectError", ex.Message);
             Logger.LogError(ex, "Connection error");
         }
         finally

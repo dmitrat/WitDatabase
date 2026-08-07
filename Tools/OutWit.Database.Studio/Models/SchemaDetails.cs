@@ -132,15 +132,13 @@ public sealed class DataAccessNote
 
     public bool IsPrimaryKey { get; init; }
 
-    public override string ToString()
-    {
-        if (IsIndexed)
-            return $"{Column}: {IndexName}";
+    /// <summary>
+    /// The line the inspector shows. Written by the ViewModel out of the catalogue: a model cannot
+    /// reach the string catalogue, and one that renders itself is one that stays in English.
+    /// </summary>
+    public string Text { get; set; } = string.Empty;
 
-        return IsPrimaryKey
-            ? $"{Column}: primary key with no index"
-            : $"{Column}: no index";
-    }
+    public override string ToString() => Text;
 }
 
 /// <summary>

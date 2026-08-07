@@ -7,7 +7,7 @@
         mc:Ignorable="d" d:DesignWidth="640" d:DesignHeight="640"
         x:Class="OutWit.Database.Studio.Views.Dialogs.CreateIndexDialog"
         x:DataType="vm:CreateIndexViewModel"
-        Title="New index"
+        Title="{DynamicResource S.Dialog.CreateIndex.Title}"
         Width="640" Height="640"
         MinWidth="560" MinHeight="520"
         WindowStartupLocation="CenterOwner"
@@ -24,7 +24,7 @@
                 Padding="16">
             <StackPanel Orientation="Horizontal" Spacing="12">
                 <PathIcon Data="{x:Static ui:StudioIcons.DB_INDEX}" Width="20" Height="20"/>
-                <TextBlock Text="New index" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBlock Text="{DynamicResource S.Dialog.CreateIndex.Title}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding TableName}" FontSize="14" Foreground="Gray" VerticalAlignment="Center"/>
             </StackPanel>
         </Border>
@@ -43,37 +43,37 @@
                            IsVisible="{Binding !KeyNoteIsSevere}"/>
 
                 <StackPanel Spacing="6">
-                    <TextBlock Text="Name" FontWeight="SemiBold"/>
+                    <TextBlock Text="{DynamicResource S.Common.Name}" FontWeight="SemiBold"/>
                     <TextBox AutomationProperties.AutomationId="CreateIndexName"
                              Text="{Binding IndexName}" PlaceholderText="IX_Orders_CreatedAt"/>
                 </StackPanel>
 
                 <StackPanel Spacing="6">
-                    <TextBlock Text="Table" FontWeight="SemiBold"/>
+                    <TextBlock Text="{DynamicResource S.Common.Table}" FontWeight="SemiBold"/>
                     <Grid ColumnDefinitions="*,Auto,Auto">
                         <ComboBox Grid.Column="0"
                                   AutomationProperties.AutomationId="CreateIndexTable"
                                   ItemsSource="{Binding AvailableTables}"
                                   SelectedItem="{Binding TableName}"
                                   HorizontalAlignment="Stretch"
-                                  PlaceholderText="Select a table"/>
+                                  PlaceholderText="{DynamicResource S.Dialog.CreateIndex.SelectTable}"/>
 
                         <Button Grid.Column="1" Margin="6,0,0,0"
                                 AutomationProperties.AutomationId="CreateIndexLoadTables"
-                                AutomationProperties.Name="Load tables"
-                                Content="Tables" Command="{Binding LoadTablesCommand}"/>
+                                AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.LoadTables}"
+                                Content="{DynamicResource S.Dialog.CreateIndex.Tables}" Command="{Binding LoadTablesCommand}"/>
 
                         <Button Grid.Column="2" Margin="6,0,0,0"
                                 AutomationProperties.AutomationId="CreateIndexLoadColumns"
-                                AutomationProperties.Name="Load columns"
-                                Content="Columns" Command="{Binding LoadColumnsCommand}"
+                                AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.LoadColumns}"
+                                Content="{DynamicResource S.Common.Columns}" Command="{Binding LoadColumnsCommand}"
                                 IsEnabled="{Binding CanLoadColumns}"/>
                     </Grid>
                 </StackPanel>
 
                 <!-- Key columns, each with a direction -->
                 <StackPanel Spacing="6">
-                    <TextBlock Text="Columns" FontWeight="SemiBold"/>
+                    <TextBlock Text="{DynamicResource S.Common.Columns}" FontWeight="SemiBold"/>
 
                     <Grid ColumnDefinitions="*,Auto" Height="120">
                         <Border Grid.Column="0"
@@ -87,12 +87,12 @@
 
                         <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0" VerticalAlignment="Center">
                             <Button AutomationProperties.AutomationId="CreateIndexAddSelectedColumn"
-                                    AutomationProperties.Name="Add selected column"
-                                    Content="Add" Width="90" Click="AddColumn_Click"/>
+                                    AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.AddColumn}"
+                                    Content="{DynamicResource S.Common.Add}" Width="90" Click="AddColumn_Click"/>
                             <Button AutomationProperties.AutomationId="CreateIndexAddIncluded"
-                                    AutomationProperties.Name="Add as included column"
+                                    AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.AddIncluded}"
                                     Content="INCLUDE" Width="90" Click="AddIncluded_Click"
-                                    ToolTip.Tip="Carry this column in the index without making it part of the key"/>
+                                    ToolTip.Tip="{DynamicResource S.Dialog.CreateIndex.Include.Tip}"/>
                         </StackPanel>
                     </Grid>
 
@@ -104,14 +104,14 @@
 
                                     <Button Grid.Column="1" FontSize="11" Margin="0,0,4,0"
                                             AutomationProperties.AutomationId="CreateIndexToggleDirection"
-                                            AutomationProperties.Name="Sort direction"
+                                            AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.Direction}"
                                             Content="{Binding IsDescending, Converter={x:Static vm:DirectionConverter.Instance}}"
                                             Command="{Binding $parent[ItemsControl].((vm:CreateIndexViewModel)DataContext).ToggleDirectionCommand}"
                                             CommandParameter="{Binding}"/>
 
-                                    <Button Grid.Column="2" Content="x" FontSize="11" Width="24"
+                                    <Button Grid.Column="2" Content="✕" FontSize="11" Width="24"
                                             AutomationProperties.AutomationId="CreateIndexRemoveColumn"
-                                            AutomationProperties.Name="Remove this column"
+                                            AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.RemoveColumn}"
                                             Command="{Binding $parent[ItemsControl].((vm:CreateIndexViewModel)DataContext).RemoveColumnCommand}"
                                             CommandParameter="{Binding}"/>
                                 </Grid>
@@ -121,7 +121,7 @@
 
                     <TextBox AutomationProperties.AutomationId="CreateIndexExpression"
                              Name="ExpressionBox"
-                             PlaceholderText="or an expression: LOWER(Name)"
+                             PlaceholderText="{DynamicResource S.Dialog.CreateIndex.Expression}"
                              KeyDown="Expression_KeyDown"
                              FontFamily="Consolas,Courier New"/>
                 </StackPanel>
@@ -134,9 +134,9 @@
                             <DataTemplate>
                                 <Grid ColumnDefinitions="*,Auto" Margin="0,2">
                                     <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center"/>
-                                    <Button Grid.Column="1" Content="x" FontSize="11" Width="24"
+                                    <Button Grid.Column="1" Content="✕" FontSize="11" Width="24"
                                             AutomationProperties.AutomationId="CreateIndexRemoveIncluded"
-                                            AutomationProperties.Name="Remove this included column"
+                                            AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.RemoveIncluded}"
                                             Command="{Binding $parent[ItemsControl].((vm:CreateIndexViewModel)DataContext).RemoveIncludedCommand}"
                                             CommandParameter="{Binding}"/>
                                 </Grid>
@@ -149,7 +149,7 @@
                           Content="UNIQUE" IsChecked="{Binding IsUnique}"/>
 
                 <StackPanel Spacing="6">
-                    <TextBlock Text="Partial - WHERE" FontWeight="SemiBold"/>
+                    <TextBlock Text="{DynamicResource S.Dialog.CreateIndex.Partial}" FontWeight="SemiBold"/>
                     <TextBox AutomationProperties.AutomationId="CreateIndexFilter"
                              Text="{Binding FilterCondition}"
                              PlaceholderText="Status &lt;&gt; 'archived'"
@@ -161,7 +161,7 @@
                            IsVisible="{Binding PlannerNote, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                 <StackPanel Spacing="6">
-                    <TextBlock Text="What will run" FontWeight="SemiBold"/>
+                    <TextBlock Text="{DynamicResource S.Common.WhatWillRun}" FontWeight="SemiBold"/>
                     <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
                             CornerRadius="4" Padding="8" MinHeight="48">
                         <TextBlock Text="{Binding GeneratedDdl}"
@@ -186,26 +186,26 @@
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                 <Button Grid.Column="0"
                         AutomationProperties.AutomationId="CreateIndexToEditor"
-                        Content="To the editor" Command="{Binding SendToEditorCommand}"
+                        Content="{DynamicResource S.Common.ToEditor}" Command="{Binding SendToEditorCommand}"
                         IsEnabled="{Binding CanGenerateDdl}"/>
 
                 <Button Grid.Column="2"
                         AutomationProperties.AutomationId="CreateIndexCancel"
-                        AutomationProperties.Name="Cancel"
-                        Content="Cancel" Command="{Binding CancelCommand}"
+                        AutomationProperties.Name="{DynamicResource S.Common.Cancel}"
+                        Content="{DynamicResource S.Common.Cancel}" Command="{Binding CancelCommand}"
                         Width="100" Margin="0,0,8,0" HorizontalContentAlignment="Center"/>
 
                 <Button Grid.Column="3"
                         AutomationProperties.AutomationId="CreateIndexCreate"
-                        AutomationProperties.Name="Create index"
-                        Content="Create" Command="{Binding CreateIndexCommand}"
+                        AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.CreateName}"
+                        Content="{DynamicResource S.Common.Create}" Command="{Binding CreateIndexCommand}"
                         IsEnabled="{Binding CanCreateIndex}"
                         Width="120" HorizontalContentAlignment="Center" Classes="accent"/>
             </Grid>
         </Border>
 
         <Border Grid.Row="0" Grid.RowSpan="4" Background="#80000000" IsVisible="{Binding IsCreating}">
-            <TextBlock Text="Creating index..." Foreground="White" FontSize="16"
+            <TextBlock Text="{DynamicResource S.Dialog.CreateIndex.Creating}" Foreground="White" FontSize="16"
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
 

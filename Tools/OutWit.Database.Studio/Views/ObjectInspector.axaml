@@ -29,7 +29,7 @@
 
 		<ScrollViewer Grid.Row="1" Padding="10,8">
 			<StackPanel Spacing="12">
-				<TextBlock Text="Select an object in the tree to see what it is."
+				<TextBlock Text="{DynamicResource S.Inspector.Empty}"
 				           FontSize="12" Opacity="0.5" TextWrapping="Wrap"
 				           IsVisible="{Binding Title, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
 
@@ -40,17 +40,17 @@
 
 				<!-- Overview -->
 				<StackPanel Spacing="3" IsVisible="{Binding ColumnCount}">
-					<TextBlock Text="OVERVIEW" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.Overview}" FontSize="10" Opacity="0.5"/>
 					<Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto">
-						<TextBlock Grid.Row="0" Grid.Column="0" Text="Rows" FontSize="12" Opacity="0.6"/>
+						<TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource S.Inspector.Rows}" FontSize="12" Opacity="0.6"/>
 						<TextBlock Grid.Row="0" Grid.Column="1" FontSize="12"
 						           AutomationProperties.AutomationId="InspectorRowCount"
-						           Text="{Binding RowCount, TargetNullValue='not counted'}"/>
+						           Text="{Binding RowCountText}"/>
 
-						<TextBlock Grid.Row="1" Grid.Column="0" Text="Columns" FontSize="12" Opacity="0.6"/>
+						<TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource S.Inspector.Columns}" FontSize="12" Opacity="0.6"/>
 						<TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ColumnCount}" FontSize="12"/>
 
-						<TextBlock Grid.Row="2" Grid.Column="0" Text="Primary key" FontSize="12" Opacity="0.6"/>
+						<TextBlock Grid.Row="2" Grid.Column="0" Text="{DynamicResource S.Inspector.PrimaryKey}" FontSize="12" Opacity="0.6"/>
 						<TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PrimaryKey}" FontSize="12"
 						           IsVisible="{Binding PrimaryKey, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 					</Grid>
@@ -58,7 +58,7 @@
 
 				<!-- Data access: the part that knows the engine -->
 				<StackPanel Spacing="3" IsVisible="{Binding DataAccess.Count}">
-					<TextBlock Text="DATA ACCESS" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.DataAccess}" FontSize="10" Opacity="0.5"/>
 
 					<Border AutomationProperties.AutomationId="InspectorKeyWarning"
 					        Background="#33FFC107"
@@ -81,7 +81,7 @@
 
 				<!-- Indexes -->
 				<StackPanel Spacing="3" IsVisible="{Binding Indexes.Count}">
-					<TextBlock Text="INDEXES" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.Indexes}" FontSize="10" Opacity="0.5"/>
 					<ItemsControl AutomationProperties.AutomationId="InspectorIndexes" ItemsSource="{Binding Indexes}">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="models:IndexInfo">
@@ -93,7 +93,7 @@
 
 				<!-- What it points at, and what points at it -->
 				<StackPanel Spacing="3" IsVisible="{Binding References.Count}">
-					<TextBlock Text="REFERENCES" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.References}" FontSize="10" Opacity="0.5"/>
 					<ItemsControl AutomationProperties.AutomationId="InspectorReferences" ItemsSource="{Binding References}">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="models:ForeignKeyInfo">
@@ -104,7 +104,7 @@
 				</StackPanel>
 
 				<StackPanel Spacing="3" IsVisible="{Binding ReferencedBy.Count}">
-					<TextBlock Text="REFERENCED BY" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.ReferencedBy}" FontSize="10" Opacity="0.5"/>
 					<ItemsControl AutomationProperties.AutomationId="InspectorReferencedBy" ItemsSource="{Binding ReferencedBy}">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="models:ForeignKeyInfo">
@@ -116,7 +116,7 @@
 
 				<!-- The definition as the catalogue holds it, not a reconstruction -->
 				<StackPanel Spacing="4" IsVisible="{Binding Definition, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-					<TextBlock Text="DEFINITION" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.Definition}" FontSize="10" Opacity="0.5"/>
 					<Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
 					        CornerRadius="5"
 					        Padding="8">
@@ -128,12 +128,12 @@
 					</Border>
 					<StackPanel Orientation="Horizontal" Spacing="4">
 						<Button AutomationProperties.AutomationId="InspectorCopyDefinition"
-						        AutomationProperties.Name="Copy definition"
-						        Content="Copy" FontSize="11" Height="22" Padding="8,0"
+						        AutomationProperties.Name="{DynamicResource S.Inspector.CopyDefinition}"
+						        Content="{DynamicResource S.Common.Copy}" FontSize="11" Height="22" Padding="8,0"
 						        Command="{Binding CopyDefinitionCommand}"/>
 						<Button AutomationProperties.AutomationId="InspectorDefinitionToEditor"
-						        AutomationProperties.Name="Open definition in editor"
-						        Content="To editor" FontSize="11" Height="22" Padding="8,0"
+						        AutomationProperties.Name="{DynamicResource S.Inspector.DefinitionToEditor}"
+						        Content="{DynamicResource S.Inspector.ToEditor}" FontSize="11" Height="22" Padding="8,0"
 						        Command="{Binding OpenDefinitionInEditorCommand}"/>
 					</StackPanel>
 				</StackPanel>

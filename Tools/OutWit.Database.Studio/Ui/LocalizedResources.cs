@@ -27,6 +27,18 @@ public static class LocalizedResources
     /// </summary>
     public const string PREFIX = "S.";
 
+    /// <summary>
+    /// The current language code, published as a resource of its own.
+    ///
+    /// <para>
+    /// It is not a string anybody shows. It exists so that a <c>MultiBinding</c> whose result depends
+    /// on the language - a plural, which needs a rule rather than a template - can take it as an input
+    /// and be re-evaluated when the catalogue is swapped. Without it a converter would answer once and
+    /// leave the old language on screen. See <see cref="Converters.LocalizedText"/>.
+    /// </para>
+    /// </summary>
+    public const string KEY_LANGUAGE = PREFIX + "$language";
+
     #endregion
 
     #region Fields
@@ -57,6 +69,8 @@ public static class LocalizedResources
 
         foreach (var (key, value) in service.Texts(service.Language))
             dictionary.Add(PREFIX + key, value);
+
+        dictionary.Add(KEY_LANGUAGE, service.Language);
 
         if (s_published != null)
             resources.MergedDictionaries.Remove(s_published);

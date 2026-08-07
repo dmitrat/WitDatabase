@@ -32,9 +32,13 @@ public partial class UnsavedChangesDialog : Window
     {
         var dialog = new UnsavedChangesDialog();
 
-        dialog.HeaderText.Text = changeCount == 1
-            ? $"{title} - 1 unsaved change"
-            : $"{title} - {changeCount} unsaved changes";
+        // A count and a noun that agrees with it, which in Russian is three forms and not two - so
+        // this is the catalogue's plural rather than a ternary here (WS-63). The code-behind of a
+        // view is as good a place to leave an English sentence as a ViewModel is.
+        var localization = ViewModels.ApplicationViewModel.Instance.Localization;
+
+        dialog.HeaderText.Text = localization.Format("Dialog.Unsaved.Header",
+            title, localization.Plural("Count.UnsavedChanges", changeCount));
 
         return await dialog.ShowDialog<UnsavedChangesDecision>(owner);
     }

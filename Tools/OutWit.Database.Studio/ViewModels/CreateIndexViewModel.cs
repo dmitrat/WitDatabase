@@ -201,15 +201,14 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
 
             if (keys.Count == 0)
             {
-                KeyNote = $"{TableName} has no primary key.";
+                KeyNote = Localization.Format("Dialog.CreateIndex.NoKey", TableName);
                 KeyNoteIsSevere = false;
                 return;
             }
 
             if (keys.All(k => k.IsAutoIncrement))
             {
-                KeyNote = "The key is AUTOINCREMENT: the generator guarantees uniqueness, so an insert " +
-                          "does not scan and the key needs no index.";
+                KeyNote = Localization["Dialog.CreateIndex.KeyIsGenerated"];
                 KeyNoteIsSevere = false;
                 return;
             }
@@ -218,10 +217,9 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
                 index.Columns.FirstOrDefault()?.Equals(key.Name, StringComparison.OrdinalIgnoreCase) == true));
 
             KeyNote = covered
-                ? "The key already has an index of its own."
-                : $"{TableName} has a primary key set by hand and no index on it: every insert scans the " +
-                  $"whole table to check uniqueness. A UNIQUE index on " +
-                  $"{string.Join(", ", keys.Select(k => k.Name))} removes that.";
+                ? Localization["Dialog.CreateIndex.KeyHasIndex"]
+                : Localization.Format("Dialog.CreateIndex.KeyUnindexed",
+                    TableName, string.Join(", ", keys.Select(k => k.Name)));
 
             KeyNoteIsSevere = !covered;
         }
@@ -303,7 +301,7 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
             var sql = BuildCreateIndexSql();
             await Database!.ExecuteNonQueryAsync(sql);
 
-            ApplicationVm.MainWindowVm.StatusText = $"Created index: {IndexName}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Dialog.CreateIndex.Created", IndexName);
             Logger.LogInformation("Created index: {IndexName}", IndexName);
 
             await Database.Catalog.RefreshAsync();
@@ -313,8 +311,8 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to create index: {ex.Message.Split('\n')[0]}";
-            ApplicationVm.MainWindowVm.StatusText = "Error creating index";
+            ErrorMessage = Localization.Format("Dialog.CreateIndex.Failed", ex.Message.Split('\n')[0]);
+            ApplicationVm.MainWindowVm.StatusText = Localization["Dialog.CreateIndex.FailedShort"];
             Logger.LogError(ex, "Failed to create index {IndexName}", IndexName);
         }
         finally
@@ -509,6 +507,12 @@ public class CreateIndexViewModel : ViewModelBase<ApplicationViewModel>
     public IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

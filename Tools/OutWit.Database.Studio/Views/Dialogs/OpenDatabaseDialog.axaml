@@ -85,12 +85,12 @@
                                         <Setter Property="Padding" Value="2"/>
                                     </Style>
                                 </ListBox.Styles>
-                                <ListBoxItem AutomationProperties.Name="Green"><Border Width="18" Height="18" CornerRadius="5" Background="#4CC13C"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="Amber"><Border Width="18" Height="18" CornerRadius="5" Background="#D9A227"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="Violet"><Border Width="18" Height="18" CornerRadius="5" Background="#8A7BE8"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="Cyan"><Border Width="18" Height="18" CornerRadius="5" Background="#35A7C4"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="Red"><Border Width="18" Height="18" CornerRadius="5" Background="#D9534F"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="Grey"><Border Width="18" Height="18" CornerRadius="5" Background="#5D6879"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Green}"><Border Width="18" Height="18" CornerRadius="5" Background="#4CC13C"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Amber}"><Border Width="18" Height="18" CornerRadius="5" Background="#D9A227"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Violet}"><Border Width="18" Height="18" CornerRadius="5" Background="#8A7BE8"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Cyan}"><Border Width="18" Height="18" CornerRadius="5" Background="#35A7C4"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Red}"><Border Width="18" Height="18" CornerRadius="5" Background="#D9534F"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Grey}"><Border Width="18" Height="18" CornerRadius="5" Background="#5D6879"/></ListBoxItem>
                             </ListBox>
                         </StackPanel>
                         <TextBlock Text="{DynamicResource S.Dialog.Open.ColourHint}"

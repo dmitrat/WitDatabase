@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.Windows.Input;
 using Avalonia.Controls;
 using Microsoft.Extensions.Logging;
@@ -33,7 +33,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     private void InitDefault()
     {
         Title = "WitDatabase Studio";
-        StatusText = "Ready";
+        StatusText = Localization["Status.Ready"];
         CurrentConnection = null;
         IsConnected = Connections.Active?.IsConnected == true;
         RecentFiles = new ObservableCollection<RecentFileItem>();
@@ -180,7 +180,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         }
 
         IsLoading = true;
-        StatusText = $"Disconnecting from {session.DisplayName}...";
+        StatusText = Localization.Format("Status.Disconnecting", session.DisplayName);
 
         try
         {
@@ -196,7 +196,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            StatusText = $"Error: {ex.Message}";
+            StatusText = Localization.Format("Status.Error", ex.Message);
             Logger.LogError(ex, "Error disconnecting from database");
         }
         finally
@@ -256,7 +256,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
             var settings = await Settings.LoadAsync();
             LoadRecentFiles(settings);
             
-            StatusText = $"File not found: {Path.GetFileName(filePath)}";
+            StatusText = Localization.Format("Status.FileNotFound", Path.GetFileName(filePath));
             return;
         }
 
@@ -265,7 +265,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         var connection = new ConnectionInfo { FilePath = filePath };
 
         IsLoading = true;
-        StatusText = $"Connecting to {Path.GetFileName(filePath)}...";
+        StatusText = Localization.Format("Status.Connecting", Path.GetFileName(filePath));
 
         try
         {
@@ -273,7 +273,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
             if (session == null)
             {
-                StatusText = $"Failed to open {Path.GetFileName(filePath)}";
+                StatusText = Localization.Format("Status.OpenFailed", Path.GetFileName(filePath));
                 return;
             }
 
@@ -281,7 +281,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            StatusText = $"Error: {ex.Message}";
+            StatusText = Localization.Format("Status.Error", ex.Message);
             Logger.LogError(ex, "Failed to open recent file: {FilePath}", filePath);
         }
         finally
@@ -320,10 +320,10 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
             return;
 
         var target = await ApplicationVm.Dialogs.SaveFileAsync(
-            "Dump the database",
+            Localization["Menu.DumpDatabase.Title"],
             suggestedFileName: session.DisplayName + ".sql",
             defaultExtension: "sql",
-            filters: [new FileFilter("SQL Files", ["*.sql"])]);
+            filters: [new FileFilter(Localization.Format("Common.Filter.Files", "SQL"), ["*.sql"])]);
 
         if (string.IsNullOrEmpty(target))
             return;
@@ -334,11 +334,11 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
             await File.WriteAllTextAsync(target, script);
 
-            ApplicationVm.Notifications.Information("Database dumped", target, session.DisplayName);
+            ApplicationVm.Notifications.Information(Localization["Status.Dumped"], target, session.DisplayName);
         }
         catch (Exception ex)
         {
-            ApplicationVm.Notifications.Error("The dump failed", ex.Message, session.DisplayName);
+            ApplicationVm.Notifications.Error(Localization["Status.DumpFailed"], ex.Message, session.DisplayName);
         }
     }
 
@@ -393,12 +393,12 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     private async Task LoadSchemaAfterConnectionAsync(IDatabaseSession session)
     {
         IsLoading = true;
-        StatusText = "Loading database schema...";
+        StatusText = Localization["Status.LoadingSchema"];
 
         try
         {
             CurrentConnection = session.Connection;
-            StatusText = $"Connected to {session.Connection.FilePath}";
+            StatusText = Localization.Format("Status.Connected", session.Connection.FilePath);
 
             // Add to recent files
             if (!string.IsNullOrEmpty(session.Connection.FilePath))
@@ -416,7 +416,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            StatusText = $"Error: {ex.Message}";
+            StatusText = Localization.Format("Status.Error", ex.Message);
             Logger.LogError(ex, "Error loading database schema");
         }
         finally
@@ -627,6 +627,12 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     public ISettingsService Settings => ApplicationVm.Settings;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

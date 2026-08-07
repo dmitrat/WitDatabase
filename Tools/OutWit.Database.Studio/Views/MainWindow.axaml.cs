@@ -240,9 +240,14 @@ public partial class MainWindow : Window
     private void UpdateThemeButton()
     {
         var isDark = Application.Current?.ActualThemeVariant == ThemeVariant.Dark;
-        
+
         ThemeIcon.Data = Avalonia.Media.Geometry.Parse(isDark ? StudioIcons.PATH_THEME_LIGHT : StudioIcons.PATH_THEME_DARK);
-        ThemeText.Text = isDark ? "Light" : "Dark";
+
+        // The name of a theme is Studio's own word, and this button was the last English on the
+        // window after the sweep - found by switching the running application, not by any test.
+        var localization = ViewModels.ApplicationViewModel.Instance.Localization;
+
+        ThemeText.Text = localization[isDark ? "Settings.Theme.Light" : "Settings.Theme.Dark"];
     }
 
     private void UpdateRecentFilesMenu()

@@ -276,8 +276,8 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel
         }
         catch (OperationCanceledException)
         {
-            ErrorMessage = $"Cancelled at statement {CurrentStatementNumber} of {StatementCount}";
-            ApplicationVm.MainWindowVm.StatusText = "Query cancelled";
+            ErrorMessage = Localization.Format("Query.CancelledAt", CurrentStatementNumber, StatementCount);
+            ApplicationVm.MainWindowVm.StatusText = Localization["Query.Cancelled"];
 
             await RecordInHistoryAsync(sql, "cancelled", 0);
         }
@@ -285,7 +285,7 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel
         {
             ErrorMessage = ex.Message;
             Logger.LogError(ex, "Query execution failed");
-            ApplicationVm.MainWindowVm.StatusText = $"Query failed: {ex.Message}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Query.Failed", ex.Message);
         }
         finally
         {
@@ -770,6 +770,12 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel
     private IExportService Export => ApplicationVm.Export;
 
     private ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

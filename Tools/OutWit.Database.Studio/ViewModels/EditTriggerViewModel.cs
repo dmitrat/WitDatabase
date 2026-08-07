@@ -82,6 +82,12 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
+
+        Localization.LanguageChanged += (_, _) =>
+        {
+            OnPropertyChanged(nameof(Heading));
+            OnPropertyChanged(nameof(SaveText));
+        };
     }
 
     private void InitCommands()
@@ -266,6 +272,12 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
     public string Table { get; }
 
     /// <summary>
+    /// The window's heading. It was a <c>StringFormat</c> in the markup, where no lint over attributes
+    /// could see it and no catalogue could reach it.
+    /// </summary>
+    public string Heading => Localization.Format("Dialog.Trigger.Heading", Table);
+
+    /// <summary>
     /// The trigger being replaced, or null when one is being created.
     /// </summary>
     public TriggerInfo? Existing { get; }
@@ -275,7 +287,9 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
     /// <summary>
     /// What the save button says. "Save" would be a lie about a DROP followed by a CREATE.
     /// </summary>
-    public string SaveText => IsReplacing ? "Drop and create" : "Create";
+    public string SaveText => IsReplacing
+        ? Localization["Dialog.Trigger.DropAndCreate"]
+        : Localization["Common.Create"];
 
     [Notify]
     public string Name { get; set; } = string.Empty;
@@ -324,10 +338,13 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
     /// The sentence under the body, always visible - the boundary is part of the editor, not an error
     /// message waiting to happen.
     /// </summary>
-    public string LanguageNote =>
-        "A trigger body may contain only SELECT, INSERT, UPDATE, DELETE and MERGE. NEW and OLD can be " +
-        "read; assigning to them is not in the language yet. A WHEN condition is written in brackets, " +
-        "which Studio adds.";
+    public string LanguageNote => Localization["Dialog.Trigger.LanguageNote"];
+
+    #endregion
+
+    #region Services
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 

@@ -136,7 +136,7 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
             var sql = BuildCreateTableSql();
             await Database!.ExecuteNonQueryAsync(sql);
 
-            ApplicationVm.MainWindowVm.StatusText = $"Created table: {TableName}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Dialog.CreateTable.Created", TableName);
             Logger.LogInformation("Created table: {TableName}", TableName);
 
             await ApplicationVm.DatabaseExplorerVm.RefreshAsync();
@@ -145,8 +145,8 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to create table: {ex.Message}";
-            ApplicationVm.MainWindowVm.StatusText = "Error creating table";
+            ErrorMessage = Localization.Format("Dialog.CreateTable.Failed", ex.Message);
+            ApplicationVm.MainWindowVm.StatusText = Localization["Dialog.CreateTable.FailedShort"];
             Logger.LogError(ex, "Failed to create table {TableName}", TableName);
         }
         finally
@@ -312,6 +312,12 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
     public IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

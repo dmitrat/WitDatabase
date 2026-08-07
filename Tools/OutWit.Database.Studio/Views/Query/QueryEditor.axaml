@@ -39,10 +39,16 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
                                   Width="13" Height="13" Foreground="#E57373"/>
+                        <!-- One catalogue entry, not three Runs. The message itself is the ENGINE's
+                             and stays in its own words (WS-64); only the frame around it is Studio's. -->
                         <TextBlock Foreground="#E57373" VerticalAlignment="Center">
-                            <Run Text="{Binding SyntaxErrorMessage}"/>
-                            <Run Text=" · line"/>
-                            <Run Text="{Binding SyntaxErrorLine}"/>
+                            <TextBlock.Text>
+                                <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
+                                    <DynamicResource ResourceKey="S.Query.SyntaxError"/>
+                                    <Binding Path="SyntaxErrorMessage"/>
+                                    <Binding Path="SyntaxErrorLine"/>
+                                </MultiBinding>
+                            </TextBlock.Text>
                         </TextBlock>
                     </StackPanel>
                 </Border>
@@ -59,7 +65,7 @@
                     Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
 
             <!-- ================================ RESULT ================================ -->
-            <TabItem Header="Result">
+            <TabItem Header="{DynamicResource S.Query.Tab.Result}">
                 <Grid RowDefinitions="*,Auto">
                     <c:ResultDataGrid Grid.Row="0"
                                       ResultView="{Binding CurrentView}"
@@ -71,40 +77,40 @@
 
                         <c:ResultDataGrid.ContextMenu>
                             <ContextMenu>
-                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopy" Header="Copy"
+                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopy" Header="{DynamicResource S.Common.Copy}"
                                           Command="{Binding CopyRowsCommand}"
                                           InputGesture="Ctrl+C">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="14" Height="14"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
-                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopyWithHeaders" Header="Copy with Headers"
+                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopyWithHeaders" Header="{DynamicResource S.Query.Menu.CopyWithHeaders}"
                                           Command="{Binding CopyRowsAsCsvCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="14" Height="14"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
-                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopyAsINSERT" Header="Copy as INSERT"
+                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopyAsINSERT" Header="{DynamicResource S.Query.Menu.CopyAsInsert}"
                                           Command="{Binding CopyRowsAsInsertCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="14" Height="14"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <Separator/>
-                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopyAllRows" Header="Copy All Rows"
+                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopyAllRows" Header="{DynamicResource S.Query.Menu.CopyAllRows}"
                                           Command="{Binding CopyAllRowsCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="14" Height="14"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
-                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopyAllAsINSERT" Header="Copy All as INSERT"
+                                <MenuItem AutomationProperties.AutomationId="QueryEditorCopyAllAsINSERT" Header="{DynamicResource S.Query.Menu.CopyAllAsInsert}"
                                           Command="{Binding CopyAllRowsAsInsertCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="14" Height="14"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <Separator/>
-                                <MenuItem AutomationProperties.AutomationId="QueryEditorExportResults" Header="Export Results..."
+                                <MenuItem AutomationProperties.AutomationId="QueryEditorExportResults" Header="{DynamicResource S.Query.Menu.ExportResults}"
                                           Command="{Binding ExportResultsCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.EXPORT}" Width="14" Height="14"/>
@@ -125,31 +131,39 @@
                             IsVisible="{Binding HasResults}">
                         <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
                             <TextBlock VerticalAlignment="Center">
-                                <Run Text="Total:"/>
-                                <Run Text="{Binding TotalRowCount}" FontWeight="SemiBold"/>
-                                <Run Text="rows"/>
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:LocalizedText.Plural}"
+                                                  ConverterParameter="Count.RowsTotal">
+                                        <DynamicResource ResourceKey="S.$language"/>
+                                        <Binding Path="TotalRowCount"/>
+                                    </MultiBinding>
+                                </TextBlock.Text>
                             </TextBlock>
 
                             <TextBlock VerticalAlignment="Center">
-                                <Run Text="{Binding ExecutionTimeMs, StringFormat='{}{0:F2}'}"/>
-                                <Run Text="ms"/>
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
+                                        <DynamicResource ResourceKey="S.Status.Elapsed2"/>
+                                        <Binding Path="ExecutionTimeMs"/>
+                                    </MultiBinding>
+                                </TextBlock.Text>
                             </TextBlock>
 
                             <StackPanel Orientation="Horizontal" Spacing="4">
                                 <Button AutomationProperties.AutomationId="QueryEditorCopySelectedRows"
-                                        AutomationProperties.Name="Copy selected rows"
+                                        AutomationProperties.Name="{DynamicResource S.Query.CopyRows}"
                                         Command="{Binding CopyRowsCommand}"
                                         IsEnabled="{Binding CanCopyRows}"
                                         Width="28" Height="28" Padding="0"
-                                        ToolTip.Tip="Copy selected rows (Ctrl+C)">
+                                        ToolTip.Tip="{DynamicResource S.Query.CopyRows.Tip}">
                                     <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="14" Height="14"/>
                                 </Button>
                                 <Button AutomationProperties.AutomationId="QueryEditorCopyAsINSERTStatements"
-                                        AutomationProperties.Name="Copy as INSERT statements"
+                                        AutomationProperties.Name="{DynamicResource S.Query.CopyAsInsert}"
                                         Command="{Binding CopyRowsAsInsertCommand}"
                                         IsEnabled="{Binding CanCopyRows}"
                                         Width="28" Height="28" Padding="0"
-                                        ToolTip.Tip="Copy as INSERT statements">
+                                        ToolTip.Tip="{DynamicResource S.Query.CopyAsInsert}">
                                     <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="14" Height="14"/>
                                 </Button>
                             </StackPanel>
@@ -165,11 +179,11 @@
                         <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
                                   Width="42" Height="42"
                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
-                        <TextBlock Text="No rows"
+                        <TextBlock Text="{DynamicResource S.Query.NoRows}"
                                    FontSize="15"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
-                        <TextBlock Text="Execute a query, or nothing matched the condition"
+                        <TextBlock Text="{DynamicResource S.Query.NoRows.Hint}"
                                    FontSize="12"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
@@ -178,7 +192,7 @@
             </TabItem>
 
             <!-- ================================ MESSAGES ================================ -->
-            <TabItem Header="Messages">
+            <TabItem Header="{DynamicResource S.Query.Tab.Messages}">
                 <ScrollViewer VerticalScrollBarVisibility="Auto">
                     <StackPanel Margin="12" Spacing="8">
 
@@ -190,18 +204,20 @@
                                         <TextBlock Grid.Column="0"
                                                    Margin="0,0,8,0"
                                                    FontFamily="Consolas,monospace"
-                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
-                                            <Run Text="["/><Run Text="{Binding Number}"/><Run Text="]"/>
-                                        </TextBlock>
+                                                   Text="{Binding Number, StringFormat='[{0}]'}"
+                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding Summary}"
                                                    TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="2" Margin="8,0,0,0"
                                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
-                                            <Run Text="{Binding RowsAffected}"/>
-                                            <Run Text="rows ·"/>
-                                            <Run Text="{Binding ExecutionTimeMs, StringFormat='{}{0:F2}'}"/>
-                                            <Run Text="ms"/>
+                                            <TextBlock.Text>
+                                                <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
+                                                    <DynamicResource ResourceKey="S.Query.StatementDetail"/>
+                                                    <Binding Path="RowsAffected"/>
+                                                    <Binding Path="ExecutionTimeMs"/>
+                                                </MultiBinding>
+                                            </TextBlock.Text>
                                         </TextBlock>
                                     </Grid>
                                 </DataTemplate>
@@ -229,18 +245,21 @@
                                 <StackPanel Orientation="Horizontal" Spacing="8"
                                             IsVisible="{Binding ErrorSuggestion, Converter={x:Static ObjectConverters.IsNotNull}}">
                                     <TextBlock VerticalAlignment="Center" Foreground="#E57373">
-                                        <Run Text="Did you mean"/>
-                                        <Run Text="{Binding ErrorSuggestion}" FontWeight="Bold"/>
-                                        <Run Text="?"/>
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
+                                                <DynamicResource ResourceKey="S.Query.DidYouMean"/>
+                                                <Binding Path="ErrorSuggestion"/>
+                                            </MultiBinding>
+                                        </TextBlock.Text>
                                     </TextBlock>
                                     <Button AutomationProperties.AutomationId="QueryEditorApplySuggestion"
-                                            AutomationProperties.Name="Use the suggested name"
-                                            Content="Replace"
+                                            AutomationProperties.Name="{DynamicResource S.Query.UseSuggestion}"
+                                            Content="{DynamicResource S.Query.Replace}"
                                             Padding="8,2"
                                             Command="{Binding ApplySuggestionCommand}"/>
                                 </StackPanel>
 
-                                <Expander Header="What the engine said"
+                                <Expander Header="{DynamicResource S.Query.EngineSaid}"
                                           IsVisible="{Binding ErrorDetail, Converter={x:Static ObjectConverters.IsNotNull}}">
                                     <SelectableTextBlock Text="{Binding ErrorDetail}"
                                                          TextWrapping="Wrap"
@@ -250,7 +269,7 @@
                             </StackPanel>
                         </Border>
 
-                        <TextBlock Text="Nothing has been executed in this tab yet"
+                        <TextBlock Text="{DynamicResource S.Query.NothingRun}"
                                    FontStyle="Italic"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                                    IsVisible="{Binding !HasExecutionResult}"/>
@@ -259,7 +278,7 @@
             </TabItem>
 
             <!-- ================================ PLAN ================================ -->
-            <TabItem Header="Plan">
+            <TabItem Header="{DynamicResource S.Query.Tab.Plan}">
                 <Grid RowDefinitions="Auto,*">
 
                     <Border Grid.Row="0"
@@ -274,14 +293,14 @@
                             <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center"
                                        FontSize="11"
                                        TextTrimming="CharacterEllipsis"
-                                       ToolTip.Tip="the plan is built without running the query, and this engine reports no row counts or costs"
+                                       ToolTip.Tip="{DynamicResource S.Query.PlanNote}"
                                        Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                       Text="the plan is built without running the query, and this engine reports no row counts or costs"/>
+                                       Text="{DynamicResource S.Query.PlanNote}"/>
 
                             <Button Grid.Column="2"
                                     AutomationProperties.AutomationId="QueryEditorShowPlan"
-                                    AutomationProperties.Name="Explain the statement under the cursor"
-                                    Content="Explain"
+                                    AutomationProperties.Name="{DynamicResource S.Query.Explain.Name}"
+                                    Content="{DynamicResource S.Query.Explain}"
                                     Padding="10,3"
                                     Command="{Binding ShowPlanCommand}"/>
                         </Grid>
@@ -340,24 +359,24 @@
             </TabItem>
 
             <!-- ================================ HISTORY ================================ -->
-            <TabItem Header="History" IsSelected="{Binding IsHistorySelected, Mode=TwoWay}">
+            <TabItem Header="{DynamicResource S.Query.Tab.History}" IsSelected="{Binding IsHistorySelected, Mode=TwoWay}">
                 <Grid RowDefinitions="Auto,*,Auto">
 
                     <Grid Grid.Row="0" ColumnDefinitions="*,Auto,Auto" Margin="8">
                         <TextBox Grid.Column="0"
                                  AutomationProperties.AutomationId="QueryEditorHistorySearch"
-                                 AutomationProperties.Name="Search the query history"
+                                 AutomationProperties.Name="{DynamicResource S.Query.History.Search.Name}"
                                  Text="{Binding HistorySearch, Mode=TwoWay}"
-                                 PlaceholderText="search the history"/>
+                                 PlaceholderText="{DynamicResource S.Query.History.Search}"/>
                         <Button Grid.Column="1" Margin="6,0,0,0"
                                 AutomationProperties.AutomationId="QueryEditorRefreshHistory"
-                                AutomationProperties.Name="Refresh the query history"
-                                Content="Search"
+                                AutomationProperties.Name="{DynamicResource S.Query.History.Refresh.Name}"
+                                Content="{DynamicResource S.Query.History.SearchButton}"
                                 Command="{Binding RefreshHistoryCommand}"/>
                         <Button Grid.Column="2" Margin="6,0,0,0"
                                 AutomationProperties.AutomationId="QueryEditorClearHistory"
-                                AutomationProperties.Name="Clear the query history"
-                                Content="Clear"
+                                AutomationProperties.Name="{DynamicResource S.Query.History.Clear.Name}"
+                                Content="{DynamicResource S.Toolbar.Clear}"
                                 Command="{Binding ClearHistoryCommand}"/>
                     </Grid>
 
@@ -375,15 +394,16 @@
                                                TextTrimming="CharacterEllipsis"/>
                                     <TextBlock FontSize="11"
                                                Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
-                                        <Run Text="{Binding Status}"/>
-                                        <Run Text="·"/>
-                                        <Run Text="{Binding Rows}"/>
-                                        <Run Text="rows ·"/>
-                                        <Run Text="{Binding DurationMs, StringFormat='{}{0:F1}'}"/>
-                                        <Run Text="ms ·"/>
-                                        <Run Text="{Binding ExecutedAt, StringFormat='{}{0:yyyy-MM-dd HH:mm}'}"/>
-                                        <Run Text="·"/>
-                                        <Run Text="{Binding Connection}"/>
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
+                                                <DynamicResource ResourceKey="S.Query.HistoryDetail"/>
+                                                <Binding Path="Status"/>
+                                                <Binding Path="Rows"/>
+                                                <Binding Path="DurationMs"/>
+                                                <Binding Path="ExecutedAt"/>
+                                                <Binding Path="Connection"/>
+                                            </MultiBinding>
+                                        </TextBlock.Text>
                                     </TextBlock>
                                 </StackPanel>
                             </DataTemplate>
@@ -401,7 +421,7 @@
                             Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
                         <TextBlock FontSize="11"
                                    Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                                   Text="Kept in a WitDatabase of Studio's own · 30 days or 5000 entries · connection strings and parameter values are never written"/>
+                                   Text="{DynamicResource S.Query.History.Note}"/>
                     </Border>
                 </Grid>
             </TabItem>

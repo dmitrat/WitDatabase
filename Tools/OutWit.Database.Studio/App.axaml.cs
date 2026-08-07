@@ -28,6 +28,11 @@ public partial class App : Application
             // wired here, once, before the first window exists.
             Ui.LocalizedResources.Attach(Resources, appVm.Localization);
 
+            // A converter cannot be given a constructor argument, and the plural rules are not a
+            // lookup. This is the one place that can hand it the service.
+            Converters.LocalizedText.Service = appVm.Localization;
+            Services.Localization.LocalizationService.Shared = appVm.Localization;
+
             ApplyTheme(appVm.Settings.Current.Theme);
 
             appVm.Settings.Changed += (_, e) =>

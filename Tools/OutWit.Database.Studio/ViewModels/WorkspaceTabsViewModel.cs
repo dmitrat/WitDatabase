@@ -107,7 +107,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         // there is none, and the tab is unbound until the first database is opened.
         var tab = new QueryTabViewModel(ApplicationVm, Connections.Active)
         {
-            Title = $"Query {m_nextQueryNumber++}",
+            Title = Localization.Format("Tab.Query", m_nextQueryNumber++),
             SqlText = string.Empty
         };
 
@@ -538,7 +538,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         if (SelectedTab is QueryTabViewModel queryTab)
         {
             queryTab.ClearResults();
-            ApplicationVm.MainWindowVm.StatusText = "Results cleared";
+            ApplicationVm.MainWindowVm.StatusText = Localization["Status.ResultsCleared"];
         }
     }
 
@@ -565,12 +565,12 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             await File.WriteAllTextAsync(queryTab.FilePath, queryTab.SqlText);
             queryTab.IsModified = false;
 
-            ApplicationVm.MainWindowVm.StatusText = $"Saved: {queryTab.FilePath}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Status.Saved", queryTab.FilePath);
             Logger.LogInformation("Saved query tab: {FilePath}", queryTab.FilePath);
         }
         catch (Exception ex)
         {
-            ApplicationVm.MainWindowVm.StatusText = $"Error saving file: {ex.Message}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Status.SaveFileFailed", ex.Message);
             Logger.LogError(ex, "Failed to save query tab: {FilePath}", queryTab.FilePath);
         }
     }
@@ -581,13 +581,13 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             return;
 
         var filePath = await ApplicationVm.Dialogs.SaveFileAsync(
-            "Save Query As",
+            Localization["Menu.SaveQueryAs.Title"],
             suggestedFileName: $"{queryTab.Title}.sql",
             defaultExtension: ".sql",
             filters:
             [
-                new FileFilter("SQL Files", ["*.sql", "*.witsql"]),
-                new FileFilter("All Files", ["*.*"])
+                new FileFilter(Localization.Format("Common.Filter.Files", "SQL"), ["*.sql", "*.witsql"]),
+                new FileFilter(Localization["Common.Filter.AllFiles"], ["*.*"])
             ]);
 
         if (string.IsNullOrEmpty(filePath))
@@ -601,12 +601,12 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             queryTab.Title = Path.GetFileNameWithoutExtension(filePath);
             queryTab.IsModified = false;
 
-            ApplicationVm.MainWindowVm.StatusText = $"Saved: {filePath}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Status.Saved", filePath);
             Logger.LogInformation("Saved query tab as: {FilePath}", filePath);
         }
         catch (Exception ex)
         {
-            ApplicationVm.MainWindowVm.StatusText = $"Error saving file: {ex.Message}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Status.SaveFileFailed", ex.Message);
             Logger.LogError(ex, "Failed to save query tab as new file");
         }
     }
@@ -631,12 +631,12 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             AddTab(tab);
             SelectedTab = tab;
 
-            ApplicationVm.MainWindowVm.StatusText = $"Opened: {filePath}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Status.Opened", filePath);
             Logger.LogInformation("Opened query file: {FilePath}", filePath);
         }
         catch (Exception ex)
         {
-            ApplicationVm.MainWindowVm.StatusText = $"Error opening file: {ex.Message}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Status.OpenFileFailed", ex.Message);
             Logger.LogError(ex, "Failed to open query file: {FilePath}", filePath);
         }
     }
@@ -875,6 +875,12 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     public ISettingsService Settings => ApplicationVm.Settings;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

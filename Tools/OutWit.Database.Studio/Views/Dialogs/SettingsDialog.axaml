@@ -23,17 +23,47 @@
                 BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8,10">
                 <StackPanel DockPanel.Dock="Bottom" Margin="8,10,8,4" Spacing="2">
-                    <TextBlock Text="{Binding StudioVersion, StringFormat='Studio {0}'}"
-                               FontFamily="Consolas" FontSize="10" Opacity="0.6"/>
-                    <TextBlock Text="{Binding EngineVersion, StringFormat='engine {0}'}"
-                               FontFamily="Consolas" FontSize="10" Opacity="0.6"/>
+                    <TextBlock FontFamily="Consolas" FontSize="10" Opacity="0.6">
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
+                                <DynamicResource ResourceKey="S.Settings.About.StudioVersion"/>
+                                <Binding Path="StudioVersion"/>
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
+                    <TextBlock FontFamily="Consolas" FontSize="10" Opacity="0.6">
+                        <TextBlock.Text>
+                            <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
+                                <DynamicResource ResourceKey="S.Settings.About.EngineVersion"/>
+                                <Binding Path="EngineVersion"/>
+                            </MultiBinding>
+                        </TextBlock.Text>
+                    </TextBlock>
                 </StackPanel>
 
+                <!-- A section is its own identity - the converters compare it and the panels are
+                     shown by it - so the VALUE stays as it is and only the caption is translated.
+                     Found by switching the running application: the list was the last English in a
+                     window whose own heading was already Russian. -->
                 <ListBox AutomationProperties.AutomationId="SettingsSections"
                          ItemsSource="{Binding Sections}"
                          SelectedItem="{Binding SelectedSection}"
                          Background="Transparent"
-                         BorderThickness="0"/>
+                         BorderThickness="0">
+                    <ListBox.ItemTemplate>
+                        <DataTemplate>
+                            <TextBlock>
+                                <TextBlock.Text>
+                                    <MultiBinding Converter="{x:Static conv:LocalizedText.Keyed}"
+                                                  ConverterParameter="Settings.Section.">
+                                        <DynamicResource ResourceKey="S.$language"/>
+                                        <Binding/>
+                                    </MultiBinding>
+                                </TextBlock.Text>
+                            </TextBlock>
+                        </DataTemplate>
+                    </ListBox.ItemTemplate>
+                </ListBox>
             </DockPanel>
         </Border>
 
@@ -60,10 +90,26 @@
 
                     <Grid ColumnDefinitions="150,*" Margin="0,2">
                         <TextBlock Grid.Column="0" Text="{DynamicResource S.Settings.Theme}" VerticalAlignment="Center"/>
+                        <!-- Same shape as the section list: the VALUE is the setting and is
+                             written to the file, so only the caption is translated. -->
                         <ComboBox Grid.Column="1" AutomationProperties.AutomationId="SettingsTheme"
                                   ItemsSource="{Binding AvailableThemes}"
                                   SelectedItem="{Binding Values.Theme}"
-                                  Width="220" HorizontalAlignment="Left"/>
+                                  Width="220" HorizontalAlignment="Left">
+                            <ComboBox.ItemTemplate>
+                                <DataTemplate>
+                                    <TextBlock>
+                                        <TextBlock.Text>
+                                            <MultiBinding Converter="{x:Static conv:LocalizedText.Keyed}"
+                                                          ConverterParameter="Settings.Theme.">
+                                                <DynamicResource ResourceKey="S.$language"/>
+                                                <Binding/>
+                                            </MultiBinding>
+                                        </TextBlock.Text>
+                                    </TextBlock>
+                                </DataTemplate>
+                            </ComboBox.ItemTemplate>
+                        </ComboBox>
                     </Grid>
 
                     <TextBlock Text="{DynamicResource S.Settings.Group.AtStartup}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>

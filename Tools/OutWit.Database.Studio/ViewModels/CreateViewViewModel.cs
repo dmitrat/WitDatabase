@@ -68,7 +68,7 @@ public class CreateViewViewModel : ViewModelBase<ApplicationViewModel>
             var sql = $"CREATE VIEW {ViewName} AS\n{SelectStatement}";
             await Database!.ExecuteNonQueryAsync(sql);
 
-            ApplicationVm.MainWindowVm.StatusText = $"Created view: {ViewName}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Dialog.CreateView.Created", ViewName);
             Logger.LogInformation("Created view: {ViewName}", ViewName);
 
             // Refresh explorer
@@ -78,8 +78,8 @@ public class CreateViewViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to create view: {ex.Message}";
-            ApplicationVm.MainWindowVm.StatusText = "Error creating view";
+            ErrorMessage = Localization.Format("Dialog.CreateView.Failed", ex.Message);
+            ApplicationVm.MainWindowVm.StatusText = Localization["Dialog.CreateView.FailedShort"];
             Logger.LogError(ex, "Failed to create view {ViewName}", ViewName);
         }
         finally
@@ -160,6 +160,12 @@ public class CreateViewViewModel : ViewModelBase<ApplicationViewModel>
     public IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     public ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

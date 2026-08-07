@@ -50,7 +50,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         : base(applicationVm, session)
     {
         TableName = tableName;
-        Title = $"{tableName} - Edit";
+        Title = Localization.Format("Tab.EditOf", tableName);
 
         InitDefault();
         InitEvents();
@@ -218,7 +218,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Failed to load columns: {ex.Message}";
+            ErrorMessage = Localization.Format("Grid.ColumnsFailed", ex.Message);
             Logger.LogError(ex, "Failed to load columns for table {TableName}", TableName);
         }
     }
@@ -274,14 +274,14 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             RememberPageEnd();
 
             SetSuccessStatus(DescribePage());
-            ApplicationVm.MainWindowVm.StatusText =
-                $"{DescribePage()} of table \"{TableName}\" in {session.DisplayName}";
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Grid.LoadedInto",
+                DescribePage(), TableName, session.DisplayName);
             Logger.LogInformation("Loaded page {Page} ({Count} rows) of table {TableName}",
                 PageIndex + 1, TotalRowCount, TableName);
         }
         catch (Exception ex)
         {
-            SetErrorStatus($"Failed to load data: {ex.Message}");
+            SetErrorStatus(Localization.Format("Grid.LoadFailed", ex.Message));
             Logger.LogError(ex, "Failed to load data from table {TableName}", TableName);
         }
         finally
@@ -514,10 +514,11 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     /// </summary>
     private string DescribePage()
     {
-        var where = PageIndex == 0 ? "" : $" (page {PageIndex + 1})";
-        var more = HasNextPage ? ", more to come" : "";
+        var where = PageIndex == 0 ? string.Empty : Localization.Format("Grid.OnPage", PageIndex + 1);
+        var more = HasNextPage ? Localization["Grid.MoreToCome"] : string.Empty;
 
-        return $"Loaded {TotalRowCount} rows{where}{more}";
+        return Localization.Format("Grid.LoadedRows",
+            Localization.Plural("Count.Rows", TotalRowCount), where, more);
     }
 
     private void AddRow()
@@ -609,14 +610,14 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
         if (session?.IsConnected != true)
         {
-            SetErrorStatus($"Nothing was applied: the connection this tab belongs to "
-                + $"({ConnectionName ?? "unknown"}) is closed.");
+            SetErrorStatus(Localization.Format("Grid.ConnectionClosed",
+                ConnectionName ?? Localization["Common.Unknown"]));
             return;
         }
 
         if (IsReadOnly)
         {
-            SetErrorStatus(ReadOnlyReason ?? "This table cannot be edited.");
+            SetErrorStatus(ReadOnlyReason ?? Localization["Grid.NotEditable"]);
             return;
         }
 
@@ -636,7 +637,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
             if (statements.Count == 0)
             {
-                SetSuccessStatus("Nothing to apply");
+                SetSuccessStatus(Localization["Grid.NothingToApply"]);
                 return;
             }
 
@@ -646,9 +647,8 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             {
                 // The buffer is deliberately left alone, and the table is NOT reloaded: a reload would
                 // throw away exactly the work the user was told had not been saved.
-                SetErrorStatus(
-                    $"Nothing was applied. Statement {result.FailedIndex + 1} of {statements.Count} "
-                    + $"failed: {result.ErrorMessage}");
+                SetErrorStatus(Localization.Format("Grid.StatementFailed",
+                    result.FailedIndex + 1, statements.Count, result.ErrorMessage));
 
                 if (result.IsConflict)
                     await DescribeConflictAsync(session, result.FailedIndex, statements.Count);
@@ -660,16 +660,17 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
             ClearConflict();
 
-            SetSuccessStatus($"Applied {statements.Count} changes");
-            ApplicationVm.MainWindowVm.StatusText =
-                $"Applied {statements.Count} changes to \"{TableName}\"";
+            SetSuccessStatus(Localization.Format("Grid.Applied",
+                Localization.Plural("Count.Changes", statements.Count)));
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Grid.AppliedTo",
+                Localization.Plural("Count.Changes", statements.Count), TableName);
             IsModified = false;
 
             await LoadTableDataAsync();
         }
         catch (Exception ex)
         {
-            SetErrorStatus($"Commit failed: {ex.Message}");
+            SetErrorStatus(Localization.Format("Grid.CommitFailed", ex.Message));
             Logger.LogError(ex, "Failed to commit changes to table {TableName}", TableName);
         }
         finally
@@ -805,8 +806,9 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         CurrentView = new DataView(EditableData);
         TotalRowCount = EditableData.Rows.Count;
 
-        SetSuccessStatus("Changes discarded");
-        ApplicationVm.MainWindowVm.StatusText = "Changes discarded";
+        SetSuccessStatus(Localization["Grid.Discarded"]);
+        ApplicationVm.MainWindowVm.StatusText = Localization["Grid.Discarded"];
+
         IsModified = false;
         UpdateStatus();
     }
@@ -854,7 +856,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         if (row == null)
         {
             HasConflict = true;
-            ConflictSummary = "A row was changed by another connection after it was read here.";
+            ConflictSummary = Localization["Grid.Conflict.Row"];
             return;
         }
 
@@ -873,7 +875,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         if (current.Data == null || current.Data.Rows.Count == 0)
         {
             HasConflict = true;
-            ConflictSummary = $"The row {key} has been DELETED by another connection.";
+            ConflictSummary = Localization.Format("Grid.Conflict.Deleted", key);
             return;
         }
 
@@ -902,8 +904,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         }
 
         HasConflict = true;
-        ConflictSummary = $"The row {key} was changed by another connection after it was read here. "
-            + $"Statement {failedIndex + 1} of {total} matched nothing, so nothing was applied.";
+        ConflictSummary = Localization.Format("Grid.Conflict.Changed", key, failedIndex + 1, total);
     }
 
     /// <summary>
@@ -1535,6 +1536,12 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     #region Services
 
     private ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    #endregion
+
+    #region Localization
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

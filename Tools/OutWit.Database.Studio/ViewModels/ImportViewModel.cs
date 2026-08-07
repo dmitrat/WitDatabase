@@ -186,6 +186,18 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
     private void InitEvents()
     {
         PropertyChanged += OnPropertyChanged;
+
+        // A sentence built here is rendered once and would stay in the language it was built in.
+        Localization.LanguageChanged += (_, _) => RefreshLanguage();
+    }
+
+    /// <summary>The text on this window that came out of the catalogue rather than the markup.</summary>
+    private void RefreshLanguage()
+    {
+        OnPropertyChanged(nameof(PreviewRowsSummary));
+        OnPropertyChanged(nameof(PreviewColumnsSummary));
+        OnPropertyChanged(nameof(ProgressText));
+        OnPropertyChanged(nameof(FailedText));
     }
 
     #endregion
@@ -212,15 +224,15 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
     {
         var filters = SelectedFormat switch
         {
-            ImportFormat.Csv => new FileFilter("CSV Files", ["*.csv"]),
-            ImportFormat.Json => new FileFilter("JSON Files", ["*.json"]),
-            _ => new FileFilter("All Files", ["*.*"])
+            ImportFormat.Csv => new FileFilter(Localization.Format("Common.Filter.Files", "CSV"), ["*.csv"]),
+            ImportFormat.Json => new FileFilter(Localization.Format("Common.Filter.Files", "JSON"), ["*.json"]),
+            _ => new FileFilter(Localization["Common.Filter.AllFiles"], ["*.*"])
         };
 
-        var filePath = await ApplicationVm.Dialogs.OpenFileAsync("Select file to import",
+        var filePath = await ApplicationVm.Dialogs.OpenFileAsync(Localization["Dialog.Import.PickFile"],
         [
             filters,
-            new FileFilter("All Files", ["*.*"])
+            new FileFilter(Localization["Common.Filter.AllFiles"], ["*.*"])
         ]);
 
         if (!string.IsNullOrEmpty(filePath))
@@ -266,7 +278,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Preview failed: {ex.Message}";
+            ErrorMessage = Localization.Format("Dialog.Import.PreviewFailed", ex.Message);
             Logger.LogError(ex, "Import preview failed");
         }
     }
@@ -447,7 +459,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
 
         if (session?.IsConnected != true)
         {
-            ErrorMessage = "Not connected to a database";
+            ErrorMessage = Localization["Common.NotConnected"];
             return;
         }
 
@@ -470,7 +482,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
 
             if (includedMappings.Count == 0)
             {
-                ErrorMessage = "No columns mapped for import";
+                ErrorMessage = Localization["Dialog.Import.NoColumns"];
                 return;
             }
 
@@ -488,8 +500,8 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
             if (!ct.IsCancellationRequested)
             {
                 var statusMsg = RowsFailed > 0
-                    ? $"Imported {RowsImported} rows into {SelectedTable} ({RowsFailed} failed)"
-                    : $"Imported {RowsImported} rows into {SelectedTable}";
+                    ? Localization.Format("Dialog.Import.DoneWithFailures", RowsImported, SelectedTable, RowsFailed)
+                    : Localization.Format("Dialog.Import.Done", RowsImported, SelectedTable);
                 
                 ApplicationVm.MainWindowVm.StatusText = statusMsg;
 
@@ -499,7 +511,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
                 if (RowsFailed > 0)
                 {
                     ApplicationVm.Notifications.Warning(statusMsg,
-                        $"{RowsFailed} rows were refused", session.DisplayName);
+                        Localization.Plural("Count.RowsRefused", RowsFailed), session.DisplayName);
                 }
                 else
                 {
@@ -513,7 +525,7 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
                 // Show error summary if there were failures
                 if (RowsFailed > 0 && !ContinueOnError)
                 {
-                    ErrorMessage = $"Import completed with errors. {RowsImported} rows imported, {RowsFailed} failed.";
+                    ErrorMessage = Localization.Format("Dialog.Import.WithErrors", RowsImported, RowsFailed);
                 }
                 else
                 {
@@ -523,12 +535,12 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
         }
         catch (OperationCanceledException)
         {
-            ErrorMessage = $"Import cancelled. {RowsImported} rows were imported before cancellation.";
+            ErrorMessage = Localization.Format("Dialog.Import.Cancelled", RowsImported);
             Logger.LogInformation("Import cancelled after {RowCount} rows", RowsImported);
         }
         catch (Exception ex)
         {
-            ErrorMessage = $"Import failed: {ex.Message}";
+            ErrorMessage = Localization.Format("Dialog.Import.Failed", ex.Message);
             Logger.LogError(ex, "Import failed");
         }
         finally
@@ -875,10 +887,10 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
             return;
 
         var target = await ApplicationVm.Dialogs.SaveFileAsync(
-            "Rejected rows",
+            Localization["Dialog.Import.RejectedRows"],
             suggestedFileName: Path.GetFileNameWithoutExtension(InputPath) + "-rejected.csv",
             defaultExtension: "csv",
-            filters: [new FileFilter("CSV Files", ["*.csv"])]);
+            filters: [new FileFilter(Localization.Format("Common.Filter.Files", "CSV"), ["*.csv"])]);
 
         if (string.IsNullOrEmpty(target))
             return;
@@ -948,6 +960,14 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
             UpdateStatus();
         }
 
+        if (e.IsProperty((ImportViewModel vm) => vm.TotalRows) ||
+            e.IsProperty((ImportViewModel vm) => vm.RowsImported) ||
+            e.IsProperty((ImportViewModel vm) => vm.RowsFailed) ||
+            e.IsProperty((ImportViewModel vm) => vm.ColumnMappings))
+        {
+            RefreshLanguage();
+        }
+
         if (e.IsProperty((ImportViewModel vm) => vm.SelectedTable) && !string.IsNullOrEmpty(SelectedTable))
         {
             AutoMapColumnsAsync().ContinueWith(t =>
@@ -1012,6 +1032,22 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public double ImportProgress { get; private set; }
+
+    /// <summary>
+    /// What the preview found, one sentence each. They were built out of <c>&lt;Run&gt;</c> fragments in
+    /// the markup - "File contains approximately" + a number + "rows" - which fixes English word order
+    /// into the window and cannot carry a plural in a language that has three of them.
+    /// </summary>
+    public string PreviewRowsSummary =>
+        Localization.Format("Dialog.Import.Preview.Approx", Localization.Plural("Count.Rows", TotalRows));
+
+    public string PreviewColumnsSummary => Localization.Plural("Count.Columns", ColumnMappings?.Count ?? 0);
+
+    /// <summary>How far the import has got, over the window while it runs.</summary>
+    public string ProgressText => Localization.Format("Dialog.Import.Progress", RowsImported, TotalRows);
+
+    /// <summary>How many rows the database refused, under the progress bar.</summary>
+    public string FailedText => Localization.Plural("Count.RowsRefused", RowsFailed);
 
     /// <summary>
     /// If true, continues importing even if some rows fail.
@@ -1109,6 +1145,8 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
     private IDatabaseSession? Database => ApplicationVm.ActiveSession;
 
     private ILogger<ApplicationViewModel> Logger => ApplicationVm.Logger;
+
+    private Services.Localization.ILocalizationService Localization => ApplicationVm.Localization;
 
     #endregion
 }

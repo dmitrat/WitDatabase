@@ -1,4 +1,4 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -23,14 +23,14 @@
                 Padding="8">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBlock Grid.Column="0" 
-                           Text="Database Explorer" 
+                           Text="{DynamicResource S.Explorer.Title}" 
                            FontWeight="SemiBold" 
                            FontSize="14"
                            VerticalAlignment="Center"/>
                 
-                <Button AutomationProperties.AutomationId="DatabaseExplorerRefresh" AutomationProperties.Name="Refresh" Grid.Column="1"
+                <Button AutomationProperties.AutomationId="DatabaseExplorerRefresh" AutomationProperties.Name="{DynamicResource S.Common.Refresh}" Grid.Column="1"
                         Command="{Binding DatabaseExplorerVm.RefreshCommand}"
-                        ToolTip.Tip="Refresh"
+                        ToolTip.Tip="{DynamicResource S.Common.Refresh}"
                         Width="32"
                         Height="32"
                         Padding="0"
@@ -50,14 +50,14 @@
                 Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBox AutomationProperties.AutomationId="ExplorerFilter"
-                         AutomationProperties.Name="Filter objects"
+                         AutomationProperties.Name="{DynamicResource S.Explorer.Filter}"
                          Grid.Column="0"
                          Text="{Binding DatabaseExplorerVm.Filter, Mode=TwoWay}"
-                         Watermark="Filter objects"
+                         Watermark="{DynamicResource S.Explorer.Filter}"
                          FontSize="12"
                          Height="24"/>
                 <Button AutomationProperties.AutomationId="ExplorerClearFilter"
-                        AutomationProperties.Name="Clear filter"
+                        AutomationProperties.Name="{DynamicResource S.Explorer.ClearFilter}"
                         Grid.Column="1"
                         Content="Esc"
                         FontSize="10"
@@ -137,7 +137,7 @@
                                            VerticalAlignment="Center"
                                            FontSize="11"
                                            Opacity="0.55"/>
-                                <TextBlock Text="counting..."
+                                <TextBlock Text="{DynamicResource S.Explorer.Counting}"
                                            VerticalAlignment="Center"
                                            FontSize="11"
                                            Opacity="0.4"
@@ -149,22 +149,22 @@
                     <TreeView.ContextMenu>
                         <ContextMenu>
                             <!-- Create actions -->
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreate" Header="Create">
-                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateTable" Header="Create Table..."
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreate" Header="{DynamicResource S.Explorer.Menu.Create}">
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateTable" Header="{DynamicResource S.Explorer.Menu.CreateTable}"
                                           Command="{Binding DatabaseExplorerVm.CreateTableCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 
-                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateView" Header="Create View..."
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateView" Header="{DynamicResource S.Explorer.Menu.CreateView}"
                                           Command="{Binding DatabaseExplorerVm.CreateViewCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.DB_VIEW}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 
-                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateIndex" Header="Create Index..."
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateIndex" Header="{DynamicResource S.Explorer.Menu.CreateIndex}"
                                           Command="{Binding DatabaseExplorerVm.CreateIndexCommand}">
                                     <MenuItem.Icon>
                                         <PathIcon Data="{x:Static ui:StudioIcons.DB_INDEX}"/>
@@ -175,18 +175,18 @@
                             <Separator/>
                             
                             <!-- Select data submenu -->
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectData" Header="Select Data"
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectData" Header="{DynamicResource S.Explorer.Menu.SelectData}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanBrowseData}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"/>
                                 </MenuItem.Icon>
-                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectTop100" Header="Select Top 100"
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectTop100" Header="{DynamicResource S.Explorer.Menu.SelectTop100}"
                                           Command="{Binding DatabaseExplorerVm.SelectTop100Command}"/>
-                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectTop1000" Header="Select Top 1000"
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectTop1000" Header="{DynamicResource S.Explorer.Menu.SelectTop1000}"
                                           Command="{Binding DatabaseExplorerVm.SelectTop1000Command}"/>
                             </MenuItem>
                             
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerEditData" Header="Edit Data..."
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerEditData" Header="{DynamicResource S.Explorer.Menu.EditData}"
                                       Command="{Binding DatabaseExplorerVm.EditDataCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanEditData}">
                                 <MenuItem.Icon>
@@ -194,7 +194,7 @@
                                 </MenuItem.Icon>
                             </MenuItem>
                             
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerViewStructure" Header="View Structure..."
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerViewStructure" Header="{DynamicResource S.Explorer.Menu.ViewStructure}"
                                       Command="{Binding DatabaseExplorerVm.ViewStructureCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanViewStructure}">
                                 <MenuItem.Icon>
@@ -202,7 +202,7 @@
                                 </MenuItem.Icon>
                             </MenuItem>
                             
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerViewDefinition" Header="View Definition"
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerViewDefinition" Header="{DynamicResource S.Explorer.Menu.ViewDefinition}"
                                       Command="{Binding DatabaseExplorerVm.ViewDefinitionCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanViewDefinition}">
                                 <MenuItem.Icon>
@@ -212,7 +212,7 @@
                             
                             <Separator/>
                             
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerRefresh2" Header="Refresh"
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerRefresh2" Header="{DynamicResource S.Common.Refresh}"
                                       Command="{Binding DatabaseExplorerVm.RefreshCommand}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.MENU_REFRESH}"/>
@@ -223,7 +223,7 @@
 
                             <!-- Deferred here from stage 5. Rename is offered for a table only: there
                                  is no ALTER VIEW, ALTER INDEX or ALTER TRIGGER in this language. -->
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerRename" Header="Rename (F2)"
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerRename" Header="{DynamicResource S.Explorer.Menu.Rename}"
                                       Command="{Binding DatabaseExplorerVm.BeginRenameCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanRename}">
                                 <MenuItem.Icon>
@@ -231,7 +231,7 @@
                                 </MenuItem.Icon>
                             </MenuItem>
 
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerTruncate" Header="Empty the table..."
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerTruncate" Header="{DynamicResource S.Explorer.Menu.Truncate}"
                                       Command="{Binding DatabaseExplorerVm.TruncateTableCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanTruncate}">
                                 <MenuItem.Icon>
@@ -241,7 +241,7 @@
 
                             <Separator/>
 
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerDrop" Header="Drop..."
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerDrop" Header="{DynamicResource S.Explorer.Menu.Drop}"
                                       Command="{Binding DatabaseExplorerVm.DropObjectCommand}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanDropObject}">
                                 <MenuItem.Icon>
@@ -271,7 +271,7 @@
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
                 </Border>
-                <TextBlock Text="Loading schema..."
+                <TextBlock Text="{DynamicResource S.Explorer.Loading}"
                            Foreground="White"
                            HorizontalAlignment="Center"/>
             </StackPanel>
@@ -287,7 +287,7 @@
                 VerticalAlignment="Top"
                 IsVisible="{Binding DatabaseExplorerVm.ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
             <StackPanel Spacing="4">
-                <TextBlock Text="[!] Error"
+                <TextBlock Text="{DynamicResource S.Common.ErrorHeading}"
                            FontWeight="Bold"
                            Foreground="#856404"/>
                 <TextBlock Text="{Binding DatabaseExplorerVm.ErrorMessage}"
@@ -310,7 +310,7 @@
                               Width="24" Height="24"
                               Foreground="Gray"/>
                 </Border>
-                <TextBlock Text="Not Connected"
+                <TextBlock Text="{DynamicResource S.Explorer.NotConnected}"
                            FontSize="14"
                            Foreground="Gray"
                            HorizontalAlignment="Center"/>

@@ -6,7 +6,7 @@
         mc:Ignorable="d" d:DesignWidth="800" d:DesignHeight="600"
         x:Class="OutWit.Database.Studio.Views.Dialogs.CreateTableDialog"
         x:DataType="vm:CreateTableViewModel"
-        Title="Create Table"
+        Title="{DynamicResource S.Dialog.CreateTable.Title}"
         Width="900" Height="700"
         MinWidth="800" MinHeight="600"
         WindowStartupLocation="CenterOwner"
@@ -20,7 +20,7 @@
                 BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
                 BorderThickness="0,0,0,1"
                 Padding="16">
-            <TextBlock Text="Create New Table"
+            <TextBlock Text="{DynamicResource S.Dialog.CreateTable.Heading}"
                        FontSize="18"
                        FontWeight="SemiBold"/>
         </Border>
@@ -31,9 +31,9 @@
                 
                 <!-- Table Name -->
                 <StackPanel Spacing="8">
-                    <TextBlock Text="Table Name:" FontWeight="SemiBold"/>
+                    <TextBlock Text="{DynamicResource S.Dialog.CreateTable.Name}" FontWeight="SemiBold"/>
                     <TextBox Text="{Binding TableName}"
-                             Watermark="Enter table name"
+                             Watermark="{DynamicResource S.Dialog.CreateTable.NameHint}"
                              Width="400"
                              HorizontalAlignment="Left"/>
                 </StackPanel>
@@ -41,12 +41,12 @@
                 <!-- Columns Grid -->
                 <StackPanel Spacing="8">
                     <DockPanel>
-                        <TextBlock Text="Columns:" 
+                        <TextBlock Text="{DynamicResource S.Dialog.CreateTable.Columns}" 
                                    FontWeight="SemiBold"
                                    DockPanel.Dock="Left"
                                    VerticalAlignment="Center"/>
                         
-                        <Button AutomationProperties.AutomationId="CreateTableAddColumn" Content="+ Add Column"
+                        <Button AutomationProperties.AutomationId="CreateTableAddColumn" Content="{DynamicResource S.Dialog.CreateTable.AddColumn}"
                                 Command="{Binding AddColumnCommand}"
                                 DockPanel.Dock="Right"
                                 HorizontalAlignment="Right"
@@ -70,13 +70,13 @@
                             <DataGrid.Columns>
                                 
                                 <!-- Column Name -->
-                                <DataGridTextColumn Header="Name"
+                                <DataGridTextColumn Header="{DynamicResource S.Common.Name}"
                                                     Binding="{Binding Name}"
                                                     Width="150"
                                                     IsReadOnly="False"/>
 
                                 <!-- Data Type -->
-                                <DataGridTemplateColumn Header="Data Type" Width="150">
+                                <DataGridTemplateColumn Header="{DynamicResource S.Column.DataType}" Width="150">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <ComboBox ItemsSource="{Binding $parent[Window].((vm:CreateTableViewModel)DataContext).AvailableDataTypes}"
@@ -88,36 +88,36 @@
                                 </DataGridTemplateColumn>
 
                                 <!-- Nullable -->
-                                <DataGridCheckBoxColumn Header="Nullable"
+                                <DataGridCheckBoxColumn Header="{DynamicResource S.Column.Nullable}"
                                                         Binding="{Binding IsNullable}"
                                                         Width="80"/>
 
                                 <!-- Primary Key -->
-                                <DataGridCheckBoxColumn Header="PK"
+                                <DataGridCheckBoxColumn Header="{DynamicResource S.Column.PrimaryKey}"
                                                         Binding="{Binding IsPrimaryKey}"
                                                         Width="60"/>
 
                                 <!-- Auto Increment -->
-                                <DataGridCheckBoxColumn Header="Auto Inc"
+                                <DataGridCheckBoxColumn Header="{DynamicResource S.Column.AutoIncrement}"
                                                         Binding="{Binding IsAutoIncrement}"
                                                         Width="80"/>
 
                                 <!-- Unique -->
-                                <DataGridCheckBoxColumn Header="Unique"
+                                <DataGridCheckBoxColumn Header="{DynamicResource S.Column.Unique}"
                                                         Binding="{Binding IsUnique}"
                                                         Width="70"/>
 
                                 <!-- Default Value -->
-                                <DataGridTextColumn Header="Default Value"
+                                <DataGridTextColumn Header="{DynamicResource S.Column.Default}"
                                                     Binding="{Binding DefaultValue}"
                                                     Width="120"
                                                     IsReadOnly="False"/>
 
                                 <!-- Actions -->
-                                <DataGridTemplateColumn Header="Actions" Width="80">
+                                <DataGridTemplateColumn Header="{DynamicResource S.Common.Actions}" Width="80">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <Button AutomationProperties.AutomationId="CreateTableRemove" Content="Remove"
+                                            <Button AutomationProperties.AutomationId="CreateTableRemove" Content="{DynamicResource S.Common.Remove}"
                                                     Command="{Binding $parent[Window].((vm:CreateTableViewModel)DataContext).RemoveColumnCommand}"
                                                     IsEnabled="{Binding $parent[Window].((vm:CreateTableViewModel)DataContext).CanRemoveColumn}"
                                                     CommandParameter="{Binding}"
@@ -135,12 +135,12 @@
                 <!-- Generated DDL -->
                 <StackPanel Spacing="8">
                     <DockPanel>
-                        <TextBlock Text="Generated DDL:"
+                        <TextBlock Text="{DynamicResource S.Dialog.CreateTable.Ddl}"
                                    FontWeight="SemiBold"
                                    DockPanel.Dock="Left"
                                    VerticalAlignment="Center"/>
                         
-                        <Button AutomationProperties.AutomationId="CreateTableGenerateDDL" Content="Generate DDL"
+                        <Button AutomationProperties.AutomationId="CreateTableGenerateDDL" Content="{DynamicResource S.Dialog.CreateTable.GenerateDdl}"
                                 Command="{Binding GenerateDdlCommand}"
                                 IsEnabled="{Binding CanGenerateDdl}"
                                 DockPanel.Dock="Right"
@@ -179,7 +179,7 @@
                 Margin="16,0"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
             <StackPanel Spacing="4">
-                <TextBlock Text="[!] Error"
+                <TextBlock Text="{DynamicResource S.Common.ErrorHeading}"
                            FontWeight="Bold"
                            Foreground="#856404"/>
                 <TextBlock Text="{Binding ErrorMessage}"
@@ -198,12 +198,12 @@
                         HorizontalAlignment="Right"
                         Spacing="8">
                 
-                <Button AutomationProperties.AutomationId="CreateTableCancel" Content="Cancel"
+                <Button AutomationProperties.AutomationId="CreateTableCancel" Content="{DynamicResource S.Common.Cancel}"
                         Command="{Binding CancelCommand}"
                         Width="100"
                         HorizontalContentAlignment="Center"/>
                 
-                <Button AutomationProperties.AutomationId="CreateTableCreateTable" Content="Create Table"
+                <Button AutomationProperties.AutomationId="CreateTableCreateTable" Content="{DynamicResource S.Dialog.CreateTable.Create}"
                         Command="{Binding CreateTableCommand}"
                         IsEnabled="{Binding CanCreateTable}"
                         Width="120"
@@ -228,7 +228,7 @@
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
                 </Border>
-                <TextBlock Text="Creating table..."
+                <TextBlock Text="{DynamicResource S.Dialog.CreateTable.Creating}"
                            Foreground="White"
                            FontSize="16"
                            HorizontalAlignment="Center"/>
