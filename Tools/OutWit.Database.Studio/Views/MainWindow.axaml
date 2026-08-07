@@ -44,8 +44,8 @@
 		      Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
 			<!-- Menu -->
 			<Menu Grid.Column="0" VerticalAlignment="Center">
-				<MenuItem AutomationProperties.AutomationId="MainWindowFile" Header="_File">
-					<MenuItem AutomationProperties.AutomationId="MainWindowNewQueryTab" Header="_New Query Tab"
+				<MenuItem AutomationProperties.AutomationId="MainWindowFile" Header="{DynamicResource S.Menu.File}">
+					<MenuItem AutomationProperties.AutomationId="MainWindowNewQueryTab" Header="{DynamicResource S.Menu.NewQueryTab}"
 					          Command="{Binding WorkspaceTabsVm.NewQueryTabCommand}"
 					          InputGesture="Ctrl+N">
 						<MenuItem.Icon>
@@ -55,7 +55,7 @@
 
 					<Separator />
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowNewDatabase" Header="New _Database..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowNewDatabase" Header="{DynamicResource S.Menu.NewDatabase}"
 					          Command="{Binding MainWindowVm.NewDatabaseCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_NEW_DATABASE}" />
@@ -64,14 +64,14 @@
 
 					<!-- The saved connections (WS-68): what "recent files" becomes once several
 					     databases can be open at once. -->
-					<MenuItem AutomationProperties.AutomationId="MainWindowConnections" Header="_Connections..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowConnections" Header="{DynamicResource S.Menu.Connections}"
 					          Command="{Binding MainWindowVm.ConnectionsCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_OPEN_DATABASE}" />
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowOpenDatabase" Header="_Open Database..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowOpenDatabase" Header="{DynamicResource S.Menu.OpenDatabase}"
 					          Command="{Binding MainWindowVm.OpenDatabaseCommand}"
 					          InputGesture="Ctrl+O">
 						<MenuItem.Icon>
@@ -79,7 +79,7 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowCloseDatabase" Header="_Close Database"
+					<MenuItem AutomationProperties.AutomationId="MainWindowCloseDatabase" Header="{DynamicResource S.Menu.CloseDatabase}"
 					          Command="{Binding MainWindowVm.CloseDatabaseCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_CLOSE_DATABASE}" />
@@ -88,7 +88,7 @@
 
 					<Separator />
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowSaveQuery" Header="_Save Query"
+					<MenuItem AutomationProperties.AutomationId="MainWindowSaveQuery" Header="{DynamicResource S.Menu.SaveQuery}"
 					          Command="{Binding WorkspaceTabsVm.SaveTabCommand}"
 					          InputGesture="Ctrl+S">
 						<MenuItem.Icon>
@@ -96,7 +96,7 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowSaveQueryAs" Header="Save Query _As..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowSaveQueryAs" Header="{DynamicResource S.Menu.SaveQueryAs}"
 					          Command="{Binding WorkspaceTabsVm.SaveTabAsCommand}"
 					          InputGesture="Ctrl+Shift+S">
 						<MenuItem.Icon>
@@ -107,20 +107,20 @@
 					<Separator />
 
 					<MenuItem AutomationProperties.AutomationId="MainWindowRecentFilesMenu" x:Name="RecentFilesMenu"
-					          Header="Recent Files"
+					          Header="{DynamicResource S.Menu.RecentFiles}"
 					          IsEnabled="{Binding MainWindowVm.HasRecentFiles}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_RECENT_FILES}" />
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowClearRecentFiles" Header="Clear Recent Files"
+					<MenuItem AutomationProperties.AutomationId="MainWindowClearRecentFiles" Header="{DynamicResource S.Menu.ClearRecentFiles}"
 					          Command="{Binding MainWindowVm.ClearRecentFilesCommand}"
 					          IsEnabled="{Binding MainWindowVm.HasRecentFiles}"/>
 
 					<Separator />
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowEXit" Header="E_xit"
+					<MenuItem AutomationProperties.AutomationId="MainWindowEXit" Header="{DynamicResource S.Menu.Exit}"
 					          Command="{Binding MainWindowVm.ExitCommand}"
 					          InputGesture="Alt+F4">
 						<MenuItem.Icon>
@@ -129,19 +129,19 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem AutomationProperties.AutomationId="MainWindowEdit" Header="_Edit">
-					<MenuItem AutomationProperties.AutomationId="MainWindowCopy" Header="_Copy" InputGesture="Ctrl+C">
+				<MenuItem AutomationProperties.AutomationId="MainWindowEdit" Header="{DynamicResource S.Menu.Edit}">
+					<MenuItem AutomationProperties.AutomationId="MainWindowCopy" Header="{DynamicResource S.Menu.Copy}" InputGesture="Ctrl+C">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_COPY}" />
 						</MenuItem.Icon>
 					</MenuItem>
-					<MenuItem AutomationProperties.AutomationId="MainWindowPaste" Header="_Paste" InputGesture="Ctrl+V">
+					<MenuItem AutomationProperties.AutomationId="MainWindowPaste" Header="{DynamicResource S.Menu.Paste}" InputGesture="Ctrl+V">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_PASTE}" />
 						</MenuItem.Icon>
 					</MenuItem>
 					<Separator/>
-					<MenuItem AutomationProperties.AutomationId="MainWindowSettings" Header="_Settings..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowSettings" Header="{DynamicResource S.Menu.Settings}"
 					          Command="{Binding MainWindowVm.SettingsCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_ABOUT}" />
@@ -149,8 +149,8 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem AutomationProperties.AutomationId="MainWindowQuery" Header="_Query">
-					<MenuItem AutomationProperties.AutomationId="MainWindowExecute" Header="_Execute"
+				<MenuItem AutomationProperties.AutomationId="MainWindowQuery" Header="{DynamicResource S.Menu.Query}">
+					<MenuItem AutomationProperties.AutomationId="MainWindowExecute" Header="{DynamicResource S.Menu.Execute}"
 					          Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
 					          InputGesture="F5">
 						<MenuItem.Icon>
@@ -158,7 +158,7 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowExecuteSelection" Header="Execute _Selection"
+					<MenuItem AutomationProperties.AutomationId="MainWindowExecuteSelection" Header="{DynamicResource S.Menu.ExecuteSelection}"
 					          Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"
 					          InputGesture="Ctrl+Enter">
 						<MenuItem.Icon>
@@ -168,7 +168,7 @@
 
 					<Separator />
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowClearResults" Header="_Clear Results"
+					<MenuItem AutomationProperties.AutomationId="MainWindowClearResults" Header="{DynamicResource S.Menu.ClearResults}"
 					          Command="{Binding WorkspaceTabsVm.ClearResultsCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.QUERY_CLEAR}" />
@@ -177,7 +177,7 @@
 
 					<Separator />
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowCloseTab" Header="Close _Tab"
+					<MenuItem AutomationProperties.AutomationId="MainWindowCloseTab" Header="{DynamicResource S.Menu.CloseTab}"
 					          Command="{Binding WorkspaceTabsVm.CloseTabCommand}"
 					          CommandParameter="{Binding WorkspaceTabsVm.SelectedTab}"
 					          InputGesture="Ctrl+W">
@@ -186,7 +186,7 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowCloseAllTabs" Header="Close _All Tabs"
+					<MenuItem AutomationProperties.AutomationId="MainWindowCloseAllTabs" Header="{DynamicResource S.Menu.CloseAllTabs}"
 					          Command="{Binding WorkspaceTabsVm.CloseAllTabsCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.TAB_CLOSE}" />
@@ -194,8 +194,8 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem AutomationProperties.AutomationId="MainWindowView" Header="_View">
-					<MenuItem AutomationProperties.AutomationId="MainWindowRefresh" Header="_Refresh"
+				<MenuItem AutomationProperties.AutomationId="MainWindowView" Header="{DynamicResource S.Menu.View}">
+					<MenuItem AutomationProperties.AutomationId="MainWindowRefresh" Header="{DynamicResource S.Menu.Refresh}"
 					          Command="{Binding MainWindowVm.RefreshCommand}"
 					          InputGesture="F5">
 						<MenuItem.Icon>
@@ -204,8 +204,8 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem AutomationProperties.AutomationId="MainWindowTools" Header="_Tools">
-					<MenuItem AutomationProperties.AutomationId="MainWindowExport" Header="_Export..."
+				<MenuItem AutomationProperties.AutomationId="MainWindowTools" Header="{DynamicResource S.Menu.Tools}">
+					<MenuItem AutomationProperties.AutomationId="MainWindowExport" Header="{DynamicResource S.Menu.Export}"
 					          Command="{Binding MainWindowVm.ExportCommand}"
 					          IsEnabled="{Binding MainWindowVm.IsConnected}">
 						<MenuItem.Icon>
@@ -214,10 +214,10 @@
 					</MenuItem>
 					<!-- The whole database as a WitSQL script (WS-51). A byte copy is a different
 					     thing and belongs in the Database tab. -->
-					<MenuItem AutomationProperties.AutomationId="MainWindowDumpDatabase" Header="_Dump Database..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowDumpDatabase" Header="{DynamicResource S.Menu.DumpDatabase}"
 					          Command="{Binding MainWindowVm.DumpDatabaseCommand}"/>
 
-					<MenuItem AutomationProperties.AutomationId="MainWindowImport" Header="_Import..."
+					<MenuItem AutomationProperties.AutomationId="MainWindowImport" Header="{DynamicResource S.Menu.Import}"
 					          Command="{Binding MainWindowVm.ImportCommand}"
 					          IsEnabled="{Binding MainWindowVm.IsConnected}">
 						<MenuItem.Icon>
@@ -226,8 +226,8 @@
 					</MenuItem>
 				</MenuItem>
 
-				<MenuItem AutomationProperties.AutomationId="MainWindowHelp" Header="_Help">
-					<MenuItem AutomationProperties.AutomationId="MainWindowAbout" Header="_About"
+				<MenuItem AutomationProperties.AutomationId="MainWindowHelp" Header="{DynamicResource S.Menu.Help}">
+					<MenuItem AutomationProperties.AutomationId="MainWindowAbout" Header="{DynamicResource S.Menu.About}"
 					          Command="{Binding MainWindowVm.AboutCommand}">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_ABOUT}" />
@@ -252,7 +252,7 @@
 				<Grid ColumnDefinitions="Auto,*,Auto">
 					<PathIcon Grid.Column="0" Data="{x:Static ui:StudioIcons.COMMON_SEARCH}"
 					          Width="12" Height="12" Opacity="0.6"/>
-					<TextBlock Grid.Column="1" Text="Go to object or command"
+					<TextBlock Grid.Column="1" Text="{DynamicResource S.Shell.Palette}"
 					           Margin="8,0" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
 					<TextBlock Grid.Column="2" Text="Ctrl+K" FontSize="11" Opacity="0.45"
 					           VerticalAlignment="Center"/>
@@ -263,7 +263,7 @@
 			<StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="2" VerticalAlignment="Center">
 				<Button AutomationProperties.AutomationId="MainWindowNotifications"
 				        AutomationProperties.Name="Notifications"
-				        ToolTip.Tip="Notifications"
+				        ToolTip.Tip="{DynamicResource S.Shell.Notifications}"
 				        Background="Transparent"
 				        BorderThickness="0"
 				        Padding="10,4"
@@ -280,7 +280,7 @@
 
 				<Button AutomationProperties.AutomationId="MainWindowThemeToggleButton" AutomationProperties.Name="Toggle Dark/Light Theme"
 				        x:Name="ThemeToggleButton"
-				        ToolTip.Tip="Toggle Dark/Light Theme"
+				        ToolTip.Tip="{DynamicResource S.Shell.ToggleTheme}"
 				        Background="Transparent"
 				        BorderThickness="0"
 				        Padding="12,6"
@@ -311,41 +311,41 @@
 						<Button AutomationProperties.AutomationId="ToolbarExecute" AutomationProperties.Name="Execute"
 						        Command="{Binding WorkspaceTabsVm.ExecuteCurrentStatementCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
-						        ToolTip.Tip="Execute the statement under the cursor (F5)"
-						        Height="24" Padding="10,0" Content="Execute" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Execute.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Execute}" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarExecuteScript" AutomationProperties.Name="Execute script"
 						        Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
-						        ToolTip.Tip="Execute the whole script (Ctrl+Shift+F5)"
-						        Height="24" Padding="10,0" Content="Script" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Script.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Script}" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarExecuteSelection" AutomationProperties.Name="Execute selection"
 						        Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
-						        ToolTip.Tip="Execute the selection (Ctrl+Enter)"
-						        Height="24" Padding="10,0" Content="Selection" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Selection.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Selection}" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarStop" AutomationProperties.Name="Stop"
 						        Command="{Binding WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.IsExecuting}"
-						        ToolTip.Tip="Stop (Esc)"
-						        Height="24" Padding="10,0" Content="Stop" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Stop.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Stop}" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarClearResults" AutomationProperties.Name="Clear results"
 						        Command="{Binding WorkspaceTabsVm.ClearResultsCommand}"
-						        ToolTip.Tip="Clear the results"
-						        Height="24" Padding="10,0" Content="Clear" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Clear.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Clear}" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarFormat" AutomationProperties.Name="Format"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.FormatCommand}"
-						        ToolTip.Tip="Format the script (Ctrl+Shift+F)"
-						        Height="24" Padding="10,0" Content="Format" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Format.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Format}" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarExplain" AutomationProperties.Name="Explain"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.ShowPlanCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
-						        ToolTip.Tip="Show the plan of the statement under the cursor"
-						        Height="24" Padding="10,0" Content="Plan" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Plan.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Plan}" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarSaveQuery" AutomationProperties.Name="Save query"
 						        Command="{Binding WorkspaceTabsVm.SaveTabCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanSaveTab}"
-						        ToolTip.Tip="Save (Ctrl+S)"
-						        Height="24" Padding="10,0" Content="Save" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Save.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Save}" FontSize="12"/>
 
 						<!-- The transaction is the connection's, and the toolbar is where it is decided
 						     (WS-26). Autocommit until somebody presses Begin. -->
@@ -356,35 +356,35 @@
 						          ItemsSource="{Binding WorkspaceTabsVm.SelectedQueryTab.Isolations}"
 						          SelectedItem="{Binding WorkspaceTabsVm.SelectedQueryTab.Isolation, Mode=TwoWay}"
 						          IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
-						          ToolTip.Tip="The isolation the next transaction opens at"
+						          ToolTip.Tip="{DynamicResource S.Toolbar.Isolation.Tip}"
 						          Height="24" FontSize="12" MinWidth="130"/>
 						<Button AutomationProperties.AutomationId="ToolbarBeginTransaction" AutomationProperties.Name="Begin transaction"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.BeginTransactionCommand}"
 						        IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
-						        ToolTip.Tip="Open a transaction on this connection"
-						        Height="24" Padding="10,0" Content="Begin" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Begin.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Begin}" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarCommitTransaction" AutomationProperties.Name="Commit transaction"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.CommitTransactionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
-						        ToolTip.Tip="Commit"
-						        Height="24" Padding="10,0" Content="Commit" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Commit.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Commit}" FontSize="12"/>
 						<Button AutomationProperties.AutomationId="ToolbarRollbackTransaction" AutomationProperties.Name="Roll back transaction"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.RollbackTransactionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
-						        ToolTip.Tip="Roll back"
-						        Height="24" Padding="10,0" Content="Rollback" FontSize="12"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Rollback.Tip}"
+						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Rollback}" FontSize="12"/>
 					</StackPanel>
 
 					<!-- Data tab -->
 					<StackPanel Orientation="Horizontal" Spacing="4"
 					            IsVisible="{Binding WorkspaceTabsVm.IsTableEditTabSelected}">
-						<TextBlock Text="Table data" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
+						<TextBlock Text="{DynamicResource S.Tab.Data}" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
 					</StackPanel>
 
 					<!-- Structure tab -->
 					<StackPanel Orientation="Horizontal" Spacing="4"
 					            IsVisible="{Binding WorkspaceTabsVm.IsStructureTabSelected}">
-						<TextBlock Text="Object structure" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
+						<TextBlock Text="{DynamicResource S.Tab.Structure}" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
 					</StackPanel>
 				</StackPanel>
 
@@ -461,7 +461,7 @@
 							           FontWeight="SemiBold"/>
 
 							<!-- Subtitle -->
-							<TextBlock Text="Connect to a database to get started"
+							<TextBlock Text="{DynamicResource S.Welcome.Subtitle}"
 							           HorizontalAlignment="Center"
 							           FontSize="13"
 							           Foreground="Gray"/>
@@ -475,7 +475,7 @@
 									<StackPanel Orientation="Horizontal" Spacing="12">
 										<PathIcon Data="{x:Static ui:StudioIcons.MENU_NEW_DATABASE}"
 										          Width="18" Height="18"/>
-										<TextBlock Text="New Database" VerticalAlignment="Center"/>
+										<TextBlock Text="{DynamicResource S.Welcome.NewDatabase}" VerticalAlignment="Center"/>
 									</StackPanel>
 								</Button>
 								
@@ -487,7 +487,7 @@
 									<StackPanel Orientation="Horizontal" Spacing="12">
 										<PathIcon Data="{x:Static ui:StudioIcons.MENU_OPEN_DATABASE}"
 										          Width="18" Height="18"/>
-										<TextBlock Text="Open Database" VerticalAlignment="Center"/>
+										<TextBlock Text="{DynamicResource S.Welcome.OpenDatabase}" VerticalAlignment="Center"/>
 									</StackPanel>
 								</Button>
 							</StackPanel>
@@ -516,7 +516,7 @@
 						            VerticalAlignment="Center"
 						            MinWidth="200">
 							
-							<TextBlock Text="Recent Databases"
+							<TextBlock Text="{DynamicResource S.Welcome.Recent}"
 							           FontSize="14"
 							           FontWeight="SemiBold"
 							           Foreground="Gray"
@@ -530,7 +530,7 @@
 								<StackPanel x:Name="RecentFilesList" Spacing="4"/>
 							</ScrollViewer>
 							
-							<Button AutomationProperties.AutomationId="MainWindowClearRecent" Content="Clear Recent"
+							<Button AutomationProperties.AutomationId="MainWindowClearRecent" Content="{DynamicResource S.Settings.ClearRecent}"
 							        Command="{Binding MainWindowVm.ClearRecentFilesCommand}"
 							        Classes="hyperlink"
 							        HorizontalAlignment="Left"
@@ -617,7 +617,7 @@
 					           VerticalAlignment="Center"/>
 					<Button Grid.Column="2"
 					        AutomationProperties.AutomationId="StatusCancel" AutomationProperties.Name="Cancel"
-					        Content="Cancel"
+					        Content="{DynamicResource S.Common.Cancel}"
 					        FontSize="11"
 					        Padding="8,0"
 					        Height="20"
@@ -671,7 +671,7 @@
 					         AutomationProperties.Name="Palette query"
 					         x:Name="PaletteQueryBox"
 					         Text="{Binding PaletteVm.Query, Mode=TwoWay}"
-					         Watermark="Go to object or command"
+					         Watermark="{DynamicResource S.Shell.Palette}"
 					         FontSize="14"
 					         BorderThickness="0"/>
 
@@ -710,7 +710,7 @@
 			        BorderThickness="1"
 			        Padding="8">
 				<Grid RowDefinitions="Auto,*,Auto">
-					<TextBlock Grid.Row="0" Text="Notifications" FontWeight="SemiBold" FontSize="12"
+					<TextBlock Grid.Row="0" Text="{DynamicResource S.Shell.Notifications}" FontWeight="SemiBold" FontSize="12"
 					           Margin="4,2,0,6"/>
 
 					<ScrollViewer Grid.Row="1">
@@ -733,13 +733,13 @@
 						</ItemsControl>
 					</ScrollViewer>
 
-					<TextBlock Grid.Row="1" Text="Nothing has happened yet"
+					<TextBlock Grid.Row="1" Text="{DynamicResource S.Shell.NothingYet}"
 					           FontSize="12" Opacity="0.5" Margin="4,8"
 					           IsVisible="{Binding !MainWindowVm.HasNotifications}"/>
 
 					<Button AutomationProperties.AutomationId="NotificationsClose"
 					        AutomationProperties.Name="Close notifications"
-					        Grid.Row="2" Content="Close" FontSize="11" HorizontalAlignment="Right"
+					        Grid.Row="2" Content="{DynamicResource S.Common.Close}" FontSize="11" HorizontalAlignment="Right"
 					        Margin="0,6,0,0"
 					        Command="{Binding MainWindowVm.HideNotificationsCommand}"/>
 				</Grid>

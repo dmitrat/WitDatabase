@@ -26,7 +26,7 @@
                     <StackPanel Grid.Column="1" Spacing="6">
                         <TextBox AutomationProperties.AutomationId="OpenDatabasePath"
                                  Text="{Binding ConnectionInfo.FilePath, Mode=TwoWay}"
-                                 Watermark="D:\data\sales.witdb"/>
+                                 Watermark="{DynamicResource S.Dialog.Open.PathExample}"/>
                         <StackPanel Orientation="Horizontal" Spacing="7">
                             <Button AutomationProperties.AutomationId="OpenDatabaseFile"
                                     Content="{DynamicResource S.Common.File}"
