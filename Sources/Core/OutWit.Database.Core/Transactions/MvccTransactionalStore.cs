@@ -17,7 +17,7 @@ namespace OutWit.Database.Core.Transactions
     /// - Snapshot isolation by default
     /// - Priority-based transaction wait queue
     /// </summary>
-    public sealed class MvccTransactionalStore : ITransactionalStore, IMvccStore, IAsyncDisposable
+    public sealed class MvccTransactionalStore : ITransactionalStore, IMvccStore, IStoreWrapper, IAsyncDisposable
     {
         #region Constants
 
@@ -452,10 +452,26 @@ namespace OutWit.Database.Core.Transactions
         }
 
         /// <inheritdoc/>
+        public IKeyValueStore Inner => m_mvccStore;
+
+        /// <inheritdoc/>
         public void Flush()
         {
             ThrowIfDisposed();
             m_mvccStore.Flush();
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Forwarded rather than left to the interface default, which would call <see cref="Flush"/>.
+        /// This is the default transaction model, so an unforwarded checkpoint is one every ADO.NET
+        /// and EF Core consumer gets: measured 2026-08-07, a checkpoint asked of an LSM database left
+        /// the memtable exactly where it was.
+        /// </remarks>
+        public void Checkpoint()
+        {
+            ThrowIfDisposed();
+            m_mvccStore.Checkpoint();
         }
 
         /// <inheritdoc/>

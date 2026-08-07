@@ -150,30 +150,68 @@ public sealed class PartialSstablePublishTests
     #region A damaged table is reported, not skipped
 
     /// <summary>
-    /// A table that is genuinely damaged - by a pre-fix version, by hardware, by anything - must stop
-    /// the open loudly.
+    /// A LIVE table that is damaged - by a pre-fix version, by hardware, by anything - must stop the
+    /// open loudly.
     /// </summary>
     /// <remarks>
-    /// This pins current behaviour rather than changing it, and it is the same principle the WAL fix
-    /// settled: a database may lose data, but it must say so. Silently skipping an unreadable table
-    /// would turn a hardware fault into missing rows nobody was told about.
+    /// <para>
+    /// The same principle the WAL fix settled: a database may lose data, but it must say so. Silently
+    /// skipping an unreadable table would turn a hardware fault into missing rows nobody was told
+    /// about.
+    /// </para>
+    /// <para>
+    /// <b>The damage now has to be done to a table the manifest NAMES</b>, and the difference is the
+    /// point rather than a detail. This case used to drop a truncated file into the directory under a
+    /// name nothing had written, and the open threw because the live set was whatever the directory
+    /// held. Since <see cref="LsmManifest"/> the live set is stated, and a file nobody named is not a
+    /// damaged table of ours - it is an orphan, which is exactly what a crashed compaction leaves and
+    /// what the manifest exists to ignore. The guarantee is unchanged for every file that is actually
+    /// part of the database; see the case below for the other half.
+    /// </para>
     /// </remarks>
     [Test]
     public void DamagedTableIsReportedRatherThanSilentlySkippedTest()
     {
         WriteOneTable();
 
-        var complete = Tables().Single();
-        var bytes = File.ReadAllBytes(complete);
-        File.WriteAllBytes(
-            Path.Combine(m_directory, "sst_009999.sst"),
-            bytes.AsSpan(0, bytes.Length / 2).ToArray());
+        var live = Tables().Single();
+        var bytes = File.ReadAllBytes(live);
+
+        // Truncated in place, so the file the manifest names is the file that is damaged.
+        File.WriteAllBytes(live, bytes.AsSpan(0, bytes.Length / 2).ToArray());
 
         Assert.That(
             () => new StoreLsm(m_directory, NoBackgroundCompaction()),
             Throws.InstanceOf<InvalidDataException>(),
             "an unreadable table must be reported - returning a store that quietly holds fewer rows "
-            + "than the directory says is the failure mode this project treats as most serious");
+            + "than its own manifest says is the failure mode this project treats as most serious");
+    }
+
+    /// <summary>
+    /// And a file the manifest does not name does not stop the open, however damaged it is.
+    /// </summary>
+    /// <remarks>
+    /// The other half of the decision above, and it is deliberate rather than tolerated: the orphan a
+    /// crashed compaction leaves behind is unreadable often enough - it may be a half-written output -
+    /// and refusing to open the database because of a file that is not part of it would turn the
+    /// manifest from a repair into a new way to lose access to the data.
+    /// </remarks>
+    [Test]
+    public void AnUnnamedDamagedFileDoesNotStopTheOpenTest()
+    {
+        WriteOneTable();
+
+        var live = Tables().Single();
+        var bytes = File.ReadAllBytes(live);
+
+        File.WriteAllBytes(
+            Path.Combine(m_directory, "sst_009999.sst"),
+            bytes.AsSpan(0, bytes.Length / 2).ToArray());
+
+        using var store = new StoreLsm(m_directory, NoBackgroundCompaction());
+
+        Assert.That(store.Scan(null, null).Count(), Is.EqualTo(20),
+            "the database did not open on its own tables with a stray damaged file beside them");
     }
 
     #endregion

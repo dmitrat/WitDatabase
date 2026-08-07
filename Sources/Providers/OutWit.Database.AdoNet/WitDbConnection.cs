@@ -15,7 +15,7 @@ namespace OutWit.Database.AdoNet;
 /// <summary>
 /// Represents a connection to a WitDatabase database.
 /// </summary>
-public sealed class WitDbConnection : DbConnection
+public sealed partial class WitDbConnection : DbConnection
 {
     #region Constants
 

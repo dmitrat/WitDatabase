@@ -9,7 +9,7 @@ namespace OutWit.Database.Core.Transactions;
 /// Wraps an IKeyValueStore with transaction support.
 /// Provides ACID guarantees through journaling and coordinated locking.
 /// </summary>
-public sealed class TransactionalStore : ITransactionalStore, IAsyncDisposable
+public sealed class TransactionalStore : ITransactionalStore, IStoreWrapper, IAsyncDisposable
 {
     #region Constants
 
@@ -325,11 +325,26 @@ public sealed class TransactionalStore : ITransactionalStore, IAsyncDisposable
 
     #endregion
 
+    #region IStoreWrapper
+
+    /// <inheritdoc/>
+    public IKeyValueStore Inner => m_store;
+
+    #endregion
+
     #region Checkpoint
 
     /// <summary>
-    /// Creates a checkpoint: flushes all data and truncates the journal.
+    /// Creates a checkpoint: forces the store's accumulated state out and truncates the journal.
     /// </summary>
+    /// <remarks>
+    /// <b>It used to call <c>Flush</c> on the inner store</b>, which is the conflation
+    /// <see cref="IKeyValueStore.Checkpoint"/>'s own documentation warns about and
+    /// <c>BTreeConcurrentStore</c> already avoided in so many words. Measured 2026-08-07: 200 puts
+    /// into an LSM database and a <c>Checkpoint()</c> on the store the database hands out left the
+    /// directory holding <c>wal.log</c> and no SSTable at all - the memtable was never forced out,
+    /// because a checkpoint asked of the database stopped at this hop and became a flush.
+    /// </remarks>
     public void Checkpoint()
     {
         ThrowIfDisposed();
@@ -342,7 +357,7 @@ public sealed class TransactionalStore : ITransactionalStore, IAsyncDisposable
                 throw new InvalidOperationException("Cannot checkpoint with active transactions");
         }
 
-        m_store.Flush();
+        m_store.Checkpoint();
         m_journal?.Checkpoint();
     }
 

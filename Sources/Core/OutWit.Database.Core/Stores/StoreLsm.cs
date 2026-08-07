@@ -19,6 +19,13 @@ namespace OutWit.Database.Core.Stores
         /// </summary>
         public const string PROVIDER_KEY = "lsm";
 
+        /// <summary>
+        /// How many SSTables an EXPLICIT <see cref="Compact"/> needs before there is anything to do.
+        /// Two: one file cannot be merged with itself, and everything above that is the caller's
+        /// business rather than the trigger's.
+        /// </summary>
+        private const int MINIMUM_FILES_TO_MERGE = 2;
+
         #endregion
 
         #region Fields
@@ -469,19 +476,35 @@ namespace OutWit.Database.Core.Stores
         /// <summary>
         /// Forces compaction of SSTables. Waits for completion.
         /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>"Forces" is now true.</b> This used to apply <see cref="LsmOptions.Level0CompactionTrigger"/>
+        /// - the threshold that decides AUTOMATIC compaction - to an explicit call as well, so a caller
+        /// that asked for a compaction below it got nothing and was told nothing. Measured 2026-08-07:
+        /// six checkpoints with the trigger raised to 100 left six SSTables, and <c>Compact()</c> left
+        /// six as well with the compaction counter still at zero. With the default trigger of four the
+        /// automatic path keeps the store BELOW its own threshold, so an explicit call was refused
+        /// almost every time it could be made.
+        /// </para>
+        /// <para>
+        /// The threshold for an explicit call is two, which is the number below which there is nothing
+        /// to merge. The automatic path is untouched and still uses the trigger: it decides how much
+        /// churn is worth a rewrite, which is a different question from "the user asked".
+        /// </para>
+        /// </remarks>
         public void Compact()
         {
             ThrowIfDisposed();
-            
+
             if (m_options.BackgroundCompaction)
             {
                 // Trigger and wait for background compaction
-                ScheduleBackgroundCompaction();
+                ScheduleBackgroundCompaction(MINIMUM_FILES_TO_MERGE);
                 WaitForCompaction();
             }
             else
             {
-                ExecuteCompaction();
+                ExecuteCompaction(MINIMUM_FILES_TO_MERGE);
             }
         }
 
@@ -503,7 +526,7 @@ namespace OutWit.Database.Core.Stores
             task?.Wait();
         }
 
-        private void ScheduleBackgroundCompaction()
+        private void ScheduleBackgroundCompaction(int minimumFiles)
         {
             lock (m_compactionLock)
             {
@@ -520,7 +543,7 @@ namespace OutWit.Database.Core.Stores
                 m_sstableLock.EnterReadLock();
                 try
                 {
-                    if (m_sstables.Count < m_options.Level0CompactionTrigger)
+                    if (m_sstables.Count < minimumFiles)
                         return;
                 }
                 finally
@@ -539,7 +562,7 @@ namespace OutWit.Database.Core.Stores
                 {
                     try
                     {
-                        ExecuteCompaction();
+                        ExecuteCompaction(minimumFiles);
                     }
                     finally
                     {
@@ -552,7 +575,7 @@ namespace OutWit.Database.Core.Stores
             }
         }
 
-        private void ExecuteCompaction()
+        private void ExecuteCompaction(int minimumFiles)
         {
             // Get current SSTable files
             List<string> filesToCompact;
@@ -561,7 +584,7 @@ namespace OutWit.Database.Core.Stores
             try
             {
                 currentSstableCount = m_sstables.Count;
-                if (currentSstableCount < m_options.Level0CompactionTrigger)
+                if (currentSstableCount < minimumFiles)
                     return;
 
                 filesToCompact = m_sstables.Select(s => s.FilePath).ToList();
@@ -626,16 +649,24 @@ namespace OutWit.Database.Core.Stores
                 }
                 m_sstables.Clear();
 
-                // Delete old files
-                foreach (var file in filesToCompact)
-                {
-                    try { File.Delete(file); } catch { }
-                }
-
                 // Open new compacted SSTable with cache
                 if (outputPath != null && File.Exists(outputPath))
                 {
                     m_sstables.Add(new SSTableReader(outputPath, m_options.Encryptor, m_blockCache));
+                }
+
+                // PUBLISH BEFORE DELETING, and this order is the whole fix. Until the manifest is
+                // renamed into place the inputs are still the truth and the output is an orphan; the
+                // instant after, the output is the truth and the inputs are orphans. There is no
+                // moment at which a row this merge dropped the tombstone for is reachable.
+                //
+                // Everything below is housekeeping: a delete that fails costs disk space, and used to
+                // cost a resurrected row.
+                PublishManifest();
+
+                foreach (var file in filesToCompact)
+                {
+                    try { File.Delete(file); } catch { }
                 }
             }
             finally
@@ -680,6 +711,11 @@ namespace OutWit.Database.Core.Stores
                 try
                 {
                     m_sstables.Add(new SSTableReader(sstablePath, m_options.Encryptor, m_blockCache));
+
+                    // The file is complete before it is named, which is the same order compaction
+                    // uses: a crash between the two leaves an SSTable nobody reads rather than a
+                    // manifest pointing at a file that is not finished.
+                    PublishManifest();
                 }
                 finally
                 {
@@ -699,16 +735,17 @@ namespace OutWit.Database.Core.Stores
             // Truncate WAL
             m_wal?.Truncate();
 
-            // Check if compaction needed
+            // Check if compaction needed. The AUTOMATIC path, and it keeps the trigger: how much churn
+            // is worth a rewrite is a different question from "the user asked for one".
             if (m_sstables.Count >= m_options.Level0CompactionTrigger)
             {
                 if (m_options.BackgroundCompaction)
                 {
-                    ScheduleBackgroundCompaction();
+                    ScheduleBackgroundCompaction(m_options.Level0CompactionTrigger);
                 }
                 else
                 {
-                    ExecuteCompaction();
+                    ExecuteCompaction(m_options.Level0CompactionTrigger);
                 }
             }
         }
@@ -747,24 +784,58 @@ namespace OutWit.Database.Core.Stores
             failed.Dispose();
         }
 
+        /// <summary>
+        /// Rebuilds the live SSTable set on open.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The manifest is the truth when there is one</b>, and a file on disk that it does not
+        /// name is not live - it is the leftover of a compaction that published its output and did
+        /// not finish deleting its inputs. Reading the directory instead is what let a deleted row
+        /// come back: a full merge drops tombstones, so an unnamed survivor has nothing left to mask
+        /// it. See <see cref="LsmManifest"/>.
+        /// </para>
+        /// <para>
+        /// <b>Orphans are ignored, not deleted.</b> Ignoring them is what makes the store correct;
+        /// deleting them is housekeeping, and doing both here would mean a test could not tell which
+        /// of the two produced the answer.
+        /// </para>
+        /// <para>
+        /// <b>No manifest means an older database</b>, and the directory is then the best answer
+        /// available. The next flush or compaction writes one.
+        /// </para>
+        /// </remarks>
         private void Recover()
         {
-            // Load existing SSTables
-            var sstableFiles = System.IO.Directory.GetFiles(m_directory, "sst_*.sst")
-                .OrderBy(f => f)
+            var manifest = LsmManifest.Read(m_directory);
+
+            var onDisk = System.IO.Directory.GetFiles(m_directory, "sst_*.sst")
+                .OrderBy(f => f, StringComparer.Ordinal)
                 .ToList();
 
+            var sstableFiles = manifest == null
+                ? onDisk
+                : manifest.Sstables.Select(name => Path.Combine(m_directory, name))
+                    .Where(File.Exists)
+                    .ToList();
+
             foreach (var file in sstableFiles)
-            {
                 m_sstables.Add(new SSTableReader(file, m_options.Encryptor, m_blockCache));
 
-                // Extract ID from filename
+            // The next id is taken from EVERY file on disk and not merely from the live ones, so that
+            // a new SSTable cannot be given the name of an orphan the manifest is deliberately not
+            // mentioning - the manifest would then be ambiguous about which of the two it meant.
+            foreach (var file in onDisk)
+            {
                 var filename = Path.GetFileNameWithoutExtension(file);
                 if (int.TryParse(filename.Replace("sst_", ""), out var id))
                 {
                     m_nextSstableId = Math.Max(m_nextSstableId, id + 1);
                 }
             }
+
+            if (manifest != null)
+                m_nextSstableId = Math.Max(m_nextSstableId, manifest.NextSstableId);
 
             // Replay WAL
             if (m_wal != null)
@@ -793,6 +864,19 @@ namespace OutWit.Database.Core.Stores
         {
             ObjectDisposedException.ThrowIf(m_disposed, this);
         }
+
+        /// <summary>
+        /// States the live set on disk. Must be called with <see cref="m_sstableLock"/> held for
+        /// writing, so that what is published is what the store just decided.
+        /// </summary>
+        /// <remarks>
+        /// A failure here is deliberately not swallowed. The manifest IS the live set, so a store
+        /// that could not write one has not completed the operation it is in the middle of - and the
+        /// callers are inside a write lock with the old files still on disk, which is the state the
+        /// next open reads.
+        /// </remarks>
+        private void PublishManifest() =>
+            LsmManifest.Write(m_directory, m_sstables.Select(sst => sst.FilePath), m_nextSstableId);
 
         #endregion
 
@@ -947,7 +1031,63 @@ namespace OutWit.Database.Core.Stores
         /// <summary>
         /// Gets the statistics for this LSM-Tree.
         /// </summary>
+        /// <remarks>
+        /// <b>Counters of this PROCESS, not of the database.</b> They start at zero when the store is
+        /// opened, so anything reporting them has to say "since this connection opened" or it is
+        /// describing a file by what one program happened to do to it. Measured: reopening a store
+        /// with 300 keys and one compaction behind it reports puts=0, compactions=0.
+        /// </remarks>
         public LsmStatistics Statistics => m_statistics;
+
+        /// <summary>
+        /// How many SSTables the store currently has.
+        /// </summary>
+        /// <remarks>
+        /// <b>There are no levels to report.</b> The design asks for files per level and an L0
+        /// threshold; this store keeps a flat list and compacts ALL of it into ONE file, so
+        /// <see cref="LsmOptions.Level0CompactionTrigger"/> is "how many files before a full merge"
+        /// rather than the size of a level. A panel that drew levels would be drawing something that
+        /// does not exist.
+        /// </remarks>
+        public int SstableCount
+        {
+            get
+            {
+                ThrowIfDisposed();
+
+                m_sstableLock.EnterReadLock();
+                try
+                {
+                    return m_sstables.Count;
+                }
+                finally
+                {
+                    m_sstableLock.ExitReadLock();
+                }
+            }
+        }
+
+        /// <summary>
+        /// How many bytes the memtable is holding, and the size at which it flushes itself.
+        /// </summary>
+        /// <remarks>
+        /// The pair rather than either alone: a number of bytes says nothing without the threshold it
+        /// is approaching, and this is the one part of an LSM store a person can act on - a checkpoint
+        /// is what moves it.
+        /// </remarks>
+        public (long Used, long Limit) MemTable
+        {
+            get
+            {
+                ThrowIfDisposed();
+                return (m_activeMemTable.ApproximateSize, m_options.MemTableSizeLimit);
+            }
+        }
+
+        /// <summary>
+        /// How many SSTables trigger an automatic full merge.
+        /// </summary>
+        public int CompactionTrigger => m_options.Level0CompactionTrigger;
 
         /// <inheritdoc/>
         public string ProviderKey => PROVIDER_KEY;

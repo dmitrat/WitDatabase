@@ -36,23 +36,38 @@ public class CoreLsmFindingsTests
         try { Directory.Delete(m_directory, recursive: true); } catch { /* best effort */ }
     }
 
-    #region Compaction has no manifest
+    #region The manifest
 
+    /// <summary>
+    /// A row deleted before a crashed compaction stays deleted.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The history is the useful part.</b> This was recorded as "MECHANISM CONFIRMED, CONSEQUENCE
+    /// NOT REPRODUCED", and the consequence reproduced the moment the instrument was fixed:
+    /// <c>Compact()</c> applied the automatic <c>Level0CompactionTrigger</c> to an explicit call, and
+    /// this case has two SSTables against a default trigger of four - so the compaction it is named
+    /// after never ran. On 2026-08-07 an explicit compaction was made to compact and this case went
+    /// red on its own, with the deleted row readable again.
+    /// </para>
+    /// <para>
+    /// <b>The old reasoning also leaned on a proxy.</b> It said the output RETAINS the tombstone,
+    /// "verified, not assumed, because Get(k0) returned null after compaction". Null was ambiguous:
+    /// <c>Compactor.Compact</c> <b>drops</b> tombstones - "they've done their job" - so after a full
+    /// merge k0 read null because it was ABSENT. Absence and a tombstone are identical through
+    /// <c>Get</c>, and that difference was the whole defect.
+    /// </para>
+    /// <para>
+    /// <b>Fixed by <see cref="LsmManifest"/>, and by the ORDER it is written in.</b> A compaction
+    /// publishes a manifest naming only its output and only then deletes the inputs, so an input that
+    /// survives is no longer named and nobody reads it. What this case measures is exactly that: the
+    /// survivor is still on disk afterwards - asserted, because "the row is gone" would otherwise be
+    /// equally consistent with the file having been deleted after all.
+    /// </para>
+    /// </remarks>
     [Test]
-    public void CrashedCompactionDoesNotResurrectDeletedRowsTest()
+    public void ACrashedCompactionDoesNotResurrectDeletedRowsTest()
     {
-        // MECHANISM CONFIRMED, CONSEQUENCE NOT REPRODUCED - and the reason is worth keeping. The
-        // live set really is a directory listing, so a surviving input IS readmitted. But it loses:
-        // Recover() sorts by filename and the compaction output carries a higher id, so it is
-        // treated as newest; and the output RETAINS the tombstone - verified, not assumed, because
-        // Get(k0) returned null after compaction when the output was the only file left. A
-        // resurrected row would need the output to drop the tombstone or to sort behind a survivor,
-        // neither of which happens here. This test stays active as the pin for both properties.
-        //
-        // Finding: StoreLsm.cs:519 - compaction keeps no manifest. The live SSTable set is literally
-        // `Directory.GetFiles(m_directory, "sst_*.sst")` (StoreLsm.cs:601), so any input file the
-        // compaction failed to delete is silently readmitted as live data on the next open - and the
-        // rows it holds come back from the dead.
         var holding = Path.Combine(m_directory, "..", Path.GetFileName(m_directory) + "-holding");
         Directory.CreateDirectory(holding);
 
@@ -79,8 +94,15 @@ public class CoreLsmFindingsTests
                 store.Compact();
                 store.WaitForCompaction();
 
+                // CONTROL, and the one that makes the pin below mean something: with the compaction's
+                // output as the only file, the deleted row is gone. If this failed, the resurrection
+                // below would be "compaction never ran" rather than "a survivor readmitted it".
+                Assert.That(Directory.GetFiles(m_directory, "sst_*.sst"), Has.Length.EqualTo(1),
+                    "CONTROL: the compaction did not merge the inputs, so nothing below is about a "
+                    + "crashed compaction");
+
                 Assert.That(store.Get(Key("k0")), Is.Null,
-                    "the delete must have survived compaction");
+                    "the delete did not survive the compaction");
             }
 
             // The crash: compaction published its output, deleted the tombstone's input, and died
@@ -88,10 +110,33 @@ public class CoreLsmFindingsTests
             foreach (var file in Directory.GetFiles(holding, "sst_*.sst"))
                 File.Copy(file, Path.Combine(m_directory, Path.GetFileName(file)), overwrite: true);
 
+            var restored = Directory.GetFiles(m_directory, "sst_*.sst").Length;
+
             using var reopened = new StoreLsm(m_directory);
 
-            Assert.That(reopened.Get(Key("k0")), Is.Null,
-                "a row deleted before the crash must not come back because an input file survived");
+            Assert.Multiple(() =>
+            {
+                // CONTROL: the survivor must still be lying there. Without this, "the row is gone"
+                // is equally consistent with the file having been deleted, and the case would pass
+                // on an engine with no manifest at all.
+                Assert.That(restored, Is.EqualTo(2),
+                    "CONTROL: the crashed compaction's surviving input is not on disk, so nothing is "
+                    + "being ignored and this case is not about the manifest");
+
+                Assert.That(reopened.Get(Key("k0")), Is.Null,
+                    "a row deleted before the crash came back because an input file survived. The "
+                    + "full merge dropped its tombstone, so an unnamed survivor has nothing left to "
+                    + "mask it - the live set is being read from the directory rather than from the "
+                    + "manifest.");
+
+                // And the rest of the data is still there, so "nothing came back" is not "nothing
+                // is readable".
+                Assert.That(reopened.Get(Key("k1")), Is.Not.Null,
+                    "the surviving rows went with it");
+            });
+
+            TestContext.Out.WriteLine(
+                $"manifest: {restored} sst files on disk after the crash, k0 stays deleted, k1 readable");
         }
         finally
         {

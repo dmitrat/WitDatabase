@@ -31,7 +31,7 @@ namespace OutWit.Database.Core.Tree;
 /// The same reasoning is why <see cref="Scan"/> hands its results out in chunks rather than holding
 /// the read lock across the consumer's code.
 /// </remarks>
-public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IAsyncDisposable
+public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoreWrapper, IAsyncDisposable
 {
     #region Constants
 
@@ -373,6 +373,9 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
             m_lock.ExitWriteLock();
         }
     }
+
+    /// <inheritdoc/>
+    public IKeyValueStore Inner => m_store;
 
     /// <inheritdoc/>
     /// <remarks>

@@ -15,7 +15,7 @@ namespace OutWit.Database.Core.Stores
     /// - Version suffix is the inverted timestamp (MaxValue - timestamp) for descending order
     /// - This allows efficient retrieval of the latest version via prefix scan
     /// </summary>
-    public sealed class MvccKeyValueStore : IMvccStore, IAsyncDisposable
+    public sealed class MvccKeyValueStore : IMvccStore, IStoreWrapper, IAsyncDisposable
     {
         #region Constants
 
@@ -719,11 +719,28 @@ namespace OutWit.Database.Core.Stores
         #region Flush
 
         /// <inheritdoc/>
+        public IKeyValueStore Inner => m_innerStore;
+
+        /// <inheritdoc/>
         public void Flush()
         {
             ThrowIfDisposed();
             PersistMaxTimestampIfNeeded();
             m_innerStore.Flush();
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Forwarded rather than left to the interface default, which would call <see cref="Flush"/>
+        /// and quietly reorganise nothing. The timestamp is persisted first for the same reason it is
+        /// in <see cref="Flush"/>: whatever the inner store writes out must not be missing the marker
+        /// that makes its versions readable.
+        /// </remarks>
+        public void Checkpoint()
+        {
+            ThrowIfDisposed();
+            PersistMaxTimestampIfNeeded();
+            m_innerStore.Checkpoint();
         }
 
         /// <inheritdoc/>

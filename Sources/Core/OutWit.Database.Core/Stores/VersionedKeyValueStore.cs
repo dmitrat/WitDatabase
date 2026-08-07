@@ -9,7 +9,7 @@ namespace OutWit.Database.Core.Stores
     /// Each value is stored with a version prefix (8 bytes).
     /// Thread-safe version counter with atomic increments.
     /// </summary>
-    public sealed class VersionedKeyValueStore : IVersionedKeyValueStore
+    public sealed class VersionedKeyValueStore : IVersionedKeyValueStore, IStoreWrapper
     {
         #region Constants
 
@@ -306,11 +306,27 @@ namespace OutWit.Database.Core.Stores
         #region Flush
 
         /// <inheritdoc/>
+        public IKeyValueStore Inner => m_innerStore;
+
+        /// <inheritdoc/>
         public void Flush()
         {
             ThrowIfDisposed();
             SaveGlobalVersion();
             m_innerStore.Flush();
+        }
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Forwarded rather than left to the interface default, which would call <see cref="Flush"/>
+        /// and reorganise nothing. The global version is saved first for the same reason it is in
+        /// <see cref="Flush"/>.
+        /// </remarks>
+        public void Checkpoint()
+        {
+            ThrowIfDisposed();
+            SaveGlobalVersion();
+            m_innerStore.Checkpoint();
         }
 
         /// <inheritdoc/>
