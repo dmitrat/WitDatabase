@@ -131,6 +131,10 @@ sealed class Program
         services.AddSingleton<ISettingsService, SettingsService>();
         services.AddSingleton<IExportService, ExportService>();
 
+        // The saved connections (WS-68), in a file of their own beside the settings: the two are
+        // cleared for different reasons, and "reset settings" must not read as "forget my databases".
+        services.AddSingleton<IConnectionProfileStore, ConnectionProfileStore>();
+
         // The interface language (WS-63). Built from the setting rather than from the machine's
         // culture: what language Studio speaks and how it writes a decimal are separate questions, and
         // deriving one from the other is how a value stops pasting into SQL.

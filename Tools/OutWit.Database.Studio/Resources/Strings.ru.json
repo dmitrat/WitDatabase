@@ -36,6 +36,14 @@
   "Dialog.Open.EncryptedOrNot": "Зашифрована — или вовсе не база · {0}. Снаружи эти два случая неразличимы.",
   "Dialog.Open.WrongPassword": "Не удалось расшифровать: неверный пароль или файл повреждён.",
 
+  "Dialog.Connections.Title": "Подключения",
+  "Dialog.Connections.NameAndPath": "ИМЯ И ПУТЬ",
+  "Dialog.Connections.Storage": "ХРАНИЛИЩЕ",
+  "Dialog.Connections.Mode": "РЕЖИМ",
+  "Dialog.Connections.Missing": "файл не найден",
+  "Dialog.Connections.ReadOnly": "только чтение",
+  "Dialog.Connections.CouldNotOpen": "Не удалось открыть базу.",
+
   "Dialog.Create.Title": "Создать базу данных",
   "Dialog.Create.Storage": "ХРАНИЛИЩЕ",
   "Dialog.Create.Encryption": "ШИФРОВАНИЕ",

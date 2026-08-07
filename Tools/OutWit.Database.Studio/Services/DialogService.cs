@@ -189,6 +189,9 @@ public sealed class DialogService : IDialogService
     public Task ShowSettingsAsync(SettingsViewModel viewModel)
         => SettingsDialog.ShowAsync(RequireOwner(), viewModel);
 
+    public Task ShowConnectionsAsync(ConnectionsViewModel viewModel)
+        => ConnectionsDialog.ShowAsync(RequireOwner(), viewModel);
+
     public Task ShowExportAsync(ExportViewModel viewModel)
         => ExportDialog.ShowAsync(RequireOwner(), viewModel);
 

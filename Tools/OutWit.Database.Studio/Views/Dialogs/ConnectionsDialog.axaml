@@ -1,0 +1,93 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        xmlns:conv="using:OutWit.Database.Studio.Converters"
+        mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="420"
+        x:Class="OutWit.Database.Studio.Views.Dialogs.ConnectionsDialog"
+        x:DataType="vm:ConnectionsViewModel"
+        Title="{DynamicResource S.Dialog.Connections.Title}"
+        Width="720"
+        Height="420"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+        <Grid Grid.Row="0" ColumnDefinitions="*,110,110" Margin="14,10,14,6">
+            <TextBlock Grid.Column="0" Text="{DynamicResource S.Dialog.Connections.NameAndPath}"
+                       FontSize="10" Opacity="0.55"/>
+            <TextBlock Grid.Column="1" Text="{DynamicResource S.Dialog.Connections.Storage}"
+                       FontSize="10" Opacity="0.55"/>
+            <TextBlock Grid.Column="2" Text="{DynamicResource S.Dialog.Connections.Mode}"
+                       FontSize="10" Opacity="0.55"/>
+        </Grid>
+
+        <ListBox Grid.Row="1" Margin="8,0"
+                 AutomationProperties.AutomationId="ConnectionsList"
+                 ItemsSource="{Binding Rows}"
+                 SelectedItem="{Binding Selected}">
+            <ListBox.ItemTemplate>
+                <DataTemplate DataType="vm:ConnectionRow">
+                    <Grid ColumnDefinitions="14,*,110,110" Margin="0,3">
+                        <!-- The colour the connection was given, from the one palette. -->
+                        <Border Grid.Column="0" Width="9" Height="9" CornerRadius="3"
+                                VerticalAlignment="Center" HorizontalAlignment="Left"
+                                Background="{Binding ColorIndex, Converter={x:Static conv:ConnectionColors.Brush}}"/>
+
+                        <StackPanel Grid.Column="1" Spacing="1">
+                            <TextBlock Text="{Binding Name}"/>
+                            <TextBlock Text="{Binding Path}" FontFamily="Consolas" FontSize="10.5" Opacity="0.55"
+                                       TextTrimming="CharacterEllipsis"/>
+                        </StackPanel>
+
+                        <!-- A missing database is MARKED and kept: the disk may not be mounted, and a
+                             row that vanished on its own reads as lost settings (WS-68). -->
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11"
+                                   Text="{Binding Storage}"
+                                   IsVisible="{Binding !IsMissing}"/>
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11" Foreground="#D9534F"
+                                   Text="{DynamicResource S.Dialog.Connections.Missing}"
+                                   IsVisible="{Binding IsMissing}"/>
+
+                        <TextBlock Grid.Column="3" VerticalAlignment="Center" FontSize="11" Opacity="0.75"
+                                   Text="{DynamicResource S.Dialog.Connections.ReadOnly}"
+                                   IsVisible="{Binding IsReadOnly}"/>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <Border Grid.Row="2" Margin="14,8,14,0" Padding="10,8" CornerRadius="6"
+                Background="#22D9534F" BorderBrush="#55D9534F" BorderThickness="1"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <TextBlock AutomationProperties.AutomationId="ConnectionsError"
+                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12"/>
+        </Border>
+
+        <Border Grid.Row="3" Padding="14,10" Margin="0,8,0,0"
+                Background="{DynamicResource SystemControlBackgroundListLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,1,0,0">
+            <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
+                <Button Grid.Column="0" Margin="0,0,7,0"
+                        AutomationProperties.AutomationId="ConnectionsAdd"
+                        Content="{DynamicResource S.Common.Add}" Command="{Binding AddCommand}"/>
+                <Button Grid.Column="1" Margin="0,0,7,0"
+                        AutomationProperties.AutomationId="ConnectionsDuplicate"
+                        Content="{DynamicResource S.Common.Duplicate}" Command="{Binding DuplicateCommand}"/>
+
+                <!-- "Remove" - and it says that because it removes from the LIST. Deleting a database
+                     from the interface that manages databases is not offered at all. -->
+                <Button Grid.Column="2"
+                        AutomationProperties.AutomationId="ConnectionsRemove"
+                        Content="{DynamicResource S.Common.Remove}" Command="{Binding RemoveCommand}"/>
+
+                <Button Grid.Column="4" Width="130" Classes="accent"
+                        AutomationProperties.AutomationId="ConnectionsConnect"
+                        Content="{DynamicResource S.Dialog.Open.Connect}" Command="{Binding ConnectCommand}"/>
+            </Grid>
+        </Border>
+    </Grid>
+
+</Window>

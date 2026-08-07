@@ -66,6 +66,9 @@ public interface IDialogService
 
     Task ShowSettingsAsync(SettingsViewModel viewModel);
 
+    /// <summary>The saved connections (WS-68).</summary>
+    Task ShowConnectionsAsync(ConnectionsViewModel viewModel);
+
     Task ShowExportAsync(ExportViewModel viewModel);
 
     Task ShowImportAsync(ImportViewModel viewModel);
@@ -119,6 +122,8 @@ public sealed class NoDialogService : IDialogService
     public Task<bool> ShowCreateDatabaseAsync(ConnectionViewModel viewModel) => Task.FromResult(false);
 
     public Task ShowSettingsAsync(SettingsViewModel viewModel) => Task.CompletedTask;
+
+    public Task ShowConnectionsAsync(ConnectionsViewModel viewModel) => Task.CompletedTask;
 
     public Task ShowExportAsync(ExportViewModel viewModel) => Task.CompletedTask;
 

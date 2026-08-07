@@ -43,8 +43,12 @@ public sealed class ApplicationViewModel
         IDialogService? dialogs = null,
         INotificationService? notifications = null,
         IQueryHistoryService? history = null,
-        ILocalizationService? localization = null)
+        ILocalizationService? localization = null,
+        IConnectionProfileStore? profiles = null)
     {
+        Profiles = profiles ?? new ConnectionProfileStore(
+            Microsoft.Extensions.Logging.Abstractions.NullLogger<ConnectionProfileStore>.Instance);
+
         Connections = connections;
         Settings = settingsService;
         Export = exportService;
@@ -196,6 +200,12 @@ public sealed class ApplicationViewModel
     /// call site needs a null check to ask for a string.
     /// </summary>
     public ILocalizationService Localization { get; }
+
+    /// <summary>
+    /// The saved connections (WS-68) - names, colours and read-only flags that survive a session, and
+    /// never a password.
+    /// </summary>
+    public IConnectionProfileStore Profiles { get; }
 
     public IExportService Export { get; }
 

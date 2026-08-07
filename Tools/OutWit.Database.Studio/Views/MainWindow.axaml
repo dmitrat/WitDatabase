@@ -62,6 +62,15 @@
 						</MenuItem.Icon>
 					</MenuItem>
 
+					<!-- The saved connections (WS-68): what "recent files" becomes once several
+					     databases can be open at once. -->
+					<MenuItem AutomationProperties.AutomationId="MainWindowConnections" Header="_Connections..."
+					          Command="{Binding MainWindowVm.ConnectionsCommand}">
+						<MenuItem.Icon>
+							<PathIcon Data="{x:Static ui:StudioIcons.MENU_OPEN_DATABASE}" />
+						</MenuItem.Icon>
+					</MenuItem>
+
 					<MenuItem AutomationProperties.AutomationId="MainWindowOpenDatabase" Header="_Open Database..."
 					          Command="{Binding MainWindowVm.OpenDatabaseCommand}"
 					          InputGesture="Ctrl+O">

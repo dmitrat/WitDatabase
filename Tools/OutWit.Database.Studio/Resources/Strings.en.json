@@ -36,6 +36,14 @@
   "Dialog.Open.EncryptedOrNot": "Encrypted, or not a database at all · {0}. The two look the same from outside.",
   "Dialog.Open.WrongPassword": "Could not decrypt: wrong password, or the file is damaged.",
 
+  "Dialog.Connections.Title": "Connections",
+  "Dialog.Connections.NameAndPath": "NAME AND PATH",
+  "Dialog.Connections.Storage": "STORAGE",
+  "Dialog.Connections.Mode": "MODE",
+  "Dialog.Connections.Missing": "file not found",
+  "Dialog.Connections.ReadOnly": "read only",
+  "Dialog.Connections.CouldNotOpen": "The database could not be opened.",
+
   "Dialog.Create.Title": "Create database",
   "Dialog.Create.Storage": "STORAGE",
   "Dialog.Create.Encryption": "ENCRYPTION",

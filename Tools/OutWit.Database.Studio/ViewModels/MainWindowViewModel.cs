@@ -61,6 +61,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         OpenRecentCommand = new RelayCommandAsync<string>(OpenRecentAsync);
         ClearRecentFilesCommand = new RelayCommandAsync(ClearRecentFilesAsync);
         SettingsCommand = new RelayCommandAsync(ShowSettingsAsync);
+        ConnectionsCommand = new RelayCommandAsync(ShowConnectionsAsync);
         AboutCommand = new RelayCommandAsync(ShowAboutAsync);
         ExitCommand = new RelayCommandAsync(ExitAsync);
         ShowNotificationsCommand = new RelayCommand(ShowNotifications);
@@ -301,6 +302,19 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     }
 
     /// <summary>
+    /// The saved connections (WS-68). Rebuilt each time rather than kept: the window's whole job is to
+    /// say what is on disk NOW, and a network drive comes and goes between one opening and the next.
+    /// </summary>
+    private async Task ShowConnectionsAsync()
+    {
+        ConnectionsVm = new ConnectionsViewModel(ApplicationVm);
+
+        await ConnectionsVm.RefreshAsync();
+
+        await ApplicationVm.Dialogs.ShowConnectionsAsync(ConnectionsVm);
+    }
+
+    /// <summary>
     /// About is a SECTION of the settings, not a window of its own (WS-53). A window whose only job is
     /// to state four version numbers is a window; the numbers belong next to the log folder and the
     /// file format version, which is what the person asking for them is actually collecting.
@@ -460,6 +474,9 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     public SettingsViewModel? SettingsVm { get; private set; }
 
+    /// <summary>The connections window's ViewModel, rebuilt each time it is opened.</summary>
+    public ConnectionsViewModel? ConnectionsVm { get; private set; }
+
     [Notify]
     public string Title { get; set; } = null!;
 
@@ -545,6 +562,9 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand ClearRecentFilesCommand { get; private set; } = null!;
 
     public ICommand SettingsCommand { get; private set; } = null!;
+
+    /// <summary>The saved connections (WS-68).</summary>
+    public ICommand ConnectionsCommand { get; private set; } = null!;
 
     public ICommand AboutCommand { get; private set; } = null!;
 

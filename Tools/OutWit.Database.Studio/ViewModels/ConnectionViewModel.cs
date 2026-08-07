@@ -363,6 +363,16 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                 if (IsFileBased && !string.IsNullOrWhiteSpace(ConnectionInfo.FilePath) && ConnectionInfo.FilePath != ":memory:")
                 {
                     await Settings.AddRecentFileAsync(ConnectionInfo.FilePath);
+
+                    // The saved connection (WS-68). It carries the name, the colour and the read-only
+                    // flag - the things a person chose and would have to choose again - and NEVER the
+                    // password. The session's own colour is used rather than the one in the dialog,
+                    // because the manager is what decides when the dialog left it unset.
+                    var profile = ConnectionProfile.From(ConnectionInfo);
+                    profile.ColorIndex = OpenedSession.ColorIndex;
+                    profile.Name = OpenedSession.DisplayName;
+
+                    await ApplicationVm.Profiles.SaveAsync(profile);
                 }
                 
                 SelectedConnection = ConnectionInfo;

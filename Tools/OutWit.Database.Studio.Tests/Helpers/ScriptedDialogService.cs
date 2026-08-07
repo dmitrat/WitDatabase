@@ -76,6 +76,8 @@ public sealed class ScriptedDialogService : IDialogService
         return Task.CompletedTask;
     }
 
+    public Task ShowConnectionsAsync(ConnectionsViewModel viewModel) => Note(nameof(ShowConnectionsAsync));
+
     /// <summary>
     /// The desktop calls record what they were asked to open rather than opening it. That is enough to
     /// check the thing worth checking - that "open the log folder" asks for the folder the log is in

@@ -50,7 +50,13 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
 
         m_logger = logger;
 
-        DisplayName = DefaultDisplayName(Connection.FilePath);
+        // The name the user gave it in the dialog wins; the file name is the FALLBACK (WS-46). It was
+        // the other way round until stage 9, which meant the Open dialog offered a name box whose value
+        // reached nothing - the session, the tab stripe and the saved connection all showed the file
+        // name. Caught by a case asking for the name back after a reopen.
+        DisplayName = string.IsNullOrWhiteSpace(Connection.DisplayName)
+            ? DefaultDisplayName(Connection.FilePath)
+            : Connection.DisplayName;
 
         Catalog = new SchemaCatalog(this);
     }
