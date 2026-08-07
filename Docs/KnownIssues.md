@@ -519,8 +519,35 @@ unreadable file** - a crash, a kill, a power cut. Run 4 above is that defect
 reproduced in the shipping application on demand, with no probe involved: work in
 the query editor, kill the process, and the file will not open. Pages reach the disk
 by eviction with nothing ordering them against the header, so any interruption can
-leave the two at different vintages. That is a durability question for the storage
-layer rather than for the application, and it is not fixed here.
+leave the two at different vintages.
+
+**And it belongs to ONE configuration, which is the default.** Measured 2026-08-07,
+the same probe and the same workload each time - 400 rows and 240 DDL statements at
+`CacheSize=8`, so the file is far larger than the cache and eviction is certain -
+each run ended with `Environment.Exit(0)`, which runs no `Dispose` and no flush:
+
+| configuration | header vs file | reopen | rows |
+|---|---|---|---|
+| **MVCC - the default** | **52 against 635** | **BROKEN** | - |
+| `MVCC=false` | 14 = 14 | opens | 400 of 400 |
+| `MVCC=false;Journal=wal` | 14 = 14 | opens | 400 of 400 |
+| `MVCC=false;Journal=rollback` | 14 = 14 | opens | 400 of 400 |
+
+So the transactional store **already survives an abrupt end** at a cache size that
+forces eviction, and it does so with no journal at all. The MVCC store does not.
+
+**The two journals cannot be combined with MVCC**, and the builder says so out loud:
+*"A transaction journal cannot be combined with MVCC: the MVCC store keeps its own
+versions and takes no journal."* So the default configuration has no crash-recovery
+mechanism, and no setting turns one on.
+
+The first comparison of these journal modes was **worthless and looked fine**: at the
+original scale a non-MVCC database is two pages, so nothing is ever evicted and every
+arm came back clean, journal or no journal. What the scale bought was the ability to
+fail. Nothing about a passing run says which of the two it was.
+
+Whether this is fixed in the storage layer or recorded as a deliberate limit of the
+MVCC store is **not decided here**.
 
 ---
 
