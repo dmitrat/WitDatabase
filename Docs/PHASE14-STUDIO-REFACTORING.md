@@ -1025,6 +1025,179 @@ And the sixth is the corruption above, which is the reason the rebuild is not ar
 
 ---
 
+## Stage 9 - the dialogs, the settings and the language
+
+Section 6 and the parts of section 9 the plan's phase 9 names. The plan gives no readiness criterion
+for it, so this one was written first and everything below is measured against it:
+
+> **A dialog asks only what Studio cannot find out for itself; a setting takes effect at the moment it
+> is changed; and a value the interface shows can be pasted into SQL unchanged - in either language.**
+
+The last clause carries the control, and it is why the language and the formats are one stage rather
+than two: **switching the language must change no value, no identifier, no SQL, no plan operator and
+no engine message.** A localisation nobody can prove is separable from the data is a localisation that
+will eventually format a decimal.
+
+### Three defects that had shipped, and none of them was new work
+
+They were found by building the stage rather than by looking for them, which is the argument for
+re-measuring a design against the engine before implementing it.
+
+**The grid drew values in the machine's locale.** `SqlValueFormatter.FormatForDisplay` returned
+numbers and dates unchanged, with a comment saying the DataGrid would render them "culture-aware". It
+does: on a ru-RU machine a `DECIMAL` was drawn as `4812,50` and a `DATETIME` as `28.06.2026`, and
+neither pastes into a statement. **Four cases were quietly agreeing with it** -
+`ConvertDecimalReturnsOriginalValue` and its three neighbours asserted that the value came back
+untouched, with the culture-aware comment attached as the reason. They passed because the suite has
+only ever run under en-US.
+
+**A ChaCha20-Poly1305 database could not be opened by Studio at all.** `BuildConnectionString` wrote
+the literal `Encryption=aes-gcm` into every string it produced, so the provider was handed the wrong
+algorithm and answered that the password was wrong - the failure was reported to the user as their own
+mistake. Measured both ways: a ChaCha20 database built with the engine now opens through Studio's own
+connection, and naming AES-GCM for the same file and the same password does not.
+
+**The name chosen in the Open dialog reached nothing.** `DatabaseSession` always derived its
+`DisplayName` from the file name, so the name box was decoration: the session, the tab and the saved
+connection all showed `sales.witdb` whatever was typed. Caught by a case asking for the name back
+after a reopen.
+
+### What the engine can say about a file before it is opened, which is less than the design assumed
+
+Section 6.2 shows one line under the path box - *"found a B-Tree database, 84 MB, encrypted AES-GCM,
+MVCC"*. Measured, that line is obtainable only for an **unencrypted** database. `StorageDetector` reads
+the header out of the first page, and in an encrypted database that page is encrypted: it answers
+`StoreType = "btree"` (an assumption, not a reading), `EncryptionProvider = "unknown"`, and it cannot
+see MVCC, the journal or the page size at all.
+
+Worse: **a file that is not a database fails the same magic-byte check**, so it comes back looking
+exactly like an encrypted one. Studio would have asked for the password to a text file and then blamed
+the password.
+
+`StorageProbe` therefore answers with what is actually known - `NotFound`, `NotADatabase`, `Database`
+or `Unreadable` - and the dialog has three states rather than one.
+
+**A control went red here and the design was wrong, not the control.** The probe first had two states
+for a file with no magic bytes, "encrypted" and "encrypted, but possibly not a database", and a case
+was written to prove the second was earned. It failed against a *real* encrypted database, because
+encryption is exactly what makes the header unreadable - there is no reading that separates them. The
+two states became one and the dialog says both. What is left is the half that can be true: a readable
+database is not reported as unreadable.
+
+### The settings apply themselves (WS-52)
+
+The window holds **no copy of any setting**. It binds to the one live `Settings` object the whole
+application reads, so a change is the change; there is no Save and no Cancel, because there is nothing
+to write back and therefore nothing to forget to write back. `Settings` grew from 8 properties to 28
+in the design's five sections, and every one of them raises `PropertyChanged` - which is what
+"applied immediately" is implemented *with*.
+
+Three sabotages, each red in exactly the case that exists for it: persisting on change removed;
+the language unwired from the setting; and reset **swapping** the live object instead of copying onto
+it. The third is the trap the design avoids - every open window would be left reading an object nobody
+writes to any more, which on screen is indistinguishable from a setting that stopped applying.
+
+`About` is a section rather than a window (WS-53); `AboutViewModel` and `AboutDialog` are deleted. The
+file format version it reports is read from the engine's own constant - **1.1**, where the mock-up says
+"version 9".
+
+### The language, and the two ways a localisation stops being one
+
+Two catalogues **embedded in the assembly** rather than shipped as satellite assemblies: Studio is
+packed for three platforms, and a satellite that fails to arrive turns the interface English with no
+error anywhere - a failure indistinguishable from nobody having translated it. A missing key renders as
+itself, so it is visible on screen and greppable.
+
+Every case was run against a broken catalogue before being trusted:
+
+- a Russian catalogue that is a **copy** of the English one: red, 52 of 52 byte-identical. That is the
+  control for "every key exists in both languages", which a copy passes perfectly;
+- a key removed from Russian: red; the three Russian plural forms collapsed to one: red;
+- an engine term translated - `B-Tree` as "Б-дерево": red. **The first attempt at this sabotage stayed
+  green, and the sabotage was wrong rather than the test**: it translated a term in a string whose
+  English side does not carry it.
+
+**The WS-65 case had to be rewritten because it was powerless.** Asked of an integer count it stayed
+green with the service switched to `CultureInfo.CurrentCulture` under ru-RU, because the default
+numeric format inserts no group separator in any culture. Only a decimal separator tells them apart -
+`4812.50` against `4812,50` - which is exactly the value that will not paste. Now red both ways:
+through the thread culture and through the interface language.
+
+### The storage is one choice of three (WS-48)
+
+The Create dialog's storage used to be two independent axes - a store, and a file/memory switch - which
+is what allowed "in memory + LSM", a combination the engine answered by writing a database into the
+process working directory. Stage 0 refused it. Stage 9 removed the ability to express it, and **the
+refusal is deleted with a comment saying why: a check that cannot be reached is a comment pretending to
+be code.** The guard that can still be wrong is the other direction and is measured - naming a store
+while the database is in memory must not put it back on disk.
+
+The storage decides the next question, which is why it is asked first: a file, an empty folder, or
+nothing at all.
+
+### The connection colour finally appears somewhere
+
+Every tab has carried a `ConnectionColorIndex` since stage 2 and **nothing drew it**, so the only sign
+a tab belonged to another database was a greyed-out Execute. One palette in `ConnectionColors` now
+feeds the swatch row where the colour is chosen and the stripe on the tab where it is read. A picker
+whose colour appeared nowhere would have been decoration.
+
+### The saved connections (WS-68)
+
+`connections.json` beside the settings - beside rather than inside, because the two are cleared for
+different reasons. Two of its cases are about what the window does not do:
+
+- **"Remove" removes from the LIST**, and there is a case asserting the database is still on disk
+  afterwards. Deleting a database from the interface that manages databases is a function that will one
+  day be pressed without looking, so it is not offered;
+- **a missing database is marked and kept.** The disk may not be mounted, and a row that vanished on
+  its own is indistinguishable from lost settings - after which someone creates a new database over a
+  path they believe is empty. The control is that a database which is there is not marked.
+
+**No password reaches the file and there is no field for one.** The case reads the JSON rather than the
+model, because the model is not what leaks. The credential store of WS-68's second half is still
+deferred; `PasswordIsStored` is a note, and today it is only ever false.
+
+### How it was measured, and three defects the running application had
+
+The two rebuilt dialogs were driven in the shipping executable, which has found the defects no
+ViewModel could in every stage of this phase. Three again:
+
+1. **A path that was TYPED was never recognised.** The probe ran only from the two Browse buttons, so a
+   path typed, pasted, or arriving from the recent list produced no sentence at all - the commonest way
+   a path arrives. Every ViewModel case called `ApplyAutoDetectedSettings` itself, so the suite could
+   not see it;
+2. the three storage cards announced as **`Avalonia.Controls.StackPanel`**, and
+3. the six colour swatches as **`Avalonia.Controls.Border`** - six identical unnamed items.
+
+Both of the last two carried `AutomationId`s. This is the defect `AutomationSurfaceTests` exists for,
+and **the guard could not see it: it only ever asked about the Id, never about the NAME.** It now has a
+second rule - an interactive element whose content is a *panel* rather than text must carry an
+`AutomationProperties.Name` - plus `ListBoxItem` in its element list and a control that the new rule is
+not measuring an empty set. The first draft of the rule asked for a Name from anything with children
+and named forty menu items that announce perfectly well from their `Header`.
+
+Two traps in the tooling, both of which produced a wrong reading before they were understood:
+
+- **MSBuild reads `.en` and `.ru` in a file name as a CULTURE.** `Strings.en.json` and `Strings.ru.json`
+  both came out as the single manifest resource `…Resources.Strings.json`, one silently overwriting the
+  other. `GetManifestResourceNames` listed the two `.xshd` files and nothing else;
+- **`Copy-Item` preserves the source's timestamp**, so restoring a file after a sabotage leaves the
+  incremental build convinced nothing changed. One sabotage looked caught and another looked uncaught
+  for that reason alone, until the built assembly was read rather than the source.
+
+### Tests
+
+550 -> 640.
+
+### Left for the rest of the stage
+
+The import wizard (WS-50), the export window (WS-51), and the sweep of the remaining markup strings
+into the catalogue with a lint that refuses new hardcoded text. `CheckBox` and `TabItem` are still
+outside the automation guard.
+
+---
+
 ## Findings for the engine, not fixed here
 **A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
 class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner
