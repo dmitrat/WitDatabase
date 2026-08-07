@@ -1186,15 +1186,118 @@ Two traps in the tooling, both of which produced a wrong reading before they wer
   incremental build convinced nothing changed. One sabotage looked caught and another looked uncaught
   for that reason alone, until the built assembly was read rather than the source.
 
+### The saved connections (WS-68)
+
+`connections.json` beside the settings. Two of its cases are about what the window does NOT do, and
+both are the reason it has this shape:
+
+- **"Remove" removes from the LIST**, and there is a case asserting the database is still on disk
+  afterwards. Deleting a database from the interface that manages databases is a function that will
+  one day be pressed without looking, so it is not offered;
+- **a missing database is marked and kept.** The disk may not be mounted, and a row that vanished on
+  its own is indistinguishable from lost settings - after which someone creates a new database over a
+  path they believe is empty. The control is that a database which is there is not marked.
+
+**No password reaches the file and there is no field for one.** The case reads the JSON rather than
+the model, because the model is not what leaks. The credential store of WS-68's second half is still
+deferred; `PasswordIsStored` is a note, and today it is only ever false.
+
+And the window found a defect in the work of the commit before it: **the name chosen in the Open
+dialog reached nothing.** `DatabaseSession` always derived its `DisplayName` from the file name, so
+the name box added for WS-46 was decoration - the session, the tab and the saved connection all showed
+`sales.witdb` whatever was typed.
+
+### The import, in batches (WS-50)
+
+The rule that shaped it is the design's: **batches, not one transaction.** A million rows in one
+transaction is a million versions in MVCC and a journal that grows until it stops, and a cancel would
+then throw away work the user watched happen.
+
+The old code did the opposite - it wrapped the whole file in a transaction unless `ContinueOnError`
+was set, one flag meaning "keep going past a bad row" AND "do not be atomic" at once. That is now
+three separate choices, and all-or-nothing survives as an opt-in: the default must not be the mode
+that fails on the largest file.
+
+**The design's third option was measured before it was offered.** It says the update is done with
+`MERGE`; `ImportConflictProbeTests` executes it and both halves hold - the matched row is updated and
+the unmatched one inserted. An update path that only updated would silently drop every new row in the
+file. Unlike three of stage 8's claims about `ALTER TABLE`, this one was true.
+
+Each answer is measured by reading the VALUES back: Skip leaves the existing row and **still imports
+the rest**, which is the whole difference from Abort and exactly what a count cannot see. Two
+sabotages - one transaction again, and Abort made not to stop - turn the right cases red.
+
+Every rejected row is kept with its line, the engine's own message and the line itself; the window
+shows ten and the report writes all of them. **The line is the one IN THE FILE**, not the data row
+number: they differ by one whenever there is a header, and a report saying "row 412" that points at
+line 413 costs somebody ten minutes. The first version of that case asserted the data row number, and
+the number was the thing to decide rather than the code.
+
+### The export, and where a dump's order actually matters (WS-51)
+
+The scope is chosen first and starts on what the user HAS - a selection if there is one, the page
+otherwise. Starting on "everything" is how an export of one row becomes an export of four million. The
+three counts are three different numbers, and the third is easy to get wrong: the grid pages
+server-side since stage 7, so the page is not the table. Markdown is added and escapes what would
+break the table.
+
+The whole-database dump is a WitSQL script that says in its first two lines what it is, because the
+difference from a byte copy is the thing people get wrong. The case that matters RUNS it into a
+second, empty database and reads the rows back.
+
+**And its control changed what the order is for.** It was written as "a table referencing one that
+does not exist yet is refused" - and this engine ACCEPTS that. The dependency sort does not protect
+the schema; it protects the DATA, because an INSERT whose foreign key points at a row that is not
+there IS refused. Both halves are in the case, since a refusal on its own could be about anything.
+
+A cycle does not hang and does not lose a table: two tables referencing each other are legal, cannot
+be ordered, and are written anyway and named.
+
+### The language, in the running application
+
+The shell is swept into the catalogue - 62 keys, the whole menu, the toolbar with its tooltips, the
+welcome screen - and the application was switched to Russian to see it. What stayed English is as
+important as what changed: the paths, `Ctrl+K` and `Ctrl+O`, and the product name.
+
+**The lint names the fifteen views that are not swept yet rather than implying them.** The rule is
+real today for everything already done, so a new hardcoded caption in a swept view goes red
+immediately; a lint that waits for the whole sweep guards nothing for as long as the sweep takes. A
+second case keeps the list honest, and a control refuses to let almost every view be excused at once.
+
+**What the lint does not cover is written into it**, because switching to Russian showed it: text
+built in a ViewModel - the status bar's "Ready", a notification's summary - is outside a markup lint,
+and so is `AutomationProperties.Name`, which a screen reader announces and which is English in every
+view.
+
+### Three more defects from the running application, and the guard that could not see two of them
+
+The wizard was driven after it was built:
+
+1. **the step strip did not say which step you were on.** The bool converters were bound to `Opacity`,
+   which is a double: the binding failed, fell through to its FallbackValue of 1, and all three labels
+   were drawn identically. It looked completely normal in a screenshot;
+2. **the column mapping appeared on step 2 as well as step 3**, empty - bound to "not the first step";
+3. two checkboxes announced as **`Avalonia.Controls.StackPanel`** - the same defect as the storage
+   cards and the colour swatches, in the one element type the guard has never covered. `CheckBox` was
+   written down as outside it back in stage 8.
+
+The guard covers `CheckBox` now, for the NAME rule only: a checkbox announces from its Content and is
+found by that text, so requiring an Id from the dozen already shipping would be a sweep with no defect
+behind it. The widened guard flagged exactly the two the application had shown and nothing else, which
+is the measurement that the rule is the right width.
+
+**Six defects across two rounds of driving the executable, and no ViewModel test could have seen any
+of them.** That is now true of every stage of this phase.
+
 ### Tests
 
-550 -> 640.
+550 -> 672.
 
 ### Left for the rest of the stage
 
-The import wizard (WS-50), the export window (WS-51), and the sweep of the remaining markup strings
-into the catalogue with a lint that refuses new hardcoded text. `CheckBox` and `TabItem` are still
-outside the automation guard.
+The fifteen views on the sweep list, and with them the ViewModel strings and the automation names,
+which a markup lint cannot reach. `TabItem` is still outside the automation guard. WS-68's credential
+store is still deferred, so a saved connection still asks for its password every time.
 
 ---
 
