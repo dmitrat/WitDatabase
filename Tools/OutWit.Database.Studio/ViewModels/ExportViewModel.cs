@@ -21,7 +21,51 @@ public enum ExportFormat
 {
     Csv,
     Json,
-    Sql
+    Sql,
+
+    /// <summary>
+    /// A Markdown table. Added in stage 9 because it is what the design offers and because it is what
+    /// people actually paste into an issue - the one format here that is read rather than loaded.
+    /// </summary>
+    Markdown
+}
+
+/// <summary>
+/// What is exported (WS-51). <b>The scope is chosen first</b>, because it is the only thing that
+/// differs between exporting twelve selected rows and exporting a whole table, and asking for it last
+/// is what makes someone export the wrong thing twice.
+/// </summary>
+public enum ExportScope
+{
+    /// <summary>The rows selected in the grid.</summary>
+    Selection,
+
+    /// <summary>The page on screen - which is what the grid actually holds.</summary>
+    Page,
+
+    /// <summary>
+    /// Every row. For a table that is a new query; for a query result it is the page, because a result
+    /// set has no "rest" to fetch - the statement would have to be run again.
+    /// </summary>
+    Everything
+}
+
+/// <summary>
+/// Which scope is chosen, for the markup. One converter per value rather than one taking a parameter,
+/// for the reason given on <c>SettingsSection</c>: with compiled bindings a ConverterParameter is an
+/// untyped string nothing checks, and a renamed value would leave a radio button that never lights up
+/// and no build error anywhere.
+/// </summary>
+public static class ExportScopes
+{
+    public static readonly Avalonia.Data.Converters.IValueConverter IsSelection =
+        new Avalonia.Data.Converters.FuncValueConverter<ExportScope, bool>(scope => scope == ExportScope.Selection);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter IsPage =
+        new Avalonia.Data.Converters.FuncValueConverter<ExportScope, bool>(scope => scope == ExportScope.Page);
+
+    public static readonly Avalonia.Data.Converters.IValueConverter IsEverything =
+        new Avalonia.Data.Converters.FuncValueConverter<ExportScope, bool>(scope => scope == ExportScope.Everything);
 }
 
 /// <summary>
@@ -76,6 +120,8 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
         ExportCommand = new RelayCommandAsync(ExportAsync);
         CancelCommand = new RelayCommand(Cancel);
         CancelExportCommand = new RelayCommand(CancelExport);
+        ChooseScopeCommand = new RelayCommand<string>(scope =>
+            SelectedScope = Enum.TryParse<ExportScope>(scope, out var parsed) ? parsed : SelectedScope);
     }
 
     private void InitEvents()
@@ -114,10 +160,56 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     public void SetDataSource(DataTable data, string sourceName)
     {
+        SetDataSource(data, sourceName, selection: null, rowsInSource: data.Rows.Count);
+    }
+
+    /// <summary>
+    /// The grid's three answers at once (WS-51): what is selected, what is on the page, and how many
+    /// rows there are altogether.
+    ///
+    /// <para>
+    /// <paramref name="rowsInSource"/> is what the table HAS, which is not what the page holds - the
+    /// grid pages server-side since stage 7. Passing the page count for it would make "All" a lie in
+    /// the one place a person checks before pressing Export.
+    /// </para>
+    /// </summary>
+    public void SetDataSource(DataTable data, string sourceName, IReadOnlyList<DataRowView>? selection,
+        int rowsInSource)
+    {
         DataToExport = data;
         SourceName = sourceName;
         IsQueryResult = true;
-        TotalRows = data.Rows.Count;
+        Selection = selection ?? [];
+        RowsInSource = rowsInSource < 0 ? data.Rows.Count : rowsInSource;
+        TotalRows = RowsInSource;
+
+        // The scope starts on whatever the user has actually got: a selection if there is one, the
+        // page otherwise. Starting on "everything" is how an export of one row becomes an export of
+        // four million.
+        SelectedScope = Selection.Count > 0 ? ExportScope.Selection : ExportScope.Page;
+
+        OnPropertyChanged(nameof(SelectionCount));
+        OnPropertyChanged(nameof(PageCount));
+        OnPropertyChanged(nameof(EverythingCount));
+        OnPropertyChanged(nameof(CanExportSelection));
+    }
+
+    /// <summary>
+    /// The rows the chosen scope covers, taken from what the grid handed over. <c>Everything</c> for a
+    /// TABLE is answered by a new query in <c>ExportAsync</c>; here it is the page, which is all a
+    /// query result has.
+    /// </summary>
+    private DataTable RowsForScope(DataTable page)
+    {
+        if (SelectedScope != ExportScope.Selection || Selection.Count == 0)
+            return page;
+
+        var selected = page.Clone();
+
+        foreach (var row in Selection)
+            selected.ImportRow(row.Row);
+
+        return selected;
     }
 
     private async Task BrowseAsync()
@@ -168,7 +260,7 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
 
             if (IsQueryResult && DataToExport != null)
             {
-                dataToExport = DataToExport;
+                dataToExport = RowsForScope(DataToExport);
             }
             else if (!string.IsNullOrEmpty(SelectedTable))
             {
@@ -208,6 +300,9 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
                     break;
                 case ExportFormat.Sql:
                     await ExportToSqlWithProgressAsync(dataToExport, tableName, OutputPath, ct);
+                    break;
+                case ExportFormat.Markdown:
+                    await ExportToMarkdownAsync(dataToExport, OutputPath, ct);
                     break;
             }
 
@@ -362,6 +457,44 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
         return field;
     }
 
+    /// <summary>
+    /// A Markdown table (WS-51). The one format here meant to be READ rather than loaded, so a pipe
+    /// inside a value is escaped and a newline becomes a space - a broken table is worse than a value
+    /// that lost its line break, and anyone who needs the value exactly has three other formats.
+    /// </summary>
+    private async Task ExportToMarkdownAsync(DataTable data, string path, CancellationToken ct)
+    {
+        var text = new StringBuilder();
+
+        var headers = data.Columns.Cast<DataColumn>().Select(column => Cell(column.ColumnName)).ToList();
+
+        text.Append("| ").Append(string.Join(" | ", headers)).AppendLine(" |");
+        text.Append("| ").Append(string.Join(" | ", headers.Select(_ => "---"))).AppendLine(" |");
+
+        foreach (DataRow row in data.Rows)
+        {
+            ct.ThrowIfCancellationRequested();
+
+            text.Append("| ")
+                .Append(string.Join(" | ", row.ItemArray.Select(value => Cell(FormatValue(value)))))
+                .AppendLine(" |");
+
+            RowsExported++;
+        }
+
+        await File.WriteAllTextAsync(path, text.ToString(), ct);
+
+        return;
+
+        static string Cell(string? value)
+        {
+            return (value ?? string.Empty)
+                .Replace("|", "\\|", StringComparison.Ordinal)
+                .Replace("\r\n", " ", StringComparison.Ordinal)
+                .Replace("\n", " ", StringComparison.Ordinal);
+        }
+    }
+
     private string FormatValue(object? value)
     {
         if (value == null || value == DBNull.Value)
@@ -513,6 +646,31 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     [Notify]
     public ExportFormat SelectedFormat { get; set; }
+
+    /// <summary>What is exported (WS-51). Chosen first, and started on what the user has.</summary>
+    [Notify]
+    public ExportScope SelectedScope { get; set; } = ExportScope.Page;
+
+    /// <summary>Picks the scope from the markup.</summary>
+    public ICommand ChooseScopeCommand { get; private set; } = null!;
+
+    /// <summary>The rows the grid handed over as selected.</summary>
+    public IReadOnlyList<DataRowView> Selection { get; private set; } = [];
+
+    /// <summary>How many rows the SOURCE has - not how many the page holds.</summary>
+    public int RowsInSource { get; private set; }
+
+    public int SelectionCount => Selection.Count;
+
+    public int PageCount => DataToExport?.Rows.Count ?? 0;
+
+    public int EverythingCount => RowsInSource;
+
+    /// <summary>
+    /// Whether "Selection" can be chosen at all. An empty selection offered as a scope is a button
+    /// that writes an empty file.
+    /// </summary>
+    public bool CanExportSelection => Selection.Count > 0;
 
     /// <summary>
     /// Whether to include column headers (CSV only).

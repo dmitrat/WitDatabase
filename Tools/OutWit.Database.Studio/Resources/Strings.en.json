@@ -36,6 +36,7 @@
   "Dialog.Open.EncryptedOrNot": "Encrypted, or not a database at all · {0}. The two look the same from outside.",
   "Dialog.Open.WrongPassword": "Could not decrypt: wrong password, or the file is damaged.",
 
+  "Dialog.Export.What": "What",
   "Dialog.Connections.Title": "Connections",
   "Dialog.Connections.NameAndPath": "NAME AND PATH",
   "Dialog.Connections.Storage": "STORAGE",

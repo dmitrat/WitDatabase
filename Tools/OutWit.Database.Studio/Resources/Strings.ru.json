@@ -36,6 +36,7 @@
   "Dialog.Open.EncryptedOrNot": "Зашифрована — или вовсе не база · {0}. Снаружи эти два случая неразличимы.",
   "Dialog.Open.WrongPassword": "Не удалось расшифровать: неверный пароль или файл повреждён.",
 
+  "Dialog.Export.What": "Что",
   "Dialog.Connections.Title": "Подключения",
   "Dialog.Connections.NameAndPath": "ИМЯ И ПУТЬ",
   "Dialog.Connections.Storage": "ХРАНИЛИЩЕ",
