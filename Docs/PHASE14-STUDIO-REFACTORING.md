@@ -1669,6 +1669,21 @@ it says otherwise.
 5. **The tree's row count did not follow an insert.** Fifty rows went in through the editor and the
    node still said 39 until the database was reopened. Probably the deliberate laziness of the counts
    with their deadline (`WS-16`), but it reads as a disagreement on screen and has not been checked.
+6. **THE DUMP IS NOT ROUND-TRIPPABLE, and that is the one thing a dump is for.** Found by executing
+   one back into an empty database for the first time - the transfer `WS-58` is built on. Two defects,
+   one fixed and one open:
+   - **fixed here:** every index came out of the catalogue as `CREATE UNIQUE INDEX`, because
+     `IS_UNIQUE` is published as the string `"YES"`/`"NO"` and was being read with `GetBoolean`. A
+     dumped database whose non-unique index holds the duplicate values a non-unique index is *for*
+     could not be restored at all;
+   - **open:** a TRIGGER is cut in two. The script ends with
+     `INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);` as a statement of its own - the body,
+     loose from its trigger - and the engine refuses it with "Column 'Id' not found". Pinned by
+     `ADatabaseWithATriggerCannotBeMigratedYetAsync`, which is labelled as pinning a defect and says
+     what it should be replaced by when the splitter or the definition is fixed.
+
+   The shape is stage 8's, one layer along: a dump that nobody has ever executed is a claim, and it
+   had been shipping since stage 9.
 
 ---
 

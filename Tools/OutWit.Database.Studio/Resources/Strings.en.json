@@ -954,5 +954,9 @@
   "Count.Parts": {
     "one": "{0} part",
     "other": "{0} parts"
-  }
+  },
+  "Password.Step.Creating": "The new database is created · {0}",
+  "Password.Step.Reading": "The schema and the data are read out",
+  "Password.Step.Writing": "They are written into the new database",
+  "Password.Step.Verifying": "Every table is counted on both sides"
 }

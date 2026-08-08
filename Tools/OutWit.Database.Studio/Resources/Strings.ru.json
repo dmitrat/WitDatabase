@@ -976,5 +976,9 @@
     "one": "{0} часть",
     "few": "{0} части",
     "many": "{0} частей"
-  }
+  },
+  "Password.Step.Creating": "Новая база создана · {0}",
+  "Password.Step.Reading": "Схема и данные прочитаны",
+  "Password.Step.Writing": "Записаны в новую базу",
+  "Password.Step.Verifying": "Каждая таблица посчитана с обеих сторон"
 }
