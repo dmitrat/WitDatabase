@@ -1,4 +1,6 @@
 using System.Text.RegularExpressions;
+using OutWit.Database.Studio.Models;
+using OutWit.Database.Studio.Services;
 using OutWit.Database.Studio.Services.Localization;
 
 namespace OutWit.Database.Studio.Tests;
@@ -120,7 +122,7 @@ public class LocalizationCoverageTests
             + @"|Description|Watermark|PlaceholderText|Warning|HeaderText|Subtitle|KeyNote|PlannerNote"
             + @"|UnindexedKeyWarning|ConflictSummary|PlanMessage|HistoryMessage|BackupWarning"
             + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason"
-            + @"|RowCountText))"
+            + @"|RowCountText|Display))"
             + @"(\.Text)?\s*=>?(?!=)[^;""]{0,160}?[$]?""((?:[^""\\]|\\.)*)""",
             RegexOptions.Compiled);
 
@@ -149,6 +151,13 @@ public class LocalizationCoverageTests
         // SQL, whole or in part: a keyword, a clause, or an example of the language shown in a
         // placeholder. Translating one would be teaching the user a language the engine does not speak.
         "DDL", "EXPLAIN", "NOT NULL", "PRIMARY KEY", "AUTOINCREMENT", "UNIQUE", "INCLUDE",
+
+        // The two-word clause keywords, for the same reason as NOT NULL above and added when rule 4
+        // began reading the formatter's table of them. Translating GROUP BY would be teaching the user
+        // a language the engine does not speak.
+        "ORDER BY", "GROUP BY", "INNER JOIN", "LEFT JOIN", "RIGHT JOIN", "FULL JOIN", "CROSS JOIN",
+        "INSTEAD OF", "FOR EACH STATEMENT", "DROP COLUMN", "ADD COLUMN", "ALTER COLUMN",
+
         "FOR EACH ROW", "SELECT * FROM TableName WHERE ...", "NEW.Total > 100",
         "INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);", "Status <> 'archived'",
         "IX_Orders_CreatedAt", "Line,Reason,Text",
@@ -167,10 +176,43 @@ public class LocalizationCoverageTests
             + @"|Description|Watermark|PlaceholderText|Warning|HeaderText|Subtitle|KeyNote|PlannerNote"
             + @"|UnindexedKeyWarning|ConflictSummary|PlanMessage|HistoryMessage|BackupWarning"
             + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason"
-            + @"|RowCountText)(\.Text)?\s*=>?(?!=)"
+            + @"|RowCountText|Display)(\.Text)?\s*=>?(?!=)"
             + @"|(Notifications\.\w+|Confirmations?\.\w+|Dialogs\.\w+|new FileFilter"
             + @"|Set\w*Status|Describe\w*)\(",
             RegexOptions.Compiled);
+
+    /// <summary>
+    /// Rule 4: a string inside a static DATA TABLE. Every literal in one has to be a catalogue key.
+    ///
+    /// <para>
+    /// <b>Why this is a rule of its own, and why it is about values rather than destinations.</b> Rules
+    /// 1 to 3 all key on a NAME - an attribute, an attached property, the identifier before an <c>=</c>.
+    /// A positional record argument has no name in front of it: <c>new("Add a column",
+    /// SchemaEditCategory.InPlace, "ADD COLUMN, including …")</c> is text on its way to the interface
+    /// with nothing for the other three rules to match on. Eleven rows of it sat in
+    /// <c>SchemaCapabilities.Matrix</c> through the whole sweep, plus four more in
+    /// <c>NotInTheEngine</c>, and every rule passed over every one of them.
+    /// </para>
+    /// <para>
+    /// So this rule reads a place instead of a shape: a <c>static</c> collection property in
+    /// <c>Services</c> is a data table, data tables hold keys, and a key has no spaces in it. That
+    /// generalises - the next such table gets the rule for free, whatever it decides to call its
+    /// parameters - and it is checkable in the other direction too, because a key can be looked up.
+    /// <see cref="EveryKeyInADataTableIsInEveryCatalogueTest"/> is that half.
+    /// </para>
+    /// </summary>
+    /// <remarks>
+    /// The body runs to the <c>];</c> that ends the declaration rather than to the first <c>]</c>:
+    /// <c>SqlFormatter.BREAK_BEFORE</c> is a <c>string[][]</c> and the first version of this rule
+    /// stopped at its first inner array, so it read two literals out of thirty and reported the table
+    /// clean. Measured, not foreseen - the surface count went up when it was fixed.
+    /// </remarks>
+    private static readonly Regex DATA_TABLE =
+        new(@"static\s+(?:readonly\s+)?[\w<>,?\s\[\]]*\b(\w+)\s*(?:\{\s*get;\s*\}\s*)?=\s*\[(?<body>.*?)\]\s*;",
+            RegexOptions.Compiled | RegexOptions.Singleline);
+
+    private static readonly Regex STRING_LITERAL =
+        new(@"""((?:[^""\\]|\\.)*)""", RegexOptions.Compiled);
 
     /// <summary>
     /// A lookup in the catalogue, which is the ANSWER to this rule rather than an instance of what it
@@ -399,6 +441,114 @@ public class LocalizationCoverageTests
     }
 
     /// <summary>
+    /// A data table holds keys, not sentences (rule 4).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The class this exists for: <c>SchemaCapabilities.Matrix</c> carried eleven rows of English as
+    /// POSITIONAL RECORD ARGUMENTS, and rules 1 to 3 all need a name in front of the literal. Found on
+    /// 2026-08-08 by reading the type rather than by running the rule, which is the fourth time a hole
+    /// in this lint has been found from the outside.
+    /// </para>
+    /// <para>
+    /// A literal with a space in it is prose; a catalogue key never has one. SQL is not Studio's text
+    /// and is exempt by the rule WS-64 already has - which is a category, not an excuse written for
+    /// this rule.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void NoDataTableCarriesASentenceTest()
+    {
+        var sentences = new List<string>();
+        var read = 0;
+
+        foreach (var file in Sources())
+        {
+            var code = File.ReadAllText(file);
+
+            foreach (Match table in DATA_TABLE.Matches(code))
+            {
+                foreach (Match literal in STRING_LITERAL.Matches(table.Groups["body"].Value))
+                {
+                    read++;
+
+                    var value = literal.Groups[1].Value;
+
+                    // A key has no spaces; prose does. The engine's own words are not Studio's text.
+                    if (!value.Contains(' ') || !IsStudioText(value))
+                        continue;
+
+                    sentences.Add($"{Path.GetFileName(file)} {table.Groups[1].Value}: "
+                        + $"\"{Shorten(value)}\"");
+                }
+            }
+        }
+
+        Assert.Multiple(() =>
+        {
+            // CONTROL: the tables are found by a regex over declarations, so a syntax this rule does
+            // not recognise reads zero literals and passes in silence - which is what "no prose left"
+            // looks like too.
+            // 122 literals as this is written, and it was 99 before the body regex learned to read
+            // past a nested array. The threshold is well under both: the number moves whenever a table
+            // is added, and what it is for is telling "nothing left to find" from "nothing read".
+            Assert.That(read, Is.GreaterThan(80),
+                "CONTROL: almost no data table was read, so this rule is guarding nothing");
+
+            Assert.That(sentences, Is.Empty,
+                "a data table holds catalogue keys; these are sentences, and no rule about "
+                + "destinations can see them because a positional argument has no destination:"
+                + Environment.NewLine + string.Join(Environment.NewLine, sentences));
+        });
+    }
+
+    /// <summary>
+    /// And every key a data table names is in EVERY catalogue.
+    /// </summary>
+    /// <remarks>
+    /// The other half of rule 4, and the lesson of "a key built from a name fails by printing itself" -
+    /// three times in one day on 2026-08-08. Turning prose into keys moves the failure from "English on
+    /// a Russian screen" to "<c>Schema.Cap.AddColumn</c> on both", which is worse, and only a lookup
+    /// catches it.
+    /// </remarks>
+    [Test]
+    public void EveryKeyInADataTableIsInEveryCatalogueTest()
+    {
+        var localization = new LocalizationService();
+
+        var keys = SchemaCapabilities.Matrix
+            .SelectMany(capability => new[] { capability.ChangeKey, capability.ReasonKey })
+            .Concat(SchemaCapabilities.NotInTheEngine)
+            .Concat(Enum.GetValues<SchemaEditCategory>().Select(SchemaCapabilities.MarkerOf))
+            .Concat(Enum.GetValues<SchemaEditKind>().Select(SchemaCapabilities.ReasonOf))
+            .Distinct()
+            .ToList();
+
+        var missing = new List<string>();
+
+        foreach (var language in localization.Available)
+        {
+            var texts = localization.Texts(language.Code);
+
+            missing.AddRange(keys
+                .Where(key => !texts.ContainsKey(key))
+                .Select(key => $"{language.Code}: {key}"));
+        }
+
+        Assert.Multiple(() =>
+        {
+            // CONTROL: an empty key list would pass this perfectly, and the enums are walked rather
+            // than listed precisely so a new SchemaEditKind cannot be added without its words.
+            Assert.That(keys, Has.Count.GreaterThan(30),
+                "CONTROL: almost no keys were collected, so this is checking nothing");
+
+            Assert.That(missing, Is.Empty,
+                "these keys have no text, so the interface would show the key itself:"
+                + Environment.NewLine + string.Join(Environment.NewLine, missing));
+        });
+    }
+
+    /// <summary>
     /// The three rules, measured against text rather than against the repository.
     ///
     /// <para>
@@ -466,12 +616,42 @@ public class LocalizationCoverageTests
             Assert.That(Caught(VIEWMODEL_ASSIGNMENT, @"var noteworthyThing = ""x y"";"), Is.False,
                 "a name that merely contains a listed word is not a destination");
 
+            // The tab heading, verbatim: an expression-bodied switch whose destination ends in
+            // "Display". Found in the running application on 2026-08-08 - the structure tab said
+            // "Table Customers" over a Russian interface - and the list did not have the word in it.
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT,
+                    "public string ObjectTypeDisplay => ObjectType switch" + Environment.NewLine
+                    + @"    { DatabaseNodeType.Table => ""Table"","), Is.True,
+                "a heading built by a switch is still a heading");
+
             Assert.That(Caught(VIEWMODEL_CALL, @"Notifications.Information(""Database dumped"", path);"), Is.True,
                 "a notification is read by a person");
             Assert.That(Caught(VIEWMODEL_CALL, @"new FileFilter(""All Files"", [""*.*""]);"), Is.True,
                 "the name of a filter is read by a person");
             Assert.That(Caught(VIEWMODEL_CALL, @"Notifications.Information(Localization[""X""], path);"), Is.False,
                 "a notification from the catalogue is the point of the rule");
+
+            // Rule 4, both directions. The first line is verbatim what SchemaCapabilities.Matrix held
+            // through the whole sweep with every rule passing over it.
+            Assert.That(CaughtInTable(
+                    @"public static IReadOnlyList<SchemaCapability> Matrix { get; } = ["
+                    + @"new(""Add a column"", SchemaEditCategory.InPlace, ""ADD COLUMN and the rest of it"")];"),
+                Is.True,
+                "a sentence passed as a positional record argument must be caught");
+
+            Assert.That(CaughtInTable(
+                    @"public static IReadOnlyList<SchemaCapability> Matrix { get; } = ["
+                    + @"new(""Schema.Cap.AddColumn"", SchemaEditCategory.InPlace, ""Schema.Cap.AddColumn.Why"")];"),
+                Is.False,
+                "a table of catalogue keys is the point of the rule");
+
+            Assert.That(CaughtInTable(@"private static readonly string[] BREAK = [""ORDER BY"", ""GROUP BY""];"),
+                Is.False,
+                "the engine's own language is not Studio's text (WS-64)");
+
+            Assert.That(CaughtInTable(@"private static readonly string[] UNITS = [""B"", ""KB"", ""MB""];"),
+                Is.False,
+                "a unit is one word, and a key has no spaces - neither looks like prose");
         });
     }
 
@@ -558,6 +738,15 @@ public class LocalizationCoverageTests
             .Replace("&quot;", "\"")
             .Replace("&apos;", "'")
             .Replace("&amp;", "&");
+    }
+
+    /// <summary>Rule 4 against one declaration, for the cases that measure it.</summary>
+    private static bool CaughtInTable(string declaration)
+    {
+        return DATA_TABLE.Matches(declaration)
+            .SelectMany(table => STRING_LITERAL.Matches(table.Groups["body"].Value).AsEnumerable())
+            .Select(literal => literal.Groups[1].Value)
+            .Any(value => value.Contains(' ') && IsStudioText(value));
     }
 
     private static bool Caught(Regex rule, string line)

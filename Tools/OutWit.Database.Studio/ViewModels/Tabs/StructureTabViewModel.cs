@@ -34,6 +34,11 @@ public enum StructureSection
 public sealed record ConstraintRow(string Name, string Type, string Columns, string? Detail);
 
 /// <summary>
+/// One row of the 5.2 matrix, with its words already in the reader's language.
+/// </summary>
+public sealed record SchemaCapabilityRow(string Change, string Marker, string Reason);
+
+/// <summary>
 /// Turns the selected section into "is this the one" for the strip and for the panels beneath it.
 ///
 /// Two-way, because the strip's buttons set it: converting back returns the section named by the
@@ -111,6 +116,30 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     {
         PropertyChanged += OnPropertyChanged;
         Columns.CollectionChanged += (_, _) => Recompute();
+
+        // The markers and their reasons are TEXT this ViewModel builds, so they do not follow a
+        // language change on their own the way a DynamicResource does. Without this a tab left open
+        // across a switch keeps saying "rebuild" over a Russian interface until the next edit.
+        Localization.LanguageChanged += OnLanguageChanged;
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
+    {
+        Recompute();
+
+        OnPropertyChanged(nameof(Capabilities));
+        OnPropertyChanged(nameof(NotInTheEngine));
+    }
+
+    /// <summary>
+    /// A closed tab stops listening. The service outlives every tab, so a subscription left behind
+    /// would keep a closed tab's whole graph alive and recompute it on every language change.
+    /// </summary>
+    public override void OnClosed()
+    {
+        Localization.LanguageChanged -= OnLanguageChanged;
+
+        base.OnClosed();
     }
 
     private void InitCommands()
@@ -334,7 +363,9 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
         m_suppressRecompute = false;
 
-        ViewDefinition = await session.GetViewDefinitionAsync(ObjectName);
+        // The BODY, not the CREATE VIEW: this is the text the editor lets a person rewrite, and it is
+        // put back inside a CREATE VIEW by DdlWriter when the change is applied.
+        ViewDefinition = await session.GetViewBodyAsync(ObjectName);
 
         // A view whose body the catalogue cannot render comes back NULL - measured for a UNION and for
         // a subquery. Editing means DROP and CREATE, and creating from a body Studio does not have
@@ -464,6 +495,7 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         foreach (var draft in Columns)
         {
             draft.Marker = null;
+            draft.MarkerCategory = null;
             draft.MarkerReason = null;
         }
 
@@ -478,10 +510,11 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
             // A row can carry more than one edit; the heaviest category is the one that decides what
             // Apply will do, so it is the one shown.
-            if (draft.Marker == null || edit.Category > CategoryOfMarker(draft.Marker))
+            if (draft.MarkerCategory == null || edit.Category > draft.MarkerCategory)
             {
-                draft.Marker = SchemaCapabilities.MarkerOf(edit.Category);
-                draft.MarkerReason = SchemaCapabilities.ReasonOf(edit.Kind);
+                draft.MarkerCategory = edit.Category;
+                draft.Marker = Localization[SchemaCapabilities.MarkerOf(edit.Category)];
+                draft.MarkerReason = Localization[SchemaCapabilities.ReasonOf(edit.Kind)];
             }
         }
 
@@ -493,12 +526,11 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         UpdateStatus();
     }
 
-    private static SchemaEditCategory CategoryOfMarker(string marker) => marker switch
-    {
-        "rebuild" => SchemaEditCategory.Rebuild,
-        "drop + create" => SchemaEditCategory.DropCreate,
-        _ => SchemaEditCategory.InPlace
-    };
+    // CategoryOfMarker used to live here: it read the row's marker WORD back to find out which
+    // category the row was already in. That is a comparison against English, so the first Russian
+    // marker would have matched none of its cases and every row would have answered "in place" -
+    // silently letting a lighter edit overwrite a heavier one's marker. The row carries the category
+    // itself now.
 
     #endregion
 
@@ -783,7 +815,7 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     {
         // The marker is written BY the recompute; reacting to it would loop.
         if (e.PropertyName is nameof(ColumnDraft.Marker) or nameof(ColumnDraft.MarkerReason) or
-            nameof(ColumnDraft.HasMarker))
+            nameof(ColumnDraft.MarkerCategory) or nameof(ColumnDraft.HasMarker))
             return;
 
         Recompute();
@@ -807,13 +839,19 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
     public DatabaseNodeType ObjectType { get; }
 
-    public string ObjectTypeDisplay => ObjectType switch
+    /// <remarks>
+    /// Found by RUNNING the application in Russian while checking the marker: the tab's own heading
+    /// said "Table Customers" over an interface that was Russian everywhere else. Rule 3 could not see
+    /// it - its destination list did not have <c>Display</c> in it - which is the same hole as
+    /// <c>NotArmedReason</c> and <c>FilterSummary</c> before it. The list has it now.
+    /// </remarks>
+    public string ObjectTypeDisplay => Localization[ObjectType switch
     {
-        DatabaseNodeType.Table => "Table",
-        DatabaseNodeType.View => "View",
-        DatabaseNodeType.Index => "Index",
-        _ => "Object"
-    };
+        DatabaseNodeType.Table => "Structure.ObjectType.Table",
+        DatabaseNodeType.View => "Structure.ObjectType.View",
+        DatabaseNodeType.Index => "Structure.ObjectType.Index",
+        _ => "Structure.ObjectType.Other"
+    }];
 
     /// <summary>
     /// The columns, as drafts: what the catalogue said, and what has been typed over it.
@@ -947,9 +985,27 @@ public class StructureTabViewModel : WorkspaceTabViewModel
                                    !string.IsNullOrWhiteSpace(IndexFilterCondition);
 
     /// <summary>
-    /// The matrix of 5.2, so the designer can show the rule as well as apply it.
+    /// The matrix of 5.2, so the designer can show the rule as well as apply it - in words rather than
+    /// in catalogue keys, which is the ViewModel's job and not the data table's.
     /// </summary>
-    public IReadOnlyList<SchemaCapability> Capabilities => SchemaCapabilities.Matrix;
+    /// <remarks>
+    /// <b>Nothing binds this yet</b>, and it is projected anyway: the table holds keys now, so a view
+    /// that bound the raw rows tomorrow would render <c>Schema.Cap.AddColumn</c> at somebody. Same
+    /// shape as the «База» tab's provenance matrix, which does have a view.
+    /// </remarks>
+    public IReadOnlyList<SchemaCapabilityRow> Capabilities => SchemaCapabilities.Matrix
+        .Select(capability => new SchemaCapabilityRow(
+            Localization[capability.ChangeKey],
+            Localization[SchemaCapabilities.MarkerOf(capability.Category)],
+            Localization[capability.ReasonKey]))
+        .ToList();
+
+    /// <summary>
+    /// What the engine cannot do at all, in the reader's language (WS-55's rule for the designer).
+    /// </summary>
+    public IReadOnlyList<string> NotInTheEngine => SchemaCapabilities.NotInTheEngine
+        .Select(key => Localization[key])
+        .ToList();
 
     #endregion
 

@@ -124,12 +124,21 @@ public interface IDatabaseSession
     Task<IReadOnlyList<ColumnInfo>> GetTableColumnsAsync(string tableName, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets the definition (DDL) for a view.
+    /// The view's query alone, for the editor that rewrites it. Null when the catalogue cannot render
+    /// the body, which is what stops the designer replacing a view with half of one.
+    /// </summary>
+    Task<string?> GetViewBodyAsync(string viewName, CancellationToken ct = default);
+
+    /// <summary>
+    /// Gets the definition (DDL) for a view - the <c>CREATE VIEW</c>, which is what a dump has to
+    /// carry. <see cref="GetViewBodyAsync"/> is the query inside it.
     /// </summary>
     Task<string?> GetViewDefinitionAsync(string viewName, CancellationToken ct = default);
 
     /// <summary>
-    /// Gets the definition (DDL) for a trigger.
+    /// Gets the definition (DDL) for a trigger - the whole <c>CREATE TRIGGER</c>, assembled from the
+    /// catalogue's parts. The catalogue's own <c>ACTION_STATEMENT</c> is the body alone, and a dump
+    /// carrying that cannot be run back into a database.
     /// </summary>
     Task<string?> GetTriggerDefinitionAsync(string triggerName, CancellationToken ct = default);
 

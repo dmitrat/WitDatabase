@@ -25,31 +25,11 @@ public class DatabaseMigrationTests
         m_fixture = await StudioFixture.CreateAsync();
     }
 
-    /// <summary>
-    /// Replaces the fixture's schema with one that has no trigger in it.
-    /// </summary>
-    /// <remarks>
-    /// Not tidiness: a trigger cannot be carried by the dump at all yet (see the case above), and a
-    /// migration case built on the fixture's own schema would only ever be measuring that.
-    /// </remarks>
-    private async Task BuildSchemaWithoutTriggersAsync()
-    {
-        foreach (var sql in new[]
-                 {
-                     "DROP TRIGGER TR_Orders_Audit",
-                     "DROP VIEW ActiveOrders"
-                 })
-        {
-            try
-            {
-                await m_fixture.Database.ExecuteQueryAsync(sql);
-            }
-            catch
-            {
-                // Already gone is the state this wants.
-            }
-        }
-    }
+    // Every case here runs on the fixture's WHOLE schema, trigger and view included. There used to be
+    // a BuildSchemaWithoutTriggersAsync that dropped both, and its reason was honest while it lasted:
+    // a trigger could not be carried by the dump at all, so a case built on the fixture's own schema
+    // would only ever have been measuring that. Taking it out is the census the fix earns - three
+    // cases that used to migrate a cut-down database now migrate the real one.
 
     [TearDown]
     public async Task TearDown()
@@ -62,34 +42,98 @@ public class DatabaseMigrationTests
     #region Tests
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. A database with a TRIGGER in it cannot be migrated,
-    /// because the dump it is carried by cannot be executed back.
-    ///
-    /// <para>
-    /// Measured 2026-08-08, the first time a dump was ever run into an empty database: the script ends
-    /// with <c>INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);</c> as a statement of its own - the
-    /// BODY of the trigger, cut loose from it - and the engine refuses it with "Column 'Id' not found".
-    /// So the dump is not round-trippable, which is the one thing a dump is for.
-    /// </para>
-    /// <para>
-    /// When that is fixed this case goes RED and should be replaced by the ordinary one: a database
-    /// with a trigger migrates, and the trigger is in the copy.
-    /// </para>
+    /// A database with a TRIGGER in it migrates, and the trigger is in the copy - where it fires.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This replaces <c>ADatabaseWithATriggerCannotBeMigratedYetAsync</c>, which pinned the defect
+    /// rather than the behaviour and said in its own summary what should replace it. The defect: the
+    /// catalogue publishes a trigger's BODY and the dump wrote that verbatim, so the script ended with
+    /// <c>INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);</c> as a statement of its own and the
+    /// engine refused it with "Column 'Id' not found". Measured on 2026-08-08, the pin went from
+    /// <c>Failed</c> to <c>Transferred</c> the moment the definition became a whole
+    /// <c>CREATE TRIGGER</c> - which is the proof the fix works.
+    /// </para>
+    /// <para>
+    /// The trigger is checked by USING it rather than by finding its name in the catalogue: one that
+    /// is listed and does not fire is exactly the failure this is about.
+    /// </para>
+    /// </remarks>
     [Test]
-    public async Task ADatabaseWithATriggerCannotBeMigratedYetAsync()
+    public async Task ADatabaseWithATriggerIsMigratedAndTheTriggerFiresAsync()
     {
-        var result = await DatabaseMigrator.MigrateAsync(m_fixture.Database,
-            new ConnectionInfo { FilePath = Path.Combine(m_fixture.Root, "with-trigger.witdb") });
+        var target = new ConnectionInfo { FilePath = Path.Combine(m_fixture.Root, "with-trigger.witdb") };
 
-        Assert.Multiple(() =>
+        var result = await DatabaseMigrator.MigrateAsync(m_fixture.Database, target);
+
+        Assert.That(result.Outcome, Is.EqualTo(MigrationOutcome.Transferred), result.EngineMessage);
+
+        await using var connection = new WitDbConnection(target.BuildConnectionString());
+        await connection.OpenAsync();
+
+        var before = await CountAsync(connection, "OrdersAudit");
+
+        await using (var command = connection.CreateCommand())
         {
-            Assert.That(result.Outcome, Is.EqualTo(MigrationOutcome.Failed));
+            command.CommandText = "INSERT INTO Orders (CustomerId, Total, Status) VALUES (1, 5.00, 'new')";
+            await command.ExecuteNonQueryAsync();
+        }
 
-            // The statement, not just the message - which is what makes this report usable at all.
-            Assert.That(result.EngineMessage, Does.Contain("NEW.Id"));
-            Assert.That(result.EngineMessage, Does.Contain("of"));
-        });
+        Assert.That(await CountAsync(connection, "OrdersAudit"), Is.EqualTo(before + 1),
+            "the trigger has to be in the copy and do its work there");
+    }
+
+    /// <summary>
+    /// A migrated database can take a new row: its key counters followed the rows that arrived.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This was a pin (<c>AGeneratedKeyIsRefusedInAMigratedDatabaseAsync</c>) for as long as it took to
+    /// find the cause. The symptom: every dump and every password change produced a database that
+    /// refused the first row it was asked to generate a key for, while the migration report said the
+    /// transfer was complete. Found by the trigger case above, which fired the trigger in the copy and
+    /// got <i>"the table's key counter is behind its rows"</i>.
+    /// </para>
+    /// <para>
+    /// <b>It was two layers down and had nothing to do with dumps</b> - the MVCC key encoding is not
+    /// prefix-free, so writing <c>Orders</c>' row-id counter marked <c>OrdersAudit</c>'s deleted. See
+    /// <c>KnownIssues.md</c> issue 11, <c>MvccPrefixKeyTests</c> and
+    /// <c>RowIdCounterPrefixTests</c>. This case is kept because it is the one that noticed, and it is
+    /// the shape a user meets it in.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AMigratedDatabaseCanTakeANewRowAsync()
+    {
+        var target = new ConnectionInfo { FilePath = Path.Combine(m_fixture.Root, "counter.witdb") };
+
+        var result = await DatabaseMigrator.MigrateAsync(m_fixture.Database, target);
+
+        Assert.That(result.Outcome, Is.EqualTo(MigrationOutcome.Transferred), result.EngineMessage);
+
+        await using var connection = new WitDbConnection(target.BuildConnectionString());
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO OrdersAudit (OrderId) VALUES (99)";
+
+        Assert.That(async () => await command.ExecuteNonQueryAsync(), Throws.Nothing,
+            "a transfer that reports itself complete has to leave a database that can be written to");
+    }
+
+    private static async Task<int> CountAsync(WitDbConnection connection, string table)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT Id FROM [{table}]";
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        var rows = 0;
+
+        while (await reader.ReadAsync())
+            rows++;
+
+        return rows;
     }
 
     /// <summary>
@@ -105,8 +149,6 @@ public class DatabaseMigrationTests
     [Test]
     public async Task TheDataArrivesEncryptedAndTheSourceIsUntouchedAsync()
     {
-        await BuildSchemaWithoutTriggersAsync();
-
         var target = new ConnectionInfo
         {
             FilePath = Path.Combine(m_fixture.Root, "encrypted.witdb"),
@@ -170,8 +212,6 @@ public class DatabaseMigrationTests
     [Test]
     public async Task EveryTableIsCountedOnBothSidesAsync()
     {
-        await BuildSchemaWithoutTriggersAsync();
-
         var target = new ConnectionInfo
         {
             FilePath = Path.Combine(m_fixture.Root, "counted.witdb")
@@ -221,8 +261,6 @@ public class DatabaseMigrationTests
     [Test]
     public async Task TheStepsAreReportedAndEveryOneHasWordsAsync()
     {
-        await BuildSchemaWithoutTriggersAsync();
-
         var steps = new List<MigrationStep>();
 
         var target = new ConnectionInfo { FilePath = Path.Combine(m_fixture.Root, "stepped.witdb") };
@@ -248,3 +286,4 @@ public class DatabaseMigrationTests
 
     #endregion
 }
+

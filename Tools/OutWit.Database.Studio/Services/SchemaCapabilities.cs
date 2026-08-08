@@ -5,10 +5,16 @@ namespace OutWit.Database.Studio.Services;
 /// <summary>
 /// One row of the matrix section 5.2 is built around: an edit, how it has to be carried out, and why.
 /// </summary>
-/// <param name="Change">What a person would call it.</param>
+/// <remarks>
+/// <b>Keys, not sentences.</b> This used to carry English prose as positional record arguments, which
+/// is the one shape the localisation lint could not see at all - there is no destination name in front
+/// of a positional argument for a rule to key on. Rule 4 exists because of this type; see
+/// <c>LocalizationCoverageTests</c>.
+/// </remarks>
+/// <param name="ChangeKey">Catalogue key for what a person would call the edit.</param>
 /// <param name="Category">In place, a rebuild, or a drop and a create.</param>
-/// <param name="Reason">Why - the sentence the designer shows next to the marker.</param>
-public sealed record SchemaCapability(string Change, SchemaEditCategory Category, string Reason);
+/// <param name="ReasonKey">Catalogue key for why it is in that category.</param>
+public sealed record SchemaCapability(string ChangeKey, SchemaEditCategory Category, string ReasonKey);
 
 /// <summary>
 /// What this engine's DDL will and will not do, as data.
@@ -55,40 +61,17 @@ public static class SchemaCapabilities
     /// </summary>
     public static IReadOnlyList<SchemaCapability> Matrix { get; } =
     [
-        new("Add a column", SchemaEditCategory.InPlace,
-            "ADD COLUMN, including UNIQUE, CHECK, REFERENCES, DEFAULT and computed columns"),
-
-        new("Drop a column", SchemaEditCategory.InPlace,
-            "DROP COLUMN. The foreign key on it goes with it - an index on it does NOT, so Studio drops that first"),
-
-        new("Rename a column or a table", SchemaEditCategory.InPlace,
-            "RENAME"),
-
-        new("Change DEFAULT or NOT NULL", SchemaEditCategory.InPlace,
-            "ALTER COLUMN - the only two properties of a column this engine changes"),
-
-        new("Add or drop UNIQUE, CHECK, FOREIGN KEY", SchemaEditCategory.InPlace,
-            "ADD CONSTRAINT / DROP CONSTRAINT, and the constraint must be named"),
-
-        new("Change a column's type", SchemaEditCategory.Rebuild,
-            "ALTER COLUMN ... TYPE rewrites the rows, and stops at the first value it cannot read - " +
-            "with nothing changed, and nothing said about the rest. A rebuild converts with a CAST " +
-            "the user can see, after counting every value that will not survive it"),
-
-        new("Add a primary key", SchemaEditCategory.Rebuild,
-            "The engine refuses: 'Adding PRIMARY KEY constraint to existing table is not supported'"),
-
-        new("Remove or change a primary key", SchemaEditCategory.Rebuild,
-            "Dropping a key column is refused too: 'it is part of the primary key'"),
-
-        new("Change the order of the columns", SchemaEditCategory.Rebuild,
-            "There is no syntax for it: FIRST, AFTER, MODIFY and CHANGE are all parse errors"),
-
-        new("Change a view's body", SchemaEditCategory.DropCreate,
-            "There is no ALTER VIEW and no CREATE OR REPLACE"),
-
-        new("Change a trigger's body", SchemaEditCategory.DropCreate,
-            "There is no ALTER TRIGGER - and none to enable or disable one either")
+        new("Schema.Cap.AddColumn", SchemaEditCategory.InPlace, "Schema.Cap.AddColumn.Why"),
+        new("Schema.Cap.DropColumn", SchemaEditCategory.InPlace, "Schema.Cap.DropColumn.Why"),
+        new("Schema.Cap.Rename", SchemaEditCategory.InPlace, "Schema.Cap.Rename.Why"),
+        new("Schema.Cap.DefaultOrNotNull", SchemaEditCategory.InPlace, "Schema.Cap.DefaultOrNotNull.Why"),
+        new("Schema.Cap.Constraints", SchemaEditCategory.InPlace, "Schema.Cap.Constraints.Why"),
+        new("Schema.Cap.ColumnType", SchemaEditCategory.Rebuild, "Schema.Cap.ColumnType.Why"),
+        new("Schema.Cap.AddPrimaryKey", SchemaEditCategory.Rebuild, "Schema.Cap.AddPrimaryKey.Why"),
+        new("Schema.Cap.ChangePrimaryKey", SchemaEditCategory.Rebuild, "Schema.Cap.ChangePrimaryKey.Why"),
+        new("Schema.Cap.ColumnOrder", SchemaEditCategory.Rebuild, "Schema.Cap.ColumnOrder.Why"),
+        new("Schema.Cap.ViewBody", SchemaEditCategory.DropCreate, "Schema.Cap.ViewBody.Why"),
+        new("Schema.Cap.TriggerBody", SchemaEditCategory.DropCreate, "Schema.Cap.TriggerBody.Why")
     ];
 
     /// <summary>
@@ -97,10 +80,10 @@ public static class SchemaCapabilities
     /// </summary>
     public static IReadOnlyList<string> NotInTheEngine { get; } =
     [
-        "Rebuilding an index in place - there is no REINDEX and no ALTER INDEX; Studio drops and creates it",
-        "Enabling or disabling a trigger - there is no ALTER TRIGGER",
-        "Moving a column - there is no FIRST, AFTER, MODIFY or CHANGE",
-        "A sequence's step, minimum, maximum or cycle - CREATE SEQUENCE takes a name and START WITH, nothing else"
+        "Schema.Absent.Reindex",
+        "Schema.Absent.EnableTrigger",
+        "Schema.Absent.MoveColumn",
+        "Schema.Absent.Sequence"
     ];
 
     #endregion
@@ -121,41 +104,34 @@ public static class SchemaCapabilities
     };
 
     /// <summary>
-    /// The one-word marker that goes in the row (WS-39).
+    /// The catalogue key of the one-word marker that goes in the row (WS-39).
     /// </summary>
+    /// <remarks>
+    /// A key rather than the word, and the caller localises. The word used to be the marker itself and
+    /// the designer read it BACK to work out the category - which would have started answering "in
+    /// place" to a Russian marker the day this was translated. The category travels as the enum now.
+    /// </remarks>
     public static string MarkerOf(SchemaEditCategory category) => category switch
     {
-        SchemaEditCategory.InPlace => "in place",
-        SchemaEditCategory.Rebuild => "rebuild",
-        _ => "drop + create"
+        SchemaEditCategory.InPlace => "Schema.Marker.InPlace",
+        SchemaEditCategory.Rebuild => "Schema.Marker.Rebuild",
+        _ => "Schema.Marker.DropCreate"
     };
 
     /// <summary>
-    /// Why a change is in the category it is in - the sentence shown beside the marker, so the rule is
-    /// never a bare icon.
+    /// The catalogue key of why a change is in the category it is in - the sentence shown beside the
+    /// marker, so the rule is never a bare icon.
     /// </summary>
     public static string ReasonOf(SchemaEditKind kind) => kind switch
     {
-        SchemaEditKind.ChangeColumnType =>
-            "A type change rewrites every row, and a value that will not convert is replaced without a word. " +
-            "Studio rebuilds the table instead, so the conversion is a CAST you can see and the casualties are counted first.",
+        SchemaEditKind.ChangeColumnType => "Schema.Reason.ChangeColumnType",
+        SchemaEditKind.AddPrimaryKey => "Schema.Reason.AddPrimaryKey",
+        SchemaEditKind.DropPrimaryKey => "Schema.Reason.DropPrimaryKey",
+        SchemaEditKind.ReorderColumns => "Schema.Reason.ReorderColumns",
+        SchemaEditKind.ReplaceViewBody => "Schema.Reason.ReplaceViewBody",
+        SchemaEditKind.ReplaceTriggerBody => "Schema.Reason.ReplaceTriggerBody",
 
-        SchemaEditKind.AddPrimaryKey =>
-            "The engine refuses to add a primary key to a table that already exists.",
-
-        SchemaEditKind.DropPrimaryKey =>
-            "The engine refuses to drop a column that is part of the primary key.",
-
-        SchemaEditKind.ReorderColumns =>
-            "The language has no way to move a column.",
-
-        SchemaEditKind.ReplaceViewBody =>
-            "There is no ALTER VIEW in this language, so the view is dropped and created again.",
-
-        SchemaEditKind.ReplaceTriggerBody =>
-            "There is no ALTER TRIGGER in this language, so the trigger is dropped and created again.",
-
-        _ => "One ALTER TABLE. The rows are not touched."
+        _ => "Schema.Reason.InPlace"
     };
 
     #endregion

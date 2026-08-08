@@ -1658,12 +1658,9 @@ it says otherwise.
    database Studio already has open would report "there is no database here".
 2. **Page cache occupancy is unexposed.** Both caches keep `Count` and `DirtyCount` and neither hands
    them out; this is the single "needs provider access" row left in the matrix.
-3. **`SchemaCapabilities.Matrix` holds English reasons as positional record arguments, and no rule
-   sees them.** They reach the schema designer's row tooltips through
-   `SchemaCapabilities.ReasonOf` -> `draft.MarkerReason` -> `ToolTip.Tip`. The localisation rule looks
-   at assignments, and here the literal sits in a constructor with no destination name in front of it -
-   the next hole of the family fixed on 2026-08-08, and a fourth service composing prose beside the
-   three already named.
+3. **DONE, 2026-08-08.** `SchemaCapabilities` held English as positional record arguments and no rule
+   saw it; it holds catalogue keys now and the lint has a fourth rule for the class. See "The
+   localisation hole a positional argument hides in" below.
 4. **The toolbar band is empty while the «База» tab is selected.** The query toolbar hides and nothing
    takes its place. Cosmetic, seen in the running application.
 5. **The tree's row count did not follow an insert.** Fifty rows went in through the editor and the
@@ -1676,14 +1673,116 @@ it says otherwise.
      `IS_UNIQUE` is published as the string `"YES"`/`"NO"` and was being read with `GetBoolean`. A
      dumped database whose non-unique index holds the duplicate values a non-unique index is *for*
      could not be restored at all;
-   - **open:** a TRIGGER is cut in two. The script ends with
-     `INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);` as a statement of its own - the body,
-     loose from its trigger - and the engine refuses it with "Column 'Id' not found". Pinned by
-     `ADatabaseWithATriggerCannotBeMigratedYetAsync`, which is labelled as pinning a defect and says
-     what it should be replaced by when the splitter or the definition is fixed.
+   - **fixed 2026-08-08, and it was the definition rather than the splitter:** a TRIGGER was cut in
+     two. See "The dump that could not be run back" below - the same section closes a second object
+     that was failing in silence.
 
    The shape is stage 8's, one layer along: a dump that nobody has ever executed is a claim, and it
    had been shipping since stage 9.
+
+---
+
+## The dump that could not be run back, 2026-08-08
+
+Phase 10's remainder, item 6, finished. **The catalogue's definition was the defect and the splitter
+was innocent**, and that was established by measurement before anything was changed - the two
+candidates were "the definition arrives incomplete" and "`SqlScript.Split` cuts the compound body
+loose at the semicolons inside it", and only one of them is true.
+
+**What the measurement said, in one line each:**
+
+- `GetTriggerDefinitionAsync` returned `INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id)` - the
+  catalogue's `ACTION_STATEMENT`, which is the BODY. There was no `CREATE TRIGGER` in the script at
+  all;
+- the splitter, asked separately, returns a hand-written `CREATE TRIGGER … BEGIN … END;` with two
+  statements in its body as **one** statement out of three, no errors, and the engine accepts it.
+  Recorded as `SqlScriptTests.ATriggerBodyIsNotCutLooseFromItsTriggerTest`, written to answer the
+  question rather than to guard the behaviour, and kept because the question will be asked again;
+- **and the same defect one object along, which nobody had named: a VIEW.** `VIEW_DEFINITION` is the
+  view's query, written verbatim, so the script carried a bare `SELECT …;`. Unlike the trigger that
+  statement **runs** - the restore reported success on every line and the view was simply not there.
+  A loud failure had been hiding a silent one.
+
+**The fix is `DdlWriter`, which already existed.** `CreateTrigger` and `CreateView` are the designer's
+writers and every shape in them has been executed against the engine; the session now reads the
+catalogue's parts and hands them over instead of growing a second writer. `GetViewDefinitionAsync`
+returns the `CREATE VIEW`, and the query alone - which is what the structure tab's editor rewrites -
+is `GetViewBodyAsync`, named after what it is.
+
+**The instrument, and it was measured in both directions.** A trigger is assembled from six catalogue
+columns and dropping any one of them still produces a trigger - one that fires at the wrong time, on
+the wrong event, once instead of per row, or with its `WHEN` gone - so one case over one shape proves
+nothing. `ATriggerKeepsItsShapeThroughTheDumpAsync` walks six shapes and compares the row the target
+publishes against the row the source published. Sabotaged part by part: fixing `ForEachRow` reddens
+the statement-trigger case **and nothing else**, dropping the `WHEN` reddens the `WHEN` case, fixing
+the timing and the event reddens the other three. Eight cases were red before the fix and are green
+after it.
+
+**`ADatabaseWithATriggerCannotBeMigratedYetAsync` went red exactly as it promised** - `Failed` became
+`Transferred` - and is replaced by the ordinary case, which checks the trigger by USING it. The
+migration fixture's `BuildSchemaWithoutTriggersAsync` is deleted with it: three cases that used to
+migrate a cut-down database now migrate the real one.
+
+### And the two the engine kept
+
+**A restored dump refused the next generated key** - `KnownIssues.md` issue 11, found because the new
+trigger case fired the trigger in the copy and the copy would not take the row, and **fixed in the
+same branch once it was chased down**. It was never about triggers or about dumps: the MVCC key
+encoding is not prefix-free, so writing `Orders`' row-id counter marked `OrdersAudit`'s deleted.
+**Fifteen controlled cases built up from nothing did not reproduce it** - they all used names like
+`A`/`B` - and bisecting DOWN from the fixture that did took four steps. The two engine pins were
+written as pins and inverted when the fix landed.
+
+**`UPDATE OF` is accepted and ignored** - issue 12. The catalogue publishes no column list, so the
+rebuilt trigger watches every column; that loses nothing today only because the firing path ignores
+the clause too. The two have to be fixed together, and the shape matrix says in its own remarks that
+this is the one part it cannot see.
+
+Studio **717 -> 727**, engine +1.
+
+## The localisation hole a positional argument hides in, 2026-08-08
+
+Phase 10's remainder, item 3, and it is rule 4 of the lint rather than a sweep.
+
+**Why the other three rules could never have found it.** Rules 1 to 3 all key on a NAME - an
+attribute, an attached property, the identifier before an `=`. A positional record argument has none:
+
+```csharp
+new("Add a column", SchemaEditCategory.InPlace, "ADD COLUMN, including UNIQUE, CHECK, …")
+```
+
+Eleven rows of that sat in `SchemaCapabilities.Matrix` through the entire stage-10 sweep, with four
+more sentences in `NotInTheEngine`, and every rule passed over every one of them.
+
+**So rule 4 reads a PLACE rather than a shape:** a `static` collection in `Services` is a data table,
+a data table holds catalogue keys, and a key has no spaces in it. That generalises to the next such
+table whatever it calls its parameters, and it has a second half - `EveryKeyInADataTableIsInEveryCatalogueTest`
+looks every key up in every language, because turning prose into keys moves the failure from "English
+on a Russian screen" to "`Schema.Cap.AddColumn` on both".
+
+**Measured in both directions, and the first version of the rule was wrong.** Its body regex stopped
+at the first `]`, so `SqlFormatter.BREAK_BEFORE` - a `string[][]` - was read two literals deep and
+reported clean; fixing it took the surface count from **99 to 122**. Then a row of the real matrix was
+put back as prose and both new tests went red, naming the file, the table and the string.
+
+**36 strings in two languages**, plus `MarkerOf` and `ReasonOf`, which are the live path
+(`ReasonOf` -> `draft.MarkerReason` -> `ToolTip.Tip`).
+
+**A decision that came out of it: `CategoryOfMarker` is gone.** The designer worked out which category
+a row was already in by reading its marker WORD back - `"rebuild" => Rebuild` - which is a comparison
+against English. **Measured rather than assumed: putting that code back leaves the new test GREEN**,
+because the misread degrades to the lowest category and a column row only ever carries `InPlace` or
+`Rebuild`. It is written up as what it is - a decision taken by parsing a caption, replaced because
+that is not how a decision should be taken, not because a test could see it.
+
+**And the run in the application found what the lint still could not**: the structure tab's own
+heading said **"Table Customers"** over a Russian interface. `ObjectTypeDisplay` is an
+expression-bodied switch, and rule 3's destination list did not have `Display` in it - the same family
+as `NotArmedReason` and `FilterSummary` before it. Fixed, the word added to the list, and the case
+pinned verbatim. **That is the fifth hole in this lint found by running the application rather than by
+running the lint**, which is the honest measure of what a lint over text can do.
+
+Studio **727 -> 730**.
 
 ---
 

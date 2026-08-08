@@ -6,12 +6,27 @@ namespace OutWit.Database.Studio.Services;
 
 /// <summary>
 /// DDL generation methods for DatabaseSession (table/view/index/trigger definitions).
+///
+/// <para>
+/// <b>A definition here is a statement that can be executed back.</b> Two of the four used to be the
+/// catalogue's BODY column handed straight on - <c>VIEW_DEFINITION</c> is a view's query and
+/// <c>ACTION_STATEMENT</c> is a trigger's body, both correct by the standard and neither of them a
+/// <c>CREATE</c> - so the dump they feed produced a script that could not rebuild either object.
+/// Measured 2026-08-08; see <c>DatabaseDumpTests</c>. The parts come from the catalogue and
+/// <see cref="DdlWriter"/> assembles them, which is the same writer the designer runs and the one
+/// whose every shape has been executed against the engine.
+/// </para>
 /// </summary>
 public sealed partial class DatabaseSession
 {
     #region View Definition
 
-    public async Task<string?> GetViewDefinitionAsync(string viewName, CancellationToken ct = default)
+    /// <summary>
+    /// The view's QUERY, as the catalogue publishes it - what the structure tab lets a person edit.
+    /// Null when the catalogue cannot render it, which is a real answer: measured for a UNION and for
+    /// a subquery, and the editor refuses to rewrite a view whose body it does not have.
+    /// </summary>
+    public async Task<string?> GetViewBodyAsync(string viewName, CancellationToken ct = default)
     {
         EnsureConnected();
 
@@ -28,29 +43,90 @@ public sealed partial class DatabaseSession
         }
         catch (Exception ex)
         {
-            m_logger.LogDebug(ex, "Failed to get view definition for {ViewName}", viewName);
+            m_logger.LogDebug(ex, "Failed to get view body for {ViewName}", viewName);
             return null;
         }
+    }
+
+    /// <summary>
+    /// The <c>CREATE VIEW</c> that would rebuild it.
+    /// </summary>
+    /// <remarks>
+    /// This used to return the bare query, and the dump wrote that - so the script carried a loose
+    /// <c>SELECT …;</c> which <b>runs</b>, reports success, and leaves no view behind. A trigger at
+    /// least failed loudly; a view was lost in silence.
+    /// </remarks>
+    public async Task<string?> GetViewDefinitionAsync(string viewName, CancellationToken ct = default)
+    {
+        var body = await GetViewBodyAsync(viewName, ct);
+
+        return string.IsNullOrWhiteSpace(body) ? null : DdlWriter.CreateView(viewName, body);
     }
 
     #endregion
 
     #region Trigger Definition
 
+    /// <summary>
+    /// The <c>CREATE TRIGGER</c> that would rebuild it, assembled from the catalogue's parts.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <c>ACTION_STATEMENT</c> alone is the body, and the dump wrote it verbatim - so a dumped database
+    /// with a trigger ended with <c>INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);</c> as a
+    /// statement of its own and the engine refused it with "Column 'Id' not found". The splitter was
+    /// not implicated: measured the same day, a hand-written <c>BEGIN … END</c> body comes back from
+    /// <see cref="SqlScript.Split"/> as one statement.
+    /// </para>
+    /// <para>
+    /// <b>One part is not published and so cannot be rebuilt:</b> a trigger declared
+    /// <c>UPDATE OF V</c> appears in <c>INFORMATION_SCHEMA.TRIGGERS</c> as a plain <c>UPDATE</c> - there
+    /// is no column for the column list - so this widens it to every column. It changes nothing today
+    /// because the engine does not honour <c>UPDATE OF</c> when firing either (measured: a trigger on
+    /// one column fires on an update of another), and that is pinned in the engine's own suite.
+    /// </para>
+    /// </remarks>
     public async Task<string?> GetTriggerDefinitionAsync(string triggerName, CancellationToken ct = default)
     {
         EnsureConnected();
 
         try
         {
-            const string sql = "SELECT ACTION_STATEMENT FROM INFORMATION_SCHEMA.TRIGGERS WHERE TRIGGER_NAME = @triggerName";
+            const string sql = @"
+                SELECT ACTION_TIMING, EVENT_MANIPULATION, EVENT_OBJECT_TABLE,
+                       ACTION_ORIENTATION, ACTION_CONDITION, ACTION_STATEMENT
+                FROM INFORMATION_SCHEMA.TRIGGERS
+                WHERE TRIGGER_NAME = @triggerName";
 
             using var command = m_connection!.CreateCommand();
             command.CommandText = sql;
             command.Parameters.AddWithValue("@triggerName", triggerName);
 
-            var result = await command.ExecuteScalarAsync(ct);
-            return result as string;
+            using var reader = await command.ExecuteReaderAsync(ct);
+
+            if (!await reader.ReadAsync(ct))
+                return null;
+
+            var body = reader.IsDBNull(5) ? null : reader.GetString(5);
+
+            // A body the catalogue cannot render is null, and a trigger with no body is not a trigger.
+            // The caller names it rather than writing half of one - the phase-8 rule.
+            if (string.IsNullOrWhiteSpace(body))
+                return null;
+
+            return DdlWriter.CreateTrigger(new TriggerDraft
+            {
+                Name = triggerName,
+                Timing = reader.GetString(0),
+                Event = reader.GetString(1),
+                Table = reader.GetString(2),
+
+                // FOR EACH ROW is written only for a row trigger: FOR EACH STATEMENT is a parse error
+                // on this grammar, and omitting the clause is how a statement trigger is expressed.
+                ForEachRow = reader.GetString(3).Equals("ROW", StringComparison.OrdinalIgnoreCase),
+                Condition = reader.IsDBNull(4) ? null : reader.GetString(4),
+                Body = body
+            });
         }
         catch (Exception ex)
         {

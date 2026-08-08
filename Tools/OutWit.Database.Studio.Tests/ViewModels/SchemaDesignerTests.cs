@@ -102,11 +102,72 @@ public class SchemaDesignerTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(row.Marker, Is.EqualTo("in place"), "WS-39: the category is in the row.");
+            // The CATEGORY is the claim; the words are how it is said in English. Both, because the
+            // row used to carry only the words and the designer read them back to find the category.
+            Assert.That(row.MarkerCategory, Is.EqualTo(SchemaEditCategory.InPlace),
+                "WS-39: the category is in the row.");
+            Assert.That(row.Marker, Is.EqualTo("in place"));
             Assert.That(row.MarkerReason, Does.Contain("rows are not touched"));
             Assert.That(tab.PendingSql, Does.Contain("ALTER COLUMN Status SET DEFAULT 'pending'"));
             Assert.That(tab.NeedsRebuild, Is.False);
         });
+    }
+
+    /// <summary>
+    /// The row's marker follows the interface language, and the heaviest edit still wins after it has.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Two things at once, and the second is the one that had a defect in it. The marker is text this
+    /// ViewModel BUILDS, so it does not follow a language change the way a <c>DynamicResource</c> caption
+    /// does - a tab left open across a switch kept saying "rebuild" over a Russian interface.
+    /// </para>
+    /// <para>
+    /// The first half is red without the fix: with the subscription removed the marker still reads
+    /// "rebuild" after the switch. <b>The second half is not, and it is worth saying why rather than
+    /// implying otherwise.</b> The designer used to work out which category a row was already in by
+    /// reading its marker WORD back - <c>"rebuild" =&gt; Rebuild</c>, a comparison against English - so
+    /// in any other language every row answered <c>InPlace</c>. Measured by putting that code back:
+    /// this case stays GREEN. The misread degrades to the LOWEST category, and the only categories a
+    /// column row can carry are <c>InPlace</c> and <c>Rebuild</c>, so the <c>&gt;</c> comparison it
+    /// feeds never changes its answer. It would have bitten the day a column edit landed in
+    /// <c>DropCreate</c>. The row carries the category as a value now because a decision should not be
+    /// taken by parsing a caption, not because a test could see it.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task TheMarkerFollowsTheLanguageAndTheHeaviestEditStillWinsAsync()
+    {
+        var tab = await OpenAsync();
+
+        var total = tab.Columns.First(c => c.Name == "Total");
+
+        // A rebuild first, then an in-place edit on the SAME row: the heavier one has to survive.
+        total.NumericPrecision = 20;
+        total.DefaultValue = "0";
+
+        Assert.That(total.MarkerCategory, Is.EqualTo(SchemaEditCategory.Rebuild),
+            "the lighter edit must not take the row's marker off the heavier one");
+
+        var english = total.Marker;
+
+        m_fixture.App.Localization.SetLanguage("ru");
+
+        try
+        {
+            Assert.Multiple(() =>
+            {
+                Assert.That(total.Marker, Is.Not.EqualTo(english),
+                    "the marker is built text and has to be rebuilt when the language changes");
+                Assert.That(total.Marker, Is.EqualTo(m_fixture.App.Localization["Schema.Marker.Rebuild"]));
+                Assert.That(total.MarkerCategory, Is.EqualTo(SchemaEditCategory.Rebuild),
+                    "and the category is a value, so it does not depend on the language at all");
+            });
+        }
+        finally
+        {
+            m_fixture.App.Localization.SetLanguage("en");
+        }
     }
 
     /// <summary>

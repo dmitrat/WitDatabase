@@ -613,6 +613,111 @@ journal that can be replayed at open - which the MVCC store still refuses to hav
 
 ---
 
+## Found by WitDatabase Studio, 2026-08-08
+
+Both came out of the same measurement: executing a dump back into an empty database
+for the first time. The dump's own two defects — every index written as `CREATE
+UNIQUE INDEX`, and a trigger written as its bare body — were Studio's and are fixed
+there. These two are the engine's.
+
+---
+
+## 11. A restored dump refuses the next generated key — and the cause was the MVCC key encoding
+
+> **FIXED.** `Core/Stores/MvccKeyValueStore.cs`. Regression tests:
+> `Core.Tests/AuditVerification/MvccPrefixKeyTests` (5 cases, 4 red against the
+> unfixed store), `Engine/AuditVerification/RowIdCounterPrefixTests` (4 cases,
+> written as pins and inverted when the fix landed) and
+> `Studio.Tests/Services/DatabaseMigrationTests.AMigratedDatabaseCanTakeANewRowAsync`.
+
+### The cause: the MVCC key encoding is not prefix-free
+
+A version lives at `[key][8-byte inverted timestamp]`, and every version of one key
+is found by scanning `[key]00·8 … [key]FF·8`. **That range does not contain only
+that key's versions.** For `Orders` it also contains every version of
+`OrdersAudit`, because `'A'` is 0x41 and the range runs to 0xFF — and 0x41 sorts
+*before* a typical inverted timestamp, so the foreign record is usually the **first**
+thing such a scan sees.
+
+`MarkPreviousVersionDeleted` walks that scan and marks the first live record it
+finds as deleted. So writing `$schema:_rowid:Orders` marked
+`$schema:_rowid:OrdersAudit` deleted, and on the next open `OrdersAudit`'s counter
+was absent, read as zero, and the next generated key collided with row 1.
+
+**It was never about dumps.** A dump only makes it certain, because it writes every
+table's counter in one run. Any database holding a table whose name begins with
+another table's name was one insert away from it.
+
+**And losing a counter was the mild half.** `MvccPrefixKeyTests` also pins the other
+direction: a read of a key that does not exist returned the value of a longer key
+that begins with it — a wrong answer rather than a missing one.
+
+### The fix
+
+A length test at each single-key version scan (`GetRecordAsOf`, `GetVersionCount`,
+`GetAllVersions`, `MarkPreviousVersionDeleted`): inside the scanned range the range
+already guarantees the leading bytes, so a versioned key belongs to `key` exactly
+when it is `key.Length + 8` bytes long. Range scans over a key *range* are
+unaffected — there a longer key is a legitimately different key, which is why they
+extract the original key and deduplicate.
+
+**The census after the change is empty**: Core 2315, engine 2358 (the four
+`Performance` timing failures on this machine are pre-existing and were verified by
+name), ADO.NET 1025, EF 544, Studio 730. The EF specification suite's 1198 failures
+were measured **with the fix reverted** and are identical — pre-existing, and CI
+runs a filtered subset of it.
+
+### How it was found, because the shape recurs
+
+Studio's dump could not be executed back into a database. **Fifteen controlled cases
+built up from nothing failed to reproduce it** — they all used names like `A`/`B`
+and `Alpha`/`Beta`, which cannot. Bisecting *down* from the fixture that did
+reproduce it took four steps: `DELETE FROM Orders` made the copy healthy,
+`Customers` survived where `OrdersAudit` did not, and the two names are `Orders` and
+`OrdersAudit`. **A control set built from invented names cannot find a defect that
+lives in the relationship between real ones.**
+
+### What it looked like from the outside
+
+A database rebuilt from a dump — which is also what a password change is, since
+that is a migration — **could not take a new row in any table whose rows carried
+their keys**. The first insert that asked for a generated key was refused with:
+
+```
+UNIQUE constraint failed: OrdersAudit.Id (duplicate value: 1).
+The table's key counter is behind its rows; the insert was refused rather than
+overwriting one.
+```
+
+That refusal is issue 5's fix behaving correctly — it refuses to overwrite row 1
+rather than doing it silently, which is the better of the two failures, and it is
+why this cost nobody any data. What was wrong is the state underneath it. And
+**nothing in the migration report said so**: every table's rows were counted on
+both sides, they matched, and the transfer reported itself complete.
+
+---
+
+## 12. `UPDATE OF` is accepted and ignored
+
+> **OPEN.** Pinned by
+> `AuditVerification/TriggerBodyFidelityTests.UpdateOfIsAcceptedAndIgnoredTest`,
+> with a control that proves the trigger is live either way.
+
+`CREATE TRIGGER T AFTER UPDATE OF Watched ON Source …` names the column the trigger
+watches. The parser reads the list, `DefinitionTrigger.UpdateColumns` stores it, and
+**nothing on the firing path ever consults it**: measured, the trigger fires on an
+update of a column it does not name. The phase-7 class again — accepted, and then
+ignored.
+
+**It is tied to the dump, which is how it surfaced.** `INFORMATION_SCHEMA.TRIGGERS`
+publishes no column for the list, so Studio's `CREATE TRIGGER` — assembled from the
+catalogue — widens `UPDATE OF Watched` to every column. That loses nothing today
+precisely because the engine ignores the clause. **Fixing the firing path without
+giving the catalogue somewhere to publish the list would turn this into a silent
+fidelity loss in every dump**, so the two belong in one piece of work.
+
+---
+
 ## Verifying a fix
 
 WitAnalytics is a ready-made regression harness: its stats test fixture runs the

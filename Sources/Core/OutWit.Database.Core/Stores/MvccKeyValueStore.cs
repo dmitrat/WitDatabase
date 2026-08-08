@@ -296,6 +296,9 @@ namespace OutWit.Database.Core.Stores
 
             foreach (var (versionedKey, data) in m_innerStore.Scan(startKey, endKey))
             {
+                if (!IsVersionOf(versionedKey, keyArray))
+                    continue;
+
                 if (!MvccRecord.TryDeserialize(data, out var record))
                     continue;
 
@@ -685,9 +688,10 @@ namespace OutWit.Database.Core.Stores
             var endKey = CreateVersionedKeyEnd(keyArray);
 
             var count = 0;
-            foreach (var _ in m_innerStore.Scan(startKey, endKey))
+            foreach (var (versionedKey, _) in m_innerStore.Scan(startKey, endKey))
             {
-                count++;
+                if (IsVersionOf(versionedKey, keyArray))
+                    count++;
             }
 
             return count;
@@ -703,8 +707,11 @@ namespace OutWit.Database.Core.Stores
             var endKey = CreateVersionedKeyEnd(keyArray);
 
             var versions = new List<MvccRecord>();
-            foreach (var (_, data) in m_innerStore.Scan(startKey, endKey))
+            foreach (var (versionedKey, data) in m_innerStore.Scan(startKey, endKey))
             {
+                if (!IsVersionOf(versionedKey, keyArray))
+                    continue;
+
                 if (MvccRecord.TryDeserialize(data, out var record))
                 {
                     versions.Add(record);
@@ -809,6 +816,12 @@ namespace OutWit.Database.Core.Stores
 
             foreach (var (versionedKey, data) in m_innerStore.Scan(startKey, endKey))
             {
+                // A longer key that merely BEGINS with this one is inside the scanned range, and
+                // usually sorts first - marking its record deleted is what took a table's row-id
+                // counter away when another table's name was a prefix of its own.
+                if (!IsVersionOf(versionedKey, key))
+                    continue;
+
                 if (!MvccRecord.TryDeserialize(data, out var record))
                     continue;
 
@@ -908,6 +921,31 @@ namespace OutWit.Database.Core.Stores
             
             return result;
         }
+
+        /// <summary>
+        /// Whether a versioned key found by a single-key scan really belongs to that key.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>The encoding is not prefix-free, and the scan range cannot make it so.</b> A version
+        /// lives at <c>[key][8-byte inverted timestamp]</c>, so the versions of <c>key</c> are looked
+        /// for in <c>[key]00·8 … [key]FF·8</c> - and every version of a LONGER key that begins with
+        /// <c>key</c> is inside that range too. For <c>Orders</c> the range holds every version of
+        /// <c>OrdersAudit</c>, since <c>'A'</c> is 0x41 and the range runs to 0xFF. Worse, 0x41 sorts
+        /// before a typical inverted timestamp, so the foreign record is usually the FIRST one seen -
+        /// which is how a write to <c>Orders</c> came to mark <c>OrdersAudit</c>'s record deleted, and
+        /// how a read of a key that does not exist came to answer with another key's value.
+        /// </para>
+        /// <para>
+        /// Inside the scanned range the length settles it: the range already guarantees the first
+        /// <c>key.Length</c> bytes, and only a key of exactly <c>key.Length + 8</c> bytes is a version
+        /// of it. Found by bisecting down from Studio's dump - see <c>KnownIssues.md</c> issue 11 and
+        /// <c>MvccPrefixKeyTests</c>.
+        /// </para>
+        /// </remarks>
+        [MethodImpl(MethodImplOptions.AggressiveInlining)]
+        private static bool IsVersionOf(byte[] versionedKey, byte[] key) =>
+            versionedKey.Length == key.Length + VERSION_SUFFIX_SIZE;
 
         /// <summary>
         /// Creates the end key for version scanning (key + 0xFF suffix).
