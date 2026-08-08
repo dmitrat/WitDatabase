@@ -34,6 +34,7 @@ public sealed class ColumnDraft : INotifyPropertyChanged
     private string? m_referencesColumn;
     private bool m_isDeleted;
     private string? m_marker;
+    private SchemaEditCategory? m_markerCategory;
     private string? m_markerReason;
 
     #endregion
@@ -233,16 +234,30 @@ public sealed class ColumnDraft : INotifyPropertyChanged
     }
 
     /// <summary>
-    /// The category of the pending edit on this row - "in place", "rebuild", "drop + create" - or null
-    /// when nothing is pending on it.
+    /// The category of the pending edit on this row - "in place", "rebuild", "drop + create" - in the
+    /// reader's language, or null when nothing is pending on it.
     ///
     /// It lives on the row because that is where WS-39 puts it: the category is visible as soon as the
     /// edit is made, not after Apply has been pressed and the answer has come back.
     /// </summary>
+    /// <remarks>
+    /// This is the WORD, for the eye. Anything that needs to know which category it is reads
+    /// <see cref="MarkerCategory"/>: the designer used to work that out by parsing this string back,
+    /// which is a comparison against English and would have answered "in place" for every Russian row.
+    /// </remarks>
     public string? Marker
     {
         get => m_marker;
         set { if (Set(ref m_marker, value)) Raise(nameof(HasMarker)); }
+    }
+
+    /// <summary>
+    /// The same thing as a value - which category the row's heaviest pending edit is in.
+    /// </summary>
+    public SchemaEditCategory? MarkerCategory
+    {
+        get => m_markerCategory;
+        set => Set(ref m_markerCategory, value);
     }
 
     public bool HasMarker => !string.IsNullOrEmpty(Marker);

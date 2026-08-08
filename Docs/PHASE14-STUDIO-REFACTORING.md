@@ -1658,12 +1658,9 @@ it says otherwise.
    database Studio already has open would report "there is no database here".
 2. **Page cache occupancy is unexposed.** Both caches keep `Count` and `DirtyCount` and neither hands
    them out; this is the single "needs provider access" row left in the matrix.
-3. **`SchemaCapabilities.Matrix` holds English reasons as positional record arguments, and no rule
-   sees them.** They reach the schema designer's row tooltips through
-   `SchemaCapabilities.ReasonOf` -> `draft.MarkerReason` -> `ToolTip.Tip`. The localisation rule looks
-   at assignments, and here the literal sits in a constructor with no destination name in front of it -
-   the next hole of the family fixed on 2026-08-08, and a fourth service composing prose beside the
-   three already named.
+3. **DONE, 2026-08-08.** `SchemaCapabilities` held English as positional record arguments and no rule
+   saw it; it holds catalogue keys now and the lint has a fourth rule for the class. See "The
+   localisation hole a positional argument hides in" below.
 4. **The toolbar band is empty while the «База» tab is selected.** The query toolbar hides and nothing
    takes its place. Cosmetic, seen in the running application.
 5. **The tree's row count did not follow an insert.** Fifty rows went in through the editor and the
@@ -1742,6 +1739,50 @@ the clause too. The two have to be fixed together, and the shape matrix says in 
 this is the one part it cannot see.
 
 Studio **717 -> 727**, engine +1.
+
+## The localisation hole a positional argument hides in, 2026-08-08
+
+Phase 10's remainder, item 3, and it is rule 4 of the lint rather than a sweep.
+
+**Why the other three rules could never have found it.** Rules 1 to 3 all key on a NAME - an
+attribute, an attached property, the identifier before an `=`. A positional record argument has none:
+
+```csharp
+new("Add a column", SchemaEditCategory.InPlace, "ADD COLUMN, including UNIQUE, CHECK, …")
+```
+
+Eleven rows of that sat in `SchemaCapabilities.Matrix` through the entire stage-10 sweep, with four
+more sentences in `NotInTheEngine`, and every rule passed over every one of them.
+
+**So rule 4 reads a PLACE rather than a shape:** a `static` collection in `Services` is a data table,
+a data table holds catalogue keys, and a key has no spaces in it. That generalises to the next such
+table whatever it calls its parameters, and it has a second half - `EveryKeyInADataTableIsInEveryCatalogueTest`
+looks every key up in every language, because turning prose into keys moves the failure from "English
+on a Russian screen" to "`Schema.Cap.AddColumn` on both".
+
+**Measured in both directions, and the first version of the rule was wrong.** Its body regex stopped
+at the first `]`, so `SqlFormatter.BREAK_BEFORE` - a `string[][]` - was read two literals deep and
+reported clean; fixing it took the surface count from **99 to 122**. Then a row of the real matrix was
+put back as prose and both new tests went red, naming the file, the table and the string.
+
+**36 strings in two languages**, plus `MarkerOf` and `ReasonOf`, which are the live path
+(`ReasonOf` -> `draft.MarkerReason` -> `ToolTip.Tip`).
+
+**A decision that came out of it: `CategoryOfMarker` is gone.** The designer worked out which category
+a row was already in by reading its marker WORD back - `"rebuild" => Rebuild` - which is a comparison
+against English. **Measured rather than assumed: putting that code back leaves the new test GREEN**,
+because the misread degrades to the lowest category and a column row only ever carries `InPlace` or
+`Rebuild`. It is written up as what it is - a decision taken by parsing a caption, replaced because
+that is not how a decision should be taken, not because a test could see it.
+
+**And the run in the application found what the lint still could not**: the structure tab's own
+heading said **"Table Customers"** over a Russian interface. `ObjectTypeDisplay` is an
+expression-bodied switch, and rule 3's destination list did not have `Display` in it - the same family
+as `NotArmedReason` and `FilterSummary` before it. Fixed, the word added to the list, and the case
+pinned verbatim. **That is the fifth hole in this lint found by running the application rather than by
+running the lint**, which is the honest measure of what a lint over text can do.
+
+Studio **727 -> 730**.
 
 ---
 
