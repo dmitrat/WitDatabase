@@ -270,6 +270,24 @@ public sealed class DialogService : IDialogService
         }
     }
 
+    public async Task<bool> ShowReadCheckAsync(ReadCheckViewModel viewModel)
+    {
+        var dialog = new ReadCheckDialog { DataContext = viewModel };
+
+        void OnClose(bool success) => dialog.Close(success);
+
+        viewModel.ShouldCloseDialog += OnClose;
+
+        try
+        {
+            return await ShowForResultAsync(dialog);
+        }
+        finally
+        {
+            viewModel.ShouldCloseDialog -= OnClose;
+        }
+    }
+
     public async Task<bool> ShowEditTriggerAsync(EditTriggerViewModel viewModel)
     {
         var dialog = new EditTriggerDialog { DataContext = viewModel };

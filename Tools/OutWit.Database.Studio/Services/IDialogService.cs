@@ -89,6 +89,11 @@ public interface IDialogService
     /// </summary>
     Task<bool> ShowEditTriggerAsync(EditTriggerViewModel viewModel);
 
+    /// <summary>
+    /// Verification by reading (WS-61). True when a check was actually run.
+    /// </summary>
+    Task<bool> ShowReadCheckAsync(ReadCheckViewModel viewModel);
+
     #endregion
 }
 
@@ -138,4 +143,6 @@ public sealed class NoDialogService : IDialogService
     public Task<bool> ShowTableRebuildAsync(TableRebuildViewModel viewModel) => Task.FromResult(false);
 
     public Task<bool> ShowEditTriggerAsync(EditTriggerViewModel viewModel) => Task.FromResult(false);
+
+    public Task<bool> ShowReadCheckAsync(ReadCheckViewModel viewModel) => Task.FromResult(false);
 }

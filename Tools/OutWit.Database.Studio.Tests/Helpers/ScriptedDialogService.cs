@@ -135,6 +135,18 @@ public sealed class ScriptedDialogService : IDialogService
         return OnTriggerDialog?.Invoke(viewModel) ?? Task.FromResult(false);
     }
 
+    /// <summary>
+    /// Verification by reading (WS-61). The ViewModel is kept so that a test can run the check the
+    /// way the dialog's button would, rather than calling the service behind it.
+    /// </summary>
+    public Task<bool> ShowReadCheckAsync(ReadCheckViewModel viewModel)
+    {
+        Shown.Add(nameof(ShowReadCheckAsync));
+        LastReadCheck = viewModel;
+
+        return OnReadCheckDialog?.Invoke(viewModel) ?? Task.FromResult(false);
+    }
+
     #endregion
 
     #region Tools
@@ -184,6 +196,12 @@ public sealed class ScriptedDialogService : IDialogService
     public TableRebuildViewModel? LastRebuild { get; private set; }
 
     public EditTriggerViewModel? LastTrigger { get; private set; }
+
+    /// <summary>What the user does inside the read check.</summary>
+    public Func<ReadCheckViewModel, Task<bool>>? OnReadCheckDialog { get; set; }
+
+    /// <summary>The last read-check ViewModel shown, so a test can run it as the button would.</summary>
+    public ReadCheckViewModel? LastReadCheck { get; private set; }
 
     /// <summary>The settings ViewModel last shown - which section it opened on is worth asserting.</summary>
     public SettingsViewModel? LastSettings { get; private set; }

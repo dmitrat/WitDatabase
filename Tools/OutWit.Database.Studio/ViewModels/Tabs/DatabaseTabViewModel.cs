@@ -58,6 +58,7 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
         RefreshCommand = new RelayCommandAsync(RefreshAsync);
         CheckpointCommand = new RelayCommandAsync(() => MaintainAsync(compact: false));
         CompactCommand = new RelayCommandAsync(() => MaintainAsync(compact: true));
+        ReadCheckCommand = new RelayCommandAsync(ReadCheckAsync);
     }
 
     #endregion
@@ -131,6 +132,17 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
         {
             IsMaintaining = false;
         }
+    }
+
+    /// <summary>
+    /// Opens verification by reading (WS-61) for this connection.
+    /// </summary>
+    private async Task ReadCheckAsync()
+    {
+        if (Session is not { IsConnected: true } session)
+            return;
+
+        await ApplicationVm.Dialogs.ShowReadCheckAsync(new ReadCheckViewModel(ApplicationVm, session));
     }
 
     /// <summary>
@@ -434,6 +446,8 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
     [Notify] public ICommand CheckpointCommand { get; private set; } = null!;
 
     [Notify] public ICommand CompactCommand { get; private set; } = null!;
+
+    [Notify] public ICommand ReadCheckCommand { get; private set; } = null!;
 
     #endregion
 }

@@ -1,0 +1,103 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="720" d:DesignHeight="560"
+        x:Class="OutWit.Database.Studio.Views.Dialogs.ReadCheckDialog"
+        x:DataType="vm:ReadCheckViewModel"
+        Title="{DynamicResource S.ReadCheck.Title}"
+        Width="720" Height="560"
+        MinWidth="560" MinHeight="420"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True">
+
+    <Grid RowDefinitions="Auto,*,Auto,Auto">
+
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="16">
+            <StackPanel Spacing="4">
+                <TextBlock Name="ReadCheckHeading"
+                           AutomationProperties.AutomationId="ReadCheckHeading"
+                           Text="{Binding Heading}"
+                           FontSize="18" FontWeight="SemiBold"/>
+                <TextBlock Name="ReadCheckSummary"
+                           AutomationProperties.AutomationId="ReadCheckSummary"
+                           Text="{Binding Summary}" FontSize="12" TextWrapping="Wrap"/>
+            </StackPanel>
+        </Border>
+
+        <ListBox Grid.Row="1"
+                 Name="ReadCheckRows"
+                 AutomationProperties.AutomationId="ReadCheckRows"
+                 AutomationProperties.Name="{DynamicResource S.ReadCheck.Rows.Name}"
+                 ItemsSource="{Binding Rows}"
+                 Margin="8">
+            <ListBox.ItemTemplate>
+                <DataTemplate x:DataType="vm:ReadCheckRow">
+                    <Grid ColumnDefinitions="Auto,*" Margin="0,2">
+                        <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6"
+                                    Margin="0,0,12,0" VerticalAlignment="Top">
+                            <TextBlock Text="{Binding Kind}" Opacity="0.6"/>
+                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                        </StackPanel>
+
+                        <StackPanel Grid.Column="1">
+                            <TextBlock Text="{Binding Result}" TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding Note}" FontSize="11" Opacity="0.65"
+                                       TextWrapping="Wrap"
+                                       IsVisible="{Binding Note, Converter={x:Static ObjectConverters.IsNotNull}}"/>
+                        </StackPanel>
+                    </Grid>
+                </DataTemplate>
+            </ListBox.ItemTemplate>
+        </ListBox>
+
+        <!-- What it does NOT find, and it is on the screen rather than in a document: a full SELECT
+             coming back green says nothing about the parts of the file nobody is reading. -->
+        <Border Grid.Row="2" Padding="16,8"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+            <TextBlock Name="ReadCheckLimits"
+                       AutomationProperties.AutomationId="ReadCheckLimits"
+                       Text="{DynamicResource S.ReadCheck.Limits}"
+                       FontSize="11" Opacity="0.75" TextWrapping="Wrap"/>
+        </Border>
+
+        <Border Grid.Row="3"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,1,0,0"
+                Padding="16,12">
+            <Grid ColumnDefinitions="Auto,*,Auto,Auto">
+                <Button Grid.Column="0"
+                        Name="ReadCheckRunButton"
+                        AutomationProperties.AutomationId="ReadCheckRun"
+                        Command="{Binding RunCommand}"
+                        IsVisible="{Binding !IsRunning}"
+                        Content="{DynamicResource S.ReadCheck.Run}"/>
+
+                <Button Grid.Column="0"
+                        Name="ReadCheckCancelButton"
+                        AutomationProperties.AutomationId="ReadCheckCancel"
+                        Command="{Binding CancelCommand}"
+                        IsVisible="{Binding IsRunning}"
+                        Content="{DynamicResource S.ReadCheck.Cancel}"/>
+
+                <Button Grid.Column="2" Margin="0,0,8,0"
+                        Name="ReadCheckSaveButton"
+                        AutomationProperties.AutomationId="ReadCheckSave"
+                        Command="{Binding SaveReportCommand}"
+                        IsEnabled="{Binding HasRun}"
+                        Content="{DynamicResource S.ReadCheck.SaveReport}"/>
+
+                <Button Grid.Column="3"
+                        Name="ReadCheckCloseButton"
+                        AutomationProperties.AutomationId="ReadCheckClose"
+                        Command="{Binding CloseCommand}"
+                        Content="{DynamicResource S.Common.Close}"/>
+            </Grid>
+        </Border>
+    </Grid>
+</Window>

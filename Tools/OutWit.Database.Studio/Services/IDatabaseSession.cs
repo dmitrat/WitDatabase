@@ -304,5 +304,19 @@ public interface IDatabaseSession
     /// </summary>
     Task<WitDbMaintenanceResult> CompactAsync(CancellationToken ct = default);
 
+    /// <summary>
+    /// Reads every row and every value a query returns, without materialising any of it, and answers
+    /// how many rows there were (WS-61).
+    /// </summary>
+    /// <remarks>
+    /// The count comes from the rows themselves rather than from <c>COUNT(*)</c>, which on this engine
+    /// is a counter kept beside the data - the two can disagree, and telling them apart is one of the
+    /// few things a read check can actually find.
+    /// </remarks>
+    Task<long> ScanAsync(string sql, CancellationToken ct = default);
+
+    /// <inheritdoc cref="ScanAsync(string, CancellationToken)"/>
+    Task<long> ScanAsync(SqlStatement statement, CancellationToken ct = default);
+
     #endregion
 }
