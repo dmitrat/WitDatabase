@@ -334,7 +334,9 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
         m_suppressRecompute = false;
 
-        ViewDefinition = await session.GetViewDefinitionAsync(ObjectName);
+        // The BODY, not the CREATE VIEW: this is the text the editor lets a person rewrite, and it is
+        // put back inside a CREATE VIEW by DdlWriter when the change is applied.
+        ViewDefinition = await session.GetViewBodyAsync(ObjectName);
 
         // A view whose body the catalogue cannot render comes back NULL - measured for a UNION and for
         // a subquery. Editing means DROP and CREATE, and creating from a body Studio does not have

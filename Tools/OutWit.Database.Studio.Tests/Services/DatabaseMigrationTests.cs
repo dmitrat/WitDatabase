@@ -25,31 +25,11 @@ public class DatabaseMigrationTests
         m_fixture = await StudioFixture.CreateAsync();
     }
 
-    /// <summary>
-    /// Replaces the fixture's schema with one that has no trigger in it.
-    /// </summary>
-    /// <remarks>
-    /// Not tidiness: a trigger cannot be carried by the dump at all yet (see the case above), and a
-    /// migration case built on the fixture's own schema would only ever be measuring that.
-    /// </remarks>
-    private async Task BuildSchemaWithoutTriggersAsync()
-    {
-        foreach (var sql in new[]
-                 {
-                     "DROP TRIGGER TR_Orders_Audit",
-                     "DROP VIEW ActiveOrders"
-                 })
-        {
-            try
-            {
-                await m_fixture.Database.ExecuteQueryAsync(sql);
-            }
-            catch
-            {
-                // Already gone is the state this wants.
-            }
-        }
-    }
+    // Every case here runs on the fixture's WHOLE schema, trigger and view included. There used to be
+    // a BuildSchemaWithoutTriggersAsync that dropped both, and its reason was honest while it lasted:
+    // a trigger could not be carried by the dump at all, so a case built on the fixture's own schema
+    // would only ever have been measuring that. Taking it out is the census the fix earns - three
+    // cases that used to migrate a cut-down database now migrate the real one.
 
     [TearDown]
     public async Task TearDown()
@@ -62,34 +42,119 @@ public class DatabaseMigrationTests
     #region Tests
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. A database with a TRIGGER in it cannot be migrated,
-    /// because the dump it is carried by cannot be executed back.
-    ///
-    /// <para>
-    /// Measured 2026-08-08, the first time a dump was ever run into an empty database: the script ends
-    /// with <c>INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);</c> as a statement of its own - the
-    /// BODY of the trigger, cut loose from it - and the engine refuses it with "Column 'Id' not found".
-    /// So the dump is not round-trippable, which is the one thing a dump is for.
-    /// </para>
-    /// <para>
-    /// When that is fixed this case goes RED and should be replaced by the ordinary one: a database
-    /// with a trigger migrates, and the trigger is in the copy.
-    /// </para>
+    /// A database with a TRIGGER in it migrates, and the trigger is in the copy - where it fires.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This replaces <c>ADatabaseWithATriggerCannotBeMigratedYetAsync</c>, which pinned the defect
+    /// rather than the behaviour and said in its own summary what should replace it. The defect: the
+    /// catalogue publishes a trigger's BODY and the dump wrote that verbatim, so the script ended with
+    /// <c>INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);</c> as a statement of its own and the
+    /// engine refused it with "Column 'Id' not found". Measured on 2026-08-08, the pin went from
+    /// <c>Failed</c> to <c>Transferred</c> the moment the definition became a whole
+    /// <c>CREATE TRIGGER</c> - which is the proof the fix works.
+    /// </para>
+    /// <para>
+    /// The trigger is checked by USING it rather than by finding its name in the catalogue: one that
+    /// is listed and does not fire is exactly the failure this is about.
+    /// </para>
+    /// </remarks>
     [Test]
-    public async Task ADatabaseWithATriggerCannotBeMigratedYetAsync()
+    public async Task ADatabaseWithATriggerIsMigratedAndTheTriggerFiresAsync()
     {
-        var result = await DatabaseMigrator.MigrateAsync(m_fixture.Database,
-            new ConnectionInfo { FilePath = Path.Combine(m_fixture.Root, "with-trigger.witdb") });
+        // The audit table is emptied first, and NOT for tidiness: a restored table whose rows carried
+        // explicit keys refuses the next generated one, which is a separate defect pinned by
+        // AGeneratedKeyIsRefusedInAMigratedDatabaseAsync below. Left in, it would fire here and this
+        // case would be reporting that defect instead of measuring the trigger.
+        await m_fixture.Database.ExecuteNonQueryAsync("DELETE FROM OrdersAudit");
 
-        Assert.Multiple(() =>
+        var target = new ConnectionInfo { FilePath = Path.Combine(m_fixture.Root, "with-trigger.witdb") };
+
+        var result = await DatabaseMigrator.MigrateAsync(m_fixture.Database, target);
+
+        Assert.That(result.Outcome, Is.EqualTo(MigrationOutcome.Transferred), result.EngineMessage);
+
+        await using var connection = new WitDbConnection(target.BuildConnectionString());
+        await connection.OpenAsync();
+
+        var before = await CountAsync(connection, "OrdersAudit");
+
+        await using (var command = connection.CreateCommand())
         {
-            Assert.That(result.Outcome, Is.EqualTo(MigrationOutcome.Failed));
+            command.CommandText = "INSERT INTO Orders (CustomerId, Total, Status) VALUES (1, 5.00, 'new')";
+            await command.ExecuteNonQueryAsync();
+        }
 
-            // The statement, not just the message - which is what makes this report usable at all.
-            Assert.That(result.EngineMessage, Does.Contain("NEW.Id"));
-            Assert.That(result.EngineMessage, Does.Contain("of"));
-        });
+        Assert.That(await CountAsync(connection, "OrdersAudit"), Is.EqualTo(before + 1),
+            "the trigger has to be in the copy and do its work there");
+    }
+
+    /// <summary>
+    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. A migrated database refuses the first row it is asked to
+    /// generate a key for, in any table whose rows were carried with their keys.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Found on 2026-08-08 by the trigger case above, which fired the trigger in the copy and got
+    /// <i>"UNIQUE constraint failed: OrdersAudit.Id (duplicate value: 1). The table's key counter is
+    /// behind its rows"</i>. The refusal itself is the engine behaving correctly - it is phase 15's fix
+    /// refusing to overwrite row 1 - so what this pins is the state underneath it: after the transfer
+    /// the counter is at zero while the rows are at three.
+    /// </para>
+    /// <para>
+    /// <b>It has nothing to do with triggers.</b> Measured: with the trigger dropped, a plain
+    /// <c>INSERT INTO OrdersAudit (OrderId) VALUES (99)</c> into the migrated database is refused
+    /// identically. So every dump and every password change produces a database that cannot take a new
+    /// row until its counter is put right by hand, and the byte copy is the only transfer that does not.
+    /// </para>
+    /// <para>
+    /// <b>Attributed as far as it goes, and fifteen controlled variants do NOT reproduce it</b> - see
+    /// <c>Docs/KnownIssues.md</c> issue 11 for the list. What is established: the rows must carry
+    /// explicit keys (emptying the table first makes the copy healthy), the trigger is not needed, and
+    /// the close-and-reopen is (running the same script into an open session and inserting on that
+    /// connection is accepted). A one-table source through the same migrator is accepted, so something
+    /// in the fuller schema is required and is not yet named.
+    /// </para>
+    /// <para>
+    /// When it is fixed this case goes RED, and it should be replaced by the ordinary one: after a
+    /// migration the next generated key follows the rows that arrived.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AGeneratedKeyIsRefusedInAMigratedDatabaseAsync()
+    {
+        var target = new ConnectionInfo { FilePath = Path.Combine(m_fixture.Root, "counter.witdb") };
+
+        var result = await DatabaseMigrator.MigrateAsync(m_fixture.Database, target);
+
+        // The transfer itself is clean - every row arrived. That is what makes this worth pinning:
+        // nothing in the migration report says the copy cannot be written to.
+        Assert.That(result.Outcome, Is.EqualTo(MigrationOutcome.Transferred), result.EngineMessage);
+
+        await using var connection = new WitDbConnection(target.BuildConnectionString());
+        await connection.OpenAsync();
+
+        await using var command = connection.CreateCommand();
+        command.CommandText = "INSERT INTO OrdersAudit (OrderId) VALUES (99)";
+
+        Assert.That(async () => await command.ExecuteNonQueryAsync(),
+            Throws.Exception.With.Message.Contains("key counter is behind its rows"),
+            "PINS A DEFECT: the copy's key counter did not follow the rows that were written into it");
+    }
+
+    private static async Task<int> CountAsync(WitDbConnection connection, string table)
+    {
+        await using var command = connection.CreateCommand();
+        command.CommandText = $"SELECT Id FROM [{table}]";
+
+        await using var reader = await command.ExecuteReaderAsync();
+
+        var rows = 0;
+
+        while (await reader.ReadAsync())
+            rows++;
+
+        return rows;
     }
 
     /// <summary>
@@ -105,8 +170,6 @@ public class DatabaseMigrationTests
     [Test]
     public async Task TheDataArrivesEncryptedAndTheSourceIsUntouchedAsync()
     {
-        await BuildSchemaWithoutTriggersAsync();
-
         var target = new ConnectionInfo
         {
             FilePath = Path.Combine(m_fixture.Root, "encrypted.witdb"),
@@ -170,8 +233,6 @@ public class DatabaseMigrationTests
     [Test]
     public async Task EveryTableIsCountedOnBothSidesAsync()
     {
-        await BuildSchemaWithoutTriggersAsync();
-
         var target = new ConnectionInfo
         {
             FilePath = Path.Combine(m_fixture.Root, "counted.witdb")
@@ -221,8 +282,6 @@ public class DatabaseMigrationTests
     [Test]
     public async Task TheStepsAreReportedAndEveryOneHasWordsAsync()
     {
-        await BuildSchemaWithoutTriggersAsync();
-
         var steps = new List<MigrationStep>();
 
         var target = new ConnectionInfo { FilePath = Path.Combine(m_fixture.Root, "stepped.witdb") };
@@ -248,3 +307,4 @@ public class DatabaseMigrationTests
 
     #endregion
 }
+

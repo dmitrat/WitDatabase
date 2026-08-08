@@ -107,6 +107,55 @@ public class SqlScriptTests
         });
     }
 
+    /// <summary>
+    /// A compound <c>BEGIN … END</c> body stays inside its statement, with a statement either side of
+    /// it as the control.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written to ANSWER A QUESTION rather than to guard a behaviour, and the answer changed where the
+    /// repair went. The dump could not rebuild a trigger, and there were two candidates: the definition
+    /// might arrive incomplete, or the splitter might cut the body loose at the semicolons inside it.
+    /// Measured 2026-08-08: the splitter keeps all of it - three statements here, no errors - and the
+    /// engine accepts the middle one. The defect was entirely in what the catalogue handed over, which
+    /// is where it was fixed.
+    /// </para>
+    /// <para>
+    /// It is kept because the question will be asked again the next time a trigger comes back wrong,
+    /// and because the splitter genuinely could regress here: the semicolons inside the body are the
+    /// exact thing a hand-written splitter gets wrong.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void ATriggerBodyIsNotCutLooseFromItsTriggerTest()
+    {
+        const string script = """
+                              CREATE TABLE T (Id INTEGER PRIMARY KEY);
+                              CREATE TRIGGER TR AFTER INSERT ON T FOR EACH ROW
+                              BEGIN
+                                  INSERT INTO T (Id) VALUES (NEW.Id);
+                                  INSERT INTO T (Id) VALUES (NEW.Id + 1);
+                              END;
+                              SELECT 1;
+                              """;
+
+        var split = SqlScript.Split(script);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(split.Errors, Is.Empty);
+            Assert.That(split.Statements, Has.Count.EqualTo(3),
+                "the two semicolons inside the body must not start statements of their own");
+
+            var trigger = split.Statements[1];
+
+            Assert.That(trigger.Text, Does.StartWith("CREATE TRIGGER"));
+            Assert.That(trigger.Text, Does.Contain("END"), "the body travels with the trigger");
+            Assert.That(trigger.Text.Split("INSERT INTO T"), Has.Length.EqualTo(3),
+                "both of the body's statements are in it");
+        });
+    }
+
     #endregion
 
     #region What changes the schema

@@ -186,6 +186,162 @@ public class DatabaseDumpTests
 
     #endregion
 
+    #region The objects that are not tables
+
+    /// <summary>
+    /// A TRIGGER survives the round trip, and the measurement is that it FIRES in the copy.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured red on 2026-08-08 against the unfixed code: the catalogue publishes a trigger's
+    /// <c>ACTION_STATEMENT</c>, which is its BODY, and the dump wrote that verbatim - so the script
+    /// ended with <c>INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);</c> as a statement of its own
+    /// and the engine refused it with "Column 'Id' not found". There was no <c>CREATE TRIGGER</c>
+    /// anywhere in the script.
+    /// </para>
+    /// <para>
+    /// The other half of that measurement is worth keeping: <c>SqlScript.Split</c> is NOT implicated.
+    /// A hand-written <c>CREATE TRIGGER … BEGIN … END;</c> with two statements in its body comes back
+    /// from the splitter as ONE statement, and the engine accepts it - so the defect was entirely in
+    /// what the definition contained. See <see cref="SqlScriptTests"/> for that case.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task ATriggerFiresInTheRebuiltDatabaseAsync()
+    {
+        await m_studio.Database.ExecuteNonQueryAsync(
+            "CREATE TABLE Orders (Id INTEGER PRIMARY KEY AUTOINCREMENT, Total DECIMAL(10,2))");
+        await m_studio.Database.ExecuteNonQueryAsync(
+            "CREATE TABLE OrdersAudit (Id INTEGER PRIMARY KEY AUTOINCREMENT, OrderId INTEGER NOT NULL)");
+        await m_studio.Database.ExecuteNonQueryAsync(
+            "CREATE TRIGGER TR_Orders_Audit AFTER INSERT ON Orders FOR EACH ROW "
+            + "BEGIN INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id); END");
+
+        var rebuilt = await RunTheDumpIntoAnEmptyDatabaseAsync("trigger-target");
+
+        // The trigger is only real if it does its work: insert into the COPY and read the audit table.
+        await rebuilt.ExecuteNonQueryAsync("INSERT INTO Orders (Total) VALUES (10.00)");
+
+        var audit = await rebuilt.ExecuteQueryAsync("SELECT OrderId FROM OrdersAudit");
+
+        Assert.That(audit.Data!.Rows, Has.Count.EqualTo(1),
+            "the trigger has to be in the copy and fire there - a dump that cannot rebuild a trigger "
+            + "is a backup that quietly loses one");
+    }
+
+    /// <summary>
+    /// A VIEW survives it too, and this is the half that failed in SILENCE.
+    /// </summary>
+    /// <remarks>
+    /// The same defect one object along: <c>VIEW_DEFINITION</c> is the view's query, and the dump wrote
+    /// it verbatim - so the script carried a bare <c>SELECT Id, CustomerId, Total FROM Orders WHERE …;</c>
+    /// with no <c>CREATE VIEW … AS</c> in front of it. Unlike the trigger, that statement <b>runs</b>:
+    /// the restore reported success on every line and the view was simply not there. Found in the same
+    /// measurement, by reading the whole script rather than the line that failed.
+    /// </remarks>
+    [Test]
+    public async Task AViewIsInTheRebuiltDatabaseAndAnswersAsync()
+    {
+        await m_studio.Database.ExecuteNonQueryAsync(
+            "CREATE TABLE Orders (Id INTEGER PRIMARY KEY, Total DECIMAL(10,2), Status VARCHAR(20))");
+        await m_studio.Database.ExecuteNonQueryAsync(
+            "INSERT INTO Orders (Id, Total, Status) VALUES (1, 10.00, 'new')");
+        await m_studio.Database.ExecuteNonQueryAsync(
+            "INSERT INTO Orders (Id, Total, Status) VALUES (2, 20.00, 'archived')");
+        await m_studio.Database.ExecuteNonQueryAsync(
+            "CREATE VIEW ActiveOrders AS SELECT Id, Total FROM Orders WHERE Status <> 'archived'");
+
+        var rebuilt = await RunTheDumpIntoAnEmptyDatabaseAsync("view-target");
+
+        var rows = await rebuilt.ExecuteQueryAsync("SELECT Id FROM ActiveOrders");
+
+        Assert.That(rows.Data!.Rows, Has.Count.EqualTo(1),
+            "the view has to be in the copy and answer there");
+    }
+
+    /// <summary>
+    /// Every shape of trigger this engine accepts, dumped and rebuilt, compared through the catalogue.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The parts a <c>CREATE TRIGGER</c> is assembled from are separate catalogue columns, and dropping
+    /// any one of them produces a trigger that is still a trigger - one that fires at the wrong time,
+    /// on the wrong event, for every row instead of once, or with its <c>WHEN</c> gone. A single case
+    /// over one shape cannot see that; this walks all of them and compares the row the target
+    /// publishes against the row the source published.
+    /// </para>
+    /// <para>
+    /// <b>What this instrument cannot see, measured rather than assumed:</b> <c>UPDATE OF V</c> is
+    /// accepted, stored, and published by <c>INFORMATION_SCHEMA.TRIGGERS</c> as a plain <c>UPDATE</c> -
+    /// there is no column for the column list - so the dump widens it to every column and both sides of
+    /// this comparison agree. It changes no behaviour today because <b>the engine does not honour
+    /// <c>UPDATE OF</c> either</b>: a trigger declared on one column fires on an update of another.
+    /// That is pinned in the engine's own suite, and when it is fixed the dump's widening becomes a
+    /// real loss that this fixture still will not see.
+    /// </para>
+    /// </remarks>
+    [TestCase("AFTER INSERT ON Src FOR EACH ROW", TestName = "TriggerShape_AfterInsertPerRow")]
+    [TestCase("BEFORE DELETE ON Src FOR EACH ROW", TestName = "TriggerShape_BeforeDelete")]
+    [TestCase("INSTEAD OF INSERT ON Src FOR EACH ROW", TestName = "TriggerShape_InsteadOf")]
+    [TestCase("AFTER UPDATE ON Src FOR EACH ROW", TestName = "TriggerShape_AfterUpdate")]
+    [TestCase("AFTER INSERT ON Src", TestName = "TriggerShape_PerStatement")]
+    [TestCase("AFTER INSERT ON Src FOR EACH ROW WHEN (NEW.V > 10)", TestName = "TriggerShape_WithWhen")]
+    public async Task ATriggerKeepsItsShapeThroughTheDumpAsync(string header)
+    {
+        const string body = "BEGIN INSERT INTO Log (V) VALUES (1); INSERT INTO Log (Note) VALUES ('a;b'); END";
+
+        await BuildTriggerFixtureAsync(m_studio.Database);
+        await m_studio.Database.ExecuteNonQueryAsync($"CREATE TRIGGER TShape {header} {body}");
+
+        var expected = await CatalogueRowAsync(m_studio.Database);
+
+        var rebuilt = await RunTheDumpIntoAnEmptyDatabaseAsync($"shape-{header.GetHashCode():x}");
+
+        Assert.That(await CatalogueRowAsync(rebuilt), Is.EqualTo(expected),
+            "the rebuilt trigger has to be the same trigger, part for part");
+    }
+
+    private static async Task BuildTriggerFixtureAsync(IDatabaseSession session)
+    {
+        await session.ExecuteNonQueryAsync("CREATE TABLE Src (Id INTEGER PRIMARY KEY AUTOINCREMENT, V INTEGER)");
+        await session.ExecuteNonQueryAsync(
+            "CREATE TABLE Log (Id INTEGER PRIMARY KEY AUTOINCREMENT, V INTEGER, Note VARCHAR(50))");
+    }
+
+    /// <summary>
+    /// The trigger as the catalogue publishes it: every part a CREATE TRIGGER is built from.
+    /// </summary>
+    private static async Task<string> CatalogueRowAsync(IDatabaseSession session)
+    {
+        var result = await session.ExecuteQueryAsync(
+            "SELECT TRIGGER_NAME, ACTION_TIMING, EVENT_MANIPULATION, EVENT_OBJECT_TABLE, "
+            + "ACTION_ORIENTATION, ACTION_CONDITION, ACTION_STATEMENT FROM INFORMATION_SCHEMA.TRIGGERS "
+            + "WHERE TRIGGER_NAME = 'TShape'");
+
+        if (result.Data == null || result.Data.Rows.Count == 0)
+            return "<the trigger is not in this database at all>";
+
+        return string.Join(" | ", result.Data.Rows[0].ItemArray.Select(value => value?.ToString() ?? "<null>"));
+    }
+
+    /// <summary>
+    /// What the dump claims to be, done: a second, empty database with the script run into it, one
+    /// statement at a time, the way a query tab would run it.
+    /// </summary>
+    private async Task<IDatabaseSession> RunTheDumpIntoAnEmptyDatabaseAsync(string name)
+    {
+        var script = await DatabaseDump.WriteAsync(m_studio.Database, new DumpOptions());
+
+        var rebuilt = await m_studio.OpenAnotherAsync(name, withSchema: false);
+
+        foreach (var statement in SqlScript.Split(script).Statements)
+            await rebuilt.ExecuteNonQueryAsync(statement.Text);
+
+        return rebuilt;
+    }
+
+    #endregion
+
     #region What it leaves out, and says so
 
     [Test]

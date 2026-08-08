@@ -613,6 +613,88 @@ journal that can be replayed at open - which the MVCC store still refuses to hav
 
 ---
 
+## Found by WitDatabase Studio, 2026-08-08
+
+Both came out of the same measurement: executing a dump back into an empty database
+for the first time. The dump's own two defects — every index written as `CREATE
+UNIQUE INDEX`, and a trigger written as its bare body — were Studio's and are fixed
+there. These two are the engine's.
+
+---
+
+## 11. A restored dump refuses the next generated key
+
+> **OPEN.** Pinned by
+> `Studio.Tests/Services/DatabaseMigrationTests.AGeneratedKeyIsRefusedInAMigratedDatabaseAsync`,
+> which is labelled as pinning a defect and says what should replace it.
+
+A database rebuilt from a dump — which is also what a password change is, since
+that is a migration — **cannot take a new row in any table whose rows carried
+their keys**. The first insert that asks for a generated key is refused with:
+
+```
+UNIQUE constraint failed: OrdersAudit.Id (duplicate value: 1).
+The table's key counter is behind its rows; the insert was refused rather than
+overwriting one.
+```
+
+The refusal is issue 5's fix behaving correctly — it is refusing to overwrite row
+1 rather than doing it silently, which is the better of the two failures. What is
+wrong is the state underneath: after the transfer the counter is at zero while the
+rows are at three. **Nothing in the migration report says so**: every table's rows
+are counted on both sides, they match, and the transfer is reported as complete.
+
+**What is established, by measurement:**
+
+- the rows must carry **explicit keys** — emptying the table before the dump makes
+  the copy healthy;
+- the **trigger is not involved**, though a trigger is how it was found: with the
+  trigger dropped, a plain `INSERT INTO OrdersAudit (OrderId) VALUES (99)` into the
+  restored database is refused identically;
+- the **close and reopen is** — running the same script into an already-open session
+  and inserting on that same connection is accepted.
+
+**Fifteen controlled variants do NOT reproduce it**, and the list is worth more
+than a hypothesis: explicit keys then reopen, with a trigger and without; the table
+created with quoted identifiers the way the dump spells it, with a trigger and
+without; a tail of `CREATE INDEX`, of `CREATE TABLE`, of rows in another table, and
+of nothing at all; three, fifty, two hundred and two thousand explicit rows; two
+tables both carrying explicit keys, asking each of them afterwards; and a one-table
+source through the migrator itself. Every one of those comes back accepted with the
+counter following the rows.
+
+So something in the fuller schema is required and is not yet named. The next step
+is to bisect the fixture's schema through the migrator — it reproduces there every
+time — rather than to keep building cases up from nothing, which is what those
+fifteen were. Issue 5's mechanism is the place to start reading: the counter is
+persisted under a key built from the table NAME, and an absent record reads as zero.
+
+**The byte copy is unaffected** — it is the same bytes by construction — so a user
+who needs a faithful copy today has one.
+
+---
+
+## 12. `UPDATE OF` is accepted and ignored
+
+> **OPEN.** Pinned by
+> `AuditVerification/TriggerBodyFidelityTests.UpdateOfIsAcceptedAndIgnoredTest`,
+> with a control that proves the trigger is live either way.
+
+`CREATE TRIGGER T AFTER UPDATE OF Watched ON Source …` names the column the trigger
+watches. The parser reads the list, `DefinitionTrigger.UpdateColumns` stores it, and
+**nothing on the firing path ever consults it**: measured, the trigger fires on an
+update of a column it does not name. The phase-7 class again — accepted, and then
+ignored.
+
+**It is tied to the dump, which is how it surfaced.** `INFORMATION_SCHEMA.TRIGGERS`
+publishes no column for the list, so Studio's `CREATE TRIGGER` — assembled from the
+catalogue — widens `UPDATE OF Watched` to every column. That loses nothing today
+precisely because the engine ignores the clause. **Fixing the firing path without
+giving the catalogue somewhere to publish the list would turn this into a silent
+fidelity loss in every dump**, so the two belong in one piece of work.
+
+---
+
 ## Verifying a fix
 
 WitAnalytics is a ready-made regression harness: its stats test fixture runs the

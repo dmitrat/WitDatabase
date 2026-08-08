@@ -1676,14 +1676,72 @@ it says otherwise.
      `IS_UNIQUE` is published as the string `"YES"`/`"NO"` and was being read with `GetBoolean`. A
      dumped database whose non-unique index holds the duplicate values a non-unique index is *for*
      could not be restored at all;
-   - **open:** a TRIGGER is cut in two. The script ends with
-     `INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);` as a statement of its own - the body,
-     loose from its trigger - and the engine refuses it with "Column 'Id' not found". Pinned by
-     `ADatabaseWithATriggerCannotBeMigratedYetAsync`, which is labelled as pinning a defect and says
-     what it should be replaced by when the splitter or the definition is fixed.
+   - **fixed 2026-08-08, and it was the definition rather than the splitter:** a TRIGGER was cut in
+     two. See "The dump that could not be run back" below - the same section closes a second object
+     that was failing in silence.
 
    The shape is stage 8's, one layer along: a dump that nobody has ever executed is a claim, and it
    had been shipping since stage 9.
+
+---
+
+## The dump that could not be run back, 2026-08-08
+
+Phase 10's remainder, item 6, finished. **The catalogue's definition was the defect and the splitter
+was innocent**, and that was established by measurement before anything was changed - the two
+candidates were "the definition arrives incomplete" and "`SqlScript.Split` cuts the compound body
+loose at the semicolons inside it", and only one of them is true.
+
+**What the measurement said, in one line each:**
+
+- `GetTriggerDefinitionAsync` returned `INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id)` - the
+  catalogue's `ACTION_STATEMENT`, which is the BODY. There was no `CREATE TRIGGER` in the script at
+  all;
+- the splitter, asked separately, returns a hand-written `CREATE TRIGGER … BEGIN … END;` with two
+  statements in its body as **one** statement out of three, no errors, and the engine accepts it.
+  Recorded as `SqlScriptTests.ATriggerBodyIsNotCutLooseFromItsTriggerTest`, written to answer the
+  question rather than to guard the behaviour, and kept because the question will be asked again;
+- **and the same defect one object along, which nobody had named: a VIEW.** `VIEW_DEFINITION` is the
+  view's query, written verbatim, so the script carried a bare `SELECT …;`. Unlike the trigger that
+  statement **runs** - the restore reported success on every line and the view was simply not there.
+  A loud failure had been hiding a silent one.
+
+**The fix is `DdlWriter`, which already existed.** `CreateTrigger` and `CreateView` are the designer's
+writers and every shape in them has been executed against the engine; the session now reads the
+catalogue's parts and hands them over instead of growing a second writer. `GetViewDefinitionAsync`
+returns the `CREATE VIEW`, and the query alone - which is what the structure tab's editor rewrites -
+is `GetViewBodyAsync`, named after what it is.
+
+**The instrument, and it was measured in both directions.** A trigger is assembled from six catalogue
+columns and dropping any one of them still produces a trigger - one that fires at the wrong time, on
+the wrong event, once instead of per row, or with its `WHEN` gone - so one case over one shape proves
+nothing. `ATriggerKeepsItsShapeThroughTheDumpAsync` walks six shapes and compares the row the target
+publishes against the row the source published. Sabotaged part by part: fixing `ForEachRow` reddens
+the statement-trigger case **and nothing else**, dropping the `WHEN` reddens the `WHEN` case, fixing
+the timing and the event reddens the other three. Eight cases were red before the fix and are green
+after it.
+
+**`ADatabaseWithATriggerCannotBeMigratedYetAsync` went red exactly as it promised** - `Failed` became
+`Transferred` - and is replaced by the ordinary case, which checks the trigger by USING it. The
+migration fixture's `BuildSchemaWithoutTriggersAsync` is deleted with it: three cases that used to
+migrate a cut-down database now migrate the real one.
+
+### And the two the engine kept
+
+**A restored dump refuses the next generated key** - `KnownIssues.md` issue 11, found because the new
+trigger case fired the trigger in the copy and the copy would not take the row. It is not about
+triggers: with the trigger dropped, a plain insert is refused identically. Attributed as far as
+measurement took it (the rows must carry explicit keys; the close-and-reopen is needed) and **fifteen
+controlled variants do not reproduce it** while the migration reproduces every time - the stage-8
+shape, and the honest report is the list of what was ruled out. Pinned by
+`AGeneratedKeyIsRefusedInAMigratedDatabaseAsync`.
+
+**`UPDATE OF` is accepted and ignored** - issue 12. The catalogue publishes no column list, so the
+rebuilt trigger watches every column; that loses nothing today only because the firing path ignores
+the clause too. The two have to be fixed together, and the shape matrix says in its own remarks that
+this is the one part it cannot see.
+
+Studio **717 -> 727**, engine +1.
 
 ---
 

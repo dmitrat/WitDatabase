@@ -124,6 +124,56 @@ public sealed class TriggerBodyFidelityTests : WitSqlEngineTestsBase
             "a multi-statement body must keep every statement");
     }
 
+    /// <summary>
+    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. <c>UPDATE OF</c> names the columns a trigger watches, and
+    /// the engine stores the list and never consults it: the trigger fires on an update of any column.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured 2026-08-08 from the other end - Studio's dump could not rebuild a trigger, and while
+    /// assembling <c>CREATE TRIGGER</c> from <c>INFORMATION_SCHEMA.TRIGGERS</c> it turned out the
+    /// catalogue publishes no column list at all, so the rebuilt trigger would watch every column.
+    /// That would be a fidelity loss in the dump if the engine honoured the clause. It does not, so
+    /// the dump loses nothing today - and the two are tied together: <b>fixing this makes the dump's
+    /// widening real</b>, and the catalogue needs somewhere to publish the list before it can.
+    /// </para>
+    /// <para>
+    /// The parser reads it (<c>triggerEvent : UPDATE (OF columnName (COMMA columnName)*)?</c>) and
+    /// <c>DefinitionTrigger.UpdateColumns</c> carries it as far as the catalogue. Nothing on the
+    /// firing path reads it.
+    /// </para>
+    /// <para>
+    /// When it is fixed this case goes RED and should be replaced by: a trigger declared on one column
+    /// does not fire when another is updated.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void UpdateOfIsAcceptedAndIgnoredTest()
+    {
+        m_engine.Execute("ALTER TABLE Source ADD COLUMN Watched INT");
+        m_engine.Execute("ALTER TABLE Source ADD COLUMN Ignored INT");
+        m_engine.Execute("INSERT INTO Source (Id, Watched, Ignored) VALUES (1, 1, 1)");
+
+        m_engine.Execute(@"
+            CREATE TRIGGER T AFTER UPDATE OF Watched ON Source FOR EACH ROW
+            BEGIN
+                INSERT INTO Log (Id, Note) VALUES (1, 'fired');
+            END");
+
+        m_engine.Execute("UPDATE Source SET Ignored = 2 WHERE Id = 1");
+
+        Assert.That(Rows("SELECT Id FROM Log"), Has.Length.EqualTo(1),
+            "PINS A DEFECT: the trigger names Watched and fired for an update of Ignored");
+
+        // The control, and it is what stops this case passing for the wrong reason - a trigger that
+        // never fires at all would also leave the log empty, and would satisfy the fixed behaviour.
+        m_engine.Execute("DELETE FROM Log");
+        m_engine.Execute("UPDATE Source SET Watched = 2 WHERE Id = 1");
+
+        Assert.That(Rows("SELECT Id FROM Log"), Has.Length.EqualTo(1),
+            "and it does fire for the column it names, so the trigger is live either way");
+    }
+
     #endregion
 
     #region Refused at declaration
