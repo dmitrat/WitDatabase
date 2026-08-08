@@ -224,9 +224,8 @@ public sealed partial class DatabaseSession
                             Committed = false,
                             IsConflict = true,
                             FailedIndex = i,
-                            ErrorMessage = rows == 0
-                                ? "The row was changed or removed by another connection after it was read here."
-                                : $"The statement matched {rows} rows where exactly {expected} was expected."
+                            MatchedRows = rows,
+                            ExpectedRows = expected
                         };
                     }
 
@@ -307,9 +306,8 @@ public sealed partial class DatabaseSession
                         Committed = false,
                         IsConflict = true,
                         FailedIndex = i,
-                        ErrorMessage = rows == 0
-                            ? "The row was changed or removed by another connection after it was read here."
-                            : $"The statement matched {rows} rows where exactly {expected} was expected."
+                        MatchedRows = rows,
+                        ExpectedRows = expected
                     };
                 }
 

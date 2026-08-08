@@ -741,16 +741,14 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
         if (keys.Count == 0)
         {
-            KeyWarning = "This table has no primary key. Studio cannot edit its rows, because there is " +
-                         "nothing to name a row by.";
+            KeyWarning = Localization["Structure.Key.None"];
             KeyWarningIsSevere = true;
             return;
         }
 
         if (keys.All(k => k.IsAutoIncrement))
         {
-            KeyWarning = "The key is AUTOINCREMENT, so an insert does not scan for uniqueness and needs " +
-                         "no index of its own.";
+            KeyWarning = Localization["Structure.Key.AutoIncrement"];
             KeyWarningIsSevere = false;
             return;
         }
@@ -760,14 +758,13 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
         if (covered)
         {
-            KeyWarning = "The key has an index of its own, so an insert finds a duplicate without scanning.";
+            KeyWarning = Localization["Structure.Key.Indexed"];
             KeyWarningIsSevere = false;
             return;
         }
 
-        KeyWarning = $"The primary key is set by hand and has no index: every insert scans the whole " +
-                     $"table to check it. Adding a UNIQUE index on " +
-                     $"{string.Join(", ", keys.Select(k => k.Name))} removes that.";
+        KeyWarning = Localization.Format("Structure.Key.ManualNoIndex",
+            string.Join(", ", keys.Select(k => k.Name)));
         KeyWarningIsSevere = true;
     }
 

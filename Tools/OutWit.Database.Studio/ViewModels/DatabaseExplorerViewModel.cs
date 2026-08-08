@@ -686,8 +686,10 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         }
 
         FilterSummary = FilterMatches.Count == 0
-            ? "No matches"
-            : $"{FilterMatches.Count} matches in {connections} connection{(connections == 1 ? "" : "s")}";
+            ? Localization["Explorer.Filter.NoMatches"]
+            : Localization.Format("Explorer.Filter.Matches",
+                Localization.Plural("Count.Matches", FilterMatches.Count),
+                Localization.Plural("Count.Connections", connections));
     }
 
     /// <summary>

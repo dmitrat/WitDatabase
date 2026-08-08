@@ -190,7 +190,9 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
             {
                 Kind = Existing == null ? SchemaEditKind.AddColumn : SchemaEditKind.ReplaceTriggerBody,
                 Table = Table,
-                Description = Existing == null ? $"create trigger {Name}" : $"replace trigger {Name}",
+                Description = Existing == null
+                    ? Localization.Format("Trigger.Create.Description", Name)
+                    : Localization.Format("Trigger.Replace.Description", Name),
 
                 // A replacement is a DROP and a CREATE, and it is NOT atomic on this engine: if the
                 // create fails, the trigger is gone. The report names what ran, which is the only
@@ -205,8 +207,7 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
             if (!report.IsComplete)
             {
                 ErrorMessage = report.IsPartial
-                    ? $"{report.ErrorMessage} The old trigger has already been dropped - the body above " +
-                      "is the only copy of it."
+                    ? Localization.Format("Trigger.PartialFailure", report.ErrorMessage)
                     : report.ErrorMessage;
 
                 return;
@@ -216,8 +217,8 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
             await ApplicationVm.DatabaseExplorerVm.RefreshAsync(Session);
 
             ApplicationVm.MainWindowVm.StatusText = Existing == null
-                ? $"Created trigger {Name}"
-                : $"Replaced trigger {Name}";
+                ? Localization.Format("Status.TriggerCreated", Name)
+                : Localization.Format("Status.TriggerReplaced", Name);
 
             ShouldCloseDialog(true);
         }

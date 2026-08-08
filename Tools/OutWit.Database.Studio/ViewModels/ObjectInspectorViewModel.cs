@@ -121,12 +121,12 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
 
                 case DatabaseNodeType.Index:
                     Definition = await session.GetIndexDefinitionAsync(node.Name, ct);
-                    Summary = Definition == null ? "No definition recorded for this index." : null;
+                    Summary = Definition == null ? Localization["Inspector.NoIndexDefinition"] : null;
                     break;
 
                 case DatabaseNodeType.Trigger:
                     Definition = await session.GetTriggerDefinitionAsync(node.Name, ct);
-                    Summary = Definition == null ? "No definition recorded for this trigger." : null;
+                    Summary = Definition == null ? Localization["Inspector.NoTriggerDefinition"] : null;
                     break;
 
                 case DatabaseNodeType.Routine:
@@ -248,8 +248,8 @@ public class ObjectInspectorViewModel : ViewModelBase<ApplicationViewModel>
 
         Definition = routine.Definition;
         Summary = routine.IsFunction
-            ? $"Function returning {routine.DataType}"
-            : "Procedure";
+            ? Localization.Format("Inspector.FunctionReturning", routine.DataType)
+            : Localization["Inspector.Procedure"];
     }
 
     /// <summary>

@@ -1506,6 +1506,104 @@ Studio 684 -> 685.
 
 ---
 
+## Stage 12 - what opening an LSM database in Studio found
+
+Not a stage of the plan. The manifest that landed with `WS-57` (PR #142) changed the rule by which an
+LSM store decides which files are live on open; CI was green on it and **Studio had never opened an LSM
+database since**. The check was meant to take five minutes. It took longer, and the two defects below
+are what it cost - both of them found by running the application, neither visible to 685 tests.
+
+### The manifest, measured in Studio and in both directions
+
+The full record is in `@Evidence/lsm-manifest-studio`, including the two prepared databases. What
+matters here:
+
+**The obvious run could not have failed.** Studio opened an LSM database, wrote 50 rows from its own
+editor, **compacted twice inside the application**, left through `File > Exit` and reopened with all 89
+rows and the deleted key still deleted. Nothing broke - and nothing could have: both compactions
+deleted their inputs, so the directory and the manifest name the same files and the old rule and the
+new one are indistinguishable. That run measures "the manifest did not break Studio's LSM open", which
+is worth knowing and is not what it was for.
+
+**A crashed compaction had to be arranged by hand** - compact, then restore every input except the
+flush holding the tombstone, so an unnamed survivor carries the deleted row's value while the merged
+output has dropped the tombstone. Two byte-identical folders, one with its manifest renamed away,
+opened side by side as two connections in one Studio session:
+
+| | manifest present | manifest renamed away |
+|---|---|---|
+| **without MVCC** | 2 rows: 6 and 8 | **3 rows: 6, 7 and 8 - `row-007` is back** |
+| **with MVCC** | key 7 absent | key 7 absent, and 8 SSTables read instead of 1 |
+
+So the resurrection is reachable through SQL only **without MVCC**: with MVCC a `DELETE` is a versioned
+write rather than an LSM tombstone, so a full merge has nothing to drop and a readmitted file has
+nothing to unmask. The manifest is obeyed in both arms - the SSTable count proves the exclusion - but
+only the non-MVCC arm can tell obedience from indifference, and that is the arm the two kept folders
+are in.
+
+### Rule 3's hole was a class of twenty-five, not the one it was named for
+
+Stage 11 recorded `RowCountText` as "a ternary, which the rule still cannot see" and swept it by hand.
+That was the whole class, and the rule had to be widened twice:
+
+- **the literal does not have to come straight after the `=`.** `StatusText = count == 1 ? "one" :
+  "many"` puts the literals one token further along, and the rule demanded them immediately. Anything
+  up to a statement boundary is allowed between the two now, and `(?!=)` is what keeps
+  `if (State == "closed")` from being read as an assignment;
+- **the destination name is an ENDING, not a whole word.** The list was written as exact identifiers
+  and this application names destinations compositionally - `FilterSummary`, `CaretSummary`,
+  `PagingNote`, `ConnectionSummary` - so the look-behind that kept the rule out of the middle of an
+  identifier was also keeping it out of the front of one. What makes the prefix safe is the `=`: the
+  listed word has to be the last thing before the assignment, so `MySubtitleValue` still does not match.
+
+Found the wrong way round for the third time - by reading the status bar of a running Russian
+interface, where it said `Query executed successfully in 31.06ms`. Both widenings have their two
+controls in `EveryRuleCatchesWhatItIsForAndNothingElseTest`, and the surface count that guards against
+a rule reading nothing was widened with them.
+
+The twenty-five went into the catalogue. Two of them were services composing prose, and both were
+fixed rather than added to the named remainder:
+
+- **`FormattedScript.Summary` and its five skip reasons** were English sentences built in
+  `SqlFormatter`. The record now carries a `FormatSkipReason` **code** per limitation and the counts,
+  and `QueryTabViewModel` writes the sentence. `SqlFormatterTests` asserted `Summary` contains "left as
+  written" - which was satisfied by *any* reason, and that is how the replacement assertion first named
+  the wrong one: the comment in that fixture sits **between** two statements and belongs to neither, so
+  what is left alone is the `CREATE`, for a different reason entirely. A new case pins that every enum
+  member has words in every language, because a key built from a name fails by printing the key.
+- **`BatchResult.ErrorMessage`** held Studio's own conflict sentence, which was then interpolated into
+  a Russian one by `Grid.StatementFailed`. The result carries `MatchedRows` and `ExpectedRows` now, and
+  only the ENGINE's message is still passed through as text - it arrives in one language and Studio
+  cannot translate it.
+
+The three services named as a remainder at stage 11 - `SchemaChangeSet`, `TableRebuild`, `QueryPlan` -
+are unchanged and still on the list.
+
+### An LSM directory never said what it was built with
+
+`StorageDetector.DetectDirectory` set the store type and returned. `HasTransactions`, `HasMvcc` and
+`HasFileLocking` were therefore `false` for **every** LSM database - not "unknown", but wrong, and it is
+the answer a consumer prints. Measured: a database built with MVCC and one built without were
+identical through `Detect()`, while `ReadStoredConfiguration()` - two methods away, and called by the
+same consumers on the same line - told them apart correctly. `StorageProbe.Look` calls **both** and was
+taking the three flags from the first and only `PageSize` from the second.
+
+Visible as Studio's Open dialog saying *«без MVCC»* about every LSM database in existence. It now says
+`MVCC` for the one and `без MVCC` for the other, confirmed in the running application.
+
+**And the same read settles encryption.** "Can't detect encryption without opening" was true of the
+SSTables and not of the directory: the sidecar has to be readable in the clear, because it is what says
+which encryption provider to build. An encrypted LSM database used to be reported as needing no
+password, and the failure arrived later as a wrong-password error from the engine. It is recognised
+now, which also gives the dialog the one case where its "encrypted, or not a database at all" sentence
+does **not** apply - for a folder there is no ambiguity, so `Dialog.Open.Encrypted` names the store and
+the transaction model and says the password is needed.
+
+Studio 685 -> 687, Core +3 - the pair of transaction-model cases and the encryption one, all measured
+red first.
+
+---
+
 ## Findings for the engine, not fixed here
 **A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
 class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner

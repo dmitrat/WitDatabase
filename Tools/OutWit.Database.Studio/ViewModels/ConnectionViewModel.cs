@@ -658,11 +658,19 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
             Size(Probe.SizeInBytes),
             Probe.HasMvcc ? "MVCC" : Localization["Dialog.Open.NoMvcc"]),
 
-        // ONE sentence covering both, because Studio genuinely cannot tell them apart: the magic bytes
-        // are absent, which is what encryption looks like and what a text file looks like. Claiming the
-        // more likely one is how a user ends up typing a password at a JPEG and being told the password
-        // is wrong.
-        StorageKind.Unreadable => Localization.Format("Dialog.Open.EncryptedOrNot", Size(Probe.SizeInBytes)),
+        // ONE sentence covering both, because for a FILE Studio genuinely cannot tell them apart: the
+        // magic bytes are absent, which is what encryption looks like and what a text file looks like.
+        // Claiming the more likely one is how a user ends up typing a password at a JPEG and being
+        // told the password is wrong.
+        //
+        // An LSM DIRECTORY is the case where it can tell: the sidecar is in the clear and names the
+        // encryption provider, so there is no doubt left about what the folder is.
+        StorageKind.Unreadable => Probe.StoreType == null
+            ? Localization.Format("Dialog.Open.EncryptedOrNot", Size(Probe.SizeInBytes))
+            : Localization.Format("Dialog.Open.Encrypted",
+                Probe.StoreType == "lsm" ? "LSM" : "B-Tree",
+                Size(Probe.SizeInBytes),
+                Probe.HasMvcc ? "MVCC" : Localization["Dialog.Open.NoMvcc"]),
 
         StorageKind.NotADatabase => Probe.IsDirectory
             ? Localization["Dialog.Open.NotADatabaseFolder"]

@@ -221,6 +221,26 @@ public sealed class StudioFixture : IAsyncDisposable
         database.Put("probe"u8.ToArray(), "value"u8.ToArray());
     }
 
+    /// <summary>
+    /// The same, for an LSM database - which is a FOLDER, and is therefore the case where a probe can
+    /// know more about an encrypted database than it can about an encrypted file.
+    /// </summary>
+    public static void CreateLsmDatabaseOnDisk(string path, string? password = null)
+    {
+        Directory.CreateDirectory(path);
+
+        var builder = new WitDatabaseBuilder()
+            .WithLsmTree(path)
+            .WithMvcc();
+
+        if (!string.IsNullOrEmpty(password))
+            builder = builder.WithEncryption(password);
+
+        using var database = builder.Build();
+
+        database.Put("probe"u8.ToArray(), "value"u8.ToArray());
+    }
+
     private static string PathFor(string root, StudioStorage storage, string name) => storage switch
     {
         StudioStorage.BTree => Path.Combine(root, $"{name}.witdb"),

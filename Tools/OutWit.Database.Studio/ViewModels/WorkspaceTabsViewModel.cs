@@ -123,7 +123,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     {
         var tab = new QueryTabViewModel(ApplicationVm, session ?? Connections.Active)
         {
-            Title = title ?? $"Query {m_nextQueryNumber++}",
+            Title = title ?? Localization.Format("Tab.Query", m_nextQueryNumber++),
             SqlText = sql
         };
 
@@ -485,8 +485,8 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             return true;
 
         ApplicationVm.MainWindowVm.StatusText = tab.ConnectionName == null
-            ? "Not connected to database"
-            : $"The connection this tab belongs to ({tab.ConnectionName}) is closed";
+            ? Localization["Query.NotConnected"]
+            : Localization.Format("Query.ConnectionClosed", tab.ConnectionName);
 
         return false;
     }

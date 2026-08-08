@@ -6,24 +6,42 @@ using OutWit.Database.Parser.Statements;
 namespace OutWit.Database.Studio.Services;
 
 /// <summary>
+/// Why a statement was left exactly as the user wrote it.
+/// </summary>
+/// <remarks>
+/// A code and not a sentence, for the reason stage 10 named: a service that composes prose fixes the
+/// language of every screen showing it, and this one is shown in the status bar and in the format
+/// panel. The formatter knows WHICH limitation it hit; the words for it belong to the catalogue.
+/// </remarks>
+public enum FormatSkipReason
+{
+    /// <summary>The script as a whole does not parse, so there is nothing to format it with.</summary>
+    ScriptDoesNotParse,
+
+    /// <summary>The statement carries a comment, and the parser drops comments.</summary>
+    HasComment,
+
+    /// <summary>The statement does not parse on its own.</summary>
+    DoesNotParse,
+
+    /// <summary>The parser cannot write this kind of statement back out.</summary>
+    CannotBeSerialized,
+
+    /// <summary>Serializing and re-parsing does not give the same statement back.</summary>
+    NoRoundTrip
+}
+
+/// <summary>
 /// The result of formatting a script: the text, and an honest account of what was not touched.
 /// </summary>
 /// <param name="Text">The formatted script. Equal to the input when nothing could be done.</param>
 /// <param name="Formatted">How many statements were rewritten.</param>
 /// <param name="Skipped">How many were left exactly as the user wrote them.</param>
-/// <param name="Reasons">One line per reason a statement was skipped, without repetition.</param>
-public sealed record FormattedScript(string Text, int Formatted, int Skipped, IReadOnlyList<string> Reasons)
+/// <param name="Reasons">Each limitation that was hit, once, in the order it was first hit.</param>
+public sealed record FormattedScript(
+    string Text, int Formatted, int Skipped, IReadOnlyList<FormatSkipReason> Reasons)
 {
     public bool Changed => Formatted > 0;
-
-    /// <summary>
-    /// What to put in front of a person afterwards. "Formatted" alone would be a lie when two
-    /// statements were left alone, and silence is worse: the user is looking at their own text and
-    /// deciding whether the tool did anything.
-    /// </summary>
-    public string Summary => Skipped == 0
-        ? $"{Formatted} statement{(Formatted == 1 ? "" : "s")} formatted"
-        : $"{Formatted} formatted, {Skipped} left as written: {string.Join("; ", Reasons)}";
 }
 
 /// <summary>
@@ -82,7 +100,7 @@ public static class SqlFormatter
         {
             // Correct behaviour rather than a limitation: there is nothing to format broken SQL WITH.
             // The parser is the formatter, so text it refuses cannot be rewritten by it.
-            return new FormattedScript(script, 0, 0, ["the text does not parse"]);
+            return new FormattedScript(script, 0, 0, [FormatSkipReason.ScriptDoesNotParse]);
         }
 
         if (split.Statements.Count == 0)
@@ -90,7 +108,7 @@ public static class SqlFormatter
 
         var spans = split.Statements;
         var builder = new StringBuilder();
-        var reasons = new List<string>();
+        var reasons = new List<FormatSkipReason>();
         var formatted = 0;
         var skipped = 0;
 
@@ -109,8 +127,8 @@ public static class SqlFormatter
                 builder.Append(span.Text);
                 skipped++;
 
-                if (reason != null)
-                    Once(reasons, reason);
+                if (reason is { } limitation)
+                    Once(reasons, limitation);
             }
             else
             {
@@ -134,30 +152,30 @@ public static class SqlFormatter
     /// Formats one statement. Returns a null text - and the reason for it, in the language of the
     /// thing that was skipped rather than of the mechanism - when it must be left exactly as it is.
     /// </summary>
-    private static (string? Text, string? Reason) FormatStatement(string statement)
+    private static (string? Text, FormatSkipReason? Reason) FormatStatement(string statement)
     {
         if (string.IsNullOrWhiteSpace(statement))
             return (null, null);
 
         if (SqlLexer.HasComment(statement))
-            return (null, "a statement with a comment in it stays as written - the parser drops comments");
+            return (null, FormatSkipReason.HasComment);
 
         var parsed = WitSql.TryParse(statement);
 
         if (!parsed.IsSuccess || parsed.Statements is not { Count: 1 })
-            return (null, "a statement that does not parse on its own stays as written");
+            return (null, FormatSkipReason.DoesNotParse);
 
         var canonical = TrySerialize(parsed.Statements[0]);
 
         if (canonical == null)
-            return (null, "the parser cannot write this kind of statement back out, so it stays as written");
+            return (null, FormatSkipReason.CannotBeSerialized);
 
         // The round trip has to be stable, or the text that replaces the user's is not the same
         // statement. A shape that fails this simply keeps the text it came in with.
         var again = WitSql.TryParse(canonical);
 
         if (!again.IsSuccess || again.Statements is not { Count: 1 } || TrySerialize(again.Statements[0]) != canonical)
-            return (null, "this statement does not survive a round trip through the parser, so it stays as written");
+            return (null, FormatSkipReason.NoRoundTrip);
 
         return (Layout(canonical), null);
     }
@@ -329,10 +347,10 @@ public static class SqlFormatter
         return (span, string.Empty, string.Empty);
     }
 
-    private static void Once(List<string> messages, string message)
+    private static void Once(List<FormatSkipReason> reasons, FormatSkipReason reason)
     {
-        if (!messages.Contains(message))
-            messages.Add(message);
+        if (!reasons.Contains(reason))
+            reasons.Add(reason);
     }
 
     #endregion

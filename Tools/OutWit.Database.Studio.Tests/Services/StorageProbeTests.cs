@@ -132,6 +132,50 @@ public class StorageProbeTests
     }
 
     /// <summary>
+    /// And the case where the ambiguity above does NOT apply, which is the whole reason it is a
+    /// separate sentence in the dialog.
+    ///
+    /// <para>
+    /// An LSM database is a FOLDER, and its sidecar has to be readable in the clear - it is what says
+    /// which encryption provider to build. So there is nothing ambiguous about an encrypted LSM
+    /// database: Studio knows it is a database, knows the store, and knows the transaction model,
+    /// while still not being able to read a single row without the password.
+    /// </para>
+    /// <para>
+    /// It went the other way until 2026-08-08: detection never read the sidecar, so an encrypted LSM
+    /// database was reported as needing no password at all and the failure arrived from the engine as
+    /// a wrong-password error on an open nobody had been asked to authorise.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void AnEncryptedLsmFolderIsKnownToBeADatabaseTest()
+    {
+        var plain = Path.Combine(m_root, "lsm_plain");
+        var secret = Path.Combine(m_root, "lsm_secret");
+
+        StudioFixture.CreateLsmDatabaseOnDisk(plain, password: null);
+        StudioFixture.CreateLsmDatabaseOnDisk(secret, password: "correct horse");
+
+        var open = StorageProbe.Look(plain);
+        var locked = StorageProbe.Look(secret);
+
+        Assert.Multiple(() =>
+        {
+            // The control: encryption is what is being measured, so the folder WITHOUT it must come
+            // back openable. A probe that asked for a password everywhere would pass the half below.
+            Assert.That(open.Kind, Is.EqualTo(StorageKind.Database));
+            Assert.That(open.RequiresPassword, Is.False);
+            Assert.That(open.HasMvcc, Is.True, "and the transaction model is read from the sidecar");
+
+            Assert.That(locked.Kind, Is.EqualTo(StorageKind.Unreadable));
+            Assert.That(locked.RequiresPassword, Is.True);
+            Assert.That(locked.StoreType, Is.EqualTo("lsm"),
+                "the folder said what it is before anything was decrypted, so Studio may print it");
+            Assert.That(locked.EncryptionProvider, Is.Not.Empty);
+        });
+    }
+
+    /// <summary>
     /// MEASURED, and this one is a defect rather than a limit: a file that is not a database at all
     /// fails the same magic-byte check an encrypted one does, so the detector reports it as an
     /// encrypted B-Tree - and Studio would have asked for the password to a text file, then blamed the
