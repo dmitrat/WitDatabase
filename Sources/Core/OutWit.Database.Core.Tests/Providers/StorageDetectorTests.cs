@@ -145,10 +145,87 @@ namespace OutWit.Database.Core.Tests.Providers
             }
 
             var result = StorageDetector.Detect(lsmDir);
-            
+
             Assert.That(result.Exists, Is.True);
             Assert.That(result.IsDirectory, Is.True);
             Assert.That(result.StoreType, Is.EqualTo("lsm"));
+        }
+
+        /// <summary>
+        /// An LSM directory says what it was built with, and detection reads it.
+        ///
+        /// <para>
+        /// The directory branch used to answer the store type and nothing else, so
+        /// <c>HasTransactions</c>, <c>HasMvcc</c> and <c>HasFileLocking</c> were <c>false</c> for
+        /// EVERY LSM database - which is not "unknown", it is the wrong answer, and it is the answer a
+        /// consumer prints. Studio's Open dialog said "no MVCC" about every LSM database in existence,
+        /// found on 2026-08-08 by opening one.
+        /// </para>
+        /// <para>
+        /// <b>Two databases, not one.</b> A case that only builds the MVCC one passes for an
+        /// implementation that answers <c>true</c> without reading anything, which is the same defect
+        /// with the sign flipped. The pair is the control.
+        /// </para>
+        /// </summary>
+        [TestCase(true)]
+        [TestCase(false)]
+        public void DetectsTheTransactionModelOfAnLsmDirectoryTest(bool mvcc)
+        {
+            var lsmDir = Path.Combine(m_testDir, $"lsm_model_{mvcc}");
+
+            var builder = new WitDatabaseBuilder().WithLsmTree(lsmDir).WithFileLocking();
+
+            using (var db = (mvcc ? builder.WithMvcc() : builder.WithTransactions()).Build())
+            {
+                db.Put("key"u8, "value"u8);
+            }
+
+            var result = StorageDetector.Detect(lsmDir);
+
+            Assert.Multiple(() =>
+            {
+                Assert.That(result.StoreType, Is.EqualTo("lsm"));
+                Assert.That(result.HasTransactions, Is.True);
+                Assert.That(result.HasMvcc, Is.EqualTo(mvcc),
+                    "the transaction model is in the sidecar and detection has to read it");
+                Assert.That(result.HasFileLocking, Is.True);
+            });
+        }
+
+        /// <summary>
+        /// And an encrypted LSM directory says so before anything tries to open it.
+        ///
+        /// <para>
+        /// The sidecar is written in clear - it has to be, because it is what says which encryption
+        /// provider to build - so "cannot detect encryption without opening" was true of the SSTables
+        /// and not of the directory. Reported as no password needed, an encrypted LSM database was
+        /// opened without one and the failure arrived as a wrong-password error from the engine.
+        /// </para>
+        /// </summary>
+        [Test]
+        public void DetectsThatAnLsmDirectoryIsEncryptedTest()
+        {
+            var plain = Path.Combine(m_testDir, "lsm_plain");
+            var secret = Path.Combine(m_testDir, "lsm_secret");
+
+            using (var db = new WitDatabaseBuilder().WithLsmTree(plain).Build())
+                db.Put("key"u8, "value"u8);
+
+            using (var db = new WitDatabaseBuilder().WithLsmTree(secret).WithEncryption("secret").Build())
+                db.Put("key"u8, "value"u8);
+
+            Assert.Multiple(() =>
+            {
+                // The control, and it is the half that fails for a detector that simply says "yes":
+                // a database with no encryption must still be openable without a password.
+                Assert.That(StorageDetector.Detect(plain).RequiresPassword, Is.False);
+                Assert.That(StorageDetector.Detect(plain).EncryptionProvider, Is.Empty,
+                    "an unencrypted database names no provider - the hints answer with an empty "
+                    + "string rather than null, which is what the file branch has always returned");
+
+                Assert.That(StorageDetector.Detect(secret).RequiresPassword, Is.True);
+                Assert.That(StorageDetector.Detect(secret).EncryptionProvider, Is.Not.Empty);
+            });
         }
 
         #endregion

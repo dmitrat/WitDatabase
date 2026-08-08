@@ -88,6 +88,27 @@ public static class StorageDetector
     /// <summary>
     /// Detects if the given directory is an LSM database.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The sidecar is read, and it is the same fact the file branch gets from the header.</b> This
+    /// used to answer the store type and leave every other field at its default, so
+    /// <c>HasTransactions</c>, <c>HasMvcc</c> and <c>HasFileLocking</c> were <c>false</c> for every LSM
+    /// database - not "unknown" but wrong, and a consumer prints it. Measured 2026-08-08: an LSM
+    /// database built WITH MVCC and one built without were indistinguishable here, while
+    /// <see cref="ReadStoredConfiguration"/> - two methods away, and called by the same consumers -
+    /// told them apart correctly.
+    /// </para>
+    /// <para>
+    /// <b>Encryption too.</b> "Can't detect encryption without opening" was true of the SSTables and
+    /// not of the directory: the sidecar has to be readable in the clear, because it is what says
+    /// which encryption provider to build. An encrypted LSM database therefore used to be reported as
+    /// needing no password, and the failure arrived later as a wrong-password error.
+    /// </para>
+    /// <para>
+    /// A directory holding SSTables but no sidecar is still an LSM database - one written before the
+    /// sidecar existed - and keeps the answer it had.
+    /// </para>
+    /// </remarks>
     private static StorageDetectionResult DetectDirectory(string directory)
     {
         // LSM stores data in .sst files and optionally wal.log
@@ -96,13 +117,21 @@ public static class StorageDetector
 
         if (sstFiles.Length > 0 || hasWal)
         {
+            var hints = LsmDirectoryMetadata.Read(directory) is { } sidecar
+                ? ConfigurationValidator.GetOpeningHints(sidecar.Metadata)
+                : null;
+
             return new StorageDetectionResult
             {
                 Exists = true,
                 IsDirectory = true,
                 StoreType = "lsm",
                 Path = directory,
-                RequiresPassword = false // Can't detect encryption without opening
+                RequiresPassword = hints?.RequiresEncryption ?? false,
+                EncryptionProvider = hints?.EncryptionProvider,
+                HasTransactions = hints?.HasTransactions ?? false,
+                HasMvcc = hints?.HasMvcc ?? false,
+                HasFileLocking = hints?.HasFileLocking ?? false
             };
         }
 

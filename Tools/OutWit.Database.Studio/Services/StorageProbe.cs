@@ -94,11 +94,19 @@ public sealed class StorageProbe
                     SizeInBytes = SizeOf(path),
                     IsDirectory = detected.IsDirectory,
 
-                    // Deliberately NOT carried across from the detection result. It answers "btree"
-                    // and "unknown" here, and both are guesses; printing them would be Studio
-                    // claiming to have read something it did not read.
-                    StoreType = null,
-                    EncryptionProvider = null
+                    // For a FILE these are deliberately NOT carried across: detection answers "btree"
+                    // and "unknown" from the absence of the magic bytes, and both are guesses;
+                    // printing them would be Studio claiming to have read something it did not read.
+                    //
+                    // For a DIRECTORY they are not guesses. The sidecar is written in the clear and is
+                    // what said the database is encrypted at all, so the store and the provider are
+                    // things that WERE read - and the dialog can then say "an encrypted LSM database"
+                    // rather than "encrypted, or not a database".
+                    StoreType = detected.IsDirectory ? detected.StoreType : null,
+                    EncryptionProvider = detected.IsDirectory ? detected.EncryptionProvider : null,
+                    HasTransactions = detected.IsDirectory && detected.HasTransactions,
+                    HasMvcc = detected.IsDirectory && detected.HasMvcc,
+                    HasFileLocking = detected.IsDirectory && detected.HasFileLocking
                 };
             }
 
