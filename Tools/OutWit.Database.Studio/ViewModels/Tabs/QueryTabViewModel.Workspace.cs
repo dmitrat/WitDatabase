@@ -184,11 +184,31 @@ public partial class QueryTabViewModel : ISqlCompletionSource
         if (result.Changed)
             SqlText = result.Text;
 
-        FormatSummary = result.Summary;
+        FormatSummary = Describe(result);
         ApplicationVm.MainWindowVm.StatusText = result.Changed
-            ? result.Summary
-            : $"Nothing was formatted: {string.Join("; ", result.Reasons)}";
+            ? FormatSummary
+            : Localization.Format("Status.NothingFormatted", Reasons(result));
     }
+
+    /// <summary>
+    /// What to put in front of a person afterwards. "Formatted" alone would be a lie when two
+    /// statements were left alone, and silence is worse: the user is looking at their own text and
+    /// deciding whether the tool did anything.
+    /// </summary>
+    /// <remarks>
+    /// Here rather than on <see cref="FormattedScript"/>, which used to write this sentence itself and
+    /// thereby fixed the language of the status bar and the format panel. The formatter reports the
+    /// counts and which limitations it hit; the words are the catalogue's.
+    /// </remarks>
+    private string Describe(FormattedScript result) =>
+        result.Skipped == 0
+            ? Localization.Format("Format.Summary",
+                Localization.Plural("Count.Statements", result.Formatted))
+            : Localization.Format("Format.SummaryPartial",
+                result.Formatted, result.Skipped, Reasons(result));
+
+    private string Reasons(FormattedScript result) =>
+        string.Join("; ", result.Reasons.Select(reason => Localization[$"Format.Reason.{reason}"]));
 
     #endregion
 
@@ -230,7 +250,7 @@ public partial class QueryTabViewModel : ISqlCompletionSource
         }
 
         Plan = QueryPlanReader.Read(result.Data);
-        PlanMessage = Plan.IsEmpty ? "This statement has no plan to show" : null;
+        PlanMessage = Plan.IsEmpty ? Localization["Query.NoPlan"] : null;
         PlanStatement = statement;
     }
 
@@ -258,7 +278,9 @@ public partial class QueryTabViewModel : ISqlCompletionSource
     {
         var history = ApplicationVm.History;
 
-        HistoryMessage = history.IsAvailable ? null : $"History unavailable: {history.UnavailableReason}";
+        HistoryMessage = history.IsAvailable
+            ? null
+            : Localization.Format("Query.HistoryUnavailable", history.UnavailableReason);
 
         var entries = await history.SearchAsync(HistorySearch);
 
@@ -269,8 +291,8 @@ public partial class QueryTabViewModel : ISqlCompletionSource
 
         if (history.IsAvailable && History.Count == 0)
             HistoryMessage = string.IsNullOrWhiteSpace(HistorySearch)
-                ? "Nothing has been run yet"
-                : $"Nothing in the history contains \"{HistorySearch}\"";
+                ? Localization["Query.NothingRun"]
+                : Localization.Format("Query.HistoryNoMatch", HistorySearch);
     }
 
     private async Task ClearHistoryAsync()

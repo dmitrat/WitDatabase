@@ -178,8 +178,8 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel
         if (session == null || !session.IsConnected)
         {
             ErrorMessage = ConnectionName == null
-                ? "Not connected to database"
-                : $"The connection this tab belongs to ({ConnectionName}) is closed.";
+                ? Localization["Query.NotConnected"]
+                : Localization.Format("Query.ConnectionClosed", ConnectionName);
             return;
         }
 
@@ -269,8 +269,9 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel
             }
 
             ApplicationVm.MainWindowVm.StatusText = split.Statements.Count == 1
-                ? $"Query executed successfully in {ExecutionTimeMs:F2}ms"
-                : $"{split.Statements.Count} statements executed in {ExecutionTimeMs:F2}ms";
+                ? Localization.Format("Status.QueryExecuted", ExecutionTimeMs)
+                : Localization.Format("Status.StatementsExecuted",
+                    Localization.Plural("Count.Statements", split.Statements.Count), ExecutionTimeMs);
 
             await RecordInHistoryAsync(sql, "ok", TotalRowCount);
         }

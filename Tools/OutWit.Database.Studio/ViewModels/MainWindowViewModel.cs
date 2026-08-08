@@ -188,8 +188,8 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
             CurrentConnection = Connections.Active?.Connection;
             StatusText = Connections.HasSessions
-                ? $"Disconnected from {session.DisplayName}"
-                : "Disconnected";
+                ? Localization.Format("Status.DisconnectedFrom", session.DisplayName)
+                : Localization["Status.Disconnected"];
 
             Logger.LogInformation("Disconnected from {Name}, {Count} connections left",
                 session.DisplayName, Connections.Sessions.Count);
@@ -549,7 +549,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     /// Where the cursor is in the selected query tab, the way a person counts: line and column from 1.
     /// </summary>
     public string CaretSummary => ApplicationVm.WorkspaceTabsVm.SelectedQueryTab is { } tab
-        ? $"Ln {tab.CaretLine}, Col {tab.CaretColumn}"
+        ? Localization.Format("Status.Caret", tab.CaretLine, tab.CaretColumn)
         : string.Empty;
 
     /// <summary>

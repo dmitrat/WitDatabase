@@ -212,8 +212,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             // of them changed both, and the affected-row count nobody read was the only sign.
             IsReadOnly = PrimaryKeyColumns.Count == 0;
             ReadOnlyReason = IsReadOnly
-                ? $"\"{TableName}\" has no primary key, so a row cannot be identified. "
-                  + "The data is shown for viewing; edit it with a query that names the rows you mean."
+                ? Localization.Format("Grid.ReadOnly.NoKey", TableName)
                 : null;
         }
         catch (Exception ex)
@@ -648,7 +647,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
                 // The buffer is deliberately left alone, and the table is NOT reloaded: a reload would
                 // throw away exactly the work the user was told had not been saved.
                 SetErrorStatus(Localization.Format("Grid.StatementFailed",
-                    result.FailedIndex + 1, statements.Count, result.ErrorMessage));
+                    result.FailedIndex + 1, statements.Count, WhyItStopped(result)));
 
                 if (result.IsConflict)
                     await DescribeConflictAsync(session, result.FailedIndex, statements.Count);
@@ -678,6 +677,25 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             IsLoading = false;
             UpdateStatus();
         }
+    }
+
+    /// <summary>
+    /// Why the batch stopped, in the reader's language.
+    /// </summary>
+    /// <remarks>
+    /// A refusal Studio decided on - the row was not the row it was read as (WS-37) - is described
+    /// from the counts the result carries, and only the ENGINE's own message is passed through as it
+    /// arrived. The session used to compose both, which put an English sentence inside a Russian one.
+    /// </remarks>
+    private string? WhyItStopped(BatchResult result)
+    {
+        if (!result.IsConflict)
+            return result.ErrorMessage;
+
+        return result.MatchedRows == 0
+            ? Localization["Grid.Conflict.RowGone"]
+            : Localization.Format("Grid.Conflict.RowCount",
+                Localization.Plural("Count.Rows", result.MatchedRows), result.ExpectedRows);
     }
 
     /// <summary>
@@ -1184,8 +1202,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             && Filters?.Any(filter => filter.IsActive) == true;
 
         PagingNote = !CanPageByKey && PageIndex > 0
-            ? "This table has no single-column primary key, so pages are counted from the start of "
-              + "the table: the further in you go, the longer it takes."
+            ? Localization["Grid.Paging.NoKey"]
             : null;
         
         // Status bar states

@@ -1,4 +1,5 @@
 using OutWit.Database.Studio.Services;
+using OutWit.Database.Studio.Services.Localization;
 
 namespace OutWit.Database.Studio.Tests.Services;
 
@@ -87,7 +88,7 @@ public class SqlFormatterTests
         Assert.That(result.Text, Is.EqualTo(original));
         Assert.That(result.Formatted, Is.Zero);
         Assert.That(result.Skipped, Is.EqualTo(1));
-        Assert.That(result.Reasons, Has.Some.Contains("comment"));
+        Assert.That(result.Reasons, Does.Contain(FormatSkipReason.HasComment));
     }
 
     [Test]
@@ -99,7 +100,7 @@ public class SqlFormatterTests
 
         Assert.That(result.Text, Is.EqualTo(original));
         Assert.That(result.Skipped, Is.EqualTo(1));
-        Assert.That(result.Reasons, Has.Some.Contains("cannot write"));
+        Assert.That(result.Reasons, Does.Contain(FormatSkipReason.CannotBeSerialized));
     }
 
     [Test]
@@ -111,7 +112,7 @@ public class SqlFormatterTests
 
         Assert.That(result.Text, Is.EqualTo(original));
         Assert.That(result.Formatted, Is.Zero);
-        Assert.That(result.Reasons, Has.Some.Contains("does not parse"));
+        Assert.That(result.Reasons, Does.Contain(FormatSkipReason.ScriptDoesNotParse));
     }
 
     /// <summary>
@@ -160,8 +161,8 @@ public class SqlFormatterTests
 
         var result = SqlFormatter.Format(original);
 
-        Assert.That(result.Formatted, Is.EqualTo(2), result.Summary);
-        Assert.That(result.Skipped, Is.EqualTo(1), result.Summary);
+        Assert.That(result.Formatted, Is.EqualTo(2));
+        Assert.That(result.Skipped, Is.EqualTo(1));
 
         Assert.That(result.Text, Does.StartWith("-- a header comment"),
             "the comment above the first statement belongs to nobody and must survive");
@@ -170,7 +171,43 @@ public class SqlFormatterTests
         Assert.That(result.Text, Does.Contain("-- and a comment of its own"),
             "a comment between two statements must not be swallowed by the one above it");
         Assert.That(result.Text, Does.Contain("INSERT INTO Logs"));
-        Assert.That(result.Summary, Does.Contain("left as written"));
+
+        // The reason is asserted as the LIMITATION that was hit, not as the sentence for it. It used
+        // to be `Summary` contains "left as written", which pinned the English wording of a string the
+        // status bar shows - and was satisfied by ANY reason, which is how the first version of this
+        // line came to name the comment: the comment here sits BETWEEN two statements and belongs to
+        // neither, so what is left alone is the CREATE, and for a different reason entirely.
+        Assert.That(result.Reasons, Is.EqualTo(new[] { FormatSkipReason.CannotBeSerialized }));
+    }
+
+    /// <summary>
+    /// Every limitation the formatter can report has words in both catalogues.
+    ///
+    /// <para>
+    /// The reason is looked up as <c>Format.Reason.&lt;name&gt;</c>, and a key that is not there comes
+    /// back as the key itself - so a new member of the enum would put <c>Format.Reason.Whatever</c> in
+    /// the status bar rather than fail anything. This is the check that a lookup built from a name
+    /// needs and a lookup written out in full does not.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void EverySkipReasonHasWordsInEveryLanguageTest()
+    {
+        var localization = new LocalizationService();
+
+        Assert.Multiple(() =>
+        {
+            foreach (var language in localization.Available)
+            {
+                var texts = localization.Texts(language.Code);
+
+                foreach (var reason in Enum.GetValues<FormatSkipReason>())
+                {
+                    Assert.That(texts.ContainsKey($"Format.Reason.{reason}"), Is.True,
+                        $"{language.Code} has no words for {reason}");
+                }
+            }
+        });
     }
 
     /// <summary>

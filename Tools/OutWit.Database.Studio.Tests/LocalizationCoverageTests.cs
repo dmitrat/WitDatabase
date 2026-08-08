@@ -95,14 +95,33 @@ public class LocalizationCoverageTests
     /// rebuild button - three of the rebuild dialog's own sentences were in English on a Russian
     /// interface, and this rule had been passing over them since the sweep.
     /// </para>
+    /// <para>
+    /// <b>And the literal does not have to come straight after the <c>=</c>.</b> The rule used to
+    /// demand it, so <c>StatusText = count == 1 ? "one" : "many"</c> - a destination assigned a
+    /// CONDITIONAL - was invisible: the literals are one token further along. Seventeen sites had that
+    /// shape, among them the status bar's own "Query executed successfully", the explorer's
+    /// "No matches" and the table editor's read-only reason. Found on 2026-08-08 by running the
+    /// application in Russian and reading the status bar, which is the wrong way round for the third
+    /// time; the same hole as the expression body above, one token along. Anything up to a statement
+    /// boundary is now allowed between the two, and <c>(?!=)</c> is what keeps
+    /// <c>if (State == "closed")</c> from becoming an assignment.
+    /// </para>
+    /// <para>
+    /// <b>And the name is an ENDING, not a whole word.</b> The list was written as exact identifiers,
+    /// and this application names its destinations compositionally - <c>FilterSummary</c>,
+    /// <c>CaretSummary</c>, <c>PagingNote</c>, <c>ConnectionSummary</c> - so the look-behind that keeps
+    /// the rule out of the middle of an identifier was also keeping it out of the front of one. The
+    /// anchor that makes the prefix safe is the <c>=</c>: <c>MySubtitleValue</c> does not match,
+    /// because the listed word has to be the last thing before the assignment.
+    /// </para>
     /// </summary>
     private static readonly Regex VIEWMODEL_ASSIGNMENT =
-        new(@"(?<!\w)(ErrorMessage|StatusText|StatusMessage|Summary|Heading|Title|Hint|Note|Caption"
+        new(@"(?<!\w)(\w*(?:ErrorMessage|StatusText|StatusMessage|Summary|Heading|Title|Hint|Note|Caption"
             + @"|Description|Watermark|PlaceholderText|Warning|HeaderText|Subtitle|KeyNote|PlannerNote"
             + @"|UnindexedKeyWarning|ConflictSummary|PlanMessage|HistoryMessage|BackupWarning"
             + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason"
-            + @"|RowCountText)"
-            + @"(\.Text)?\s*=>?\s*[$]?""((?:[^""\\]|\\.)*)""",
+            + @"|RowCountText))"
+            + @"(\.Text)?\s*=>?(?!=)[^;""]{0,160}?[$]?""((?:[^""\\]|\\.)*)""",
             RegexOptions.Compiled);
 
     /// <summary>
@@ -144,7 +163,7 @@ public class LocalizationCoverageTests
     /// for the reason given on <see cref="USER_FACING_SURFACE"/>.
     /// </summary>
     private static readonly Regex VIEWMODEL_SURFACE =
-        new(@"(?<!\w)(ErrorMessage|StatusText|StatusMessage|Summary|Heading|Title|Hint|Note|Caption"
+        new(@"(?<!\w)\w*(ErrorMessage|StatusText|StatusMessage|Summary|Heading|Title|Hint|Note|Caption"
             + @"|Description|Watermark|PlaceholderText|Warning|HeaderText|Subtitle|KeyNote|PlannerNote"
             + @"|UnindexedKeyWarning|ConflictSummary|PlanMessage|HistoryMessage|BackupWarning"
             + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason"
@@ -427,6 +446,25 @@ public class LocalizationCoverageTests
                 "a catalogue key is not a caption");
             Assert.That(Caught(VIEWMODEL_ASSIGNMENT, @"var sql = ""SELECT * FROM [Orders]"";"), Is.False,
                 "a statement is not a caption");
+
+            // The conditional, both directions. The first is the class seventeen sites were hiding in;
+            // the second is what widening the rule could have cost, and it is why the assignment has to
+            // refuse a comparison.
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT,
+                "StatusText = count == 1" + Environment.NewLine + @"    ? ""one row"""), Is.True,
+                "a destination assigned a conditional is still a destination");
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT, @"if (State == ""closed"") return;"), Is.False,
+                "a comparison against a destination is not an assignment to it");
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT,
+                "Title = null;" + Environment.NewLine + @"    var sql = ""SELECT 1"";"), Is.False,
+                "the search stops at the end of the statement, so the next line's code is not its text");
+
+            // A composite destination, both directions. The listed word has to END the identifier,
+            // which is what stops the prefix from turning the rule into "any name containing Note".
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT, @"FilterSummary = ""No matches"";"), Is.True,
+                "a destination named after what it summarises is still a destination");
+            Assert.That(Caught(VIEWMODEL_ASSIGNMENT, @"var noteworthyThing = ""x y"";"), Is.False,
+                "a name that merely contains a listed word is not a destination");
 
             Assert.That(Caught(VIEWMODEL_CALL, @"Notifications.Information(""Database dumped"", path);"), Is.True,
                 "a notification is read by a person");

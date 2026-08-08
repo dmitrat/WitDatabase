@@ -28,7 +28,22 @@ public sealed class BatchResult
     /// <summary>
     /// The engine's message for the failure, already formatted for a human.
     /// </summary>
+    /// <remarks>
+    /// The ENGINE's words, which is why they are carried as text: they arrive in one language and
+    /// Studio cannot translate them. A refusal Studio itself decided on is reported as
+    /// <see cref="IsConflict"/> plus the two counts below, and the sentence for it is written where the
+    /// catalogue is - a service that composes prose fixes the language of every screen showing it.
+    /// </remarks>
     public string? ErrorMessage { get; init; }
+
+    /// <summary>
+    /// How many rows the refused statement actually matched, and how many it said it must match.
+    /// Meaningful only when <see cref="IsConflict"/>.
+    /// </summary>
+    public int MatchedRows { get; init; }
+
+    /// <inheritdoc cref="MatchedRows"/>
+    public int ExpectedRows { get; init; }
 
     /// <summary>
     /// True when the set was refused because a statement matched no row - which, for a statement that

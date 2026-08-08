@@ -98,7 +98,7 @@
   "Dialog.Open.NotADatabaseFile": "This file is not a WitDatabase.",
   "Dialog.Open.Found": "Found a {0} database · {1} · {2}",
   "Dialog.Open.NoMvcc": "no MVCC",
-  "Dialog.Open.Encrypted": "Encrypted · {0}. Nothing else can be read until the password is given.",
+  "Dialog.Open.Encrypted": "Found an encrypted {0} database · {1} · {2}. The password is needed to open it.",
   "Dialog.Open.EncryptedOrNot": "Encrypted, or not a database at all · {0}. The two look the same from outside.",
   "Dialog.Open.WrongPassword": "Could not decrypt: wrong password, or the file is damaged.",
 
@@ -721,5 +721,47 @@
   "Count.Filters": {
     "one": "{0} filter",
     "other": "{0} filters"
-  }
+  },
+
+  "Count.Matches": {
+    "one": "{0} match",
+    "other": "{0} matches"
+  },
+  "Explorer.Filter.NoMatches": "No matches",
+  "Explorer.Filter.Matches": "{0} in {1}",
+  "Trigger.Create.Description": "create trigger {0}",
+  "Trigger.Replace.Description": "replace trigger {0}",
+  "Trigger.PartialFailure": "{0} The old trigger has already been dropped - the body above is the only copy of it.",
+  "Status.TriggerCreated": "Created trigger {0}",
+  "Status.TriggerReplaced": "Replaced trigger {0}",
+  "Status.DisconnectedFrom": "Disconnected from {0}",
+  "Status.Disconnected": "Disconnected",
+  "Status.Caret": "Ln {0}, Col {1}",
+  "Status.QueryExecuted": "Query executed successfully in {0:F2} ms",
+  "Status.StatementsExecuted": "{0} executed in {1:F2} ms",
+  "Status.NothingFormatted": "Nothing was formatted: {0}",
+  "Inspector.NoIndexDefinition": "No definition recorded for this index.",
+  "Inspector.NoTriggerDefinition": "No definition recorded for this trigger.",
+  "Inspector.FunctionReturning": "Function returning {0}",
+  "Inspector.Procedure": "Procedure",
+  "Query.NotConnected": "Not connected to database",
+  "Query.ConnectionClosed": "The connection this tab belongs to ({0}) is closed.",
+  "Query.NoPlan": "This statement has no plan to show",
+  "Query.HistoryUnavailable": "History unavailable: {0}",
+  "Query.HistoryNoMatch": "Nothing in the history contains \"{0}\"",
+  "Format.Summary": "{0} formatted",
+  "Format.SummaryPartial": "{0} formatted, {1} left as written: {2}",
+  "Structure.Key.None": "This table has no primary key. Studio cannot edit its rows, because there is nothing to name a row by.",
+  "Structure.Key.AutoIncrement": "The key is AUTOINCREMENT, so an insert does not scan for uniqueness and needs no index of its own.",
+  "Structure.Key.Indexed": "The key has an index of its own, so an insert finds a duplicate without scanning.",
+  "Structure.Key.ManualNoIndex": "The primary key is set by hand and has no index: every insert scans the whole table to check it. Adding a UNIQUE index on {0} removes that.",
+  "Grid.ReadOnly.NoKey": "\"{0}\" has no primary key, so a row cannot be identified. The data is shown for viewing; edit it with a query that names the rows you mean.",
+  "Grid.Paging.NoKey": "This table has no single-column primary key, so pages are counted from the start of the table: the further in you go, the longer it takes.",
+  "Grid.Conflict.RowGone": "The row was changed or removed by another connection after it was read here.",
+  "Grid.Conflict.RowCount": "The statement matched {0} where exactly {1} was expected.",
+  "Format.Reason.ScriptDoesNotParse": "the text does not parse",
+  "Format.Reason.HasComment": "a statement with a comment in it stays as written - the parser drops comments",
+  "Format.Reason.DoesNotParse": "a statement that does not parse on its own stays as written",
+  "Format.Reason.CannotBeSerialized": "the parser cannot write this kind of statement back out, so it stays as written",
+  "Format.Reason.NoRoundTrip": "this statement does not survive a round trip through the parser, so it stays as written"
 }
