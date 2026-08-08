@@ -99,6 +99,11 @@ public interface IDialogService
     /// </summary>
     Task<bool> ShowDatabaseCopyAsync(DatabaseCopyViewModel viewModel);
 
+    /// <summary>
+    /// Changing the password by migrating (WS-58). True when a new database was produced.
+    /// </summary>
+    Task<bool> ShowChangePasswordAsync(ChangePasswordViewModel viewModel);
+
     #endregion
 }
 
@@ -152,4 +157,6 @@ public sealed class NoDialogService : IDialogService
     public Task<bool> ShowReadCheckAsync(ReadCheckViewModel viewModel) => Task.FromResult(false);
 
     public Task<bool> ShowDatabaseCopyAsync(DatabaseCopyViewModel viewModel) => Task.FromResult(false);
+
+    public Task<bool> ShowChangePasswordAsync(ChangePasswordViewModel viewModel) => Task.FromResult(false);
 }

@@ -60,6 +60,7 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
         CompactCommand = new RelayCommandAsync(() => MaintainAsync(compact: true));
         ReadCheckCommand = new RelayCommandAsync(ReadCheckAsync);
         CopyCommand = new RelayCommandAsync(CopyAsync);
+        ChangePasswordCommand = new RelayCommandAsync(ChangePasswordAsync);
     }
 
     #endregion
@@ -157,6 +158,18 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
         await ApplicationVm.Dialogs.ShowDatabaseCopyAsync(new DatabaseCopyViewModel(ApplicationVm, session));
 
         await RefreshAsync();
+    }
+
+    /// <summary>
+    /// Opens the password change (WS-58), which is a migration into a new database.
+    /// </summary>
+    private async Task ChangePasswordAsync()
+    {
+        if (Session is not { IsConnected: true } session)
+            return;
+
+        await ApplicationVm.Dialogs.ShowChangePasswordAsync(
+            new ChangePasswordViewModel(ApplicationVm, session));
     }
 
     /// <summary>
@@ -464,6 +477,8 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
     [Notify] public ICommand ReadCheckCommand { get; private set; } = null!;
 
     [Notify] public ICommand CopyCommand { get; private set; } = null!;
+
+    [Notify] public ICommand ChangePasswordCommand { get; private set; } = null!;
 
     #endregion
 }

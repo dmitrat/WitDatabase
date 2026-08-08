@@ -147,6 +147,15 @@ public sealed class ScriptedDialogService : IDialogService
         return OnReadCheckDialog?.Invoke(viewModel) ?? Task.FromResult(false);
     }
 
+    /// <summary>Changing the password by migrating (WS-58).</summary>
+    public Task<bool> ShowChangePasswordAsync(ChangePasswordViewModel viewModel)
+    {
+        Shown.Add(nameof(ShowChangePasswordAsync));
+        LastPassword = viewModel;
+
+        return OnPasswordDialog?.Invoke(viewModel) ?? Task.FromResult(false);
+    }
+
     /// <summary>The byte copy (WS-59), kept so a test can drive it as the button would.</summary>
     public Task<bool> ShowDatabaseCopyAsync(DatabaseCopyViewModel viewModel)
     {
@@ -217,6 +226,12 @@ public sealed class ScriptedDialogService : IDialogService
 
     /// <summary>The last copy ViewModel shown.</summary>
     public DatabaseCopyViewModel? LastCopy { get; private set; }
+
+    /// <summary>What the user does inside the password dialog.</summary>
+    public Func<ChangePasswordViewModel, Task<bool>>? OnPasswordDialog { get; set; }
+
+    /// <summary>The last password ViewModel shown.</summary>
+    public ChangePasswordViewModel? LastPassword { get; private set; }
 
     /// <summary>The settings ViewModel last shown - which section it opened on is worth asserting.</summary>
     public SettingsViewModel? LastSettings { get; private set; }

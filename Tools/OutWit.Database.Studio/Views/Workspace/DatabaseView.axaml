@@ -76,6 +76,12 @@
                            Text="{Binding Path}"/>
 
                 <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <Button Name="DatabasePasswordButton"
+                            AutomationProperties.AutomationId="DatabasePassword"
+                            AutomationProperties.Name="{DynamicResource S.Password.Open.Name}"
+                            Command="{Binding ChangePasswordCommand}"
+                            Content="{DynamicResource S.Password.Open}"/>
+
                     <Button Name="DatabaseCopyButton"
                             AutomationProperties.AutomationId="DatabaseCopy"
                             AutomationProperties.Name="{DynamicResource S.Copy.Open.Name}"
