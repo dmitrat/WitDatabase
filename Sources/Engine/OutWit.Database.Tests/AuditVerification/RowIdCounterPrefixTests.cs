@@ -18,17 +18,19 @@ namespace OutWit.Database.Tests.AuditVerification;
 /// also holds a table called <c>Orders</c>.
 /// </para>
 /// <para>
-/// <b>What is ruled out.</b> The bare <c>StoreBTree</c> keeps two records whose keys are byte-prefixes
-/// of one another perfectly well, in either write order - so it is not the store. The catalogue builds
-/// <c>$schema:_rowid:{table}</c> by concatenation and reads, writes and deletes it by exact key, with
-/// no range scan anywhere near it - so it is not obviously the catalogue either. It is somewhere
-/// between the two, and it is NOT in the dump, the provider or Studio: this case is the engine on its
-/// own.
+/// <b>The cause was two layers down, in the MVCC key encoding.</b> A version lives at
+/// <c>[key][8-byte inverted timestamp]</c> and one key's versions are scanned as
+/// <c>[key]00·8 … [key]FF·8</c> - a range that also contains every version of any LONGER key
+/// beginning with it, and 0x41 (<c>'A'</c> of "Audit") sorts before a typical inverted timestamp, so
+/// the foreign record came first. Writing <c>Orders</c>' counter marked <c>OrdersAudit</c>'s record
+/// deleted. Fixed in <c>MvccKeyValueStore</c> with a length test at each single-key version scan; see
+/// <c>MvccPrefixKeyTests</c>, where a read of a key that does not exist also used to answer with
+/// another key's value.
 /// </para>
 /// <para>
-/// PINS A DEFECT, NOT CORRECT BEHAVIOUR. When it is fixed the first case goes RED and should be
-/// replaced by the plain statement: a counter advanced by explicit keys survives a reopen whatever the
-/// other tables are called.
+/// <b>These cases were written as pins and inverted when the fix landed</b>, which is what makes them
+/// evidence rather than description: the two that named the defect went red on the first run against
+/// the fixed store and now assert the ordinary thing.
 /// </para>
 /// </remarks>
 [TestFixture]
@@ -64,24 +66,25 @@ public sealed class RowIdCounterPrefixTests
     #region Tests
 
     /// <summary>
-    /// PINS A DEFECT. The longer name loses its counter when the shorter one is written after it.
+    /// A counter survives the reopen whatever the other tables in the database are called.
     /// </summary>
+    /// <remarks>
+    /// Red before the fix: <c>OrdersAudit</c>'s counter was gone, and the only thing that made it
+    /// different from any other table here is that <c>Orders</c> is a prefix of its name.
+    /// </remarks>
     [Test]
-    public void ACounterIsLostWhenAnotherTableNameIsAPrefixOfItTest()
+    public void ACounterSurvivesEvenWhenAnotherTableNameIsAPrefixOfItTest()
     {
         var path = Fill("OrdersAudit", "Orders");
 
         Assert.Multiple(() =>
         {
-            Assert.That(NextGeneratedInsert(path, "OrdersAudit"),
-                Does.Contain("key counter is behind its rows"),
-                "PINS A DEFECT: OrdersAudit's counter did not survive the reopen, and the only "
-                + "thing that makes it different from any other table here is that 'Orders' is a "
-                + "prefix of its name");
+            Assert.That(NextGeneratedInsert(path, "OrdersAudit"), Is.Empty,
+                "the longer name's counter has to survive a write to the shorter one");
 
             Assert.That(NextGeneratedInsert(path, "Orders"), Is.Empty,
-                "and the shorter name's own counter is fine, which is what rules out 'the last "
-                + "table wins' and 'explicit keys are never persisted'");
+                "and the shorter name's own counter is fine either way, which is what ruled out "
+                + "'the last table wins' and 'explicit keys are never persisted'");
         });
     }
 
@@ -118,25 +121,18 @@ public sealed class RowIdCounterPrefixTests
     }
 
     /// <summary>
-    /// The sharpest statement of it, and it has nothing to do with restoring a dump: writing the
-    /// SHORTER name's counter destroys the longer one's, at any time, on a healthy database.
+    /// Writing the SHORTER name's counter leaves the longer one's alone - which is the defect in its
+    /// sharpest form, and it had nothing to do with restoring a dump.
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// This starts from the arrangement the case above proves healthy, then does one ordinary thing -
-    /// a generated insert into <c>Orders</c>, which writes <c>Orders</c>' counter and nothing else -
-    /// and <c>OrdersAudit</c>'s counter is gone afterwards. So a dump is not needed, explicit keys are
-    /// not needed, and any database holding a table whose name begins with another table's name is one
-    /// insert away from this.
-    /// </para>
-    /// <para>
-    /// It is the shape of a delete by PREFIX rather than by key, somewhere on the counter's write path.
-    /// The bare <c>StoreBTree</c> is ruled out - it keeps two such records perfectly - and the
-    /// catalogue's own four key builders are all exact concatenations with no scan near them.
-    /// </para>
+    /// This starts from an arrangement the case above proves healthy and then does one ordinary thing:
+    /// a generated insert into <c>Orders</c>, which writes <c>Orders</c>' counter and nothing else.
+    /// Before the fix <c>OrdersAudit</c>'s counter was gone afterwards - so no dump and no explicit
+    /// keys were needed, and every database holding a table whose name begins with another table's
+    /// name was one insert away from it.
     /// </remarks>
     [Test]
-    public void WritingTheShorterNamesCounterDestroysTheLongerOnesTest()
+    public void WritingTheShorterNamesCounterLeavesTheLongerOneAloneTest()
     {
         var path = Fill("Orders", "OrdersAudit");
 
@@ -146,9 +142,8 @@ public sealed class RowIdCounterPrefixTests
         // One generated insert into the SHORTER name, on its own connection, and nothing else.
         Assert.That(NextGeneratedInsert(path, "Orders"), Is.Empty);
 
-        Assert.That(NextGeneratedInsert(path, "OrdersAudit"),
-            Does.Contain("key counter is behind its rows"),
-            "PINS A DEFECT: writing Orders' counter took OrdersAudit's with it");
+        Assert.That(NextGeneratedInsert(path, "OrdersAudit"), Is.Empty,
+            "writing Orders' counter must not take OrdersAudit's with it");
     }
 
     #endregion

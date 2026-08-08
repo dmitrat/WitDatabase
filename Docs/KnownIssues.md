@@ -622,15 +622,66 @@ there. These two are the engine's.
 
 ---
 
-## 11. A restored dump refuses the next generated key
+## 11. A restored dump refuses the next generated key — and the cause was the MVCC key encoding
 
-> **OPEN.** Pinned by
-> `Studio.Tests/Services/DatabaseMigrationTests.AGeneratedKeyIsRefusedInAMigratedDatabaseAsync`,
-> which is labelled as pinning a defect and says what should replace it.
+> **FIXED.** `Core/Stores/MvccKeyValueStore.cs`. Regression tests:
+> `Core.Tests/AuditVerification/MvccPrefixKeyTests` (5 cases, 4 red against the
+> unfixed store), `Engine/AuditVerification/RowIdCounterPrefixTests` (4 cases,
+> written as pins and inverted when the fix landed) and
+> `Studio.Tests/Services/DatabaseMigrationTests.AMigratedDatabaseCanTakeANewRowAsync`.
+
+### The cause: the MVCC key encoding is not prefix-free
+
+A version lives at `[key][8-byte inverted timestamp]`, and every version of one key
+is found by scanning `[key]00·8 … [key]FF·8`. **That range does not contain only
+that key's versions.** For `Orders` it also contains every version of
+`OrdersAudit`, because `'A'` is 0x41 and the range runs to 0xFF — and 0x41 sorts
+*before* a typical inverted timestamp, so the foreign record is usually the **first**
+thing such a scan sees.
+
+`MarkPreviousVersionDeleted` walks that scan and marks the first live record it
+finds as deleted. So writing `$schema:_rowid:Orders` marked
+`$schema:_rowid:OrdersAudit` deleted, and on the next open `OrdersAudit`'s counter
+was absent, read as zero, and the next generated key collided with row 1.
+
+**It was never about dumps.** A dump only makes it certain, because it writes every
+table's counter in one run. Any database holding a table whose name begins with
+another table's name was one insert away from it.
+
+**And losing a counter was the mild half.** `MvccPrefixKeyTests` also pins the other
+direction: a read of a key that does not exist returned the value of a longer key
+that begins with it — a wrong answer rather than a missing one.
+
+### The fix
+
+A length test at each single-key version scan (`GetRecordAsOf`, `GetVersionCount`,
+`GetAllVersions`, `MarkPreviousVersionDeleted`): inside the scanned range the range
+already guarantees the leading bytes, so a versioned key belongs to `key` exactly
+when it is `key.Length + 8` bytes long. Range scans over a key *range* are
+unaffected — there a longer key is a legitimately different key, which is why they
+extract the original key and deduplicate.
+
+**The census after the change is empty**: Core 2315, engine 2358 (the four
+`Performance` timing failures on this machine are pre-existing and were verified by
+name), ADO.NET 1025, EF 544, Studio 730. The EF specification suite's 1198 failures
+were measured **with the fix reverted** and are identical — pre-existing, and CI
+runs a filtered subset of it.
+
+### How it was found, because the shape recurs
+
+Studio's dump could not be executed back into a database. **Fifteen controlled cases
+built up from nothing failed to reproduce it** — they all used names like `A`/`B`
+and `Alpha`/`Beta`, which cannot. Bisecting *down* from the fixture that did
+reproduce it took four steps: `DELETE FROM Orders` made the copy healthy,
+`Customers` survived where `OrdersAudit` did not, and the two names are `Orders` and
+`OrdersAudit`. **A control set built from invented names cannot find a defect that
+lives in the relationship between real ones.**
+
+### What it looked like from the outside
 
 A database rebuilt from a dump — which is also what a password change is, since
-that is a migration — **cannot take a new row in any table whose rows carried
-their keys**. The first insert that asks for a generated key is refused with:
+that is a migration — **could not take a new row in any table whose rows carried
+their keys**. The first insert that asked for a generated key was refused with:
 
 ```
 UNIQUE constraint failed: OrdersAudit.Id (duplicate value: 1).
@@ -638,58 +689,11 @@ The table's key counter is behind its rows; the insert was refused rather than
 overwriting one.
 ```
 
-The refusal is issue 5's fix behaving correctly — it is refusing to overwrite row
-1 rather than doing it silently, which is the better of the two failures. What is
-wrong is the state underneath: after the transfer the counter is at zero while the
-rows are at three. **Nothing in the migration report says so**: every table's rows
-are counted on both sides, they match, and the transfer is reported as complete.
-
-### It is not about dumps at all: it is the NAMES
-
-Bisecting down from the fixture — which reproduces every time — rather than
-building cases up from nothing, which fifteen fruitless variants had been:
-
-**Writing table `X`'s row-id counter destroys the counter of every table whose name
-BEGINS with `X`.**
-
-`Customers` came through the same transfer intact. `OrdersAudit` did not, and the
-only thing that distinguishes them is that the database also holds a table called
-`Orders`. Regression tests: `AuditVerification/RowIdCounterPrefixTests`, four cases,
-no Studio, no dump, no provider — the engine on its own:
-
-| Written | Then | `OrdersAudit`'s next generated key |
-|---|---|---|
-| `OrdersAudit`, then `Orders` | — | **refused** |
-| `Orders`, then `OrdersAudit` | — | accepted |
-| `Orders`, then `OrdersAudit` | one generated insert into `Orders` | **refused** |
-| `Alpha`, then `Beta` | — | accepted |
-
-The third row is the sharpest: it starts from an arrangement the second row proves
-healthy and does one ordinary thing — a generated insert into `Orders`, which writes
-`Orders`' counter and nothing else. **So a dump is not needed and explicit keys are
-not needed.** Any database holding a table whose name begins with another table's
-name is one insert away from this; the dump merely makes it certain, because it
-writes every table's counter in one run.
-
-That is the shape of a delete by PREFIX rather than by key, on the counter's write
-path.
-
-**Two layers are ruled out.** The bare `StoreBTree` keeps two records whose keys are
-byte-prefixes of one another perfectly well, in either write order. And the
-catalogue's four key builders (`SaveTableRowId`, `LoadTableRowId`,
-`DeleteTableRowId`, `PersistRowIdInternal`) all concatenate
-`$schema:_rowid:` + name and read, write and delete by exact key, with no range scan
-near them. **The next place to look is between them: the counter is written with
-`transaction.Put`, so the MVCC transaction's write set and key encoding are where
-this hunt resumes.**
-
-**Two earlier readings in this file were wrong and are corrected above**, both from
-probes that asked about several tables on one connection: "the write order decides"
-and "asking about the shorter name first hides it". Neither survived a fixture that
-opens a fresh database for every question.
-
-**The byte copy is unaffected** — it is the same bytes by construction — so a user
-who needs a faithful copy today has one.
+That refusal is issue 5's fix behaving correctly — it refuses to overwrite row 1
+rather than doing it silently, which is the better of the two failures, and it is
+why this cost nobody any data. What was wrong is the state underneath it. And
+**nothing in the migration report said so**: every table's rows were counted on
+both sides, they matched, and the transfer reported itself complete.
 
 ---
 

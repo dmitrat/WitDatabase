@@ -1725,13 +1725,13 @@ migrate a cut-down database now migrate the real one.
 
 ### And the two the engine kept
 
-**A restored dump refuses the next generated key** - `KnownIssues.md` issue 11, found because the new
-trigger case fired the trigger in the copy and the copy would not take the row. It is not about
-triggers: with the trigger dropped, a plain insert is refused identically. Attributed as far as
-measurement took it (the rows must carry explicit keys; the close-and-reopen is needed) and **fifteen
-controlled variants do not reproduce it** while the migration reproduces every time - the stage-8
-shape, and the honest report is the list of what was ruled out. Pinned by
-`AGeneratedKeyIsRefusedInAMigratedDatabaseAsync`.
+**A restored dump refused the next generated key** - `KnownIssues.md` issue 11, found because the new
+trigger case fired the trigger in the copy and the copy would not take the row, and **fixed in the
+same branch once it was chased down**. It was never about triggers or about dumps: the MVCC key
+encoding is not prefix-free, so writing `Orders`' row-id counter marked `OrdersAudit`'s deleted.
+**Fifteen controlled cases built up from nothing did not reproduce it** - they all used names like
+`A`/`B` - and bisecting DOWN from the fixture that did took four steps. The two engine pins were
+written as pins and inverted when the fix landed.
 
 **`UPDATE OF` is accepted and ignored** - issue 12. The catalogue publishes no column list, so the
 rebuilt trigger watches every column; that loses nothing today only because the firing path ignores
