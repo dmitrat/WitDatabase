@@ -94,6 +94,11 @@ public interface IDialogService
     /// </summary>
     Task<bool> ShowReadCheckAsync(ReadCheckViewModel viewModel);
 
+    /// <summary>
+    /// The byte copy (WS-59). True when a copy was taken.
+    /// </summary>
+    Task<bool> ShowDatabaseCopyAsync(DatabaseCopyViewModel viewModel);
+
     #endregion
 }
 
@@ -145,4 +150,6 @@ public sealed class NoDialogService : IDialogService
     public Task<bool> ShowEditTriggerAsync(EditTriggerViewModel viewModel) => Task.FromResult(false);
 
     public Task<bool> ShowReadCheckAsync(ReadCheckViewModel viewModel) => Task.FromResult(false);
+
+    public Task<bool> ShowDatabaseCopyAsync(DatabaseCopyViewModel viewModel) => Task.FromResult(false);
 }

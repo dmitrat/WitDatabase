@@ -147,6 +147,15 @@ public sealed class ScriptedDialogService : IDialogService
         return OnReadCheckDialog?.Invoke(viewModel) ?? Task.FromResult(false);
     }
 
+    /// <summary>The byte copy (WS-59), kept so a test can drive it as the button would.</summary>
+    public Task<bool> ShowDatabaseCopyAsync(DatabaseCopyViewModel viewModel)
+    {
+        Shown.Add(nameof(ShowDatabaseCopyAsync));
+        LastCopy = viewModel;
+
+        return OnCopyDialog?.Invoke(viewModel) ?? Task.FromResult(false);
+    }
+
     #endregion
 
     #region Tools
@@ -202,6 +211,12 @@ public sealed class ScriptedDialogService : IDialogService
 
     /// <summary>The last read-check ViewModel shown, so a test can run it as the button would.</summary>
     public ReadCheckViewModel? LastReadCheck { get; private set; }
+
+    /// <summary>What the user does inside the copy dialog.</summary>
+    public Func<DatabaseCopyViewModel, Task<bool>>? OnCopyDialog { get; set; }
+
+    /// <summary>The last copy ViewModel shown.</summary>
+    public DatabaseCopyViewModel? LastCopy { get; private set; }
 
     /// <summary>The settings ViewModel last shown - which section it opened on is worth asserting.</summary>
     public SettingsViewModel? LastSettings { get; private set; }

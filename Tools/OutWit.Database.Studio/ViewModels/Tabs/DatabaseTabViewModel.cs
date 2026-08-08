@@ -59,6 +59,7 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
         CheckpointCommand = new RelayCommandAsync(() => MaintainAsync(compact: false));
         CompactCommand = new RelayCommandAsync(() => MaintainAsync(compact: true));
         ReadCheckCommand = new RelayCommandAsync(ReadCheckAsync);
+        CopyCommand = new RelayCommandAsync(CopyAsync);
     }
 
     #endregion
@@ -143,6 +144,19 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
             return;
 
         await ApplicationVm.Dialogs.ShowReadCheckAsync(new ReadCheckViewModel(ApplicationVm, session));
+    }
+
+    /// <summary>
+    /// Opens the byte copy (WS-59) for this connection.
+    /// </summary>
+    private async Task CopyAsync()
+    {
+        if (Session is not { } session)
+            return;
+
+        await ApplicationVm.Dialogs.ShowDatabaseCopyAsync(new DatabaseCopyViewModel(ApplicationVm, session));
+
+        await RefreshAsync();
     }
 
     /// <summary>
@@ -448,6 +462,8 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
     [Notify] public ICommand CompactCommand { get; private set; } = null!;
 
     [Notify] public ICommand ReadCheckCommand { get; private set; } = null!;
+
+    [Notify] public ICommand CopyCommand { get; private set; } = null!;
 
     #endregion
 }

@@ -288,6 +288,24 @@ public sealed class DialogService : IDialogService
         }
     }
 
+    public async Task<bool> ShowDatabaseCopyAsync(DatabaseCopyViewModel viewModel)
+    {
+        var dialog = new DatabaseCopyDialog { DataContext = viewModel };
+
+        void OnClose(bool success) => dialog.Close(success);
+
+        viewModel.ShouldCloseDialog += OnClose;
+
+        try
+        {
+            return await ShowForResultAsync(dialog);
+        }
+        finally
+        {
+            viewModel.ShouldCloseDialog -= OnClose;
+        }
+    }
+
     public async Task<bool> ShowEditTriggerAsync(EditTriggerViewModel viewModel)
     {
         var dialog = new EditTriggerDialog { DataContext = viewModel };

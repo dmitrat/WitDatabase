@@ -3,6 +3,7 @@ using OutWit.Database.Core.Utils;
 using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
 using OutWit.Database.Studio.Tests.Helpers;
+using OutWit.Database.Studio.ViewModels;
 
 namespace OutWit.Database.Studio.Tests.Services;
 
@@ -227,6 +228,51 @@ public class DatabaseCopyTests
             Assert.That(parts, Has.Some.EqualTo(DatabaseFiles.GetIndexDirectory(m_fixture.DatabasePath)));
             Assert.That(parts, Has.None.EqualTo(DatabaseFiles.GetLockPath(m_fixture.DatabasePath)));
         });
+    }
+
+    /// <summary>
+    /// The dialog's own flow for a paged database: let go of it, take the bytes, open it again.
+    ///
+    /// <para>
+    /// This is the behaviour that was chosen over refusing, and it is the one worth a case of its own:
+    /// it is the only path in Studio that closes a connection the user did not ask to close. Both ends
+    /// are asserted - the copy is real and opens, and the database is connected again afterwards - and
+    /// the second is the half that would go unnoticed, because a backup that leaves the user's database
+    /// shut is worse than one that fails.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task ThePagedFlowClosesTheConnectionCopiesAndOpensItAgainAsync()
+    {
+        m_fixture = await StudioFixture.CreateAsync();
+
+        var destination = Path.Combine(m_fixture.Root, "flow.witdb");
+
+        var copy = new DatabaseCopyViewModel(m_fixture.App, m_fixture.Database)
+        {
+            Destination = destination,
+            Verify = true
+        };
+
+        Assert.That(copy.WillCloseTheConnection, Is.True,
+            "CONTROL: it says so before it does it, and for an LSM database it would not");
+
+        await StudioFixture.PressAsync(copy.CopyCommand);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(copy.IsDone, Is.True, copy.Message);
+            Assert.That(File.Exists(destination), Is.True);
+            Assert.That(Directory.Exists(DatabaseFiles.GetIndexDirectory(destination)!), Is.True);
+
+            Assert.That(m_fixture.Connections.Sessions.Any(session => session.IsConnected), Is.True,
+                "and the database the user was working in is open again");
+        });
+
+        // Asked of the reopened connection rather than of the manager's flag: "connected" is a
+        // property, and answering a query is the thing that was taken away.
+        Assert.That(await m_fixture.CountRowsAsync("Customers", m_fixture.Database),
+            Is.EqualTo(StudioFixture.CUSTOMER_COUNT));
     }
 
     #endregion

@@ -929,5 +929,30 @@
   "ReadCheck.Result.Inconclusive": "{0}, but this proves nothing about the object itself",
   "ReadCheck.Result.Disagrees": "{0} read, and COUNT(*) says {1} - the counter and the rows disagree",
   "ReadCheck.Limits": "What this does NOT find: an inconsistent B-tree, lost pages, errors in the free lists. A real integrity check reads the structure; this reads the data through it, so a green run says nothing about the parts of the file nobody is using. It will exist when PRAGMA integrity_check does.",
-  "ReadCheck.Result.Catalog": "read, and it names {0}"
+  "ReadCheck.Result.Catalog": "read, and it names {0}",
+
+  "Copy.Title": "Copy of the database",
+  "Copy.Heading": "Copy of {0}",
+  "Copy.Open": "Copy…",
+  "Copy.Open.Name": "Take a byte copy of this database",
+  "Copy.NotADump": "A copy of the bytes and not a dump: the encryption, the pages, the statistics and the format survive, so the copy opens instantly instead of having to be executed.",
+  "Copy.Source": "Source",
+  "Copy.PartsNote": "A database is more than its data file - the indexes live in a folder beside it and the journal in a file. All of it is taken; the lock sidecar is not.",
+  "Copy.Destination": "Copy",
+  "Copy.Verify": "Check the copy: open it and read its schema",
+  "Copy.WillClose": "This is a paged database, and while the engine holds the file nothing can read it - not even byte by byte. The connection is closed for the duration of the copy and opened again afterwards. It comes back as a NEW connection: a tab that belonged to the old one keeps its text and does not adopt it.",
+  "Copy.TransactionOpen": "A transaction is open on this connection. A copy taken now is of a database in the middle of a decision - the transaction is discarded when the connection closes.",
+  "Copy.NoRestore": "There is no restore here. Putting a copy back means closing the connection, moving the file and opening it again; a restore button would promise a rollback inside a running application. What Studio does instead is open the copy as another connection, so the two can be compared.",
+  "Copy.Run": "Take the copy",
+  "Copy.OpenCopy": "Open the copy",
+  "Copy.Running": "Copying…",
+  "Copy.Done": "Copied {0}, {1}",
+  "Copy.Verified": "the copy opens and names {0} tables",
+  "Copy.NotVerified": "and the copy did NOT open: {0}",
+  "Copy.HeldOpen": "The database is a paged file and something is holding it, so nothing can read the bytes.",
+  "Copy.Failed": "The copy did not finish: {0}",
+  "Count.Parts": {
+    "one": "{0} part",
+    "other": "{0} parts"
+  }
 }
