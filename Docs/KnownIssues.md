@@ -644,30 +644,49 @@ wrong is the state underneath: after the transfer the counter is at zero while t
 rows are at three. **Nothing in the migration report says so**: every table's rows
 are counted on both sides, they match, and the transfer is reported as complete.
 
-**What is established, by measurement:**
+### It is not about dumps at all: it is the NAMES
 
-- the rows must carry **explicit keys** — emptying the table before the dump makes
-  the copy healthy;
-- the **trigger is not involved**, though a trigger is how it was found: with the
-  trigger dropped, a plain `INSERT INTO OrdersAudit (OrderId) VALUES (99)` into the
-  restored database is refused identically;
-- the **close and reopen is** — running the same script into an already-open session
-  and inserting on that same connection is accepted.
+Bisecting down from the fixture — which reproduces every time — rather than
+building cases up from nothing, which fifteen fruitless variants had been:
 
-**Fifteen controlled variants do NOT reproduce it**, and the list is worth more
-than a hypothesis: explicit keys then reopen, with a trigger and without; the table
-created with quoted identifiers the way the dump spells it, with a trigger and
-without; a tail of `CREATE INDEX`, of `CREATE TABLE`, of rows in another table, and
-of nothing at all; three, fifty, two hundred and two thousand explicit rows; two
-tables both carrying explicit keys, asking each of them afterwards; and a one-table
-source through the migrator itself. Every one of those comes back accepted with the
-counter following the rows.
+**Writing table `X`'s row-id counter destroys the counter of every table whose name
+BEGINS with `X`.**
 
-So something in the fuller schema is required and is not yet named. The next step
-is to bisect the fixture's schema through the migrator — it reproduces there every
-time — rather than to keep building cases up from nothing, which is what those
-fifteen were. Issue 5's mechanism is the place to start reading: the counter is
-persisted under a key built from the table NAME, and an absent record reads as zero.
+`Customers` came through the same transfer intact. `OrdersAudit` did not, and the
+only thing that distinguishes them is that the database also holds a table called
+`Orders`. Regression tests: `AuditVerification/RowIdCounterPrefixTests`, four cases,
+no Studio, no dump, no provider — the engine on its own:
+
+| Written | Then | `OrdersAudit`'s next generated key |
+|---|---|---|
+| `OrdersAudit`, then `Orders` | — | **refused** |
+| `Orders`, then `OrdersAudit` | — | accepted |
+| `Orders`, then `OrdersAudit` | one generated insert into `Orders` | **refused** |
+| `Alpha`, then `Beta` | — | accepted |
+
+The third row is the sharpest: it starts from an arrangement the second row proves
+healthy and does one ordinary thing — a generated insert into `Orders`, which writes
+`Orders`' counter and nothing else. **So a dump is not needed and explicit keys are
+not needed.** Any database holding a table whose name begins with another table's
+name is one insert away from this; the dump merely makes it certain, because it
+writes every table's counter in one run.
+
+That is the shape of a delete by PREFIX rather than by key, on the counter's write
+path.
+
+**Two layers are ruled out.** The bare `StoreBTree` keeps two records whose keys are
+byte-prefixes of one another perfectly well, in either write order. And the
+catalogue's four key builders (`SaveTableRowId`, `LoadTableRowId`,
+`DeleteTableRowId`, `PersistRowIdInternal`) all concatenate
+`$schema:_rowid:` + name and read, write and delete by exact key, with no range scan
+near them. **The next place to look is between them: the counter is written with
+`transaction.Put`, so the MVCC transaction's write set and key encoding are where
+this hunt resumes.**
+
+**Two earlier readings in this file were wrong and are corrected above**, both from
+probes that asked about several tables on one connection: "the write order decides"
+and "asking about the shorter name first hides it". Neither survived a fixture that
+opens a fresh database for every question.
 
 **The byte copy is unaffected** — it is the same bytes by construction — so a user
 who needs a faithful copy today has one.
