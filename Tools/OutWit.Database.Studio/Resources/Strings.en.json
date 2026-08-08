@@ -886,7 +886,7 @@
   "Database.Cap.Source.Cache": "the engine's page cache",
   "Database.Cap.Source.Specification": "the WitSQL specification",
   "Database.Cap.Source.None": "nothing - the key is derived when the database is created",
-  "Database.Cap.Note.CopyNeedsQuiet": "the writes are flushed and paused first",
+  "Database.Cap.Note.CopyNeedsQuiet": "nothing can pause the writes; a paged database is closed for the duration",
   "Database.Cap.Note.LsmOnly": "only an LSM store has files to merge",
   "Database.Cap.Note.NoLevels": "a count and a threshold - this store has no levels",
   "Database.Cap.Note.NothingCounts": "neither page cache counts a hit or a miss, so there is no rate to read",

@@ -31,6 +31,17 @@
         <ScrollViewer Grid.Row="1" Padding="16">
             <StackPanel Spacing="14">
 
+                <!-- FIRST, not last. The same mistake the rebuild dialog made and had fixed: the one
+                     thing the dialog exists to say ended up below the fold, and the copy looked as if
+                     it had done nothing. -->
+                <Border IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        BorderThickness="1" CornerRadius="4" Padding="12">
+                    <TextBlock Name="CopyMessage"
+                               AutomationProperties.AutomationId="CopyMessage"
+                               Text="{Binding Message}" TextWrapping="Wrap"/>
+                </Border>
+
                 <StackPanel Spacing="4">
                     <TextBlock Text="{DynamicResource S.Copy.Source}" FontWeight="SemiBold"/>
                     <TextBlock Text="{Binding Source}" TextWrapping="Wrap"/>
@@ -69,10 +80,6 @@
                                AutomationProperties.AutomationId="CopyTransactionWarning"
                                Text="{DynamicResource S.Copy.TransactionOpen}" TextWrapping="Wrap"/>
                 </Border>
-
-                <TextBlock Name="CopyMessage"
-                           AutomationProperties.AutomationId="CopyMessage"
-                           Text="{Binding Message}" TextWrapping="Wrap"/>
 
                 <TextBlock Text="{DynamicResource S.Copy.NoRestore}"
                            FontSize="11" Opacity="0.75" TextWrapping="Wrap"/>

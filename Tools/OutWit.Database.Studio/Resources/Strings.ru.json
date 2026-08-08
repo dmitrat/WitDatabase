@@ -907,7 +907,7 @@
   "Database.Cap.Source.Cache": "кеш страниц движка",
   "Database.Cap.Source.Specification": "спецификация WitSQL",
   "Database.Cap.Source.None": "ниоткуда — ключ выводится при создании базы",
-  "Database.Cap.Note.CopyNeedsQuiet": "запись сначала сбрасывается на диск и приостанавливается",
+  "Database.Cap.Note.CopyNeedsQuiet": "приостановить запись нечем; страничная база на время копирования закрывается",
   "Database.Cap.Note.LsmOnly": "сливать файлы есть только у LSM",
   "Database.Cap.Note.NoLevels": "число и порог — уровней у этого хранилища нет",
   "Database.Cap.Note.NothingCounts": "ни один кеш страниц не считает попаданий и промахов, так что доли не существует",
