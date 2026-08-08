@@ -1,4 +1,6 @@
 using System.Data;
+using OutWit.Database.AdoNet.Maintenance;
+using OutWit.Database.Core.Providers;
 using OutWit.Database.Studio.Models;
 
 namespace OutWit.Database.Studio.Services;
@@ -64,6 +66,17 @@ public interface IDatabaseSession
     /// Whether the connection is open.
     /// </summary>
     bool IsConnected { get; }
+
+    /// <summary>
+    /// What the database recorded when it was created - store, page size, format version, providers
+    /// and feature flags - read just BEFORE this session opened it (WS-54).
+    /// </summary>
+    /// <remarks>
+    /// Captured at open because an open database holds an exclusive file lock and the header cannot be
+    /// read behind it. Nothing in it changes while the database is open, so a value read a moment
+    /// earlier is the current one. Null when there was nothing to read.
+    /// </remarks>
+    StoredConfiguration? StoredConfiguration { get; }
 
     /// <summary>
     /// Whether the connection was opened read-only (WS-10). A property of the connection, so every
@@ -258,6 +271,38 @@ public interface IDatabaseSession
     /// Rolls the open transaction back.
     /// </summary>
     Task RollbackTransactionAsync(CancellationToken ct = default);
+
+    #endregion
+
+    #region Storage
+
+    /// <summary>
+    /// What this connection's storage can say about itself (WS-56).
+    /// </summary>
+    /// <remarks>
+    /// Through the session rather than around it, for the same reason every other engine call is: a
+    /// ViewModel holding a <c>WitDbConnection</c> would be holding a connection it did not open and
+    /// cannot see closed.
+    /// </remarks>
+    Task<WitDbStorageSnapshot> GetStorageSnapshotAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Forces the store's in-memory state out into its on-disk structure.
+    /// </summary>
+    /// <remarks>
+    /// The result says what it DID - <c>Completed</c>, <c>NothingToDo</c> or <c>NotSupported</c> -
+    /// with the SSTable counts on either side, judged by what changed on disk. The panel writes the
+    /// sentence for it; a void here could not say "there was nothing to do", which is exactly how the
+    /// silent <c>Compact()</c> hid.
+    /// </remarks>
+    Task<WitDbMaintenanceResult> CheckpointAsync(CancellationToken ct = default);
+
+    /// <summary>
+    /// Merges the store's files. Only an LSM store has files to merge; a paged one answers
+    /// <see cref="WitDbMaintenanceOutcome.NotSupported"/>, which is what keeps the button off the
+    /// screen rather than greyed out (WS-55).
+    /// </summary>
+    Task<WitDbMaintenanceResult> CompactAsync(CancellationToken ct = default);
 
     #endregion
 }

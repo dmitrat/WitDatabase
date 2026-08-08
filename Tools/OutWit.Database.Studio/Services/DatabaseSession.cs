@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using OutWit.Database.AdoNet;
+using OutWit.Database.Core.Providers;
 using OutWit.Database.Studio.Models;
 using System.Data;
 
@@ -84,6 +85,16 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
             // attach to an issue.
             m_logger.LogInformation("Attempting to connect with connection string: {ConnectionString}",
                 Connection.ToLogString());
+
+            // BEFORE the open, and that is the whole point of doing it here. Since 12.2.0 an open
+            // database holds an exclusive file lock, so reading the header afterwards fails - which is
+            // exactly the case the «База» tab is for, and it came back as an empty Configuration block
+            // until a test asked for it (WS-54).
+            //
+            // Reading it a moment early is not a compromise: everything in it - the store, the page
+            // size, the format version, the providers and the feature flags - is decided when the
+            // database is CREATED and cannot change while it is open.
+            StoredConfiguration = StorageDetector.ReadStoredConfiguration(Connection.FilePath ?? string.Empty);
 
             m_connection = new WitDbConnection(connectionString);
 
@@ -213,6 +224,14 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
     public Guid Id { get; } = Guid.NewGuid();
 
     public ConnectionInfo Connection { get; }
+
+    /// <summary>
+    /// What the database recorded when it was created, read just before this session opened it.
+    /// </summary>
+    /// <remarks>
+    /// Null when there was nothing to read - a database being created, or a path that is not one.
+    /// </remarks>
+    public StoredConfiguration? StoredConfiguration { get; private set; }
 
     public ISchemaCatalog Catalog { get; }
 
