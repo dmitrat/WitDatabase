@@ -1604,6 +1604,74 @@ red first.
 
 ---
 
+## Phase 10 - the «База» tab
+
+The design's own phase 10 (section 7, `WS-54`…`WS-61`), which the plan puts *after* the change order to
+the engine. `WS-57` landed with PR #142, so it is now.
+
+**The criterion, written first because the plan gives none:** the tab says about this database only
+what something actually read, it names where each fact came from, and every button on it either does
+what it says or is not there.
+
+### What the design asked for and what is actually true
+
+Every one of these was measured rather than assumed, and each changed what got built:
+
+- **There are no levels.** The design's LSM panel draws L0/L1/L2. `m_sstables` is a flat list and a
+  compaction merges all of it into one file, so the panel reports the count, the trigger, the memtable
+  and the counters, and says in words that this store has no levels.
+- **The counters belong to the connection.** They start at zero when the store object is built, so the
+  block is titled "since this connection opened" - not a caveat, but what they measure.
+- **The page cache counts no hits.** The design left this open ("может не быть, нужно уточнить").
+  Neither `PageCacheLru` nor `PageCacheShardedClock` counts a hit or a miss, so a hit rate is absent
+  from the **engine** rather than merely unreachable through the provider.
+- **An open database cannot be read at all.** With a connection holding the file,
+  `StorageDetector.ReadStoredConfiguration` answers null *and* `Detect` answers an empty store type.
+  The whole Configuration block was blank on the one screen that exists to show it.
+- **Only an equality reaches an index.** `ORDER BY` is answered with a SORT over a full scan and a
+  range with a FILTER over one, so an index cannot be walked end to end - which is why the read check
+  performs a **seek** and says so on every line that passes.
+
+### What is on the tab
+
+Cards (storage, size, encryption, transaction model, format), the configuration block, a "now" block
+about this connection, the LSM panel with `Checkpoint` and `Compact`, and the provenance matrix of
+7.3 - which is **data**, walked by a test, in the shape of `SchemaMatrixTests`. Its rows carry
+catalogue keys rather than sentences.
+
+Verification by reading (`WS-61`) is a dialog off the tab. It reads every value rather than every row,
+counts the rows from the rows and puts `COUNT(*)` beside them, and refuses to call an index checked
+when the planner answered without it.
+
+### Carried forward - to be studied and finished
+
+**This list is the phase's own remainder and is asserted nowhere yet.** Each entry is measured unless
+it says otherwise.
+
+1. **An open database cannot describe itself, and the fix is engine-side.** Measured: while a
+   connection holds the file, `ReadStoredConfiguration` returns null and `Detect` returns an empty
+   store type. The tab works around it by reading the header a moment *before* the session opens, and
+   the one case with no answer - a database created by that very open - is absent from the screen and
+   says why. The proper repair is for an open database to publish its own `ProviderMetadata` through
+   the connection, which would also remove the workaround. **A wider consequence, deduced from
+   `StorageProbe` and NOT yet driven in the application:** the Open dialog handed the path of a paged
+   database Studio already has open would report "there is no database here".
+2. **Page cache occupancy is unexposed.** Both caches keep `Count` and `DirtyCount` and neither hands
+   them out; this is the single "needs provider access" row left in the matrix.
+3. **`SchemaCapabilities.Matrix` holds English reasons as positional record arguments, and no rule
+   sees them.** They reach the schema designer's row tooltips through
+   `SchemaCapabilities.ReasonOf` -> `draft.MarkerReason` -> `ToolTip.Tip`. The localisation rule looks
+   at assignments, and here the literal sits in a constructor with no destination name in front of it -
+   the next hole of the family fixed on 2026-08-08, and a fourth service composing prose beside the
+   three already named.
+4. **The toolbar band is empty while the «База» tab is selected.** The query toolbar hides and nothing
+   takes its place. Cosmetic, seen in the running application.
+5. **The tree's row count did not follow an insert.** Fifty rows went in through the editor and the
+   node still said 39 until the database was reopened. Probably the deliberate laziness of the counts
+   with their deadline (`WS-16`), but it reads as a disagreement on screen and has not been checked.
+
+---
+
 ## Findings for the engine, not fixed here
 **A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
 class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner
