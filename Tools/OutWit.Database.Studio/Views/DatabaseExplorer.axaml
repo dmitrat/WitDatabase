@@ -148,6 +148,18 @@
                     
                     <TreeView.ContextMenu>
                         <ContextMenu>
+                            <!-- The storage tab, on the connection's own node and nowhere else (WS-54) -->
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerOpenDatabaseTab"
+                                      Header="{DynamicResource S.Explorer.Menu.Storage}"
+                                      IsEnabled="{Binding DatabaseExplorerVm.CanOpenDatabaseTab}"
+                                      Command="{Binding DatabaseExplorerVm.OpenDatabaseTabCommand}">
+                                <MenuItem.Icon>
+                                    <PathIcon Data="{x:Static ui:StudioIcons.DB_DATABASE}"/>
+                                </MenuItem.Icon>
+                            </MenuItem>
+
+                            <Separator/>
+
                             <!-- Create actions -->
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreate" Header="{DynamicResource S.Explorer.Menu.Create}">
                                 <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateTable" Header="{DynamicResource S.Explorer.Menu.CreateTable}"

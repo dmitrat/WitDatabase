@@ -34,7 +34,12 @@
                 <DataTemplate DataType="tabs:StructureTabViewModel">
                     <workspace:StructureView DataContext="{Binding}"/>
                 </DataTemplate>
-                
+
+                <!-- The «База» tab: the storage layer of one connection (WS-54) -->
+                <DataTemplate DataType="tabs:DatabaseTabViewModel">
+                    <workspace:DatabaseView DataContext="{Binding}"/>
+                </DataTemplate>
+
             </ContentControl.DataTemplates>
         </ContentControl>
         

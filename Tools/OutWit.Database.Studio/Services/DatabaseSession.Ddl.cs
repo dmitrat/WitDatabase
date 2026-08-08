@@ -105,7 +105,7 @@ public sealed partial class DatabaseSession
         {
             tableName ??= reader.GetString(0);
             columns.Add(reader.GetString(1));
-            isUnique = !reader.IsDBNull(2) && reader.GetBoolean(2);
+            isUnique = IsYes(reader, 2);
             filter ??= reader.IsDBNull(3) ? null : reader.GetString(3);
         }
 
@@ -113,6 +113,36 @@ public sealed partial class DatabaseSession
             return null;
 
         return (tableName, columns, isUnique, filter);
+    }
+
+    /// <summary>
+    /// Reads a yes-or-no column the way <c>INFORMATION_SCHEMA</c> actually publishes it.
+    /// </summary>
+    /// <remarks>
+    /// <b>It is the STRING "YES" or "NO", not a boolean</b>, and reading it with <c>GetBoolean</c>
+    /// answered TRUE for both - so every index came back from the catalogue as <c>CREATE UNIQUE
+    /// INDEX</c>. That is not a display problem: it is what the DUMP writes, and a dumped database
+    /// whose non-unique index has the duplicate values a non-unique index is for cannot be restored at
+    /// all. Found on 2026-08-08 by executing a dump back into an empty database for the first time -
+    /// the transfer WS-58 is built on - which failed with "UNIQUE constraint failed: Cannot create
+    /// unique index 'IX_Orders_CustomerId' ... duplicate values exist".
+    /// </remarks>
+    private static bool IsYes(System.Data.Common.DbDataReader reader, int ordinal)
+    {
+        if (reader.IsDBNull(ordinal))
+            return false;
+
+        var value = reader.GetValue(ordinal);
+
+        return value switch
+        {
+            bool flag => flag,
+            string text => text.Equals("YES", StringComparison.OrdinalIgnoreCase)
+                           || text.Equals("Y", StringComparison.OrdinalIgnoreCase)
+                           || text.Equals("TRUE", StringComparison.OrdinalIgnoreCase)
+                           || text == "1",
+            _ => Convert.ToInt64(value) != 0
+        };
     }
 
     private static string BuildIndexDefinition(

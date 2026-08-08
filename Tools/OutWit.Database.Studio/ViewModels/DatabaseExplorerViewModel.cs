@@ -43,6 +43,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         RefreshCommand = new RelayCommandAsync(RefreshAsync);
         SelectTop100Command = new RelayCommand(SelectTop100);
         SelectTop1000Command = new RelayCommand(SelectTop1000);
+        OpenDatabaseTabCommand = new RelayCommandAsync(OpenDatabaseTabAsync);
         EditDataCommand = new RelayCommandAsync(EditDataAsync);
         ViewStructureCommand = new RelayCommandAsync(ViewStructureAsync);
         ViewDefinitionCommand = new RelayCommandAsync(ViewDefinitionAsync);
@@ -151,6 +152,21 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Editing", tableName);
         Logger.LogInformation("Edit data for table {TableName} in {Connection}", tableName, session.DisplayName);
+    }
+
+    /// <summary>
+    /// Opens the storage tab of the selected connection (WS-54).
+    /// </summary>
+    private async Task OpenDatabaseTabAsync()
+    {
+        var session = SelectedSession;
+
+        if (session == null || !CanOpenDatabaseTab)
+            return;
+
+        await ApplicationVm.WorkspaceTabsVm.OpenDatabaseTabAsync(session);
+
+        Logger.LogInformation("Opened the database tab of {Connection}", session.DisplayName);
     }
 
     private async Task ViewStructureAsync()
@@ -799,6 +815,10 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         var nodeType = SelectedNode?.NodeType;
         var connected = SelectedSession?.IsConnected == true;
 
+        // The «База» tab belongs to the CONNECTION, so it is offered on the connection's own node and
+        // nowhere else (WS-54).
+        CanOpenDatabaseTab = connected && nodeType == DatabaseNodeType.Database;
+
         CanBrowseData = connected && nodeType is DatabaseNodeType.Table or DatabaseNodeType.View;
         CanEditData = connected && nodeType == DatabaseNodeType.Table;
         CanViewStructure = connected && nodeType is DatabaseNodeType.Table
@@ -889,6 +909,12 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public string? ErrorMessage { get; set; }
 
+    /// <summary>
+    /// True on a connection's own node, which is the only place the storage tab makes sense.
+    /// </summary>
+    [Notify]
+    public bool CanOpenDatabaseTab { get; private set; }
+
     [Notify]
     public bool CanBrowseData { get; private set; }
 
@@ -923,6 +949,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
     public ICommand SelectTop1000Command { get; private set; } = null!;
 
+    public ICommand OpenDatabaseTabCommand { get; private set; } = null!;
+
+    [Notify]
     public ICommand EditDataCommand { get; private set; } = null!;
 
     public ICommand ViewStructureCommand { get; private set; } = null!;

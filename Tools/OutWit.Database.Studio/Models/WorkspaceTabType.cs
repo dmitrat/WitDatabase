@@ -18,5 +18,10 @@ public enum WorkspaceTabType
     /// <summary>
     /// Object structure viewer tab.
     /// </summary>
-    Structure
+    Structure,
+
+    /// <summary>
+    /// The storage layer of one connection - the «База» tab (WS-54).
+    /// </summary>
+    Database
 }

@@ -54,7 +54,8 @@ public static class StorageDetector
 
         if (Directory.Exists(path))
             return LsmDirectoryMetadata.Read(path) is { } lsm
-                ? new StoredConfiguration(lsm.Metadata, PageSize: 0, IsDirectory: true, lsm.Options)
+                ? new StoredConfiguration(lsm.Metadata, PageSize: 0, IsDirectory: true, lsm.Options,
+                    FormatVersion: null)
                 : null;
 
         if (!File.Exists(path))
@@ -77,7 +78,8 @@ public static class StorageDetector
 
             var header = DatabaseHeader.ReadFrom(buffer);
 
-            return new StoredConfiguration(header.Providers, header.PageSize, IsDirectory: false, Lsm: null);
+            return new StoredConfiguration(header.Providers, header.PageSize, IsDirectory: false, Lsm: null,
+                header.FormatVersion);
         }
         catch
         {
@@ -225,11 +227,18 @@ public static class StorageDetector
 /// <param name="PageSize">The page size the file was written with; zero for an LSM directory.</param>
 /// <param name="IsDirectory">Whether the database is an LSM directory rather than a paged file.</param>
 /// <param name="Lsm">The LSM options recorded in the sidecar, or null for a paged file.</param>
+/// <param name="FormatVersion">
+/// The on-disk format the file was written with, major in the high byte and minor in the low one.
+/// <b>Null for an LSM directory</b>, which has no database header - and that is the answer rather than
+/// a gap: the sidecar carries a version of its own, but it versions the sidecar and not the store, so
+/// reporting it here would put a number in front of a reader that means something else.
+/// </param>
 public sealed record StoredConfiguration(
     ProviderMetadata Metadata,
     int PageSize,
     bool IsDirectory,
-    LsmStoredOptions? Lsm);
+    LsmStoredOptions? Lsm,
+    ushort? FormatVersion);
 
 /// <summary>
 /// Result of storage type detection.

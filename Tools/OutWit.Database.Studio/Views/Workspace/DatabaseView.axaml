@@ -1,0 +1,367 @@
+<UserControl xmlns="https://github.com/avaloniaui"
+             xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+             xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+             xmlns:tabs="clr-namespace:OutWit.Database.Studio.ViewModels.Tabs"
+             mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+             x:Class="OutWit.Database.Studio.Views.Workspace.DatabaseView"
+             x:DataType="tabs:DatabaseTabViewModel">
+
+    <UserControl.Styles>
+        <!-- A card: the caption is small and quiet, the value is the thing being read. -->
+        <Style Selector="TextBlock.cardLabel">
+            <Setter Property="FontSize" Value="10"/>
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+
+        <Style Selector="TextBlock.cardValue">
+            <Setter Property="FontSize" Value="18"/>
+            <Setter Property="FontWeight" Value="SemiBold"/>
+        </Style>
+
+        <Style Selector="TextBlock.cardDetail">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Opacity" Value="0.65"/>
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,2,0,0"/>
+        </Style>
+
+        <Style Selector="TextBlock.blockTitle">
+            <Setter Property="FontWeight" Value="SemiBold"/>
+            <Setter Property="Margin" Value="0,0,8,0"/>
+        </Style>
+
+        <Style Selector="TextBlock.blockSource">
+            <Setter Property="FontSize" Value="11"/>
+            <Setter Property="Opacity" Value="0.6"/>
+            <Setter Property="VerticalAlignment" Value="Bottom"/>
+        </Style>
+
+        <Style Selector="TextBlock.rowLabel">
+            <Setter Property="Opacity" Value="0.7"/>
+            <Setter Property="Margin" Value="0,0,16,4"/>
+        </Style>
+
+        <Style Selector="TextBlock.rowValue">
+            <Setter Property="TextWrapping" Value="Wrap"/>
+            <Setter Property="Margin" Value="0,0,0,4"/>
+        </Style>
+    </UserControl.Styles>
+
+    <Grid RowDefinitions="Auto,Auto,*">
+
+        <!-- The toolbar. "Compact" is not here: it belongs to the LSM panel, and it exists only while
+             the store is one (WS-55). -->
+        <Border Grid.Row="0"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderThickness="0,0,0,1"
+                Padding="12,8">
+            <Grid ColumnDefinitions="Auto,*,Auto">
+                <TextBlock Grid.Column="0"
+                           Classes="blockTitle"
+                           VerticalAlignment="Center"
+                           Text="{DynamicResource S.Database.Title}"/>
+
+                <!-- Trimmed, and it took the running application to notice: a path is as long as it
+                     likes, and this one ran under the button beside it with no ellipsis to say so.
+                     The full path is in the Configuration block below, where it wraps. -->
+                <TextBlock Grid.Column="1"
+                           Classes="blockSource"
+                           Margin="12,0,12,0"
+                           VerticalAlignment="Center"
+                           TextTrimming="CharacterEllipsis"
+                           ToolTip.Tip="{Binding Path}"
+                           Text="{Binding Path}"/>
+
+                <StackPanel Grid.Column="2" Orientation="Horizontal" Spacing="8">
+                    <Button Name="DatabasePasswordButton"
+                            AutomationProperties.AutomationId="DatabasePassword"
+                            AutomationProperties.Name="{DynamicResource S.Password.Open.Name}"
+                            Command="{Binding ChangePasswordCommand}"
+                            Content="{DynamicResource S.Password.Open}"/>
+
+                    <Button Name="DatabaseCopyButton"
+                            AutomationProperties.AutomationId="DatabaseCopy"
+                            AutomationProperties.Name="{DynamicResource S.Copy.Open.Name}"
+                            Command="{Binding CopyCommand}"
+                            Content="{DynamicResource S.Copy.Open}"/>
+
+                    <Button Name="DatabaseReadCheckButton"
+                            AutomationProperties.AutomationId="DatabaseReadCheck"
+                            AutomationProperties.Name="{DynamicResource S.ReadCheck.Open.Name}"
+                            Command="{Binding ReadCheckCommand}"
+                            Content="{DynamicResource S.ReadCheck.Open}"/>
+
+                    <Button Name="DatabaseRefreshButton"
+                            AutomationProperties.AutomationId="DatabaseRefresh"
+                            AutomationProperties.Name="{DynamicResource S.Database.Refresh.Name}"
+                            Command="{Binding RefreshCommand}"
+                            Content="{DynamicResource S.Database.Refresh}"/>
+                </StackPanel>
+            </Grid>
+        </Border>
+
+        <!-- What went wrong, if anything did. -->
+        <Border Grid.Row="1"
+                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                Background="{DynamicResource SystemFillColorCriticalBackgroundBrush}"
+                Padding="12,8">
+            <TextBlock Name="DatabaseErrorText"
+                       AutomationProperties.AutomationId="DatabaseError"
+                       TextWrapping="Wrap"
+                       Text="{Binding ErrorMessage}"/>
+        </Border>
+
+        <ScrollViewer Grid.Row="2" Padding="12">
+            <StackPanel Spacing="16">
+
+                <!-- The cards: what is known about the database itself (WS-54). -->
+                <ItemsControl>
+                    <ItemsControl.ItemsPanel>
+                        <ItemsPanelTemplate>
+                            <WrapPanel Orientation="Horizontal"/>
+                        </ItemsPanelTemplate>
+                    </ItemsControl.ItemsPanel>
+
+                    <Border Margin="0,0,12,12" Padding="12" MinWidth="170"
+                            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1" CornerRadius="4">
+                        <StackPanel>
+                            <TextBlock Classes="cardLabel" Text="{DynamicResource S.Database.Card.Storage}"/>
+                            <TextBlock Classes="cardValue" Name="DatabaseStorageValue"
+                                       AutomationProperties.AutomationId="DatabaseStorage"
+                                       Text="{Binding StorageKind}"/>
+                            <TextBlock Classes="cardDetail" Text="{Binding StorageDetail}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,0,12,12" Padding="12" MinWidth="170"
+                            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1" CornerRadius="4">
+                        <StackPanel>
+                            <TextBlock Classes="cardLabel" Text="{DynamicResource S.Database.Card.Size}"/>
+                            <TextBlock Classes="cardValue" Name="DatabaseSizeValue"
+                                       AutomationProperties.AutomationId="DatabaseSize"
+                                       Text="{Binding Size}"/>
+                            <TextBlock Classes="cardDetail" Text="{Binding SizeDetail}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,0,12,12" Padding="12" MinWidth="170"
+                            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1" CornerRadius="4">
+                        <StackPanel>
+                            <TextBlock Classes="cardLabel" Text="{DynamicResource S.Database.Card.Encryption}"/>
+                            <TextBlock Classes="cardValue" Name="DatabaseEncryptionValue"
+                                       AutomationProperties.AutomationId="DatabaseEncryption"
+                                       Text="{Binding Encryption}"/>
+                            <TextBlock Classes="cardDetail" Text="{Binding EncryptionDetail}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <Border Margin="0,0,12,12" Padding="12" MinWidth="170"
+                            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1" CornerRadius="4">
+                        <StackPanel>
+                            <TextBlock Classes="cardLabel" Text="{DynamicResource S.Database.Card.Transactions}"/>
+                            <TextBlock Classes="cardValue" Name="DatabaseTransactionsValue"
+                                       AutomationProperties.AutomationId="DatabaseTransactions"
+                                       Text="{Binding Transactions}"/>
+                            <TextBlock Classes="cardDetail" Text="{Binding TransactionsDetail}"/>
+                        </StackPanel>
+                    </Border>
+
+                    <!-- Absent for an LSM database, which has no header to read a version out of. -->
+                    <Border Margin="0,0,12,12" Padding="12" MinWidth="170"
+                            IsVisible="{Binding HasFormat}"
+                            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            BorderThickness="1" CornerRadius="4">
+                        <StackPanel>
+                            <TextBlock Classes="cardLabel" Text="{DynamicResource S.Database.Card.Format}"/>
+                            <TextBlock Classes="cardValue" Name="DatabaseFormatValue"
+                                       AutomationProperties.AutomationId="DatabaseFormat"
+                                       Text="{Binding Format}"/>
+                        </StackPanel>
+                    </Border>
+                </ItemsControl>
+
+                <!-- Configuration: what the database recorded when it was created. -->
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Classes="blockTitle" Text="{DynamicResource S.Database.Config}"/>
+                        <TextBlock Classes="blockSource" Text="{DynamicResource S.Database.Config.Source}"/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Config.Path}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Classes="rowValue" Text="{Binding Path}"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="rowLabel"
+                                   IsVisible="{Binding HasConfiguration}"
+                                   Text="{DynamicResource S.Database.Config.Journal}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Classes="rowValue"
+                                   IsVisible="{Binding HasConfiguration}" Text="{Binding Journal}"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="rowLabel"
+                                   IsVisible="{Binding HasConfiguration}"
+                                   Text="{DynamicResource S.Database.Config.Cache}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Classes="rowValue"
+                                   IsVisible="{Binding HasConfiguration}" Text="{Binding Cache}"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="rowLabel"
+                                   IsVisible="{Binding HasConfiguration}"
+                                   Text="{DynamicResource S.Database.Config.Locking}"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Classes="rowValue"
+                                   IsVisible="{Binding HasConfiguration}" Text="{Binding Locking}"/>
+
+                        <TextBlock Grid.Row="4" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Config.Schema}"/>
+                        <TextBlock Grid.Row="4" Grid.Column="1" Classes="rowValue" Text="{Binding Schema}"/>
+
+                        <TextBlock Grid.Row="5" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Config.Chain}"/>
+                        <TextBlock Grid.Row="5" Grid.Column="1" Classes="rowValue"
+                                   Name="DatabaseChainValue"
+                                   AutomationProperties.AutomationId="DatabaseChain"
+                                   Text="{Binding Chain}"/>
+                    </Grid>
+
+                    <!-- Not a gap left blank: an open database's header cannot be read at all, so a
+                         database created by the very open that would have read it has no configuration
+                         to show, and the panel says which fact is missing and why. -->
+                    <TextBlock Classes="cardDetail"
+                               Name="DatabaseConfigUnavailable"
+                               AutomationProperties.AutomationId="DatabaseConfigUnavailable"
+                               IsVisible="{Binding !HasConfiguration}"
+                               Text="{DynamicResource S.Database.Config.Unavailable}"/>
+                </StackPanel>
+
+                <!-- Now: what this connection is doing, which is a different question from the above. -->
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Classes="blockTitle" Text="{DynamicResource S.Database.Now}"/>
+                        <TextBlock Classes="blockSource" Text="{DynamicResource S.Database.Now.Source}"/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Now.Transaction}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Classes="rowValue" Text="{Binding Transaction}"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Now.Isolation}"/>
+                        <TextBlock Grid.Row="1" Grid.Column="1" Classes="rowValue" Text="{Binding Isolation}"/>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Now.Tabs}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Classes="rowValue" Text="{Binding Tabs}"/>
+
+                        <TextBlock Grid.Row="3" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Now.Access}"/>
+                        <TextBlock Grid.Row="3" Grid.Column="1" Classes="rowValue"
+                                   Name="DatabaseAccessValue"
+                                   AutomationProperties.AutomationId="DatabaseAccess"
+                                   Text="{Binding Access}"/>
+                    </Grid>
+                </StackPanel>
+
+                <!-- The LSM panel, and the whole of it is absent for a paged store. -->
+                <StackPanel IsVisible="{Binding IsLsm}">
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Classes="blockTitle" Text="{DynamicResource S.Database.Lsm}"/>
+                        <TextBlock Classes="blockSource" Text="{Binding Levels}"/>
+                    </StackPanel>
+
+                    <Grid ColumnDefinitions="Auto,*" RowDefinitions="Auto,Auto,Auto,Auto">
+                        <TextBlock Grid.Row="0" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Lsm.Sstables}"/>
+                        <TextBlock Grid.Row="0" Grid.Column="1" Classes="rowValue"
+                                   Name="DatabaseSstablesValue"
+                                   AutomationProperties.AutomationId="DatabaseSstables"
+                                   Text="{Binding Sstables}"/>
+
+                        <TextBlock Grid.Row="1" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Lsm.MemTableLabel}"/>
+                        <StackPanel Grid.Row="1" Grid.Column="1" Margin="0,0,0,4">
+                            <TextBlock Text="{Binding MemTable}"/>
+                            <ProgressBar Name="DatabaseMemTableBar"
+                                         AutomationProperties.AutomationId="DatabaseMemTable"
+                                         AutomationProperties.Name="{DynamicResource S.Database.Lsm.MemTableLabel}"
+                                         Minimum="0" Maximum="1" Height="4" Margin="0,4,0,0"
+                                         Value="{Binding MemTableFill}"/>
+                            <TextBlock Classes="cardDetail" Text="{Binding CompactionTrigger}"/>
+                        </StackPanel>
+
+                        <TextBlock Grid.Row="2" Grid.Column="0" Classes="rowLabel"
+                                   Text="{DynamicResource S.Database.Lsm.CountersLabel}"/>
+                        <TextBlock Grid.Row="2" Grid.Column="1" Classes="rowValue"
+                                   Name="DatabaseCountersValue"
+                                   AutomationProperties.AutomationId="DatabaseCounters"
+                                   Text="{Binding Counters}"/>
+
+                        <StackPanel Grid.Row="3" Grid.Column="1" Orientation="Horizontal" Spacing="8"
+                                    Margin="0,8,0,0">
+                            <Button Name="DatabaseCheckpointButton"
+                                    AutomationProperties.AutomationId="DatabaseCheckpoint"
+                                    AutomationProperties.Name="{DynamicResource S.Database.Lsm.Checkpoint.Name}"
+                                    IsEnabled="{Binding !IsMaintaining}"
+                                    Command="{Binding CheckpointCommand}"
+                                    Content="{DynamicResource S.Database.Lsm.Checkpoint}"/>
+
+                            <Button Name="DatabaseCompactButton"
+                                    AutomationProperties.AutomationId="DatabaseCompact"
+                                    AutomationProperties.Name="{DynamicResource S.Database.Lsm.Compact.Name}"
+                                    IsEnabled="{Binding !IsMaintaining}"
+                                    Command="{Binding CompactCommand}"
+                                    Content="{DynamicResource S.Database.Lsm.Compact}"/>
+
+                            <TextBlock VerticalAlignment="Center"
+                                       IsVisible="{Binding IsCompacting}"
+                                       Text="{DynamicResource S.Database.Lsm.Compacting}"/>
+                        </StackPanel>
+                    </Grid>
+
+                    <TextBlock Classes="cardDetail"
+                               Name="DatabaseMaintenanceMessage"
+                               AutomationProperties.AutomationId="DatabaseMaintenanceMessage"
+                               IsVisible="{Binding MaintenanceMessage, Converter={x:Static ObjectConverters.IsNotNull}}"
+                               Text="{Binding MaintenanceMessage}"/>
+                </StackPanel>
+
+                <!-- The provenance matrix (WS-55). Every row says where it would come from, including
+                     the rows that say the engine has nothing. -->
+                <StackPanel>
+                    <StackPanel Orientation="Horizontal" Margin="0,0,0,8">
+                        <TextBlock Classes="blockTitle" Text="{DynamicResource S.Database.Cap}"/>
+                        <TextBlock Classes="blockSource" Text="{DynamicResource S.Database.Cap.Source}"/>
+                    </StackPanel>
+
+                    <ItemsControl Name="DatabaseCapabilities"
+                                  AutomationProperties.AutomationId="DatabaseCapabilities"
+                                  ItemsSource="{Binding Capabilities}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate x:DataType="tabs:StorageCapabilityRow">
+                                <Grid ColumnDefinitions="2*,2*,*" Margin="0,0,0,6">
+                                    <StackPanel Grid.Column="0" Margin="0,0,12,0">
+                                        <TextBlock Text="{Binding Operation}" TextWrapping="Wrap"/>
+                                        <TextBlock Classes="cardDetail"
+                                                   IsVisible="{Binding Note, Converter={x:Static ObjectConverters.IsNotNull}}"
+                                                   Text="{Binding Note}"/>
+                                    </StackPanel>
+
+                                    <TextBlock Grid.Column="1" Classes="rowValue" Margin="0,0,12,0"
+                                               Text="{Binding Source}"/>
+
+                                    <TextBlock Grid.Column="2" Classes="rowValue" Text="{Binding State}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+    </Grid>
+</UserControl>

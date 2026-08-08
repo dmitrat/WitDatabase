@@ -202,6 +202,43 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     #endregion
 
+    #region Tab Management - Database
+
+    /// <summary>
+    /// Opens the «База» tab of a connection, or brings the one that is already open to the front
+    /// (WS-54).
+    /// </summary>
+    /// <remarks>
+    /// <b>One per connection</b>, because the tab is about the connection rather than about an object
+    /// in it - and it is pinned, so it keeps the place it was given rather than drifting along the
+    /// strip as query tabs are opened and closed.
+    /// </remarks>
+    public async Task<DatabaseTabViewModel> OpenDatabaseTabAsync(IDatabaseSession session)
+    {
+        var existingTab = Tabs.OfType<DatabaseTabViewModel>()
+            .FirstOrDefault(tab => tab.Session == session);
+
+        if (existingTab != null)
+        {
+            SelectedTab = existingTab;
+            return existingTab;
+        }
+
+        var tab = new DatabaseTabViewModel(ApplicationVm, session);
+        tab.PropertyChanged += OnTabPropertyChanged;
+
+        AddTab(tab);
+        SelectedTab = tab;
+
+        await tab.RefreshAsync();
+
+        Logger.LogInformation("Opened the database tab of {Name}", session.DisplayName);
+
+        return tab;
+    }
+
+    #endregion
+
     #region Tab Management - Common
 
     private void AddTab(WorkspaceTabViewModel tab)

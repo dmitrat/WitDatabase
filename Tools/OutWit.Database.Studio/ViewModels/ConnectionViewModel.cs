@@ -790,22 +790,7 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
     /// <summary>
     /// A size a person reads, written invariantly like every other number Studio shows (WS-65).
     /// </summary>
-    private static string Size(long bytes)
-    {
-        string[] units = ["B", "KB", "MB", "GB", "TB"];
-
-        double size = bytes;
-        var unit = 0;
-
-        while (size >= 1024 && unit < units.Length - 1)
-        {
-            size /= 1024;
-            unit++;
-        }
-
-        return size.ToString(unit == 0 ? "0" : "0.#", System.Globalization.CultureInfo.InvariantCulture)
-            + " " + units[unit];
-    }
+    private static string Size(long bytes) => ByteSize.Format(bytes);
 
     /// <summary>Raised when the dialog showing this ViewModel should close.</summary>
     public event EventHandler? CloseRequested;
