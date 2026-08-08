@@ -528,6 +528,7 @@
   "Search.MatchCase": "Учитывать регистр",
   "Search.Regex": "Регулярное выражение",
   "Search.WholeWord": "Слово целиком",
+  "Search.WholeWordShort": "Слово",
   "Search.InSelection": "Только в выделенном",
   "Search.Previous": "Предыдущее совпадение",
   "Search.Next": "Следующее совпадение",

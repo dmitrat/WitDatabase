@@ -520,6 +520,7 @@
   "Search.MatchCase": "Match case",
   "Search.Regex": "Regular expression",
   "Search.WholeWord": "Whole word",
+  "Search.WholeWordShort": "Word",
   "Search.InSelection": "In selection only",
   "Search.Previous": "Previous match",
   "Search.Next": "Next match",

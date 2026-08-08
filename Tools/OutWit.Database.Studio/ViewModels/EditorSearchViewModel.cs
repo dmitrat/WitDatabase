@@ -126,8 +126,13 @@ public class EditorSearchViewModel : ViewModelBase<ApplicationViewModel>
         {
             var selected = Selected();
 
-            // A multi-line selection means "search in here", not "search for all of this".
-            if (!selected.Contains('\n'))
+            // A multi-line selection means "search in here", not "search for all of this". And a
+            // selection of nothing but whitespace is not a term either: found in the running
+            // application, where Ctrl+H picked up a stray one-character selection and opened the band
+            // announcing "1 of 15" - the number of SPACES in the query - over an empty-looking box.
+            // Every editor ignores it, and the reason is exactly that: the count is unreadable noise
+            // about something the person did not ask for.
+            if (!selected.Contains('\n') && !string.IsNullOrWhiteSpace(selected))
                 Term = selected;
         }
 

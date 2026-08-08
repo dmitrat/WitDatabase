@@ -79,6 +79,29 @@ public class EditorSearchTests
     }
 
     /// <summary>
+    /// A selection of nothing but whitespace is not a term.
+    /// </summary>
+    /// <remarks>
+    /// Found by running the application: Ctrl+H picked up a stray one-character selection and the
+    /// band opened announcing <b>"1 of 15"</b> - the number of SPACES in the query - above a box that
+    /// looked empty. The count was true and unreadable, and it was about something nobody asked for.
+    /// </remarks>
+    [Test]
+    public void AWhitespaceSelectionIsNotATermTest()
+    {
+        Tab.SelectionStart = SCRIPT.IndexOf(' ');
+        Tab.SelectionLength = 1;
+
+        Tab.OpenSearch(replace: false);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(Tab.Search.Term, Is.Null.Or.Empty);
+            Assert.That(Tab.Search.Summary, Is.Empty, "and it says nothing rather than counting spaces");
+        });
+    }
+
+    /// <summary>
     /// A selection spanning lines means "search in here", not "search for all of this".
     /// </summary>
     [Test]

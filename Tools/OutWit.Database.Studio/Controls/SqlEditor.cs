@@ -27,7 +27,22 @@ public partial class SqlEditor : TextEditor
         UnderlineLineProperty.Changed.AddClassHandler<SqlEditor>((editor, _) => editor.RefreshUnderline());
         UnderlineColumnProperty.Changed.AddClassHandler<SqlEditor>((editor, _) => editor.RefreshUnderline());
         UnderlineLengthProperty.Changed.AddClassHandler<SqlEditor>((editor, _) => editor.RefreshUnderline());
+
+        SelectionStartInTextProperty.Changed.AddClassHandler<SqlEditor>(
+            (editor, _) => editor.ApplySelectionFromViewModel());
+        SelectionLengthInTextProperty.Changed.AddClassHandler<SqlEditor>(
+            (editor, _) => editor.ApplySelectionFromViewModel());
     }
+
+    #endregion
+
+    #region Constants
+
+    /// <summary>
+    /// Its own lock rather than the text's: a selection change during a text change is normal, and
+    /// sharing one name would make the two suppress each other.
+    /// </summary>
+    private const string SELECTION_LOCK = nameof(SqlEditor) + ".Selection";
 
     #endregion
 
@@ -144,6 +159,47 @@ public partial class SqlEditor : TextEditor
         {
             SelectedText = selection.GetText();
         }
+
+        // The offsets as well as the text: "only in the selection" needs the RANGE, and the search
+        // band needs somewhere to write the match it is showing.
+        using var locker = GlobalLocker.Lock(SELECTION_LOCK);
+
+        SelectionStartInText = SelectionStart;
+        SelectionLengthInText = SelectionLength;
+    }
+
+    /// <summary>
+    /// Puts the editor's selection where the ViewModel asked for it, and scrolls it into view.
+    /// </summary>
+    /// <remarks>
+    /// The lock is what stops the round trip: selecting raises <c>SelectionChanged</c>, which writes
+    /// the properties back, which would set the selection again. Same guard the text uses.
+    /// </remarks>
+    private void ApplySelectionFromViewModel()
+    {
+        if (GlobalLocker.IsLocked(SELECTION_LOCK))
+            return;
+
+        var length = Math.Max(0, SelectionLengthInText);
+        var start = Math.Clamp(SelectionStartInText, 0, Document.TextLength);
+
+        length = Math.Min(length, Document.TextLength - start);
+
+        using var locker = GlobalLocker.Lock(SELECTION_LOCK);
+
+        if (length == 0)
+        {
+            TextArea.ClearSelection();
+        }
+        else
+        {
+            Select(start, length);
+            CaretOffset = start + length;
+        }
+
+        // A match found off-screen has to be brought into view, or the band counts something the
+        // person cannot see.
+        TextArea.Caret.BringCaretToView();
     }
 
     #endregion
@@ -331,6 +387,17 @@ public partial class SqlEditor : TextEditor
     /// </summary>
     [StyledProperty]
     public int CaretOffsetInText { get; set; }
+
+    /// <summary>
+    /// Where the selection is, in characters - and unlike the rest of these, it is written in BOTH
+    /// directions: the editor reports what a person selected, and the search band writes to it to put
+    /// the selection on the match it is showing (9.7).
+    /// </summary>
+    [StyledProperty]
+    public int SelectionStartInText { get; set; }
+
+    [StyledProperty]
+    public int SelectionLengthInText { get; set; }
 
     [StyledProperty]
     public int CaretLine { get; set; }
