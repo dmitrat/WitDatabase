@@ -233,7 +233,18 @@ public static partial class DdlWriter
     public static string CreateTrigger(TriggerDraft trigger)
     {
         var sb = new StringBuilder($"CREATE TRIGGER {Identifier(trigger.Name)} ");
-        sb.Append($"{trigger.Timing} {trigger.Event} ON {Identifier(trigger.Table)}");
+        sb.Append($"{trigger.Timing} {trigger.Event}");
+
+        // UPDATE OF a, b - the columns the trigger watches. The engine honours it since 2026-08-09, so
+        // leaving it out of a rebuilt trigger widens the trigger to every column. It is only legal
+        // after UPDATE, and an empty list is how "every column" is written.
+        if (trigger.UpdateColumns.Count > 0 &&
+            trigger.Event.Trim().Equals("UPDATE", StringComparison.OrdinalIgnoreCase))
+        {
+            sb.Append($" OF {Columns(trigger.UpdateColumns)}");
+        }
+
+        sb.Append($" ON {Identifier(trigger.Table)}");
 
         // Omitting the clause is how a statement trigger is written here; FOR EACH STATEMENT is a
         // parse error.

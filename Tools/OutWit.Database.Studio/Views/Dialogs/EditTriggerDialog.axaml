@@ -58,6 +58,16 @@
                     </StackPanel>
                 </StackPanel>
 
+                <StackPanel Spacing="6" IsVisible="{Binding IsUpdateEvent}">
+                    <TextBlock Text="{DynamicResource S.Dialog.Trigger.UpdateColumns}" FontWeight="SemiBold"/>
+                    <TextBox AutomationProperties.AutomationId="TriggerUpdateColumns"
+                             Text="{Binding UpdateColumnsText}"
+                             PlaceholderText="Total, Status"
+                             FontFamily="Consolas,Courier New"/>
+                    <TextBlock Text="{DynamicResource S.Dialog.Trigger.UpdateColumnsHint}"
+                               FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+                </StackPanel>
+
                 <StackPanel Spacing="6">
                     <TextBlock Text="{DynamicResource S.Dialog.Trigger.Condition}" FontWeight="SemiBold"/>
                     <TextBox AutomationProperties.AutomationId="TriggerCondition"

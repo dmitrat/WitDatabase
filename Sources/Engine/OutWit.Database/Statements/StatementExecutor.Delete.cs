@@ -133,7 +133,7 @@ public sealed partial class StatementExecutor
 
         // Fire AFTER DELETE triggers
         WitSqlRow? afterRow = null;
-        FireTriggers(delete.TableName, TriggerEvent.Delete, TriggerTime.After, oldRow, ref afterRow);
+        FireTriggers(delete.TableName, TriggerEvent.Delete, TriggerTime.After, oldRow, ref afterRow, null);
 
         m_context.LastChangesCount = 1;
 
@@ -247,7 +247,7 @@ public sealed partial class StatementExecutor
 
             // Fire AFTER DELETE triggers
             WitSqlRow? afterRow = null;
-            FireTriggers(delete.TableName, TriggerEvent.Delete, TriggerTime.After, oldRow, ref afterRow);
+            FireTriggers(delete.TableName, TriggerEvent.Delete, TriggerTime.After, oldRow, ref afterRow, null);
         }
 
         m_context.LastChangesCount = rowsAffected;
@@ -311,12 +311,12 @@ public sealed partial class StatementExecutor
         {
             // Fire BEFORE DELETE triggers
             WitSqlRow? newRow = null;
-            if (!FireTriggers(delete.TableName, TriggerEvent.Delete, TriggerTime.Before, oldRow, ref newRow))
+            if (!FireTriggers(delete.TableName, TriggerEvent.Delete, TriggerTime.Before, oldRow, ref newRow, null))
                 continue; // Trigger cancelled
 
             // Check for INSTEAD OF triggers
             WitSqlRow? insteadOfRow = null;
-            if (FireInsteadOfTrigger(delete.TableName, TriggerEvent.Delete, oldRow, ref insteadOfRow))
+            if (FireInsteadOfTrigger(delete.TableName, TriggerEvent.Delete, oldRow, ref insteadOfRow, null))
             {
                 rowsAffected++;
                 continue; // INSTEAD OF executed, skip normal delete
@@ -337,7 +337,7 @@ public sealed partial class StatementExecutor
 
             // Fire AFTER DELETE triggers
             WitSqlRow? afterRow = null;
-            FireTriggers(delete.TableName, TriggerEvent.Delete, TriggerTime.After, oldRow, ref afterRow);
+            FireTriggers(delete.TableName, TriggerEvent.Delete, TriggerTime.After, oldRow, ref afterRow, null);
         }
 
         m_context.LastChangesCount = rowsAffected;

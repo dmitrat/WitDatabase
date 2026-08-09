@@ -318,5 +318,102 @@ public class SchemaDialogTests
             "One trigger afterwards, not two and not none.");
     }
 
+    /// <summary>
+    /// Replacing a trigger has to CHANGE it. Found 2026-08-09 while measuring whether the new
+    /// UPDATE OF case could fail: it could not, because the replacement never ran at all.
+    /// </summary>
+    /// <remarks>
+    /// <c>SchemaChangeSet.ApplyAsync</c> ran <c>InPlaceStatements</c>, and a trigger replacement is
+    /// categorised <c>DropCreate</c> - so its two statements were silently left out, the report came
+    /// back empty, an empty report <b>is complete</b>, and the dialog said the trigger was replaced and
+    /// closed. Every earlier case here asserted the trigger COUNT afterwards, which one trigger left
+    /// untouched satisfies exactly as well as one replaced.
+    /// </remarks>
+    [Test]
+    public async Task ReplacingATriggerActuallyReplacesItAsync()
+    {
+        var existing = (await m_fixture.Database.GetTableTriggersAsync("Orders"))
+            .First(t => t.Name == "TR_Orders_Audit");
+
+        var vm = TriggerEditor(existing);
+        vm.Body = "INSERT INTO OrdersAudit (OrderId) VALUES (777);";
+
+        await StudioFixture.PressAsync(vm.SaveCommand);
+
+        Assert.That(vm.ErrorMessage, Is.Null);
+
+        var replaced = (await m_fixture.Database.GetTableTriggersAsync("Orders"))
+            .First(t => t.Name == "TR_Orders_Audit");
+
+        Assert.That(replaced.Body, Does.Contain("777"),
+            "the trigger in the database has to be the one the dialog wrote");
+    }
+
+    /// <summary>
+    /// The column list of <c>UPDATE OF</c> is written, and only for an UPDATE trigger - the grammar
+    /// allows <c>OF</c> nowhere else.
+    /// </summary>
+    [Test]
+    public void TheWatchedColumnsAreWrittenForAnUpdateTriggerOnly()
+    {
+        var vm = TriggerEditor();
+        vm.Name = "TR_Watch";
+        vm.Body = "INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);";
+        vm.UpdateColumnsText = "Total, Status";
+
+        Assert.That(vm.IsUpdateEvent, Is.False, "the dialog opens on INSERT");
+        Assert.That(vm.GeneratedDdl, Does.Not.Contain(" OF "),
+            "and OF after INSERT does not parse, so a list typed there must not reach the SQL");
+
+        vm.Event = "UPDATE";
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(vm.IsUpdateEvent, Is.True, "which is what shows the field");
+            Assert.That(vm.GeneratedDdl, Does.Contain("UPDATE OF Total, Status"));
+        });
+    }
+
+    /// <summary>
+    /// The case this field exists for, and the one that would lose a real behaviour without it: a
+    /// trigger that watches one column is opened, saved unchanged, and must still watch that column.
+    /// The save is a DROP and a CREATE, so anything the dialog does not carry is gone.
+    /// </summary>
+    [Test]
+    public async Task ReplacingATriggerKeepsTheColumnsItWatchesAsync()
+    {
+        await m_fixture.Database.ExecuteNonQueryAsync(
+            "CREATE TRIGGER TR_Orders_Total AFTER UPDATE OF Total ON Orders FOR EACH ROW "
+            + "BEGIN INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id); END");
+
+        var existing = (await m_fixture.Database.GetTableTriggersAsync("Orders"))
+            .First(t => t.Name == "TR_Orders_Total");
+
+        Assert.That(existing.UpdateColumns, Is.EqualTo(new[] { "Total" }),
+            "the catalogue has to publish the list before the dialog can carry it");
+
+        var vm = TriggerEditor(existing);
+
+        Assert.That(vm.UpdateColumnsText, Is.EqualTo("Total"), "and the dialog opens on it");
+
+        await StudioFixture.PressAsync(vm.SaveCommand);
+
+        Assert.That(vm.ErrorMessage, Is.Null);
+
+        var replaced = (await m_fixture.Database.GetTableTriggersAsync("Orders"))
+            .First(t => t.Name == "TR_Orders_Total");
+
+        Assert.That(replaced.UpdateColumns, Is.EqualTo(new[] { "Total" }),
+            "and after the drop and create it still watches Total, not every column");
+
+        // The catalogue is a proxy; this is the behaviour. A widened trigger would fire here.
+        var before = await m_fixture.CountRowsAsync("OrdersAudit");
+
+        await m_fixture.Database.ExecuteNonQueryAsync("UPDATE Orders SET Status = 'x' WHERE Id = 1");
+
+        Assert.That(await m_fixture.CountRowsAsync("OrdersAudit"), Is.EqualTo(before),
+            "an update of Status must not reach a trigger that watches Total");
+    }
+
     #endregion
 }

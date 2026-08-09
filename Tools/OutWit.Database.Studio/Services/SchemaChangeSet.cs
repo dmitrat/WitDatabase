@@ -226,15 +226,23 @@ public sealed class SchemaChangeSet
     #region Applying
 
     /// <summary>
-    /// Runs the in-place edits, one statement at a time, stopping at the first refusal.
+    /// Runs the edits that carry statements, one statement at a time, stopping at the first refusal.
     ///
     /// No transaction, deliberately - see the class comment. The report says which statements are in
     /// the database and which never ran, and the caller shows it (WS-42).
     /// </summary>
+    /// <remarks>
+    /// <b>This ran <c>InPlaceStatements</c> until 2026-08-09, and that was a silent no-op for a whole
+    /// category.</b> A trigger replacement is <c>DropCreate</c>, not <c>InPlace</c>, so its DROP and
+    /// CREATE were left out, the report came back empty - and an empty report is COMPLETE - so the
+    /// trigger editor said the trigger had been replaced, closed, and had changed nothing. Found while
+    /// measuring whether a new case could fail; see
+    /// <c>SchemaDialogTests.ReplacingATriggerActuallyReplacesItAsync</c>.
+    /// </remarks>
     public async Task<DdlApplyReport> ApplyAsync(IDatabaseSession session, ILogger? logger = null,
         CancellationToken ct = default)
     {
-        var statements = InPlaceStatements;
+        var statements = ApplicableStatements;
 
         if (statements.Count == 0)
             return DdlApplyReport.Empty;
@@ -299,6 +307,17 @@ public sealed class SchemaChangeSet
 
     public IReadOnlyList<string> InPlaceStatements =>
         InPlace.SelectMany(e => e.Statements).ToList();
+
+    /// <summary>
+    /// Every edit that can be RUN - which is everything except the ones needing a rebuilt table, and
+    /// those carry no statements at all. The distinction that matters to <see cref="ApplyAsync"/> is
+    /// "has statements", not "is one ALTER TABLE": a DROP and a CREATE is still a thing to execute.
+    /// </summary>
+    public IReadOnlyList<SchemaEdit> Applicable =>
+        m_edits.Where(e => e.Category != SchemaEditCategory.Rebuild).ToList();
+
+    public IReadOnlyList<string> ApplicableStatements =>
+        Applicable.SelectMany(e => e.Statements).ToList();
 
     /// <summary>
     /// The whole set as text, which is what the DDL panel shows (WS-38). A rebuild appears as a

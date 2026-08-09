@@ -99,19 +99,40 @@ public sealed partial class DatabaseSession
             command.CommandText = sql;
             command.Parameters.AddWithValue("@tableName", tableName);
 
-            using var reader = await command.ExecuteReaderAsync(ct);
+            var rows = new List<(string Name, string Table, string Timing, string Event,
+                string Orientation, string? Condition, string? Body)>();
 
-            while (await reader.ReadAsync(ct))
+            using (var reader = await command.ExecuteReaderAsync(ct))
+            {
+                while (await reader.ReadAsync(ct))
+                {
+                    rows.Add((
+                        reader.GetString(0),
+                        reader.IsDBNull(1) ? tableName : reader.GetString(1),
+                        reader.IsDBNull(2) ? "AFTER" : reader.GetString(2),
+                        reader.IsDBNull(3) ? "INSERT" : reader.GetString(3),
+                        reader.IsDBNull(4) ? "ROW" : reader.GetString(4),
+                        reader.IsDBNull(5) ? null : reader.GetString(5),
+                        reader.IsDBNull(6) ? null : reader.GetString(6)));
+                }
+            }
+
+            foreach (var row in rows)
             {
                 triggers.Add(new TriggerInfo
                 {
-                    Name = reader.GetString(0),
-                    Table = reader.IsDBNull(1) ? tableName : reader.GetString(1),
-                    Timing = reader.IsDBNull(2) ? "AFTER" : reader.GetString(2),
-                    Event = reader.IsDBNull(3) ? "INSERT" : reader.GetString(3),
-                    Orientation = reader.IsDBNull(4) ? "ROW" : reader.GetString(4),
-                    Condition = reader.IsDBNull(5) ? null : reader.GetString(5),
-                    Body = reader.IsDBNull(6) ? null : reader.GetString(6)
+                    Name = row.Name,
+                    Table = row.Table,
+                    Timing = row.Timing,
+                    Event = row.Event,
+
+                    // A rebuild drops the table and its triggers with it, so a trigger written back
+                    // without its column list would come back watching every column - which the
+                    // engine has honoured since 2026-08-09.
+                    UpdateColumns = await ReadUpdateColumnsAsync(row.Name, ct),
+                    Orientation = row.Orientation,
+                    Condition = row.Condition,
+                    Body = row.Body
                 });
             }
         }

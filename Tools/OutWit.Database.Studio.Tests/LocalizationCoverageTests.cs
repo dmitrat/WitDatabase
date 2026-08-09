@@ -162,6 +162,12 @@ public class LocalizationCoverageTests
         "INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);", "Status <> 'archived'",
         "IX_Orders_CreatedAt", "Line,Reason,Text",
 
+        // The UPDATE OF placeholder, and it is the same category as the four above it: COLUMN NAMES.
+        // They come out of the user's own schema and no language renames them - translating this one
+        // would show a Russian user two columns no database of theirs has. The caption and the
+        // sentence under the box ARE in the catalogue; this is the example.
+        "Total, Status",
+
         // A key gesture is not translated either: Ctrl is Ctrl, and the one place a gesture DOES
         // change is macOS, where the whole map is rewritten rather than each label.
         "Ctrl+K", "Ctrl+O", "Ctrl+N", "Ctrl+T", "Ctrl+S", "Ctrl+F", "F5", "Esc",

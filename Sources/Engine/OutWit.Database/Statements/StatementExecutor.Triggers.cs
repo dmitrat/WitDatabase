@@ -19,18 +19,27 @@ public sealed partial class StatementExecutor
     /// <param name="time">When to fire (Before/After).</param>
     /// <param name="oldRow">The old row (for UPDATE/DELETE).</param>
     /// <param name="newRow">The new row (for INSERT/UPDATE). Modified by BEFORE triggers.</param>
+    /// <param name="assignedColumns">
+    /// The columns the statement's SET clause names, for an UPDATE; null for anything else. This is
+    /// what makes <c>UPDATE OF</c> mean something - see <see cref="DefinitionTrigger.WatchesAnyOf"/>.
+    /// The parameter has no default so that every call site has to answer the question.
+    /// </param>
     /// <returns>True if operation should continue, false if cancelled by trigger.</returns>
     private bool FireTriggers(
         string tableName,
         TriggerEvent evt,
         TriggerTime time,
         WitSqlRow? oldRow,
-        ref WitSqlRow? newRow)
+        ref WitSqlRow? newRow,
+        IReadOnlyCollection<string>? assignedColumns)
     {
         var triggers = m_context.Database.GetTriggersForTable(tableName, evt, time);
 
         foreach (var trigger in triggers)
         {
+            if (!trigger.WatchesAnyOf(assignedColumns))
+                continue;
+
             if (!ExecuteTrigger(trigger, oldRow, ref newRow))
                 return false; // Operation cancelled
         }
@@ -46,13 +55,19 @@ public sealed partial class StatementExecutor
         string tableName,
         TriggerEvent evt,
         WitSqlRow? oldRow,
-        ref WitSqlRow? newRow)
+        ref WitSqlRow? newRow,
+        IReadOnlyCollection<string>? assignedColumns)
     {
         var triggers = m_context.Database.GetTriggersForTable(tableName, evt, TriggerTime.InsteadOf);
 
-        // If there are any INSTEAD OF triggers, execute them and return true (skip normal operation)
+        // If there are any INSTEAD OF triggers, execute them and return true (skip normal operation).
+        // A trigger the statement's columns do not reach is not one of them: an INSTEAD OF UPDATE OF
+        // that stood in for an update it does not watch would suppress the write entirely.
         foreach (var trigger in triggers)
         {
+            if (!trigger.WatchesAnyOf(assignedColumns))
+                continue;
+
             ExecuteTrigger(trigger, oldRow, ref newRow);
             return true; // INSTEAD OF was executed, skip normal operation
         }

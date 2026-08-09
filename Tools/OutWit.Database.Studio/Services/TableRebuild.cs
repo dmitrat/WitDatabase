@@ -326,6 +326,7 @@ public sealed class TableRebuild
         Table = trigger.Table,
         Timing = trigger.Timing,
         Event = trigger.Event,
+        UpdateColumns = trigger.UpdateColumns,
         ForEachRow = trigger.IsRowTrigger,
         Condition = trigger.Condition,
         Body = trigger.Body ?? string.Empty

@@ -100,6 +100,12 @@ public sealed class TriggerInfo
     public required string Event { get; init; }
 
     /// <summary>
+    /// The columns of <c>UPDATE OF</c>, from INFORMATION_SCHEMA.TRIGGERED_UPDATE_COLUMNS. Empty means
+    /// every column - the standard's way of saying "all of them" is to publish no row at all.
+    /// </summary>
+    public IReadOnlyList<string> UpdateColumns { get; init; } = [];
+
+    /// <summary>
     /// ROW or STATEMENT. A statement trigger is written by leaving the FOR EACH clause out entirely -
     /// FOR EACH STATEMENT does not parse.
     /// </summary>
@@ -110,6 +116,14 @@ public sealed class TriggerInfo
     public string? Body { get; init; }
 
     public bool IsRowTrigger => Orientation.Equals("ROW", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// The <c>UPDATE OF</c> clause as SQL writes it, or empty. Shown beside the timing and the event,
+    /// which are SQL too - this is not a sentence being built in a model (stage 10's rule), it is the
+    /// clause itself, and no language renames a column.
+    /// </summary>
+    public string UpdateColumnsClause =>
+        UpdateColumns.Count == 0 ? string.Empty : $"OF {string.Join(", ", UpdateColumns)}";
 
     public override string ToString() => $"{Name} {Timing} {Event} ON {Table}";
 }

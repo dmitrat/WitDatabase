@@ -213,6 +213,44 @@ public class TableRebuildTests
         Assert.That(auditAfter, Is.EqualTo(auditBefore + 1));
     }
 
+    /// <summary>
+    /// A rebuild drops the table, and its triggers with it, then writes them back. A trigger that
+    /// watches one column has to come back watching that column - written back without its
+    /// <c>UPDATE OF</c> it would watch every column, which the engine has honoured since 2026-08-09.
+    /// </summary>
+    [Test]
+    public async Task ARebuiltTriggerStillWatchesTheColumnsItNamedAsync()
+    {
+        await Session.ExecuteNonQueryAsync(
+            "CREATE TRIGGER TR_Orders_Total AFTER UPDATE OF Total ON Orders FOR EACH ROW "
+            + "BEGIN INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id); END");
+
+        var drafts = await DraftsAsync("Orders");
+        drafts.First(d => d.Name == "Status").MaxLength = 64;
+
+        var plan = await TableRebuild.PlanAsync(Session, "Orders", drafts);
+        var report = await TableRebuild.RunAsync(Session, plan);
+
+        Assert.That(report.IsComplete, Is.True, report.ErrorMessage);
+
+        var rebuilt = (await Session.GetTableTriggersAsync("Orders"))
+            .First(t => t.Name == "TR_Orders_Total");
+
+        Assert.That(rebuilt.UpdateColumns, Is.EqualTo(new[] { "Total" }));
+
+        // The catalogue is a proxy; this is the behaviour a widened trigger would give away.
+        var auditBefore = await m_fixture.CountRowsAsync("OrdersAudit");
+        await Session.ExecuteNonQueryAsync("UPDATE Orders SET Status = 'x' WHERE Id = 1");
+
+        Assert.That(await m_fixture.CountRowsAsync("OrdersAudit"), Is.EqualTo(auditBefore),
+            "an update of Status must not reach a trigger that watches Total");
+
+        await Session.ExecuteNonQueryAsync("UPDATE Orders SET Total = 1 WHERE Id = 1");
+
+        Assert.That(await m_fixture.CountRowsAsync("OrdersAudit"), Is.EqualTo(auditBefore + 1),
+            "and the rebuilt trigger is alive, so the assertion above is about the clause");
+    }
+
     [Test]
     public async Task TheCarrierIsGoneWhenItIsOverAsync()
     {

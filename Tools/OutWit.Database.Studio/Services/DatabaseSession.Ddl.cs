@@ -79,11 +79,12 @@ public sealed partial class DatabaseSession
     /// <see cref="SqlScript.Split"/> as one statement.
     /// </para>
     /// <para>
-    /// <b>One part is not published and so cannot be rebuilt:</b> a trigger declared
-    /// <c>UPDATE OF V</c> appears in <c>INFORMATION_SCHEMA.TRIGGERS</c> as a plain <c>UPDATE</c> - there
-    /// is no column for the column list - so this widens it to every column. It changes nothing today
-    /// because the engine does not honour <c>UPDATE OF</c> when firing either (measured: a trigger on
-    /// one column fires on an update of another), and that is pinned in the engine's own suite.
+    /// <b>The <c>UPDATE OF</c> column list comes from a second view</b>, <c>TRIGGERED_UPDATE_COLUMNS</c>,
+    /// which is where the standard puts it: one row per watched column, and none at all for a trigger
+    /// that watches every column. Until 2026-08-09 there was nowhere to read it from and this widened
+    /// every such trigger to all columns - which cost nothing only because the engine ignored the
+    /// clause when firing as well. Both halves were fixed together; see the engine's
+    /// <c>UpdateOfColumnsTests</c>.
     /// </para>
     /// </remarks>
     public async Task<string?> GetTriggerDefinitionAsync(string triggerName, CancellationToken ct = default)
@@ -102,29 +103,39 @@ public sealed partial class DatabaseSession
             command.CommandText = sql;
             command.Parameters.AddWithValue("@triggerName", triggerName);
 
-            using var reader = await command.ExecuteReaderAsync(ct);
+            string timing, evt, table, orientation, body;
+            string? condition;
 
-            if (!await reader.ReadAsync(ct))
-                return null;
+            using (var reader = await command.ExecuteReaderAsync(ct))
+            {
+                if (!await reader.ReadAsync(ct))
+                    return null;
 
-            var body = reader.IsDBNull(5) ? null : reader.GetString(5);
+                // A body the catalogue cannot render is null, and a trigger with no body is not a
+                // trigger. The caller names it rather than writing half of one - the phase-8 rule.
+                if (reader.IsDBNull(5) || string.IsNullOrWhiteSpace(reader.GetString(5)))
+                    return null;
 
-            // A body the catalogue cannot render is null, and a trigger with no body is not a trigger.
-            // The caller names it rather than writing half of one - the phase-8 rule.
-            if (string.IsNullOrWhiteSpace(body))
-                return null;
+                timing = reader.GetString(0);
+                evt = reader.GetString(1);
+                table = reader.GetString(2);
+                orientation = reader.GetString(3);
+                condition = reader.IsDBNull(4) ? null : reader.GetString(4);
+                body = reader.GetString(5);
+            }
 
             return DdlWriter.CreateTrigger(new TriggerDraft
             {
                 Name = triggerName,
-                Timing = reader.GetString(0),
-                Event = reader.GetString(1),
-                Table = reader.GetString(2),
+                Timing = timing,
+                Event = evt,
+                Table = table,
+                UpdateColumns = await ReadUpdateColumnsAsync(triggerName, ct),
 
                 // FOR EACH ROW is written only for a row trigger: FOR EACH STATEMENT is a parse error
                 // on this grammar, and omitting the clause is how a statement trigger is expressed.
-                ForEachRow = reader.GetString(3).Equals("ROW", StringComparison.OrdinalIgnoreCase),
-                Condition = reader.IsDBNull(4) ? null : reader.GetString(4),
+                ForEachRow = orientation.Equals("ROW", StringComparison.OrdinalIgnoreCase),
+                Condition = condition,
                 Body = body
             });
         }
@@ -133,6 +144,41 @@ public sealed partial class DatabaseSession
             m_logger.LogDebug(ex, "Failed to get trigger definition for {TriggerName}", triggerName);
             return null;
         }
+    }
+
+    /// <summary>
+    /// The columns one trigger's <c>UPDATE OF</c> names, as the standard publishes them: one row per
+    /// column, and none at all when the trigger watches every column.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately NOT wrapped in a catch of its own. A missing list is indistinguishable from a
+    /// trigger that watches everything, so a swallowed failure here would put the silent widening
+    /// straight back - the caller's catch reports the trigger as one it cannot write, which is the
+    /// honest answer and the one the dump already gives for an unrenderable body.
+    /// </remarks>
+    internal async Task<IReadOnlyList<string>> ReadUpdateColumnsAsync(
+        string triggerName, CancellationToken ct = default)
+    {
+        const string sql = @"
+            SELECT EVENT_OBJECT_COLUMN
+            FROM INFORMATION_SCHEMA.TRIGGERED_UPDATE_COLUMNS
+            WHERE TRIGGER_NAME = @triggerName";
+
+        using var command = m_connection!.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("@triggerName", triggerName);
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+
+        var columns = new List<string>();
+
+        while (await reader.ReadAsync(ct))
+        {
+            if (!reader.IsDBNull(0))
+                columns.Add(reader.GetString(0));
+        }
+
+        return columns;
     }
 
     #endregion

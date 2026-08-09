@@ -371,9 +371,14 @@
                                     <Grid ColumnDefinitions="*,Auto">
                                         <StackPanel Grid.Column="0" Spacing="2">
                                             <TextBlock Text="{Binding Name}"/>
+                                            <!-- Every part of this line is SQL, including the OF
+                                                 clause: a trigger that watches two columns of ten
+                                                 reads exactly like one that watches all ten without
+                                                 it, and since 2026-08-09 that is a real difference. -->
                                             <TextBlock FontSize="11" Foreground="Gray">
                                                 <Run Text="{Binding Timing}"/>
                                                 <Run Text="{Binding Event}"/>
+                                                <Run Text="{Binding UpdateColumnsClause}"/>
                                                 <Run Text=" - "/>
                                                 <Run Text="{Binding Orientation}"/>
                                             </TextBlock>
@@ -381,16 +386,30 @@
                                                        FontFamily="Consolas,Courier New" TextWrapping="Wrap"/>
                                         </StackPanel>
 
-                                        <Button Grid.Column="1" Content="{DynamicResource S.Common.Drop}" FontSize="11"
-                                                AutomationProperties.AutomationId="StructureDropTrigger"
-                                                AutomationProperties.Name="{DynamicResource S.Structure.DropTrigger}"
-                                                Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).DropTriggerCommand}"
-                                                CommandParameter="{Binding}"/>
+                                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                                            <Button Content="{DynamicResource S.Common.Edit}" FontSize="11"
+                                                    AutomationProperties.AutomationId="StructureEditTrigger"
+                                                    AutomationProperties.Name="{DynamicResource S.Structure.EditTrigger}"
+                                                    Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).EditTriggerCommand}"
+                                                    CommandParameter="{Binding}"/>
+
+                                            <Button Content="{DynamicResource S.Common.Drop}" FontSize="11"
+                                                    AutomationProperties.AutomationId="StructureDropTrigger"
+                                                    AutomationProperties.Name="{DynamicResource S.Structure.DropTrigger}"
+                                                    Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).DropTriggerCommand}"
+                                                    CommandParameter="{Binding}"/>
+                                        </StackPanel>
                                     </Grid>
                                 </Border>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
+
+                    <Button Content="{DynamicResource S.Structure.CreateTrigger}" FontSize="11"
+                            HorizontalAlignment="Left" Margin="0,8,0,0"
+                            AutomationProperties.AutomationId="StructureCreateTrigger"
+                            AutomationProperties.Name="{DynamicResource S.Structure.CreateTrigger}"
+                            Command="{Binding CreateTriggerCommand}"/>
 
                     <TextBlock Text="{DynamicResource S.Structure.TriggerNote}"
                                FontSize="11" Foreground="Gray" TextWrapping="Wrap" Margin="0,8,0,0"/>
