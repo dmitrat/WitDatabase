@@ -1,4 +1,4 @@
-# Known issues
+﻿# Known issues
 
 Defects found by using WitDatabase as a real application backend, not by unit
 testing it. They come from two applications.
@@ -767,7 +767,9 @@ the unfixed code first.
 
 ## 13. Three statements update a row and fire no trigger
 
-> **OPEN.** Pinned by `AuditVerification/TriggerlessWritePathsTests` — three cases, each
+> **FIXED 2026-08-09.** The three pins inverted. `AuditVerification/TriggerlessWritePathsTests`
+> is seven cases now: the three paths, one per decision below, and a control that an INSERT
+> which does NOT conflict still fires no UPDATE trigger. Previously pinned by — three cases, each
 > with a control that proves the row really was updated and the trigger really is live.
 
 `MERGE … WHEN MATCHED THEN UPDATE`, `INSERT … ON CONFLICT DO UPDATE` and a foreign key's
@@ -782,12 +784,23 @@ in `Update.cs` fire triggers. The other three are `Merge.cs`, the `ON CONFLICT` 
 **What it costs:** an audit trigger is the commonest reason to write a trigger at all,
 and it silently misses every row these three statements change. Nothing reports it.
 
-**Why it is not fixed with issue 12:** it has decisions of its own that have to be
-answered first — whether a `BEFORE` trigger may cancel a cascade (which would leave the
-foreign key dangling), whether an `INSTEAD OF` trigger stands in for the matched half of
-a `MERGE`, and what the assigned-column set is for a cascade, which names no columns in
-any `SET` clause the user wrote. The foreign key's own columns are the obvious answer to
-the last one.
+### The three decisions, settled with Dmitry before any code
+
+- **A cascade fires BEFORE and AFTER on the child, and a cancellation is an ERROR.** So is an
+  `INSTEAD OF` trigger standing in for the write. Skipping the row would leave the child
+  pointing at a key that no longer exists — the trigger would be handed the power to break
+  referential integrity silently — so the statement is refused and names the trigger.
+  PostgreSQL allows the skip and lets the constraint break; this engine does not.
+- **An `INSTEAD OF` trigger DOES stand in** for the matched half of a `MERGE` and for
+  `DO UPDATE`, because both are updates and one rule beats two exceptions.
+- **The columns a cascade "names"**, for `UPDATE OF`, are the foreign key's own — exactly the
+  ones it rewrites. A trigger on the FK column fires; one on another column does not.
+
+**One case is named after what it measures rather than what it was written for.** A trigger
+body cannot cancel from SQL — `ContextTrigger.Cancel` is set by the executor, not by anything
+a body can write — so the explicit refusal is reachable only from a host that drives the
+executor directly. The case exercises the neighbouring path, a body that fails, which lands in
+the same place for the user, and says so.
 
 ---
 

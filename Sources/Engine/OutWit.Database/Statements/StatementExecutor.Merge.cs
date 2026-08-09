@@ -1,4 +1,4 @@
-using OutWit.Database.Definitions;
+﻿using OutWit.Database.Definitions;
 using OutWit.Database.Expressions;
 using OutWit.Database.Interfaces;
 using OutWit.Database.Parser.Expressions;
@@ -295,6 +295,29 @@ public sealed partial class StatementExecutor
 
         var updatedRow = new WitSqlRow(newValues, columnNames);
 
+        // The columns this MERGE names, for UPDATE OF. The matched half of a MERGE is an update and
+        // is treated as one throughout - known issue 13, fixed 2026-08-09: until then none of the
+        // three triggers below fired at all and an audit trigger missed every merged row.
+        var assignedColumns = setClauses
+            .Select(clause => clause.ColumnName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        WitSqlRow? beforeRow = updatedRow;
+
+        if (!FireTriggers(targetTable.Name, TriggerEvent.Update, TriggerTime.Before, targetRow,
+                ref beforeRow, assignedColumns))
+            return; // Cancelled by a BEFORE trigger, exactly as it cancels an ordinary UPDATE
+
+        updatedRow = beforeRow!.Value;
+
+        // An INSTEAD OF trigger stands in for the write here as it does for an UPDATE: the matched
+        // half of a MERGE is an update, and one rule beats two exceptions.
+        WitSqlRow? insteadOfRow = updatedRow;
+
+        if (FireInsteadOfTrigger(targetTable.Name, TriggerEvent.Update, targetRow, ref insteadOfRow,
+                assignedColumns))
+            return;
+
         // Validate constraints
         ValidateNotNullConstraints(targetTable, updatedRow);
         updatedRow = CoerceDeclaredScale(targetTable, updatedRow);
@@ -302,6 +325,10 @@ public sealed partial class StatementExecutor
 
         // Perform update
         m_context.Database.UpdateRow(targetTable.Name, rowId, updatedRow);
+
+        WitSqlRow? afterRow = updatedRow;
+        FireTriggers(targetTable.Name, TriggerEvent.Update, TriggerTime.After, targetRow, ref afterRow,
+            assignedColumns);
     }
 
     /// <summary>

@@ -1,4 +1,4 @@
- using OutWit.Database.Definitions;
+﻿ using OutWit.Database.Definitions;
 using OutWit.Database.Expressions;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Clauses;
@@ -679,6 +679,27 @@ public sealed partial class StatementExecutor
 
         var updatedRow = new WitSqlRow(newValues, columnNames);
 
+        // DO UPDATE is an update, and its triggers are an UPDATE's triggers - known issue 13, fixed
+        // 2026-08-09. Until then none of the three fired and an audit trigger missed every upserted
+        // row. The columns are the ones the DO UPDATE clause names, for UPDATE OF.
+        var assignedColumns = updateClauses
+            .Select(clause => clause.ColumnName)
+            .ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        WitSqlRow? beforeRow = updatedRow;
+
+        if (!FireTriggers(table.Name, TriggerEvent.Update, TriggerTime.Before, existingRow,
+                ref beforeRow, assignedColumns))
+            return existingRow; // Cancelled: the row stays as it was
+
+        updatedRow = beforeRow!.Value;
+
+        WitSqlRow? insteadOfRow = updatedRow;
+
+        if (FireInsteadOfTrigger(table.Name, TriggerEvent.Update, existingRow, ref insteadOfRow,
+                assignedColumns))
+            return existingRow;
+
         // Validate constraints
         ValidateNotNullConstraints(table, updatedRow);
         updatedRow = CoerceDeclaredScale(table, updatedRow);
@@ -686,6 +707,10 @@ public sealed partial class StatementExecutor
 
         // Perform update
         m_context.Database.UpdateRow(table.Name, rowId, updatedRow);
+
+        WitSqlRow? afterRow = updatedRow;
+        FireTriggers(table.Name, TriggerEvent.Update, TriggerTime.After, existingRow, ref afterRow,
+            assignedColumns);
 
         return updatedRow;
     }
