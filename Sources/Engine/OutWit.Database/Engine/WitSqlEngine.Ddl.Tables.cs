@@ -899,15 +899,26 @@ public sealed partial class WitSqlEngine
                 "Dropping PRIMARY KEY constraint is not supported. This would require rebuilding the table.");
         }
 
-        // For UNIQUE constraints, drop the associated index
-        if (constraint.Type == ConstraintType.Unique)
+        // For a UNIQUE constraint, drop the index that enforces it - found by its COLUMNS rather than
+        // by a name guessed from the constraint's.
+        //
+        // It used to look for "UQ_<table>_<constraint>", which is not what anything creates: a
+        // constraint written as CONSTRAINT UQ_Email UNIQUE (Email) would have been looked for under
+        // UQ_T_UQ_Email. Nothing created an index for a UNIQUE constraint at all until 2026-08-09, so
+        // the mismatch cost nothing and could not be seen; the moment one existed, dropping the
+        // constraint left the index behind and the duplicate it was meant to allow was still refused.
+        if (constraint.Type == ConstraintType.Unique && constraint.Columns is { Count: > 0 } columns)
         {
-            var indexName = $"UQ_{tableName}_{constraintName}";
-            var existingIndex = GetIndex(indexName);
-            if (existingIndex != null)
-            {
-                DropIndex(indexName);
-            }
+            var enforcing = GetTableIndexes(tableName)
+                .Where(index => index.IsUnique && !index.IsPrimaryKey)
+                .Where(index => index.Columns.Count == columns.Count &&
+                                index.Columns.All(ic =>
+                                    columns.Any(c => c.Equals(ic, StringComparison.OrdinalIgnoreCase))))
+                .Select(index => index.Name)
+                .ToList();
+
+            foreach (var name in enforcing)
+                DropIndex(name);
         }
 
         // Remove constraint from schema
