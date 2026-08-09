@@ -238,31 +238,29 @@ public class StorageProbeTests
     }
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. **A database that is OPEN is reported as not a database
-    /// at all** - so the Open dialog, handed the path of a database this very application has open,
-    /// says there is nothing there.
+    /// A database that is OPEN is reported as HELD, not as "not a database".
     /// </summary>
     /// <remarks>
     /// <para>
-    /// Measured 2026-08-09, and it had been derived from the «База» tab's finding without being
-    /// reproduced: while a connection holds the file, <c>StorageDetector.Detect</c> answers with a
-    /// null store type - the same answer it gives for a text file - and everything downstream reads
-    /// that as "not a database". The lock is exclusive, so this is true even inside the process that
-    /// holds it.
+    /// This replaces a pin. Until 2026-08-09 the probe answered <c>NotADatabase</c> here - the same
+    /// answer it gives for a text file - so the Open dialog told users there was no database at a path
+    /// this very application had open. The cause was two layers down: <c>StorageDetector</c> caught
+    /// every exception from the read and flattened it into "store type unknown".
     /// </para>
     /// <para>
-    /// <b>The proper fix is engine-side and is the phase-10 remainder's first item:</b> an open
-    /// database should be able to describe itself through its connection rather than by re-reading
-    /// its own file behind its own lock. When that lands, this case goes RED and should be replaced
-    /// by: an open database is reported as a database.
+    /// <b>The platform is part of the claim, so it was measured on both.</b> The pin was green on this
+    /// machine and green on Linux CI before the fix, which is what says the lock is enforced the same
+    /// way in both places - and the fix keys on the exception TYPE rather than on an errno for the
+    /// same reason. See <c>verify-concurrency-deterministically</c>: a file-locking verdict without a
+    /// platform on it has been wrong here before.
     /// </para>
     /// <para>
-    /// The control is the second half - the same path, the same file, after the connection has gone -
+    /// The control is the second half - the same path, the same bytes, after the connection has gone -
     /// which is what makes this a statement about the LOCK rather than about the file.
     /// </para>
     /// </remarks>
     [Test]
-    public async Task AnOpenDatabaseIsReportedAsNotADatabaseTest()
+    public async Task AnOpenDatabaseIsReportedAsHeldTest()
     {
         var fixture = await StudioFixture.CreateAsync();
 
@@ -272,19 +270,38 @@ public class StorageProbeTests
 
             Assert.That(path, Is.Not.Null.And.Not.Empty);
 
-            Assert.That(StorageProbe.Look(path).Kind, Is.EqualTo(StorageKind.NotADatabase),
-                "PINS A DEFECT: an open database reads as if there were no database at the path");
+            var held = StorageProbe.Look(path);
+
+            Assert.That(held.Kind, Is.EqualTo(StorageKind.Locked),
+                "an open database is held, and that is a different answer from 'not a database'");
+            Assert.That(held.SizeInBytes, Is.GreaterThan(0),
+                "the size is the one thing the file system knows through a lock");
 
             await fixture.Connections.CloseAllAsync();
 
             Assert.That(StorageProbe.Look(path).Kind, Is.EqualTo(StorageKind.Database),
-                "and the same file answers correctly once nothing holds it - so this is the lock, "
+                "and the same file answers in full once nothing holds it - so this is the lock, "
                 + "not the file");
         }
         finally
         {
             await fixture.DisposeAsync();
         }
+    }
+
+    /// <summary>
+    /// The control for the fix, and it is the case the old behaviour could not be told apart from: a
+    /// file that is not a database still reads as not a database. A change that reported everything
+    /// unreadable as "held" would satisfy the case above and fail here.
+    /// </summary>
+    [Test]
+    public async Task AFileThatIsNotADatabaseIsStillNotHeldAsync()
+    {
+        var path = Path.Combine(m_root, "notadb.witdb");
+
+        await File.WriteAllTextAsync(path, "hello");
+
+        Assert.That(StorageProbe.Look(path).Kind, Is.EqualTo(StorageKind.NotADatabase));
     }
 
     #endregion

@@ -26,7 +26,22 @@ public enum StorageKind
     /// is all there is to see. Studio says both, once.
     /// </para>
     /// </summary>
-    Unreadable
+    Unreadable,
+
+    /// <summary>
+    /// The file is there and <b>something is holding it</b> - most often this very application, with
+    /// the database already open in another connection.
+    ///
+    /// <para>
+    /// A state of its own since 2026-08-09, and it is the fourth rather than a wording of the third
+    /// for the reason the third exists: "encrypted, or not a database" is one answer because
+    /// encryption is what makes the header unreadable and there is nothing else to see. A held file is
+    /// different in kind - the header is perfectly readable and simply out of reach for now - and it
+    /// is the one case where the right advice is "close it, or open the connection you already have"
+    /// rather than "give me the password" or "this is not a database".
+    /// </para>
+    /// </summary>
+    Locked
 }
 
 /// <summary>
@@ -76,6 +91,12 @@ public sealed class StorageProbe
 
             if (!detected.Exists)
                 return new StorageProbe(StorageKind.NotFound);
+
+            // Held by something, so nothing could be read - and that is a different sentence from
+            // every other one here. It has to be asked BEFORE the store-type questions below, because
+            // a held file answers them exactly the way a text file does.
+            if (detected.IsLocked)
+                return new StorageProbe(StorageKind.Locked) { SizeInBytes = SizeOf(path) };
 
             // A directory with no SSTable and no manifest: the detector answers with a null store
             // type, which for a folder means "there is no LSM database in here".

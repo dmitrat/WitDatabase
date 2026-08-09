@@ -676,8 +676,28 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
             ? Localization["Dialog.Open.NotADatabaseFolder"]
             : Localization["Dialog.Open.NotADatabaseFile"],
 
+        // Held by something. Studio knows its own connections, so it can say WHICH something in the
+        // case that matters most - and it does not refuse either way: a second connection to a
+        // database already open here is measured to work and to see the same rows (stage 7).
+        StorageKind.Locked => IsAlreadyOpenHere
+            ? Localization["Dialog.Open.AlreadyOpenHere"]
+            : Localization["Dialog.Open.HeldByAnother"],
+
         _ => string.Empty
     };
+
+    /// <summary>
+    /// Whether the path in the box is one of this application's own open connections.
+    /// </summary>
+    /// <remarks>
+    /// The reason a held file gets two different sentences. Before 2026-08-09 it got a third, wrong
+    /// one - "this is not a database" - because the detector could not read the header behind the
+    /// lock and answered exactly as it does for a text file.
+    /// </remarks>
+    public bool IsAlreadyOpenHere =>
+        !string.IsNullOrWhiteSpace(ConnectionInfo.FilePath) &&
+        Connections.Sessions.Any(session => string.Equals(
+            session.Connection.FilePath, ConnectionInfo.FilePath, StringComparison.OrdinalIgnoreCase));
 
     /// <summary>Whether the password box is shown at all: only an encrypted database needs one.</summary>
     public bool NeedsPassword => Probe.RequiresPassword;

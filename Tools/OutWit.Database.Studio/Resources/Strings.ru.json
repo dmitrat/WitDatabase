@@ -95,6 +95,8 @@
   "Dialog.Open.Connecting": "Подключение…",
   "Dialog.Open.NotFound": "Файла нет по этому пути. Чтобы завести новую базу, используйте «Создать базу».",
   "Dialog.Open.NotADatabaseFolder": "В папке нет базы WitDatabase: не найдено ни манифеста, ни SSTable.",
+  "Dialog.Open.AlreadyOpenHere": "Эта база уже открыта в Studio. Повторное открытие добавит второе подключение к тому же файлу.",
+  "Dialog.Open.HeldByAnother": "Файл занят другим приложением, поэтому прочитать из него ничего не удалось. Открытие может не получиться.",
   "Dialog.Open.NotADatabaseFile": "Этот файл не является базой WitDatabase.",
   "Dialog.Open.Found": "Найдена база {0} · {1} · {2}",
   "Dialog.Open.NoMvcc": "без MVCC",
