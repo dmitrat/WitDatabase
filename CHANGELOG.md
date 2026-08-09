@@ -1,5 +1,55 @@
 ﻿# Changelog
 
+## 12.4.0
+
+**A `CREATE INDEX` that failed left an index the query planner used and the file could not answer
+from.** The catalogue entry for an index is written - and, since 12.3.0's durability work, flushed
+where it is written - before the index holds anything. Only one kind of failure was cleaned up after,
+and its cleanup ran the physical drop first, which can throw for the same reason the build did,
+leaving the catalogue entry in place.
+
+The result opened, answered, and was wrong: measured on a table of 2,000 rows,
+`SELECT Id FROM T WHERE V = 7` returned **zero** rows where two of them matched, with
+`EXPLAIN` showing `SEARCH TABLE T USING INDEX IX_T_V (=)` and no error anywhere. A wrong answer with
+no error is the worst shape a database has, and it needed no crash to reach - an ordinary build
+failure was enough.
+
+### Fixed
+
+- **A build that fails takes both halves of the index with it.** Every way a build can end is
+  handled in one place now, and the catalogue entry - the half that persists - is removed whatever
+  the physical drop does. Previously only a unique violation was caught, and *every*
+  `InvalidOperationException` was read as one, so an exhausted page cache was reported to the user
+  as "UNIQUE constraint failed".
+- **Dropping an index releases it whatever emptying it does.** `IndexManager.DropIndex` empties the
+  backing store before releasing the index, and said in its own comment that emptying must not fail
+  the drop - while naming two exception types. A third walked past it and the dispose on the next
+  line was never reached, so a file-backed index kept its file open for the life of the process.
+
+### Added
+
+- **`UniqueIndexViolationException`**, in `OutWit.Database.Core.Exceptions`. It derives from
+  `InvalidOperationException`, so nothing that catches the base type changes; it exists because the
+  index build could not tell a duplicate from any other failure, and the cleanup written for one of
+  those two cases ran for both.
+
+### Documented
+
+- **A statement that did not return is not atomic**, in `WitSQL.md` beside the durability model it
+  qualifies. Counted rather than timed: a statement in autocommit puts its writes on the media *as it
+  runs* - 2,222 pages without MVCC and 10,245 with it, for one `UPDATE` over 20,000 rows - while the
+  same statement inside an explicit transaction writes **nothing** until the commit.
+
+  Everything a process kill leaves behind follows from that one fact, and so does the rule worth
+  acting on: **wrap a large write in an explicit transaction and it becomes all-or-nothing against
+  an abrupt end.** It costs nothing else and is faster, because one commit flushes once instead of
+  once per statement.
+
+- **A column the query `GROUP BY`s cannot be reached from `ORDER BY` or `HAVING`** unless it is also
+  in the SELECT list (`KnownIssues.md` 15). It is not refused - `ORDER BY` surfaces it as .NET's own
+  *"Failed to compare two elements in the array"* - and `HAVING` has the identical hole. Pinned by
+  tests, not yet fixed: a grouped row is built out of the select list and nothing else.
+
 ## 12.3.0
 
 **A UNIQUE constraint is enforced by an index now, because without one every insert scanned the whole
