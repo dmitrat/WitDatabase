@@ -1786,6 +1786,51 @@ Studio **727 -> 730**.
 
 ---
 
+## Find and replace in the editor, 2026-08-08 (9.7, agreed item 2)
+
+A BAND in the tab, not a window - the design's reason is that a modal find dialog covers the very text
+being searched, and it holds: the band sits above the editor and never hides a match.
+
+**The half that is a function of the text is `SqlSearch`**, 16 cases with no window near them: the
+three toggles, the range for "only in the selection", and replacement. Two decisions in it are worth
+keeping: a plain term is ESCAPED (so `COUNT(*)` and `a.b` are text, which is what makes the band usable
+for SQL at all), and a half-typed pattern is an ANSWER rather than an exception or a silent "no
+matches" - the last reads as "this text does not contain it".
+
+**A case of mine could not fail, and the sabotage found it.** "Only in the selection" was measured
+against a selection whose START cut through an occurrence - which the obvious wrong implementation
+(find everywhere, keep the offsets inside the range) discards too. The case ends the selection in the
+MIDDLE of a word now, which is the only shape that tells the two apart, and it goes red against the
+wrong one. Its near-edge sibling is kept as the other half. Walking `ReplaceAll` forwards instead of
+backwards corrupts the tail (`a LONGLONGLONGERRR b X c X d`) and its own case caught that on the first
+try.
+
+**The recurring grey-button defect was wired out before it could happen** - `PropertyChanged` ->
+`RaiseCanExecuteChanged` at the top of the ViewModel - and a case asserts the EVENT was raised, not
+merely that `CanExecute` answers true.
+
+**Three things came out of running it, and none was visible to 758 tests:**
+
+- the band ran off the right edge of the editor panel and took the replace and close buttons with it.
+  It is a `DockPanel` with the close button docked FIRST and a `WrapPanel` for the rest now: captions
+  change length with the language, so a single row is a promise the band cannot keep in every one;
+- `Ctrl+H` picked up a stray one-character selection and opened announcing **"1 из 15"** - the number
+  of SPACES in the query - over a box that looked empty. A whitespace-only selection is not a term;
+- and the Russian caption for whole-word had to be the design's short «Слово», not «Слово целиком»,
+  before the row would fit at all.
+
+Verified end to end in the running executable, in Russian: `Ctrl+F` on the editor, «1 из 4», walking to
+«3 из 4» with the editor selecting the third match, `Ctrl+H`, Replace All, four words changed and
+«совпадений нет» afterwards.
+
+**Not done here, and named:** search in the RESULT GRID, which the design says in the same section is a
+different thing - it highlights the current page and offers to become a filter that goes to the whole
+table as a query. Mixing it with the text search would make "nothing found" mean two things.
+
+Studio **730 -> 758**.
+
+---
+
 ## Findings for the engine, not fixed here
 **A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
 class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner

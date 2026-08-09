@@ -17,10 +17,154 @@
 
         <!-- SQL Editor. 45/55 by default: once the query is written, the result matters more (3.1) -->
         <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="8">
-            <Grid RowDefinitions="*,Auto">
-                <c:SqlEditor Grid.Row="0"
+            <Grid RowDefinitions="Auto,*,Auto">
+
+                <!-- ============================ FIND AND REPLACE (9.7) ============================
+                     A band inside the tab, not a window: a modal find dialog covers the very text
+                     being searched. It sits ABOVE the editor rather than floating over it, so it
+                     never hides a match either. -->
+                <Border Grid.Row="0"
+                        IsVisible="{Binding Search.IsOpen}"
+                        Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                        CornerRadius="3"
+                        Padding="6,4"
+                        Margin="0,0,0,6">
+                    <StackPanel Spacing="4">
+
+                        <!-- The find row. A GRID rather than one long StackPanel: measured in the
+                             running application, the row simply ran off the edge of the editor panel
+                             and took the replace and close buttons with it. The design's own spacer
+                             is column 1 - what is on the right stays on the right, and what is on the
+                             left is allowed to be cut instead of pushing it out of the window. -->
+                        <DockPanel LastChildFill="True">
+
+                            <!-- Close is docked FIRST, so it is the one thing that can never be
+                                 pushed off the edge - measured in the running application, where it
+                                 was, and where a band that cannot be closed is a trap. -->
+                            <Button Name="SearchClose"
+                                    DockPanel.Dock="Right"
+                                    AutomationProperties.AutomationId="SearchClose"
+                                    AutomationProperties.Name="{DynamicResource S.Search.Close}"
+                                    ToolTip.Tip="{DynamicResource S.Search.Close}"
+                                    Height="24" Padding="7,0" FontSize="11" Margin="6,0,0,0"
+                                    Content="✕"
+                                    Command="{Binding Search.CloseCommand}"/>
+
+                            <!-- And the rest WRAPS. The captions change length with the language, so
+                                 a single row is a promise this band cannot keep in every one. -->
+                            <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="4">
+                            <PathIcon Data="{x:Static ui:StudioIcons.COMMON_SEARCH}"
+                                      Width="12" Height="12" VerticalAlignment="Center"/>
+
+                            <TextBox Name="SearchTerm"
+                                     AutomationProperties.AutomationId="SearchTerm"
+                                     AutomationProperties.Name="{DynamicResource S.Search.Find}"
+                                     Width="160" Height="24" Padding="6,2" FontSize="12"
+                                     Watermark="{DynamicResource S.Search.FindPlaceholder}"
+                                     Text="{Binding Search.Term, Mode=TwoWay}"/>
+
+                            <ToggleButton Name="SearchMatchCase"
+                                          AutomationProperties.AutomationId="SearchMatchCase"
+                                          AutomationProperties.Name="{DynamicResource S.Search.MatchCase}"
+                                          ToolTip.Tip="{DynamicResource S.Search.MatchCase}"
+                                          Height="24" Padding="7,0" FontSize="11"
+                                          Content="Aa"
+                                          IsChecked="{Binding Search.MatchCase, Mode=TwoWay}"/>
+
+                            <ToggleButton Name="SearchRegex"
+                                          AutomationProperties.AutomationId="SearchRegex"
+                                          AutomationProperties.Name="{DynamicResource S.Search.Regex}"
+                                          ToolTip.Tip="{DynamicResource S.Search.Regex}"
+                                          Height="24" Padding="7,0" FontSize="11"
+                                          Content=".*"
+                                          IsChecked="{Binding Search.UseRegex, Mode=TwoWay}"/>
+
+                            <ToggleButton Name="SearchWholeWord"
+                                          AutomationProperties.AutomationId="SearchWholeWord"
+                                          AutomationProperties.Name="{DynamicResource S.Search.WholeWord}"
+                                          ToolTip.Tip="{DynamicResource S.Search.WholeWord}"
+                                          Height="24" Padding="7,0" FontSize="11"
+                                          Content="{DynamicResource S.Search.WholeWordShort}"
+                                          IsChecked="{Binding Search.WholeWord, Mode=TwoWay}"/>
+
+                            <!-- Where we are, in words. The highlight alone cannot say "2 of 5". -->
+                            <TextBlock Name="SearchSummary"
+                                       AutomationProperties.AutomationId="SearchSummary"
+                                       VerticalAlignment="Center" FontSize="11" Opacity="0.75"
+                                       MinWidth="70"
+                                       Text="{Binding Search.Summary}"/>
+
+                            <Button Name="SearchPrevious"
+                                    AutomationProperties.AutomationId="SearchPrevious"
+                                    AutomationProperties.Name="{DynamicResource S.Search.Previous}"
+                                    ToolTip.Tip="{DynamicResource S.Search.Previous}"
+                                    Height="24" Padding="7,0"
+                                    Command="{Binding Search.FindPreviousCommand}">
+                                <PathIcon Data="{x:Static ui:StudioIcons.ARROW_UP}" Width="10" Height="10"/>
+                            </Button>
+
+                            <Button Name="SearchNext"
+                                    AutomationProperties.AutomationId="SearchNext"
+                                    AutomationProperties.Name="{DynamicResource S.Search.Next}"
+                                    ToolTip.Tip="{DynamicResource S.Search.Next}"
+                                    Height="24" Padding="7,0"
+                                    Command="{Binding Search.FindNextCommand}">
+                                <PathIcon Data="{x:Static ui:StudioIcons.ARROW_DOWN}" Width="10" Height="10"/>
+                            </Button>
+
+                            <CheckBox Name="SearchInSelection"
+                                      AutomationProperties.AutomationId="SearchInSelection"
+                                      AutomationProperties.Name="{DynamicResource S.Search.InSelection}"
+                                      FontSize="11" VerticalAlignment="Center"
+                                      Content="{DynamicResource S.Search.InSelection}"
+                                      IsChecked="{Binding Search.InSelection, Mode=TwoWay}"/>
+
+                            <Button Name="SearchShowReplace"
+                                    AutomationProperties.AutomationId="SearchShowReplace"
+                                    AutomationProperties.Name="{DynamicResource S.Search.ShowReplace}"
+                                    Height="24" Padding="8,0" FontSize="11"
+                                    Content="{DynamicResource S.Search.Replace}"
+                                    IsVisible="{Binding !Search.IsReplaceMode}"
+                                    Command="{Binding Search.ToggleReplaceCommand}"/>
+
+                            </WrapPanel>
+                        </DockPanel>
+
+                        <!-- The replace row: the same band, one line taller (9.7) -->
+                        <StackPanel Orientation="Horizontal" Spacing="6"
+                                    IsVisible="{Binding Search.IsReplaceMode}">
+                            <PathIcon Data="{x:Static ui:StudioIcons.TAB_TABLE_EDIT}"
+                                      Width="12" Height="12" VerticalAlignment="Center"/>
+
+                            <TextBox Name="SearchReplacement"
+                                     AutomationProperties.AutomationId="SearchReplacement"
+                                     AutomationProperties.Name="{DynamicResource S.Search.ReplacePlaceholder}"
+                                     Width="190" Height="24" Padding="6,2" FontSize="12"
+                                     Watermark="{DynamicResource S.Search.ReplacePlaceholder}"
+                                     Text="{Binding Search.Replacement, Mode=TwoWay}"/>
+
+                            <Button Name="SearchReplaceOne"
+                                    AutomationProperties.AutomationId="SearchReplaceOne"
+                                    AutomationProperties.Name="{DynamicResource S.Search.ReplaceOne}"
+                                    Height="24" Padding="8,0" FontSize="11"
+                                    Content="{DynamicResource S.Search.ReplaceOne}"
+                                    Command="{Binding Search.ReplaceCommand}"/>
+
+                            <Button Name="SearchReplaceAll"
+                                    AutomationProperties.AutomationId="SearchReplaceAll"
+                                    AutomationProperties.Name="{DynamicResource S.Search.ReplaceAll}"
+                                    Height="24" Padding="8,0" FontSize="11"
+                                    Content="{DynamicResource S.Search.ReplaceAll}"
+                                    Command="{Binding Search.ReplaceAllCommand}"/>
+                        </StackPanel>
+                    </StackPanel>
+                </Border>
+
+                <c:SqlEditor Grid.Row="1"
                              SqlText="{Binding SqlText, Mode=TwoWay}"
                              SelectedText="{Binding SelectedText, Mode=OneWayToSource}"
+                             SelectionStartInText="{Binding SelectionStart, Mode=TwoWay}"
+                             SelectionLengthInText="{Binding SelectionLength, Mode=TwoWay}"
                              CaretOffsetInText="{Binding CaretOffset, Mode=OneWayToSource}"
                              CaretLine="{Binding CaretLine, Mode=OneWayToSource}"
                              CaretColumn="{Binding CaretColumn, Mode=OneWayToSource}"
@@ -30,7 +174,7 @@
                              CompletionSource="{Binding}"/>
 
                 <!-- What is wrong with the text as it stands, before anything is sent (3.6) -->
-                <Border Grid.Row="1"
+                <Border Grid.Row="2"
                         Background="#3A1D1D"
                         CornerRadius="3"
                         Padding="8,4"

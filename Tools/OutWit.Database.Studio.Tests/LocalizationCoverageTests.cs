@@ -164,7 +164,14 @@ public class LocalizationCoverageTests
 
         // A key gesture is not translated either: Ctrl is Ctrl, and the one place a gesture DOES
         // change is macOS, where the whole map is rewritten rather than each label.
-        "Ctrl+K", "Ctrl+O", "Ctrl+N", "Ctrl+T", "Ctrl+S", "Ctrl+F", "F5", "Esc"
+        "Ctrl+K", "Ctrl+O", "Ctrl+N", "Ctrl+T", "Ctrl+S", "Ctrl+F", "F5", "Esc",
+
+        // The search band's case toggle (9.7). "Aa" is the glyph every editor uses for it - VS Code,
+        // Visual Studio, JetBrains and the browsers, in every language they ship - and it has no
+        // translation any more than ".*" beside it does. It is admitted here rather than exempted
+        // because the toggle carries a translated AutomationProperties.Name AND a translated tooltip:
+        // the words exist, and this is the icon for them.
+        "Aa"
     };
 
     /// <summary>

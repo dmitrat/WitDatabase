@@ -21,7 +21,7 @@ namespace OutWit.Database.Studio.ViewModels.Tabs;
 /// <summary>
 /// Represents a query editor tab with its content and state.
 /// </summary>
-public partial class QueryTabViewModel : WorkspaceTabViewModel
+public partial class QueryTabViewModel : WorkspaceTabViewModel, ISearchTarget
 {
     #region Fields
 
@@ -52,7 +52,44 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel
         ResultColumnSettings = new GridColumnSettings();
 
         Statements = [];
+
+        Search = new EditorSearchViewModel(ApplicationVm, this);
     }
+
+    #region The search band (9.7)
+
+    /// <summary>
+    /// Find and replace for this tab's editor. One per tab, because the term, the toggles and the
+    /// place in the text all belong to the text being edited.
+    /// </summary>
+    public EditorSearchViewModel Search { get; private set; } = null!;
+
+    public void OpenSearch(bool replace) => Search.Open(replace);
+
+    string ISearchTarget.Text
+    {
+        get => SqlText;
+        set => SqlText = value;
+    }
+
+    int ISearchTarget.CaretOffset => CaretOffset;
+
+    int ISearchTarget.SelectionStart => SelectionStart;
+
+    int ISearchTarget.SelectionLength => SelectionLength;
+
+    /// <summary>
+    /// Puts the editor's selection on a match. Writing both properties is what moves the caret with
+    /// it, so the next Find Next starts from where this one landed.
+    /// </summary>
+    void ISearchTarget.Select(int offset, int length)
+    {
+        SelectionStart = offset;
+        SelectionLength = length;
+        CaretOffset = offset + length;
+    }
+
+    #endregion
 
     private void InitCommands()
     {
@@ -522,6 +559,12 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel
             // The underline follows the text, on a delay (3.6). Fire and forget: the check cancels its
             // own previous run, and a keystroke must not wait for a parse.
             _ = CheckSyntaxAsync();
+
+            // And so does the search band: it stays open while the query is edited, and a count that
+            // was true a moment ago is worse than no count. Not while the band is writing its own
+            // replacement, which would re-enter on half-applied text.
+            if (Search is { IsOpen: true, IsWriting: false })
+                Search.Refresh();
         }
 
         // Opening the History panel is the request to see the history (3.7).
@@ -598,6 +641,16 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel
     /// </summary>
     [Notify]
     public string? SelectedText { get; set; }
+
+    /// <summary>
+    /// Where the editor's selection is, in characters. Written by the editor and also WRITTEN TO by
+    /// the search band, which is how the current match is shown (9.7).
+    /// </summary>
+    [Notify]
+    public int SelectionStart { get; set; }
+
+    [Notify]
+    public int SelectionLength { get; set; }
 
     /// <summary>
     /// File path if the query is saved to a file.

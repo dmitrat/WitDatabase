@@ -3,8 +3,10 @@ using Avalonia;
 using Avalonia.Controls;
 using Avalonia.Media;
 using Avalonia.Styling;
+using Avalonia.VisualTree;
 using OutWit.Database.Studio.Ui.Icons;
 using OutWit.Database.Studio.ViewModels;
+using OutWit.Database.Studio.ViewModels.Tabs;
 
 namespace OutWit.Database.Studio.Views;
 
@@ -136,8 +138,48 @@ public partial class MainWindow : Window
             return;
         }
 
+        // Find and replace in the editor (9.7). Handled at the window for the same reason Ctrl+K is:
+        // the band's own box, the editor and the result grid all take focus in turn, and a KeyBinding
+        // would answer for only one of them.
+        if (e.KeyModifiers == Avalonia.Input.KeyModifiers.Control
+            && e.Key is Avalonia.Input.Key.F or Avalonia.Input.Key.H
+            && app.WorkspaceTabsVm.SelectedTab is QueryTabViewModel query)
+        {
+            query.OpenSearch(replace: e.Key == Avalonia.Input.Key.H);
+
+            // The caret goes in the box, or the person types their term into their own query. Stage 4
+            // shipped exactly that defect with the command palette.
+            FocusSearchTerm();
+
+            e.Handled = true;
+            return;
+        }
+
+        // F3 walks the matches without going back to the band, which is what it is for.
+        if (e.Key is Avalonia.Input.Key.F3
+            && app.WorkspaceTabsVm.SelectedTab is QueryTabViewModel walking
+            && walking.Search.IsOpen)
+        {
+            var command = e.KeyModifiers == Avalonia.Input.KeyModifiers.Shift
+                ? walking.Search.FindPreviousCommand
+                : walking.Search.FindNextCommand;
+
+            command.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
         if (e.Key != Avalonia.Input.Key.Escape)
             return;
+
+        // Escape closes the band before it stops anything: it is the nearest thing on screen, and a
+        // person pressing it with the band open means the band.
+        if (app.WorkspaceTabsVm.SelectedTab is QueryTabViewModel open && open.Search.IsOpen)
+        {
+            open.Search.CloseCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
 
         // Escape stops a running query (1.7) and closes the notification list. Neither is destructive,
         // so neither asks.
@@ -153,6 +195,27 @@ public partial class MainWindow : Window
             app.WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand.Execute(null);
             e.Handled = true;
         }
+    }
+
+    /// <summary>
+    /// Puts the caret in the search band's box.
+    /// </summary>
+    /// <remarks>
+    /// Found by hand rather than by name: the band lives inside the query tab's template, so there is
+    /// no generated field for it here. Posted to the dispatcher because the box does not exist yet on
+    /// the frame that opens the band - the same reason the palette's own focus call is posted.
+    /// </remarks>
+    private void FocusSearchTerm()
+    {
+        Avalonia.Threading.Dispatcher.UIThread.Post(() =>
+        {
+            var box = this.GetVisualDescendants()
+                .OfType<TextBox>()
+                .FirstOrDefault(control => control.Name == "SearchTerm");
+
+            box?.Focus();
+            box?.SelectAll();
+        });
     }
 
     private void OnPaletteChanged(object? sender, System.ComponentModel.PropertyChangedEventArgs e)
