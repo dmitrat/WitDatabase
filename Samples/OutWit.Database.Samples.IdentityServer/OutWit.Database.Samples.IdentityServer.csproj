@@ -9,14 +9,14 @@
 
   <ItemGroup>
     <!-- ASP.NET Core Identity -->
-    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.1" />
+    <PackageReference Include="Microsoft.AspNetCore.Identity.EntityFrameworkCore" Version="10.0.10" />
     
     <!-- OpenIddict -->
     <PackageReference Include="OpenIddict.AspNetCore" Version="6.3.0" />
     <PackageReference Include="OpenIddict.EntityFrameworkCore" Version="6.3.0" />
     
     <!-- EF Core Design for migrations -->
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.1">
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10">
       <PrivateAssets>all</PrivateAssets>
       <IncludeAssets>runtime; build; native; contentfiles; analyzers; buildtransitive</IncludeAssets>
     </PackageReference>

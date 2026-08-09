@@ -20,8 +20,8 @@
       `dotnet ef` supplies Design itself, as it does for every other provider.
   -->
   <ItemGroup>
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.1" />
-    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.1"
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Relational" Version="10.0.10" />
+    <PackageReference Include="Microsoft.EntityFrameworkCore.Design" Version="10.0.10"
                       PrivateAssets="all" IncludeAssets="compile" />
 
     <!--

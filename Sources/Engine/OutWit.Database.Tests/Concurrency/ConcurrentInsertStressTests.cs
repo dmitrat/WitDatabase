@@ -790,7 +790,7 @@ public class ConcurrentInsertStressTests : IDisposable
     #region Large Transaction Tests
 
     [Test]
-    [Timeout(60000)] // 60 seconds
+    [CancelAfter(60000)] // 60 seconds
     public void LargeTransactionWith10000RowsTest()
     {
         var dbPath = Path.Combine(m_testDir, "large_tx.witdb");
