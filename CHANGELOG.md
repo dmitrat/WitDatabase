@@ -1,5 +1,54 @@
 ﻿# Changelog
 
+## 12.2.1
+
+A republish, and the reason is the one the version guard exists for: **the feed's 12.2.0 was not
+this repository's 12.2.0.** Aligning every dependency to the latest in its line changed every
+package's dependency set and none of them was bumped at the time, so one version number meant two
+different packages - `OutWit.Common` 1.3.2 against 1.4.0, `MemoryPack` 1.1.3 against 1.1.6,
+`EFCore.Relational` 10.0.1 against 10.0.10, `System.IO.Hashing` 10.0.2 against 10.0.10,
+`BouncyCastle` 2.6.2 against 2.7.0 and `Microsoft.JSInterop` 10.0.2 against 10.0.10.
+
+**It also carries what landed since, and one of those is a language change** - which is why a reader
+coming from 12.2.0 should not treat this as a patch in the usual sense. Nothing was removed, so
+nothing stops compiling; but the SQL the EF provider emits is different, and the grammar accepts a
+form it did not accept before.
+
+### Added
+
+- **Typed temporal literals**: `DATE '2026-07-01'`, `TIME '13:45:30'`,
+  `TIMESTAMP '2026-07-01 13:45:30.1234567'` (`DATETIME` is the same word) and
+  `DATETIMEOFFSET '2026-07-01 13:45:30 +03:00'`. **The word in front decides the type**, spelled the
+  way the type is spelled in DDL. A `TIMESTAMP` carrying an offset is refused by name rather than
+  truncated - PostgreSQL accepts that shape and silently discards the offset, which is one row
+  meaning two different instants in two databases.
+- **`ToString()` and `Convert.ToString(x)` translate to `CAST`** in the EF provider, so a query using
+  one is no longer refused whole. Not for an overload taking a format or a culture, and not for the
+  temporal types: `DateTime.ToString()` renders in the current culture, and a query whose result
+  depends on where it ran is a defect rather than a feature.
+
+### Fixed
+
+- **A temporal value written by the EF provider could not be found by the very text it writes.** The
+  provider emitted a plain quoted string, which parses - and answers with nothing, because text is
+  not converted to a temporal column's type before a comparison. Measured: 0 rows for a `DATETIME`
+  and 0 for a `DATETIMEOFFSET`, against 1 row for a typed literal and 1 for the control that the row
+  exists. A `DateOnly` was the exception, which is why it went unnoticed. `Docs/KnownIssues.md` 2.
+- **A grouped query could not be ordered by an expression.** A grouped row carries only the SELECT
+  list, and the planner resolved an `ORDER BY` only for an aggregate call or a column matching a
+  select alias, so `GROUP BY x ... ORDER BY CAST(x AS TEXT)` - what EF emits for
+  `GroupBy(...).Select(g => g.Key.ToString())` - failed with `Column not found`. With or without EF.
+  `Docs/KnownIssues.md` 3.
+- **A column `DEFAULT` of a temporal type kept its type** instead of becoming text that has to be
+  converted on every insert.
+
+### Dependencies
+
+- Every package to the latest in its line, and four versions that had drifted apart inside the
+  repository brought back together. `[Timeout]` in the test suites was replaced by `[CancelAfter]`:
+  the attribute is implemented with `Thread.Abort`, which .NET Core removed, so six tests had
+  carried a ceiling that never once applied.
+
 ## 12.2.0
 
 Phase 12 - what a database remembers about how it was made. Phase 11 proved that every setting is
