@@ -12,7 +12,7 @@ namespace OutWit.Database.Core.Stores;
 /// Key-value store implementation backed by B+Tree.
 /// Implements IKeyValueStore for unified storage engine interface.
 /// </summary>
-public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoredConfigurationSource, IKeyRangeSource, IAsyncDisposable
+public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoredConfigurationSource, IPageCacheOccupancySource, IKeyRangeSource, IAsyncDisposable
 {
     #region Constants
 
@@ -581,6 +581,24 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
 
             return new StoredConfiguration(header.Providers, header.PageSize, IsDirectory: false,
                 Lsm: null, header.FormatVersion);
+        }
+    }
+
+    /// <summary>
+    /// How full this store's page cache is, taken from the page manager at the moment of the call.
+    /// </summary>
+    /// <remarks>
+    /// A READING rather than a fact about the database, unlike <see cref="StoredConfiguration"/> just
+    /// above it: the next page read can change it, and a consumer showing it has to say when it was
+    /// taken.
+    /// </remarks>
+    public PageCacheOccupancy? CacheOccupancy
+    {
+        get
+        {
+            ThrowIfDisposed();
+
+            return m_pageManager.CacheOccupancy;
         }
     }
 

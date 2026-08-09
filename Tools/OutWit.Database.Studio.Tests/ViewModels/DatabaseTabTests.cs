@@ -362,6 +362,77 @@ public class DatabaseTabTests
     }
 
     /// <summary>
+    /// <b>What the page cache is HOLDING, which nothing above the page manager could see until
+    /// 2026-08-09.</b> Both caches have kept <c>Count</c> and <c>DirtyCount</c> since they were
+    /// written and neither handed them out, so the only thing the tab could say about the cache was
+    /// the size it was configured with - the single "needs provider access" row of the matrix.
+    ///
+    /// <para>
+    /// Asserted as NUMBERS rather than as a line of text, and with a control that moves them: a
+    /// property answering a constant would satisfy "there is an occupancy" perfectly well.
+    /// </para>
+    /// <para>
+    /// <b>The first version of that control could not fail, and the shape is a familiar one:</b> it
+    /// scanned the fixture's three tables and compared, and the whole fixture database is FIVE pages -
+    /// they were all in the cache already, so 5 was measured against 5. The workload has to be big
+    /// enough to allocate pages that were not there before.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task ThePageCacheSaysHowManyPagesItIsHoldingAsync()
+    {
+        m_fixture = await StudioFixture.CreateAsync(StudioStorage.BTree);
+
+        var before = m_fixture.Database.CacheOccupancy;
+
+        Assert.That(before, Is.Not.Null, "a paged database has a page cache to ask");
+
+        await m_fixture.Database.ExecuteNonQueryAsync(
+            "CREATE TABLE Bulk (Id INTEGER PRIMARY KEY, Padding VARCHAR(200))");
+
+        for (var i = 1; i <= 300; i++)
+        {
+            await m_fixture.Database.ExecuteNonQueryAsync(
+                $"INSERT INTO Bulk (Id, Padding) VALUES ({i}, '{new string('x', 180)}')");
+        }
+
+        var after = m_fixture.Database.CacheOccupancy;
+
+        var tab = await OpenAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(after!.Value.ProviderKey, Is.Not.Empty, "and it says which cache answered");
+            Assert.That(after.Value.Pages, Is.GreaterThan(before!.Value.Pages),
+                "CONTROL: three hundred rows allocate pages, so this is a reading and not a constant");
+            Assert.That(after.Value.DirtyPages, Is.LessThanOrEqualTo(after.Value.Pages),
+                "dirty pages are a subset of the pages held");
+
+            Assert.That(tab.Overview!.CachePagesHeld, Is.Not.Null.And.GreaterThan(0),
+                "and the tab carries it");
+        });
+    }
+
+    /// <summary>
+    /// The other arm, and it is the reason the property is nullable: an LSM database is not paged, so
+    /// there is no page cache to ask and the tab says the configured size alone rather than inventing
+    /// a zero.
+    /// </summary>
+    [Test]
+    public async Task AnLsmDatabaseHasNoPageCacheToAskAsync()
+    {
+        m_fixture = await StudioFixture.CreateAsync(StudioStorage.Lsm);
+
+        var tab = await OpenAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_fixture.Database.CacheOccupancy, Is.Null);
+            Assert.That(tab.Overview!.CachePagesHeld, Is.Null);
+        });
+    }
+
+    /// <summary>
     /// The matrix carries all three categories, and it has to: the third one - what the engine simply
     /// does not have - is the reason the matrix exists rather than a list of buttons.
     /// </summary>
@@ -370,7 +441,7 @@ public class DatabaseTabTests
     {
         Assert.Multiple(() =>
         {
-            foreach (var availability in Enum.GetValues<StorageAvailability>())
+            foreach (var availability in new[] { StorageAvailability.Available, StorageAvailability.NotInEngine })
             {
                 Assert.That(StorageCapabilities.Matrix.Any(row => row.Availability == availability),
                     Is.True, $"nothing in the matrix is {availability}");
@@ -383,6 +454,19 @@ public class DatabaseTabTests
                 .Single(row => row.OperationKey == "Database.Cap.CacheHitRate");
 
             Assert.That(hitRate.Availability, Is.EqualTo(StorageAvailability.NotInEngine));
+
+            // And its neighbour, which is the OTHER half of that measurement and moved on 2026-08-09:
+            // occupancy WAS in the engine and unpublished, so it was the one row saying "needs provider
+            // access". It is Available now, and no row is in that state - asserted rather than left to
+            // be noticed, because a state nothing is in reads exactly like a state nobody maintains.
+            var occupancy = StorageCapabilities.Matrix
+                .Single(row => row.OperationKey == "Database.Cap.CacheOccupancy");
+
+            Assert.That(occupancy.Availability, Is.EqualTo(StorageAvailability.Available));
+            Assert.That(StorageCapabilities.Matrix.Where(
+                    row => row.Availability == StorageAvailability.NeedsProviderAccess),
+                Is.Empty,
+                "the last of these was closed on 2026-08-09; a new one has to be a decision, not a drift");
         });
     }
 

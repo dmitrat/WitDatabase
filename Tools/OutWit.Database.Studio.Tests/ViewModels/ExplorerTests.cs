@@ -174,6 +174,73 @@ public class ExplorerTests
     }
 
     /// <summary>
+    /// <b>The count follows a script that WRITES, and until 2026-08-09 it did not.</b> Fifty rows went
+    /// in through the editor and the node kept the number it had until the database was reopened; it
+    /// was written down as probably the deliberate laziness of <c>WS-16</c>, and measured it was that
+    /// nothing asked. A script that changes the schema has reloaded the branch since stage 6, and one
+    /// that only writes rows went past that test and had no other.
+    /// </summary>
+    [Test]
+    public async Task TheCountFollowsAnInsertMadeInTheEditorAsync()
+    {
+        await using var studio = await StudioFixture.CreateAsync();
+
+        await studio.Explorer.RefreshAsync(studio.Database);
+        await studio.Explorer.CountRowsAsync(studio.Database);
+
+        var orders = Folder(studio, "Tables").Children.First(node => node.Name == "Orders");
+
+        Assert.That(orders.RowCount, Is.EqualTo(StudioFixture.ORDER_COUNT), "the number before");
+
+        var tab = studio.FirstQueryTab;
+        tab.SqlText = "INSERT INTO Orders (Id, CustomerId, Total, Status) VALUES (9001, 1, 5, 'new')";
+
+        // Through the WORKSPACE's Execute, which is the button: bringing the tree into line is the
+        // frame's work, not the tab's.
+        studio.Workspace.SelectedTab = tab;
+        await StudioFixture.PressAsync(studio.Workspace.ExecuteQueryCommand);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(tab.ErrorMessage, Is.Null);
+            Assert.That(orders.RowCount, Is.EqualTo(StudioFixture.ORDER_COUNT + 1),
+                "the tree says what the table holds, not what it held when it was drawn");
+            Assert.That(orders.Detail, Is.EqualTo((StudioFixture.ORDER_COUNT + 1).ToString("N0")));
+        });
+    }
+
+    /// <summary>
+    /// CONTROL, and it is what keeps the fix from being "count everything after every query": a script
+    /// that writes nothing leaves the counts alone, and a table nobody wrote to is not asked again.
+    /// A count is a query, and forty tables would be forty of them.
+    /// </summary>
+    [Test]
+    public async Task AQueryThatWritesNothingCostsNoCountAsync()
+    {
+        await using var studio = await StudioFixture.CreateAsync();
+
+        await studio.Explorer.RefreshAsync(studio.Database);
+        await studio.Explorer.CountRowsAsync(studio.Database);
+
+        var customers = Folder(studio, "Tables").Children.First(node => node.Name == "Customers");
+        customers.RowCount = 4242;
+
+        var tab = studio.FirstQueryTab;
+        tab.SqlText = "INSERT INTO Orders (Id, CustomerId, Total, Status) VALUES (9002, 1, 5, 'new')";
+
+        studio.Workspace.SelectedTab = tab;
+        await StudioFixture.PressAsync(studio.Workspace.ExecuteQueryCommand);
+
+        Assert.That(customers.RowCount, Is.EqualTo(4242),
+            "the table the script never named was not counted again");
+
+        tab.SqlText = "SELECT * FROM Orders";
+        await StudioFixture.PressAsync(studio.Workspace.ExecuteQueryCommand);
+
+        Assert.That(tab.TablesWritten, Is.Empty, "and a SELECT names nothing to count");
+    }
+
+    /// <summary>
     /// A count that is cut short reports "unknown" rather than throwing (WS-16). The tree calls this
     /// for every table it draws, and one cancelled count must not become an exception in the middle
     /// of a background pass.

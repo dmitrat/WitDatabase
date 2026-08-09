@@ -41,6 +41,10 @@ public static class DatabaseOverviewReader
         // session reads it a moment before opening, where it is readable and equally true.
         var stored = session.StoredConfiguration;
 
+        // Asked of the CONNECTION and taken now, unlike the configuration above it: this one is a
+        // reading and the next statement changes it.
+        var occupancy = session.CacheOccupancy;
+
         var isDirectory = stored?.IsDirectory ?? Directory.Exists(path);
         var size = SizeOf(path);
         var pageSize = isDirectory || stored == null || stored.PageSize <= 0 ? (int?)null : stored.PageSize;
@@ -65,6 +69,12 @@ public static class DatabaseOverviewReader
             HasFileLocking: stored?.Metadata.HasFileLocking,
             CacheProviderKey: stored?.Metadata.CacheProviderKey ?? string.Empty,
             CacheSizeInPages: stored?.Metadata.CacheSize ?? 0,
+
+            // What the cache HOLDS, as against the size it was configured with. Both caches have kept
+            // these two numbers since they were written and neither handed them out - the single
+            // "needs provider access" row of the capability matrix, and the reason it said so.
+            CachePagesHeld: occupancy?.Pages,
+            CacheDirtyPages: occupancy?.DirtyPages,
             JournalProviderKey: stored?.Metadata.JournalProviderKey ?? string.Empty,
             StoreChain: snapshot.Chain,
             Lsm: snapshot.Lsm,

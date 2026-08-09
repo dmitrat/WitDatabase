@@ -389,6 +389,13 @@
 					            IsVisible="{Binding WorkspaceTabsVm.IsStructureTabSelected}">
 						<TextBlock Text="{DynamicResource S.Tab.Structure}" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
 					</StackPanel>
+
+					<!-- Database tab. The fourth kind, and it had no band: the query toolbar hides and
+					     nothing took its place, so the strip was empty across the window. -->
+					<StackPanel Orientation="Horizontal" Spacing="4"
+					            IsVisible="{Binding WorkspaceTabsVm.IsDatabaseTabSelected}">
+						<TextBlock Text="{DynamicResource S.Tab.Database}" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
+					</StackPanel>
 				</StackPanel>
 
 				<!-- The connection chip of the ACTIVE TAB -->

@@ -1,5 +1,6 @@
 using Microsoft.Extensions.Logging;
 using OutWit.Database.AdoNet;
+using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Providers;
 using OutWit.Database.Studio.Models;
 using System.Data;
@@ -231,6 +232,12 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
     /// Null when there was nothing to read - a database being created, or a path that is not one.
     /// </remarks>
     public StoredConfiguration? StoredConfiguration { get; private set; }
+
+    /// <summary>
+    /// Asked of the connection every time, because it is a reading: the pages the cache holds change
+    /// with every statement this session runs.
+    /// </summary>
+    public PageCacheOccupancy? CacheOccupancy => m_connection?.CacheOccupancy;
 
     public ISchemaCatalog Catalog { get; }
 

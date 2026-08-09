@@ -367,7 +367,10 @@ public class StructureTabViewModel : WorkspaceTabViewModel
 
         // The BODY, not the CREATE VIEW: this is the text the editor lets a person rewrite, and it is
         // put back inside a CREATE VIEW by DdlWriter when the change is applied.
+        m_suppressRecompute = true;
         ViewDefinition = await session.GetViewBodyAsync(ObjectName);
+        m_loadedViewDefinition = ViewDefinition;
+        m_suppressRecompute = false;
 
         // A view whose body the catalogue cannot render comes back NULL - measured for a UNION and for
         // a subquery. Editing means DROP and CREATE, and creating from a body Studio does not have
@@ -488,7 +491,16 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     /// </summary>
     private void Recompute()
     {
-        if (m_suppressRecompute || ObjectType != DatabaseNodeType.Table)
+        if (m_suppressRecompute)
+            return;
+
+        if (ObjectType == DatabaseNodeType.View)
+        {
+            RecomputeViewBody();
+            return;
+        }
+
+        if (ObjectType != DatabaseNodeType.Table)
             return;
 
         Pending = SchemaChangeSet.Build(ObjectName, Columns.ToList(), Indexes, HasRows, out var refusals);
@@ -524,6 +536,55 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         PendingCount = Pending.Count;
         NeedsRebuild = Pending.NeedsRebuild;
         ColumnCount = Columns.Count(c => !c.IsDeleted);
+
+        UpdateStatus();
+    }
+
+    /// <summary>
+    /// The same for a VIEW, whose whole structure is one piece of text: a body that differs from the
+    /// one that was loaded is one <see cref="SchemaEditKind.ReplaceViewBody"/> edit.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>That kind had never been constructed by anything.</b> It existed, it had a category and a
+    /// sentence in the catalogue describing how it would be carried out, and no code path produced one
+    /// - <c>CreateViewViewModel</c> executes its own SQL and can only CREATE - so a view's body could
+    /// not be edited from the interface at all. Found while fixing issue 12 and left open as a product
+    /// decision; the decision was to give the editor the replace.
+    /// </para>
+    /// <para>
+    /// It is a DROP and a CREATE, which is not atomic and is why the panel says so. The set goes
+    /// through the same <c>ApplyAsync</c> as everything else, and it is the first change set made
+    /// entirely of <c>DropCreate</c> - the shape that was a silent no-op until 2026-08-09 and would
+    /// have left Apply grey until <see cref="SchemaChangeSet.HasSomethingToRun"/>.
+    /// </para>
+    /// </remarks>
+    private void RecomputeViewBody()
+    {
+        Pending = new SchemaChangeSet(ObjectName);
+        Refusals = [];
+
+        var body = ViewDefinition?.Trim() ?? string.Empty;
+        var loaded = m_loadedViewDefinition?.Trim() ?? string.Empty;
+
+        if (CanEditView && body.Length > 0 && !string.Equals(body, loaded, StringComparison.Ordinal))
+        {
+            Pending.Add(new SchemaEdit
+            {
+                Kind = SchemaEditKind.ReplaceViewBody,
+                Table = ObjectName,
+                Description = Localization.Format("Structure.ReplaceViewBody", ObjectName),
+                Statements =
+                [
+                    DdlWriter.DropView(ObjectName),
+                    DdlWriter.CreateView(ObjectName, body)
+                ]
+            });
+        }
+
+        PendingSql = Pending.Sql;
+        PendingCount = Pending.Count;
+        NeedsRebuild = false;
 
         UpdateStatus();
     }
@@ -781,8 +842,14 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     private void UpdateStatus()
     {
         CanRefresh = !IsLoading && Session?.IsConnected == true;
+        // APPLICABLE, not InPlace. The gate asked for an in-place edit until 2026-08-09, which is the
+        // same blind spot that made ApplyAsync a silent no-op one layer down: a change set made only
+        // of DropCreate edits - a trigger replacement is one - has statements to run and would have
+        // left the Apply button grey in front of them. Latent rather than broken, because the designer
+        // produces no such edit today and the two dialogs call ApplyAsync directly; the two questions
+        // now have one answer, so a category added later reaches the button and the executor together.
         CanApply = !IsApplying && Session?.IsConnected == true && PendingCount > 0 &&
-                   Pending?.InPlace.Count > 0 && Refusals.Count == 0;
+                   Pending?.HasSomethingToRun == true && Refusals.Count == 0;
         CanRebuild = !IsApplying && Session?.IsConnected == true && NeedsRebuild;
         HasPending = PendingCount > 0;
         IsTable = ObjectType == DatabaseNodeType.Table;
@@ -835,6 +902,11 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         if (e.IsProperty((StructureTabViewModel vm) => vm.IsLoading) ||
             e.IsProperty((StructureTabViewModel vm) => vm.IsApplying))
             UpdateStatus();
+
+        // A view's whole structure is its body, so editing it is the same event a column draft raises
+        // for a table: the DDL panel must not be behind the text box.
+        if (e.IsProperty((StructureTabViewModel vm) => vm.ViewDefinition))
+            Recompute();
     }
 
     private void OnDraftChanged(object? sender, PropertyChangedEventArgs e)
@@ -1080,6 +1152,12 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     #region Fields
 
     private bool m_suppressRecompute;
+
+    /// <summary>
+    /// The view body as it was read from the catalogue, so that "the text differs" is a question about
+    /// what is in the database rather than about what the box happens to hold.
+    /// </summary>
+    private string? m_loadedViewDefinition;
 
     #endregion
 

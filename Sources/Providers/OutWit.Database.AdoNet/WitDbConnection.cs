@@ -800,6 +800,28 @@ public sealed partial class WitDbConnection : DbConnection
     /// </remarks>
     public StoredConfiguration? StoredConfiguration => m_database?.StoredConfiguration;
 
+    /// <summary>
+    /// How full the open database's page cache is at this moment: which cache, pages held, and how
+    /// many of those are dirty. Null when the connection is closed and for a store with no page cache,
+    /// which is the LSM one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// A READING, not a property of the database: the next statement can change it, so a caller that
+    /// shows it has to say when it was taken. That is the difference between this and
+    /// <see cref="StoredConfiguration"/> above, which cannot change while the database is open.
+    /// </para>
+    /// <para>
+    /// Occupancy and nothing else. Neither page cache counts a hit or a miss - only the LSM block
+    /// cache does - so a hit rate is missing from the engine rather than from this property.
+    /// </para>
+    /// <para>
+    /// A shared database has ONE page cache and every connection to it reports the same numbers,
+    /// which is the honest answer: the cache belongs to the database, not to the connection.
+    /// </para>
+    /// </remarks>
+    public PageCacheOccupancy? CacheOccupancy => m_database?.CacheOccupancy;
+
     /// <inheritdoc/>
     public override string Database
     {

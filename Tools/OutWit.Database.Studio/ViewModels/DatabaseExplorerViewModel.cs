@@ -610,6 +610,51 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     }
 
     /// <summary>
+    /// Counts again the tables a script actually wrote to, and nothing else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The tree kept the count it had while rows were being inserted through the editor - fifty rows
+    /// went in and the node still said 39 until the database was reopened. That was recorded as
+    /// probably the deliberate laziness of <c>WS-16</c> and it is not: a script that changes the
+    /// SCHEMA already reloads the branch, and one that only writes ROWS asked for nothing at all,
+    /// because a count is only ever taken by a full reload.
+    /// </para>
+    /// <para>
+    /// By table rather than by connection, because a count is a query: an INSERT into one table of
+    /// forty must not cost forty <c>COUNT(*)</c>s, and the parser says which table each statement
+    /// wrote to. A name that is not in the tree - a table created and filled in the same script, where
+    /// the reload has already been asked for - is simply not found here and costs nothing.
+    /// </para>
+    /// </remarks>
+    public async Task CountRowsAsync(IDatabaseSession session, IEnumerable<string> tables,
+        CancellationToken ct = default)
+    {
+        var root = Nodes.FirstOrDefault(node => node.ConnectionId == session.Id);
+
+        var folder = root?.Children.FirstOrDefault(child => child.NodeType == DatabaseNodeType.TablesFolder);
+
+        if (folder == null)
+            return;
+
+        var wanted = new HashSet<string>(tables, StringComparer.OrdinalIgnoreCase);
+
+        foreach (var table in folder.Children.Where(child => wanted.Contains(child.Name)).ToList())
+        {
+            if (ct.IsCancellationRequested || !session.IsConnected)
+                return;
+
+            table.CountState = RowCountState.Counting;
+
+            var count = await session.TryCountRowsAsync(table.Name, CountTimeout, ct);
+
+            table.RowCount = count;
+            table.CountState = count == null ? RowCountState.TimedOut : RowCountState.Counted;
+            table.Detail = count?.ToString("N0");
+        }
+    }
+
+    /// <summary>
     /// Loads what a node contains the first time it is opened. For a table or a view that is its
     /// columns (WS-15) - the most frequent question anyone asks of a schema, and no reason to open a
     /// tab for it.

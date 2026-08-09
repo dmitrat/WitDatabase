@@ -31,6 +31,12 @@ namespace OutWit.Database.Studio.Models;
 /// <param name="EncryptionProviderKey">Null when the database is not encrypted.</param>
 /// <param name="CacheProviderKey">The page cache the database was created with.</param>
 /// <param name="CacheSizeInPages">Its capacity, in pages.</param>
+/// <param name="CachePagesHeld">
+/// How many pages the cache holds right now, or null when there is no page cache to ask - an LSM
+/// database. A READING: it changes with the next statement, which is why the block says when it was
+/// taken.
+/// </param>
+/// <param name="CacheDirtyPages">Of those, how many are written to and not yet flushed.</param>
 /// <param name="JournalProviderKey">The journal provider, empty when there is none.</param>
 /// <param name="StoreChain">
 /// The layers between the database and the disk, outermost first - the answer to "which store am I
@@ -68,6 +74,8 @@ public sealed record DatabaseOverview(
     bool? HasFileLocking,
     string CacheProviderKey,
     int CacheSizeInPages,
+    int? CachePagesHeld,
+    int? CacheDirtyPages,
     string JournalProviderKey,
     IReadOnlyList<string> StoreChain,
     WitDbLsmSnapshot? Lsm,

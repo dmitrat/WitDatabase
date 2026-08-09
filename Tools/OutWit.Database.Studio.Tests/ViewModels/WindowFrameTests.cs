@@ -161,6 +161,14 @@ public class WindowFrameTests
     /// <summary>
     /// The toolbar belongs to the active tab and changes with it. There is no global panel of
     /// twenty icons, half of them grey.
+    ///
+    /// <para>
+    /// <b>All FOUR kinds, since 2026-08-09.</b> The Database tab was not in this case and had no band
+    /// of its own, so selecting it hid the query toolbar and put nothing in its place - an empty strip
+    /// across the window, seen in the running application and carried forward from phase 10. Every kind
+    /// of tab lights exactly one band now, which is a rule rather than three flags, so the next kind
+    /// added has somewhere to fail.
+    /// </para>
     /// </summary>
     [Test]
     public async Task TheToolbarFollowsTheTypeOfTheActiveTabTest()
@@ -171,26 +179,32 @@ public class WindowFrameTests
         var editor = await studio.Workspace.OpenTableEditTabAsync(studio.Database, "Customers");
         var structure = await studio.Workspace.OpenStructureTabAsync(
             studio.Database, "Orders", DatabaseNodeType.Table);
+        var database = await studio.Workspace.OpenDatabaseTabAsync(studio.Database);
 
         studio.Workspace.SelectedTab = query;
-        var onQuery = (studio.Workspace.IsQueryTabSelected, studio.Workspace.IsTableEditTabSelected,
-            studio.Workspace.IsStructureTabSelected);
+        var onQuery = Bands(studio);
 
         studio.Workspace.SelectedTab = editor;
-        var onEditor = (studio.Workspace.IsQueryTabSelected, studio.Workspace.IsTableEditTabSelected,
-            studio.Workspace.IsStructureTabSelected);
+        var onEditor = Bands(studio);
 
         studio.Workspace.SelectedTab = structure;
-        var onStructure = (studio.Workspace.IsQueryTabSelected, studio.Workspace.IsTableEditTabSelected,
-            studio.Workspace.IsStructureTabSelected);
+        var onStructure = Bands(studio);
+
+        studio.Workspace.SelectedTab = database;
+        var onDatabase = Bands(studio);
 
         Assert.Multiple(() =>
         {
-            Assert.That(onQuery, Is.EqualTo((true, false, false)));
-            Assert.That(onEditor, Is.EqualTo((false, true, false)));
-            Assert.That(onStructure, Is.EqualTo((false, false, true)));
+            Assert.That(onQuery, Is.EqualTo((true, false, false, false)));
+            Assert.That(onEditor, Is.EqualTo((false, true, false, false)));
+            Assert.That(onStructure, Is.EqualTo((false, false, true, false)));
+            Assert.That(onDatabase, Is.EqualTo((false, false, false, true)));
         });
     }
+
+    private static (bool Query, bool Editor, bool Structure, bool Database) Bands(StudioFixture studio) =>
+        (studio.Workspace.IsQueryTabSelected, studio.Workspace.IsTableEditTabSelected,
+            studio.Workspace.IsStructureTabSelected, studio.Workspace.IsDatabaseTabSelected);
 
     /// <summary>
     /// The chip on the right of the toolbar is the connection of the ACTIVE TAB - the one thing in

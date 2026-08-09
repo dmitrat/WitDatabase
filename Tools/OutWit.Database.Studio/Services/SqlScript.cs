@@ -11,8 +11,12 @@ namespace OutWit.Database.Studio.Services;
 /// <param name="Text">The statement's own text, ready to send on its own.</param>
 /// <param name="Line">1-based line of the script where the statement starts.</param>
 /// <param name="Column">0-based column of the script where the statement starts.</param>
+/// <param name="WritesTable">
+/// The table this statement writes rows into, or null when it writes none. It is what lets the
+/// explorer re-count the one table a script touched instead of every table of the connection.
+/// </param>
 public sealed record SqlStatementSpan(int Index, string Text, int Line, int Column, bool ChangesSchema,
-    int Offset = 0)
+    int Offset = 0, string? WritesTable = null)
 {
     /// <summary>
     /// One past the last character of the statement, in the script.
@@ -137,7 +141,7 @@ public static class SqlScript
                 continue;
 
             spans.Add(new SqlStatementSpan(spans.Count, text, statements[i].Line, statements[i].Column,
-                ChangesSchema(statements[i]), start));
+                ChangesSchema(statements[i]), start, WritesTable(statements[i])));
         }
 
         return new SqlScriptSplit(spans, []);
@@ -185,6 +189,26 @@ public static class SqlScript
             || name.StartsWith("WitSqlStatementTruncate", StringComparison.Ordinal)
             || name.StartsWith("WitSqlStatementRename", StringComparison.Ordinal);
     }
+
+    /// <summary>
+    /// The table a statement writes rows into, or null. Asked of the PARSED statement for the same
+    /// reason as <see cref="ChangesSchema"/>: the name can be quoted three ways, the keyword can be in
+    /// any case, and a leading comment can contain the word INSERT.
+    /// </summary>
+    /// <remarks>
+    /// <c>TRUNCATE</c> is deliberately absent: it changes the schema by the classification above, so
+    /// the tree is reloaded whole after it and the count comes back with the reload. And a
+    /// <c>SELECT</c> writes nothing, which is what keeps a script of nothing but queries from costing
+    /// a count of anything.
+    /// </remarks>
+    private static string? WritesTable(WitSqlStatement statement) => statement switch
+    {
+        WitSqlStatementInsert insert => insert.TableName,
+        WitSqlStatementUpdate update => update.TableName,
+        WitSqlStatementDelete delete => delete.TableName,
+        WitSqlStatementMerge merge => merge.TargetTable,
+        _ => null
+    };
 
     /// <summary>
     /// Moves a position the engine reported about ONE statement back into the coordinates of the tab.

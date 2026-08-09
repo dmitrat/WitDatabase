@@ -127,6 +127,27 @@ public class LocalizationCoverageTests
             RegexOptions.Compiled);
 
     /// <summary>
+    /// <b>A destination that is a LIST is filled by <c>Add</c>, and rule 3 only knows assignment.</b>
+    /// </summary>
+    /// <remarks>
+    /// The class this exists for: <c>EditTriggerViewModel.Validate</c> built its four refusals as
+    /// English literals - "The trigger needs a name.", the whole NEW/OLD explanation - and put them in
+    /// a local list which is then assigned to <c>Problems</c>. Rule 3 keys on the name in front of the
+    /// literal, and the name in front of these is <c>problems.Add</c>; the property never meets a
+    /// string at all. Nobody had seen them because the dialog itself was unreachable until 2026-08-09,
+    /// which is the second half of why this hole survived the sweep.
+    ///
+    /// <para>
+    /// The names are matched as endings and case-insensitively at the first letter, because the local
+    /// that a property is built in is the property's own name in lower case here.
+    /// </para>
+    /// </remarks>
+    private static readonly Regex VIEWMODEL_LIST_ADD =
+        new(@"(?<!\w)(\w*(?:[Pp]roblems|[Ww]arnings|[Rr]easons|[Ii]ssues|[Mm]essages))"
+            + @"\.Add\(\s*[$]?""((?:[^""\\]|\\.)*)""",
+            RegexOptions.Compiled);
+
+    /// <summary>
     /// The services that put a string in front of somebody: a notification, a confirmation, a file
     /// picker's title and the name of one of its filters.
     /// </summary>
@@ -191,7 +212,8 @@ public class LocalizationCoverageTests
             + @"|NotArmedReason|LanguageNote|SaveText|ViewDescription|State|MarkerReason|ReadOnlyReason"
             + @"|RowCountText|Display)(\.Text)?\s*=>?(?!=)"
             + @"|(Notifications\.\w+|Confirmations?\.\w+|Dialogs\.\w+|new FileFilter"
-            + @"|Set\w*Status|Describe\w*)\(",
+            + @"|Set\w*Status|Describe\w*)\("
+            + @"|\w*([Pp]roblems|[Ww]arnings|[Rr]easons|[Ii]ssues|[Mm]essages)\.Add\(",
             RegexOptions.Compiled);
 
     /// <summary>
@@ -416,7 +438,8 @@ public class LocalizationCoverageTests
                 // A match is attributed to the line its DESTINATION is on, so nothing is counted twice.
                 var window = CATALOGUE_LOOKUP.Replace(line.Text + "\n" + line.Next, "Localization.Key");
 
-                foreach (var match in Matches(window, VIEWMODEL_ASSIGNMENT, VIEWMODEL_CALL))
+                foreach (var match in Matches(window, VIEWMODEL_ASSIGNMENT, VIEWMODEL_CALL,
+                             VIEWMODEL_LIST_ADD))
                 {
                     if (match.Index >= line.Text.Length || !IsStudioText(match.Value))
                         continue;
@@ -643,6 +666,17 @@ public class LocalizationCoverageTests
                 "the name of a filter is read by a person");
             Assert.That(Caught(VIEWMODEL_CALL, @"Notifications.Information(Localization[""X""], path);"), Is.False,
                 "a notification from the catalogue is the point of the rule");
+
+            // Rule 5, both directions. The first line is verbatim what EditTriggerViewModel.Validate
+            // held while every other rule passed over it: the name in front of the literal is the
+            // LOCAL LIST, and the property it is assigned to never meets a string.
+            Assert.That(Caught(VIEWMODEL_LIST_ADD, @"problems.Add(""The trigger needs a name."");"), Is.True,
+                "a refusal added to a list is read by a person exactly as an assigned one is");
+            Assert.That(Caught(VIEWMODEL_LIST_ADD,
+                    @"problems.Add(Localization[""Dialog.Trigger.Problem.NoName""]);"), Is.False,
+                "a refusal from the catalogue is the point of the rule");
+            Assert.That(Caught(VIEWMODEL_LIST_ADD, @"keys.Add(""Dialog.Trigger.Problem.NoName"");"), Is.False,
+                "a list that is not a list of sentences is not a destination");
 
             // Rule 4, both directions. The first line is verbatim what SchemaCapabilities.Matrix held
             // through the whole sweep with every rule passing over it.
