@@ -54,6 +54,14 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         // because InitDefault replaced everything except this.
         ErrorMessage = null;
 
+        // The same shape one property along, and it survived until it was driven in the running
+        // application on 2026-08-09. The BANNER was kept too, so pressing Ctrl+O with a database open
+        // showed "Found a B-Tree database - 8 KB - MVCC" over an EMPTY path box: the answer to the
+        // path probed the LAST time the dialog was used. It reads exactly like the probe having
+        // answered about the open database, which is how "the Locked state does not fire for a
+        // database Studio has open" came to be written down while Locked was working correctly.
+        Probe = StorageProbe.Look(null);
+
         StorageEngines = [STORAGE_BTREE, STORAGE_LSM];
         Storage = STORAGE_BTREE;
         
@@ -461,10 +469,13 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
         }
         else if (e.IsProperty((ConnectionViewModel vm) => vm.Probe))
         {
-            // Both are computed from the probe, and a computed property is not re-read unless it is
-            // told - which is the defect shape stage 8 found in the section strip.
+            // All four are computed from the probe - the last two also from the path, which is what
+            // changed the probe - and a computed property is not re-read unless it is told, which is
+            // the defect shape stage 8 found in the section strip.
             OnPropertyChanged(nameof(ProbeMessage));
             OnPropertyChanged(nameof(NeedsPassword));
+            OnPropertyChanged(nameof(AlreadyOpenNote));
+            OnPropertyChanged(nameof(HasProbeBanner));
             UpdateStatus();
         }
         else if (e.IsProperty((ConnectionViewModel vm) => vm.UseAutoDetectedSettings))
@@ -676,15 +687,35 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
             ? Localization["Dialog.Open.NotADatabaseFolder"]
             : Localization["Dialog.Open.NotADatabaseFile"],
 
-        // Held by something. Studio knows its own connections, so it can say WHICH something in the
-        // case that matters most - and it does not refuse either way: a second connection to a
-        // database already open here is measured to work and to see the same rows (stage 7).
+        // Held by something. When it is one of Studio's own connections there is nothing to say here -
+        // AlreadyOpenNote says it, for every kind rather than for this one - and Studio does not refuse
+        // either way: a second connection to a database already open here is measured to work and to
+        // see the same rows (stage 7).
         StorageKind.Locked => IsAlreadyOpenHere
-            ? Localization["Dialog.Open.AlreadyOpenHere"]
+            ? string.Empty
             : Localization["Dialog.Open.HeldByAnother"],
 
         _ => string.Empty
     };
+
+    /// <summary>
+    /// The second line: this path is one of this application's own open connections.
+    /// </summary>
+    /// <remarks>
+    /// It used to be said only for a <see cref="StorageKind.Locked"/> path, which meant it could not be
+    /// said at all for the store where it matters most. Measured 2026-08-09: a B+Tree database open in
+    /// Studio answers <c>Locked</c>, and an <b>LSM</b> one answers <c>Database</c> - a database is a
+    /// FOLDER there and the exclusive lock is a sidecar inside it, so the probe reads the directory and
+    /// its metadata straight through. Whether Studio has the path open is a question Studio can always
+    /// answer, so it is asked once, beside whatever the file system said, rather than as one of the
+    /// readings the probe returns.
+    /// </remarks>
+    public string AlreadyOpenNote => IsAlreadyOpenHere
+        ? Localization["Dialog.Open.AlreadyOpenHere"]
+        : string.Empty;
+
+    /// <summary>Whether the banner under the path box has anything in it at all.</summary>
+    public bool HasProbeBanner => !string.IsNullOrEmpty(ProbeMessage) || !string.IsNullOrEmpty(AlreadyOpenNote);
 
     /// <summary>
     /// Whether the path in the box is one of this application's own open connections.
