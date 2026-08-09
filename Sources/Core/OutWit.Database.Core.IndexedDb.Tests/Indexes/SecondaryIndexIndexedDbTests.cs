@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using OutWit.Database.Core.Exceptions;
 using OutWit.Database.Core.IndexedDb.Indexes;
 using OutWit.Database.Core.IndexedDb.Tests.Mocks;
 using OutWit.Database.Core.Interfaces;
@@ -130,9 +131,13 @@ public class SecondaryIndexIndexedDbTests
         using var index = new SecondaryIndexIndexedDb("test_index", m_interop, isUnique: true, ownsInterop: false);
         index.Add(GetBytes("key1"), GetBytes("pk1"));
 
-        // Act & Assert
-        Assert.Throws<InvalidOperationException>(() => 
+        // Act & Assert. The specific type now, and it still IS an InvalidOperationException - the
+        // second assertion is what says a caller written against the old type keeps working, which
+        // is the whole reason the new one derives from it.
+        var violation = Assert.Throws<UniqueIndexViolationException>(() =>
             index.Add(GetBytes("key1"), GetBytes("pk2")));
+
+        Assert.That(violation, Is.InstanceOf<InvalidOperationException>());
     }
 
     #endregion
