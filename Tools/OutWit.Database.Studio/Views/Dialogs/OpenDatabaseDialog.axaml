@@ -44,11 +44,20 @@
                      database says only that it is encrypted, because its header is inside the
                      encryption; a file with no magic bytes says "encrypted, or not a database", because
                      those two cannot be told apart at all. -->
+                <!-- Two lines rather than one: what is at the path, and - separately - whether the path
+                     is one this application already has open. The second is a question Studio can
+                     always answer, so it is not one of the readings the probe returns. -->
                 <Border Padding="10,8" CornerRadius="6"
                         Background="{DynamicResource SystemControlBackgroundListLowBrush}"
-                        IsVisible="{Binding ProbeMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-                    <TextBlock AutomationProperties.AutomationId="OpenDatabaseProbe"
-                               Text="{Binding ProbeMessage}" TextWrapping="Wrap" FontSize="12"/>
+                        IsVisible="{Binding HasProbeBanner}">
+                    <StackPanel x:Name="ProbeBanner" Spacing="4">
+                        <TextBlock AutomationProperties.AutomationId="OpenDatabaseProbe"
+                                   Text="{Binding ProbeMessage}" TextWrapping="Wrap" FontSize="12"
+                                   IsVisible="{Binding ProbeMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                        <TextBlock AutomationProperties.AutomationId="OpenDatabaseAlreadyOpen"
+                                   Text="{Binding AlreadyOpenNote}" TextWrapping="Wrap" FontSize="12"
+                                   IsVisible="{Binding AlreadyOpenNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
+                    </StackPanel>
                 </Border>
 
                 <!-- Asked for only when there is something encrypted to open (WS-46). -->

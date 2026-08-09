@@ -196,6 +196,124 @@ public class OpenDialogProbeTests
 
     #endregion
 
+    #region What a reopened dialog shows
+
+    /// <summary>
+    /// <b>The defect item 12 was recorded as, and it was never about the lock.</b> Reopening the dialog
+    /// left the previous path's banner under an EMPTY path box, so pressing Ctrl+O with a database open
+    /// showed "Found a B-Tree database - 8 KB - MVCC" - which reads as the probe having answered about
+    /// the open database. It is the answer to the path probed last time, and the same shape as the
+    /// stale <c>ErrorMessage</c> the line above it exists for.
+    /// </summary>
+    [Test]
+    public async Task AReopenedDialogDoesNotKeepTheLastBannerAsync()
+    {
+        var path = Path.Combine(m_root, "before.witdb");
+
+        StudioFixture.CreateDatabaseOnDisk(path);
+
+        m_studio.Connection.ApplyAutoDetectedSettings(path);
+
+        Assert.That(m_studio.Connection.Probe.Kind, Is.EqualTo(StorageKind.Database),
+            "the case is worthless unless there is a banner to be left behind");
+
+        await m_studio.Connection.ShowOpenDialogAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_studio.Connection.ConnectionInfo.FilePath, Is.Empty,
+                "the box is empty, which is what makes the sentence under it a claim about nothing");
+            Assert.That(m_studio.Connection.Probe.Kind, Is.EqualTo(StorageKind.NotFound));
+            Assert.That(m_studio.Connection.ProbeMessage, Is.Empty);
+            Assert.That(m_studio.Connection.HasProbeBanner, Is.False);
+        });
+    }
+
+    /// <summary>And the Create dialog resets through the same method, so it is asked as well.</summary>
+    [Test]
+    public async Task AReopenedCreateDialogDoesNotKeepItEitherAsync()
+    {
+        var path = Path.Combine(m_root, "before-create.witdb");
+
+        StudioFixture.CreateDatabaseOnDisk(path);
+
+        m_studio.Connection.ApplyAutoDetectedSettings(path);
+
+        await m_studio.Connection.ShowCreateDialogAsync();
+
+        Assert.That(m_studio.Connection.HasProbeBanner, Is.False);
+    }
+
+    #endregion
+
+    #region Whose file it is
+
+    /// <summary>
+    /// A database this application has open is said to be, <b>whatever the file system let the probe
+    /// read</b>. Measured 2026-08-09: a B+Tree database open in Studio comes back <c>Locked</c>, and an
+    /// LSM one comes back <c>Database</c> - an LSM database is a folder and the exclusive lock is a
+    /// sidecar inside it. While the sentence lived in the <c>Locked</c> branch it could therefore never
+    /// be shown for an LSM database at all, which is the store where a second connection is likeliest.
+    /// </summary>
+    [Test]
+    public async Task AnLsmDatabaseOpenHereIsNamedEvenThoughItsFolderCanBeReadAsync()
+    {
+        var session = await m_studio.OpenAnotherAsync("held", StudioStorage.Lsm, withSchema: false);
+
+        m_studio.Connection.ConnectionInfo.FilePath = session.Connection.FilePath;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_studio.Connection.Probe.Kind, Is.EqualTo(StorageKind.Database),
+                "the reading this case exists for: the folder is READABLE while Studio has it open");
+            Assert.That(m_studio.Connection.ProbeMessage, Does.Contain("LSM"),
+                "and what was read is still said");
+            Assert.That(m_studio.Connection.AlreadyOpenNote, Does.Contain("already open in Studio"));
+        });
+    }
+
+    /// <summary>
+    /// The other store, where the file IS held: the same sentence, and Studio does not blame "another
+    /// application" for a lock it is holding itself.
+    /// </summary>
+    [Test]
+    public async Task AHeldDatabaseOfOursIsNamedRatherThanBlamedOnSomebodyElseAsync()
+    {
+        var session = await m_studio.OpenAnotherAsync("mine", StudioStorage.BTree, withSchema: false);
+
+        m_studio.Connection.ConnectionInfo.FilePath = session.Connection.FilePath;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_studio.Connection.Probe.Kind, Is.EqualTo(StorageKind.Locked));
+            Assert.That(m_studio.Connection.AlreadyOpenNote, Does.Contain("already open in Studio"));
+            Assert.That(m_studio.Connection.ProbeMessage, Does.Not.Contain("another application"));
+        });
+    }
+
+    /// <summary>
+    /// CONTROL: a database nothing has open gets no such note. Without it "the note is there" would be
+    /// satisfied by a note that is always there.
+    /// </summary>
+    [Test]
+    public void APathNobodyHasOpenGetsNoNoteTest()
+    {
+        var path = Path.Combine(m_root, "nobodys.witdb");
+
+        StudioFixture.CreateDatabaseOnDisk(path);
+
+        m_studio.Connection.ConnectionInfo.FilePath = path;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_studio.Connection.Probe.Kind, Is.EqualTo(StorageKind.Database));
+            Assert.That(m_studio.Connection.AlreadyOpenNote, Is.Empty);
+            Assert.That(m_studio.Connection.HasProbeBanner, Is.True, "the found line is still there");
+        });
+    }
+
+    #endregion
+
     #region What it refuses
 
     /// <summary>
