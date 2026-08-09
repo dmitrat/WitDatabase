@@ -192,6 +192,9 @@ public sealed class DialogService : IDialogService
     public Task ShowConnectionsAsync(ConnectionsViewModel viewModel)
         => ConnectionsDialog.ShowAsync(RequireOwner(), viewModel);
 
+    public Task ShowKeyboardHelpAsync(KeyboardHelpViewModel viewModel)
+        => KeyboardHelpDialog.ShowAsync(RequireOwner(), viewModel);
+
     public Task ShowExportAsync(ExportViewModel viewModel)
         => ExportDialog.ShowAsync(RequireOwner(), viewModel);
 

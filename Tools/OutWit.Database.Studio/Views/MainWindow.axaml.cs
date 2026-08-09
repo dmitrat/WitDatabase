@@ -138,6 +138,18 @@ public partial class MainWindow : Window
             return;
         }
 
+        // The keyboard reference (9.6). Handled here because "Ctrl+?" cannot be a KeyBinding at all:
+        // Avalonia's KeyGesture.Parse reads the "?" as the name of a MODIFIER and throws, which took
+        // the whole window's construction with it - Studio did not start, and 769 tests were green.
+        // The key a person actually presses is Shift+/ , which arrives as OemQuestion.
+        if (e.Key == Avalonia.Input.Key.OemQuestion
+            && e.KeyModifiers.HasFlag(Avalonia.Input.KeyModifiers.Control))
+        {
+            app.MainWindowVm.KeyboardHelpCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
         // Find and replace in the editor (9.7). Handled at the window for the same reason Ctrl+K is:
         // the band's own box, the editor and the result grid all take focus in turn, and a KeyBinding
         // would answer for only one of them.

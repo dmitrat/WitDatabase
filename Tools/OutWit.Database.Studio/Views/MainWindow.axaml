@@ -227,6 +227,9 @@
 				</MenuItem>
 
 				<MenuItem AutomationProperties.AutomationId="MainWindowHelp" Header="{DynamicResource S.Menu.Help}">
+					<MenuItem AutomationProperties.AutomationId="MainWindowKeyboardHelp"
+					          Header="{DynamicResource S.Keys.Title}"
+					          Command="{Binding MainWindowVm.KeyboardHelpCommand}"/>
 					<MenuItem AutomationProperties.AutomationId="MainWindowAbout" Header="{DynamicResource S.Menu.About}"
 					          Command="{Binding MainWindowVm.AboutCommand}">
 						<MenuItem.Icon>

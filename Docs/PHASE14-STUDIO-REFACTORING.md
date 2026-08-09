@@ -1831,6 +1831,43 @@ Studio **730 -> 758**.
 
 ---
 
+## The keyboard window, 2026-08-08 (9.6, WS-69)
+
+A reference with a search over it, off `Справка` and `Ctrl+?`. **The list is DATA and it is checked
+against the application in both directions** (`KeyboardMapTests`): every gesture in the map has to be
+bound somewhere that really handles it, and every `KeyBinding` the markup declares has to be in the
+map. The second direction is the one that rots - adding a shortcut is one line and nothing about that
+line says a catalogue exists elsewhere. Both measured by sabotage: a gesture nothing handles reddens
+the first rule only, and dropping a declared one reddens the second only.
+
+**A one-line gesture killed the application, and 769 green tests did not notice.** The design writes
+the shortcut as `Ctrl+?`, and that is what went into the markup: `KeyGesture.Parse` reads the `?` as
+the name of a MODIFIER and throws *"Requested value '?' was not found"* while the window is being
+CONSTRUCTED. Studio did not start at all. Every test in the suite drives a ViewModel and none of them
+builds a window, so nothing could see it.
+
+The guard written for that class is the cheapest one that would have caught it:
+**`EveryDeclaredGestureCanBeParsedTest` asks Avalonia's own parser the same question the window asks at
+startup**, over every `Gesture` and `InputGesture` in every view, and needs no UI. Measured by putting
+the gesture back: red, with the same message. The key itself is handled in the window's `KeyDown` as
+`Key.OemQuestion`, beside `Ctrl+F` and `Ctrl+K`, which is where the gestures a `KeyBinding` cannot
+express already live.
+
+**Reassigning is deliberately absent and the window says so in the reader's language.** The design asks
+for it (one field, conflict shown before applying) and it cannot be honest yet: the gestures are
+declared in the shell rather than read from `KeyboardMap`, so a box would take a key and change
+nothing. Making the keys data-driven is the piece of work that comes first.
+
+**And one thing could not be verified with the instruments here, which is written into the test rather
+than glossed:** `Ctrl+?` cannot be driven on this machine - the automation tool refuses to send `?`,
+and `SendKeys` does not reach an Avalonia window (measured: `Ctrl+K` sent the same way did not open the
+palette either). The window was opened from the MENU in the running application; the shortcut rests on
+the rule plus the handler.
+
+Studio **758 -> 770**.
+
+---
+
 ## Findings for the engine, not fixed here
 **A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
 class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner
