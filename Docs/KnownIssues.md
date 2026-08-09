@@ -17,7 +17,7 @@ cause was not chased into the engine.
 |---|------|----------|--------|----------|
 | [1](#1-alter-table-add-column-is-unusable-schema-cannot-evolve) | EF migrations + engine DDL | **Blocker** | **FIXED** | A schema can be created but never changed |
 | [2](#2-inline-date-literals-are-rejected-by-the-parser) | EF query translation + grammar | Major | **FIXED** | `WitSqlParsingException` on an inlined `DateOnly` — and then, worse, no rows at all |
-| [3](#3-intstring-conversion-inside-a-query-is-not-translated) | EF query translation | Minor | open — root-caused | `group.Key.ToString()` does not translate |
+| [3](#3-intstring-conversion-inside-a-query-is-not-translated) | EF query translation + query planner | Minor | **FIXED** | `group.Key.ToString()` does not translate — and behind it, no grouped query could be ordered by an expression |
 
 A full audit of the engine and both providers was carried out in 2026-07. It is a
 working paper rather than documentation and is not published here; its §0 - the
@@ -254,6 +254,43 @@ Note that `DateOnly` → `DATE` mapping itself works correctly, as does
 ---
 
 ## 3. `int`→`string` conversion inside a query is not translated
+
+> **FIXED, 2026-08-09 — and the missing translator was hiding a planner defect behind it.**
+>
+> `WitConvertMethodTranslator` turns `x.ToString()` and `Convert.ToString(x)` on a primitive into a
+> SQL `CAST`, so the conversion happens in the database. Only where it really is a conversion:
+> `ToString()` taking a format or a culture is left alone — a `CAST` would ignore the format and
+> answer with something else — and the temporal types are left alone too, because `DateTime.ToString()`
+> renders in the **current culture** and a query whose result depends on where it ran is a defect, not
+> a feature.
+>
+> **What was underneath.** With the translator in place the issue's own query still failed, now inside
+> the engine. EF emits
+>
+> ```sql
+> SELECT CAST("e"."DeviceType" AS TEXT) AS "Key", COUNT(*) AS "Count"
+> FROM "Events" AS "e" GROUP BY "e"."DeviceType"
+> ORDER BY CAST("e"."DeviceType" AS TEXT)
+> ```
+>
+> and a grouped row carries **only the SELECT list**, so the `ORDER BY` was evaluated against a row
+> with no source columns in it: `Column 'DeviceType' not found`. The planner knew exactly two shapes,
+> an aggregate call and a column whose name matches a select alias, and let everything else through
+> unchanged — so **no grouped query could be ordered by an expression at all**, cast or arithmetic,
+> whether or not EF was involved. It now resolves an `ORDER BY` expression that is the same expression
+> as a select item to that item's position, compared as the canonical text the serializer writes
+> (the AST's own equality includes the line and column a node was parsed at, and the two occurrences
+> of one expression are by definition in two different places).
+>
+> **Named remainder, refused loudly rather than answered wrongly:** ordering by a grouping column that
+> is **not** in the SELECT list is still refused. Standard SQL allows it; this engine would have to
+> make a grouped row carry its key, which is a change to what a grouped row is. Pinned by
+> `GroupedOrderByExpressionTests.OrderingByAGroupingColumnThatIsNotSelectedIsStillRefusedTest`.
+>
+> **Regression tests:** `Integration/ConvertToStringTranslationTests` in the provider (five cases,
+> three of which were red on the untranslated provider with *"Translation of method 'int.ToString'
+> failed"*) and `AuditVerification/GroupedOrderByExpressionTests` in the engine (six, four of which go
+> red again if the resolution is removed).
 
 > **Root-caused, not yet fixed. The engine is not at fault** — all four conversion forms
 > work when executed directly:
