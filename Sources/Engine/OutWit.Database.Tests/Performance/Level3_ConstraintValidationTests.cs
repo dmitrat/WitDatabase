@@ -83,7 +83,7 @@ public class Level3_ConstraintValidationTests
         }
 
         // Verify linear growth (not quadratic)
-        // Time for 2000 should be roughly 4x time for 500 (2x scale = 4x time for O(n), 16x for O(nù))
+        // Time for 2000 should be roughly 4x time for 500 (2x scale = 4x time for O(n), 16x for O(nÔøΩ))
         var ratio = times[3].Ms / times[1].Ms;
         TestContext.Out.WriteLine($"  Scaling ratio (2000/500): {ratio:F2}x (linear=4x, quadratic=16x)");
         
@@ -219,71 +219,106 @@ public class Level3_ConstraintValidationTests
             TestContext.Out.WriteLine($"  {count,5} rows: {ms,8:F2} ms ({ms / count:F4} ms/row)");
         }
 
-        // Check for O(n log n) behavior (not O(nù))
-        // Compare 1000 to 100: linear = 10x, O(n log n) ? 13x, O(nù) = 100x
+        // Check for O(n log n) behavior (not O(nÔøΩ))
+        // Compare 1000 to 100: linear = 10x, O(n log n) ? 13x, O(nÔøΩ) = 100x
         var ratio = times[3].Ms / times[0].Ms;
-        TestContext.Out.WriteLine($"  Scaling ratio (1000/100): {ratio:F2}x (linear=10x, O(nù)=100x)");
+        TestContext.Out.WriteLine($"  Scaling ratio (1000/100): {ratio:F2}x (linear=10x, O(nÔøΩ)=100x)");
         
-        // With implicit index, should be much better than O(nù)
+        // With implicit index, should be much better than O(nÔøΩ)
         // Allow up to 50x to account for variability and JIT warmup in CI environments
         // Key point: this was 76x+ before implicit index implementation
-        Assert.That(ratio, Is.LessThan(50), "INSERT with implicit PK index should scale as O(n log n), not O(nù)");
+        Assert.That(ratio, Is.LessThan(50), "INSERT with implicit PK index should scale as O(n log n), not O(nÔøΩ)");
     }
 
     /// <summary>
-    /// INSERT with explicit PK value WITH additional explicit UNIQUE index.
-    /// This creates TWO indexes: implicit _PK_ + explicit IX_, which adds overhead.
+    /// INSERT with explicit PK value WITH additional explicit UNIQUE index - two indexes on one
+    /// column - must scale with the rows and not with their square.
     /// </summary>
+    /// <remarks>
+    /// <b>The sizes are INTERLEAVED and the rounds are repeated, and that is what makes it a
+    /// measurement rather than a coin toss.</b> The store here is in memory, so there is nothing to
+    /// count and the clock is the only instrument there is - but a single sequential pass measures
+    /// the machine's load as much as the engine. Measured 2026-08-09: run alone this test reports
+    /// 7.3x and 7.9x against a bound of 12; run inside the whole fixture it failed, every time, for
+    /// as long as anyone remembers. The ratio is a per-round comparison of two sizes taken next to
+    /// each other, and the verdict is the MEDIAN of three rounds, so one loaded round cannot decide
+    /// it. The spread is printed, because a wide one is itself worth seeing.
+    /// </remarks>
     [Test]
     public void InsertExplicitPkWithIndexTest()
     {
-        var counts = new[] { 100, 500, 1000, 2000 };
-        var times = new List<(int Count, double Ms)>();
+        const int small = 500;
+        const int large = 2000;
+        const int rounds = 3;
+
+        var ratios = new List<double>();
         var tableIdx = 0;
 
-        foreach (var count in counts)
-        {
-            var tableName = $"ExplicitPkIdx_{tableIdx++}";
-            m_engine.Execute($@"
-                CREATE TABLE {tableName} (
-                    Id INT PRIMARY KEY,
-                    Name VARCHAR(100),
-                    Value DOUBLE
-                )");
-        
-            // Create additional UNIQUE index (implicit _PK_ already exists)
-            // This is redundant now but tests the overhead of multiple indexes
-            m_engine.Execute($"CREATE UNIQUE INDEX IX_{tableName}_Id ON {tableName}(Id)");
-
-            var sw = System.Diagnostics.Stopwatch.StartNew();
-            for (int i = 0; i < count; i++)
-            {
-                m_engine.Execute(
-                    $"INSERT INTO {tableName} (Id, Name, Value) VALUES (@id, @name, @value)",
-                    new Dictionary<string, object?>
-                    {
-                        { "@id", i },
-                        { "@name", $"Name{i}" },
-                        { "@value", i * 1.5 }
-                    });
-            }
-            sw.Stop();
-            
-            times.Add((count, sw.Elapsed.TotalMilliseconds));
-            
-            m_engine.Execute($"DROP TABLE {tableName}");
-        }
-
         TestContext.Out.WriteLine("=== INSERT with Explicit PK (implicit + explicit index) ===");
-        foreach (var (count, ms) in times)
+
+        for (var round = 0; round < rounds; round++)
         {
-            TestContext.Out.WriteLine($"  {count,5} rows: {ms,8:F2} ms ({ms / count:F4} ms/row)");
+            // Next to each other, and the smaller one first every time, so that whatever the
+            // machine is doing during a round is doing it to both arms.
+            var smallMs = TimeInsertsWithTwoIndexes(small, ref tableIdx);
+            var largeMs = TimeInsertsWithTwoIndexes(large, ref tableIdx);
+
+            var ratio = largeMs / smallMs;
+            ratios.Add(ratio);
+
+            TestContext.Out.WriteLine(
+                $"  round {round + 1}: {small} rows {smallMs,8:F2} ms, {large} rows {largeMs,8:F2} ms"
+                + $" -> {ratio:F2}x");
         }
 
-        var ratio = times[3].Ms / times[1].Ms;
-        TestContext.Out.WriteLine($"  Scaling ratio (2000/500): {ratio:F2}x (linear=4x, O(n log n)?4.4x)");
-        
-        Assert.That(ratio, Is.LessThan(12), "INSERT with indexes should scale as O(n log n)");
+        var sorted = ratios.OrderBy(r => r).ToList();
+        var median = sorted[sorted.Count / 2];
+
+        TestContext.Out.WriteLine(
+            $"  median {median:F2}x, spread {sorted[0]:F2}x..{sorted[^1]:F2}x "
+            + $"(linear = {(double)large / small:F1}x, O(n log n) ~ 4.4x)");
+
+        Assert.That(median, Is.LessThan(12),
+            $"four times the rows cost {median:F2}x the time at the median of {rounds} interleaved "
+            + "rounds, so the cost is following the square of the table rather than the table");
+    }
+
+    /// <summary>
+    /// Times <paramref name="count"/> inserts into a fresh table carrying two indexes on its key -
+    /// the implicit <c>_PK_</c> and a redundant explicit UNIQUE one.
+    /// </summary>
+    private double TimeInsertsWithTwoIndexes(int count, ref int tableIdx)
+    {
+        var tableName = $"ExplicitPkIdx_{tableIdx++}";
+
+        m_engine.Execute($@"
+            CREATE TABLE {tableName} (
+                Id INT PRIMARY KEY,
+                Name VARCHAR(100),
+                Value DOUBLE
+            )");
+
+        m_engine.Execute($"CREATE UNIQUE INDEX IX_{tableName}_Id ON {tableName}(Id)");
+
+        var sw = System.Diagnostics.Stopwatch.StartNew();
+
+        for (var i = 0; i < count; i++)
+        {
+            m_engine.Execute(
+                $"INSERT INTO {tableName} (Id, Name, Value) VALUES (@id, @name, @value)",
+                new Dictionary<string, object?>
+                {
+                    { "@id", i },
+                    { "@name", $"Name{i}" },
+                    { "@value", i * 1.5 }
+                });
+        }
+
+        sw.Stop();
+
+        m_engine.Execute($"DROP TABLE {tableName}");
+
+        return sw.Elapsed.TotalMilliseconds;
     }
 
     #endregion
