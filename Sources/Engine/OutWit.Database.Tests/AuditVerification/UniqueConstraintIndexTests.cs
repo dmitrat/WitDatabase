@@ -145,6 +145,33 @@ public sealed class UniqueConstraintIndexTests
     }
 
     /// <summary>
+    /// <b>It is invisible from outside, like the key's own index.</b> An implicit index is hidden
+    /// from <c>INFORMATION_SCHEMA.INDEXES</c>, which is what keeps it out of a dump - and a dump
+    /// carrying it would try to create it again over a table whose own CREATE had just made one.
+    /// Nothing a user wrote gained an object they did not ask for.
+    /// </summary>
+    [Test]
+    public void TheIndexIsNotAnObjectTheUserHasToSeeTest()
+    {
+        m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, Email VARCHAR(50) UNIQUE)");
+        m_engine.Execute("CREATE UNIQUE INDEX IX_Mine ON T (Email)");
+
+        var published = m_engine
+            .Query("SELECT INDEX_NAME FROM INFORMATION_SCHEMA.INDEXES WHERE TABLE_NAME = 'T'")
+            .Select(row => row["INDEX_NAME"].AsString())
+            .Distinct()
+            .ToArray();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(published, Is.EqualTo(new[] { "IX_Mine" }),
+                "the one the user created, and neither implicit one");
+            Assert.That(Unique("T"), Has.Count.EqualTo(1),
+                "CONTROL: ours exists - it is hidden, not absent");
+        });
+    }
+
+    /// <summary>
     /// The constraint still REFUSES a duplicate - the index is how it is enforced, not a replacement
     /// for enforcing it. This is the case that would go red if the index were created and the check
     /// stopped consulting it.

@@ -120,7 +120,13 @@ public sealed partial class StatementExecutor
                 Name = name,
                 TableName = table.Name,
                 Columns = columns,
-                IsUnique = true
+                IsUnique = true,
+
+                // Implicit, exactly like the key's own _PK_ index: this is how a constraint the user
+                // already wrote is enforced, not an object they created. INFORMATION_SCHEMA hides an
+                // implicit index, which is what keeps it out of a dump - and a dump carrying it would
+                // try to create it again over a table whose own CREATE had just made one.
+                IsImplicit = true
             });
         }
     }
