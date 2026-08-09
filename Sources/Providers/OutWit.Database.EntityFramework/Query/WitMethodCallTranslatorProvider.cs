@@ -26,7 +26,11 @@ public sealed class WitMethodCallTranslatorProvider : RelationalMethodCallTransl
             new WitMathMethodTranslator(sqlExpressionFactory),
             new WitDateTimeMethodTranslator(sqlExpressionFactory),
             new WitGuidMethodTranslator(sqlExpressionFactory),
-            new WitJsonMethodTranslator(sqlExpressionFactory, typeMappingSource)
+            new WitJsonMethodTranslator(sqlExpressionFactory, typeMappingSource),
+
+            // ToString() and Convert.ToString() on a primitive, which had no translator at all - so
+            // EF refused the whole query rather than falling back (KnownIssues 3).
+            new WitConvertMethodTranslator(sqlExpressionFactory, typeMappingSource)
         ]);
     }
 

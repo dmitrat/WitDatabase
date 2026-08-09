@@ -5,6 +5,7 @@ using OutWit.Database.Iterators;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Clauses;
 using OutWit.Database.Parser.Schema.Types;
+using OutWit.Database.Parser.Serializers;
 using OutWit.Database.Parser.Statements;
 using OutWit.Database.Sql;
 using OutWit.Database.Values;
@@ -132,6 +133,18 @@ public sealed partial class QueryPlanner
         WitSqlExpression expr,
         IReadOnlyList<ClauseSelectItem> selectList)
     {
+        // THE SAME EXPRESSION AS A SELECT ITEM, whatever shape it is. A grouped row carries only the
+        // SELECT list, so an ORDER BY that names anything else is evaluated against a row that does
+        // not have it - "Column 'DeviceType' not found". The cases below know two shapes, an
+        // aggregate call and a bare column; everything else fell through unchanged, and
+        // ORDER BY CAST(x AS TEXT) over GROUP BY x is what EF Core emits for
+        // `GroupBy(x => x.Type).Select(g => g.Key.ToString())` - the shape of KnownIssues 3. Found
+        // 2026-08-09 by running that query rather than by reading this method.
+        var matched = MatchSelectItem(expr, selectList);
+
+        if (matched >= 0)
+            return new WitSqlExpressionOrderByColumnIndex { ColumnIndex = matched };
+
         // If expression is aggregate function, find matching column in SELECT
         if (expr is WitSqlExpressionFunctionCall func && IsAggregateFunction(func))
         {
@@ -201,6 +214,59 @@ public sealed partial class QueryPlanner
 
         // Other expressions (literals, etc.) pass through
         return expr;
+    }
+
+    /// <summary>
+    /// The index of the SELECT item that is the same expression as <paramref name="expr"/>, or -1.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Compared as the CANONICAL TEXT the serializer writes, because the AST's own <c>Is</c> includes
+    /// the line and column a node was parsed at - and the two occurrences of one expression are, by
+    /// definition, in two different places in the statement. Comparing renderings is what makes
+    /// "the same expression" a question about the expression rather than about where it was written.
+    /// </para>
+    /// <para>
+    /// <b>Not attempted for anything carrying a subquery.</b> The serializer renders one as the
+    /// literal text <c>SELECT ...</c>, so two different subqueries render identically - and a false
+    /// match here would silently order by the wrong column, which is worse than the refusal this
+    /// method exists to remove.
+    /// </para>
+    /// </remarks>
+    private static int MatchSelectItem(WitSqlExpression expr, IReadOnlyList<ClauseSelectItem> selectList)
+    {
+        var text = Render(expr);
+
+        if (text == null)
+            return -1;
+
+        for (var i = 0; i < selectList.Count; i++)
+        {
+            if (selectList[i].Expression is { } selected && Render(selected) == text)
+                return i;
+        }
+
+        return -1;
+    }
+
+    /// <summary>
+    /// An expression as text, or null when the rendering cannot be trusted to identify it.
+    /// </summary>
+    private static string? Render(WitSqlExpression expression)
+    {
+        try
+        {
+            var text = WitSqlExpressionSerializer.Serialize(expression);
+
+            // The serializer's one lossy case - see MatchSelectItem.
+            return text.Contains("SELECT", StringComparison.OrdinalIgnoreCase) ? null : text;
+        }
+        catch (NotSupportedException)
+        {
+            // An expression the serializer has no form for cannot be identified this way, and a
+            // planner must not fail over a comparison it was only trying.
+            return null;
+        }
     }
 
     /// <summary>
