@@ -1,4 +1,5 @@
 ﻿using OutWit.Database.Context;
+using OutWit.Database.Core.Exceptions;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Definitions;
 using OutWit.Database.Expressions;
@@ -45,6 +46,15 @@ public sealed partial class WitSqlEngine
     /// Supports partial indexes (WHERE clause), expression indexes, and covering indexes.
     /// </summary>
     /// <param name="indexDef">The index definition.</param>
+    /// <remarks>
+    /// <b>A build that fails must leave nothing behind.</b> The catalogue entry is written - and
+    /// flushed - before the index holds anything, so an index whose build did not finish is one the
+    /// planner will route queries through and the file cannot answer from: measured 2026-08-09, a
+    /// build that exhausted the page cache left <c>WHERE V = 7</c> answering zero rows out of two,
+    /// with the database opening and the query succeeding. Only the unique-violation case used to be
+    /// cleaned up, and even that ran the physical drop first, so a drop that threw for the same
+    /// reason the build did left the catalogue entry in place.
+    /// </remarks>
     private void BuildIndexFromExistingData(DefinitionIndex indexDef)
     {
         var table = m_schema.GetTable(indexDef.TableName);
@@ -59,6 +69,58 @@ public sealed partial class WitSqlEngine
         if (secondaryIndex.Count > 0)
             return;
 
+        try
+        {
+            FillIndexFromExistingData(indexDef, table, secondaryIndex);
+        }
+        catch (UniqueIndexViolationException)
+        {
+            RemoveIndexAfterAFailedBuild(indexDef.Name);
+
+            throw new InvalidOperationException(
+                $"UNIQUE constraint failed: Cannot create unique index '{indexDef.Name}' " +
+                $"on table '{indexDef.TableName}' - duplicate values exist");
+        }
+        catch
+        {
+            // Any other reason a build can end - and the one that was measured is not exotic: an
+            // ordinary page cache runs out of unpinned slots on a table this size.
+            RemoveIndexAfterAFailedBuild(indexDef.Name);
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// Takes both halves of an index whose build did not finish back out.
+    /// </summary>
+    /// <remarks>
+    /// The catalogue is removed in a <c>finally</c> because it is the half that <b>persists</b>: the
+    /// physical index lives in a file this process is holding, while the catalogue entry has already
+    /// been made durable, so an entry left behind is what a query is planned through tomorrow. A
+    /// physical drop that fails is not allowed to replace the build's own exception either - that is
+    /// what the caller needs to be told.
+    /// </remarks>
+    private void RemoveIndexAfterAFailedBuild(string indexName)
+    {
+        try
+        {
+            m_database.DropIndex(indexName);
+        }
+        catch
+        {
+            // Reported by the exception the build is about to raise.
+        }
+        finally
+        {
+            m_schema.DropIndex(indexName);
+        }
+    }
+
+    private void FillIndexFromExistingData(
+        DefinitionIndex indexDef,
+        DefinitionTable table,
+        ISecondaryIndex secondaryIndex)
+    {
         // Scan all rows in the table
         var tablePrefix = SchemaCatalog.GetTableDataPrefix(indexDef.TableName);
         var endPrefix = SchemaCatalog.GetTableDataEndPrefix(indexDef.TableName);
@@ -83,21 +145,10 @@ public sealed partial class WitSqlEngine
             // Build primary key
             var primaryKey = BuildPrimaryKey(rowId);
             
-            // Add to index
-            try
-            {
-                secondaryIndex.Add(indexKey, primaryKey);
-            }
-            catch (InvalidOperationException)
-            {
-                // Unique index violation on existing data
-                // Clean up the index and throw
-                m_database.DropIndex(indexDef.Name);
-                m_schema.DropIndex(indexDef.Name);
-                throw new InvalidOperationException(
-                    $"UNIQUE constraint failed: Cannot create unique index '{indexDef.Name}' " +
-                    $"on table '{indexDef.TableName}' - duplicate values exist");
-            }
+            // Add to index. Nothing is caught here any more: every way this loop can end badly is
+            // handled in one place by the caller, which is what stops a failure that is not a unique
+            // violation from leaving a registered index with nothing in it.
+            secondaryIndex.Add(indexKey, primaryKey);
         }
     }
 

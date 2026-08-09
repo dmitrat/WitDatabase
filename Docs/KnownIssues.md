@@ -688,10 +688,34 @@ read zero - an answer about the schema wearing an answer about the rows - and th
 async-only-storage pin recorded the boundary as sitting between `CREATE TABLE` and
 the first `INSERT`, when the create only "survived" because it wrote nothing at all.
 
-**Still open, and deliberately:** a process that dies in the MIDDLE of a statement
-can leave a header of one vintage beside pages of another, because eviction happens
-while the statement runs. That window is identical for DML, and closing it needs a
-journal that can be replayed at open - which the MVCC store still refuses to have.
+**Still open, and MEASURED 2026-08-09 - the paragraph that used to stand here was
+right about one outcome of three.** It said only that a process dying in the MIDDLE
+of a statement can leave a header of one vintage beside pages of another, that the
+window is "identical for DML", and that closing it needs a journal.
+
+What a kill in the middle of a statement actually leaves, measured through the
+ADO.NET path with a real `TerminateProcess` and a guard that DISCARDS any run whose
+kill arrived after the statement returned:
+
+| configuration | subject | after the kill |
+|---|---|---|
+| **MVCC - the default** | `UPDATE` over 20,000 rows | **the database will not open**, 5 of 5 runs, same page every time |
+| `MVCC=false`, no journal | the same | **opens, and the statement is HALF APPLIED** - 9,081 / 14,860 / 16,156 of 20,000 |
+| `MVCC=false;Journal=wal` or `rollback` | the same | clean: the statement left nothing |
+| **every configuration** | `CREATE INDEX` | opens; the index is in the catalogue and EMPTY, and the planner uses it - see issue 14 |
+
+So three corrections. The failure under the default configuration is the
+**unopenable** one, not the quiet one. The atomicity half - a statement runs in an
+implicit transaction, so one that did not return must leave NOTHING behind - was not
+recorded at all, and it is broken on the transactional store with no journal. And a
+journal is **half** a remedy: it closes the DML half and cannot touch the index half,
+because an index is a separate file the journal does not cover.
+
+The same `UPDATE` inside an EXPLICIT transaction left nothing behind in 6 of 6 runs
+at the same depth, so the two paths differ. The mechanism behind that is **not**
+attributed, and is not guessed at here.
+
+Evidence and the probe: `@Evidence/item8`, outside every working tree.
 
 ---
 
@@ -883,6 +907,79 @@ body cannot cancel from SQL — `ContextTrigger.Cancel` is set by the executor, 
 a body can write — so the explicit refusal is reachable only from a host that drives the
 executor directly. The case exercises the neighbouring path, a body that fails, which lands in
 the same place for the user, and says so.
+
+---
+
+## 14. A `CREATE INDEX` that failed left an index the planner used and the file could not answer
+
+> **FIXED 2026-08-09.** `Engine/WitSqlEngine.Ddl.Indexes.cs` and
+> `Core/Indexes/IndexManager.cs`. Regression tests:
+> `Engine/Durability/HalfBuiltIndexTests` (five cases, three of them controls) and
+> `Core.Tests/Indexes/IndexManagerDropTests` (measured both ways). One remainder is
+> **pinned rather than fixed** - see the end.
+
+A `CREATE INDEX` writes its catalogue entry first - and since issue 10 that write is
+flushed where it is made - and only then fills the index from the table. So between
+the two there is an index that is registered, empty, and **used by the query
+planner**.
+
+**Reaching it needs no crash at all.** Measured 2026-08-09 with 2,000 rows,
+`CacheSize=8` and a thousand distinct values, the build itself fails - "Cache is full
+and all pages are pinned" - and afterwards:
+
+- the catalogue still names `IX_T_V`, and that entry is durable;
+- `IX_T_V.idx` is one empty page;
+- `SELECT Id FROM T WHERE V = 7` answers **0** rows where 2 of them match, with the
+  database opening and the query succeeding.
+
+`EXPLAIN` says why the answer is nothing rather than everything:
+`SEARCH TABLE T USING INDEX IX_T_V (=)`. **A wrong answer with no error anywhere** -
+worse than the loud halves of the same window, where the database refuses to open or
+a statement is visibly half applied.
+
+### Two causes, both in the failure path
+
+- the `catch` read **every** `InvalidOperationException` as a unique violation, so an
+  exhausted page cache was reported to the user as "UNIQUE constraint failed" - and
+  every other way a build can end was not cleaned up at all;
+- the cleanup ran `m_database.DropIndex` **first**, and that can throw for the same
+  reason the build did, leaving `m_schema.DropIndex` on the next line unreached. The
+  catalogue entry is the half that persists, so it is the half that must be removed
+  whatever else happens.
+
+`UniqueIndexViolationException` (deriving from `InvalidOperationException`, so nothing
+that catches the base type stops working) is what lets the two be told apart. Exactly
+one existing test depended on the old exact type, and it now asserts both.
+
+### Also fixed: a drop that could not release what it dropped
+
+`IndexManager.DropIndex` empties the backing store before releasing the index -
+emptying matters because a persistent store keeps its entries under the index's own
+name. `ClearBackingStore` says in its own comment that a drop must not fail because
+the store could not be emptied, and it named two exception types; a third walked past
+it and `index.Dispose()`, the line after, was never reached. The dispose is in a
+`finally` now.
+
+### Pinned, not fixed
+
+That is **not enough to release the file**: the dispose CHAIN flushes, and on this
+failure the flush throws in its turn, so a failed build still holds its `.idx` file
+for the life of the process. `HalfBuiltIndexTests.AFailedIndexBuildStillHoldsItsFileTest`
+pins it and says what the fix should invert. It is recoverable in practice because
+nothing names that file any more - the database reopens.
+
+### Named remainders, both measured
+
+- **A killed `CREATE INDEX` still leaves the same state.** A kill runs no cleanup, so
+  the ordering - catalogue first, content after - is what would have to change.
+  Measured 8 of 8 across four configurations. At the default page cache the damage
+  usually repairs itself instead, because the index file does not exist yet at the
+  moment of the kill and `EnsurePhysicalIndexesExist` rebuilds a **missing** index.
+- **An index that exists and holds SOME entries is trusted.** `BuildIndexFromExistingData`
+  skips building when `Count > 0`, and `EnsurePhysicalIndexesExist` rebuilds only a
+  missing index - its comment says an empty one is left alone deliberately, and the
+  comment above it promises a lazy rebuild that does not happen. So a build that
+  stopped part way and then got past the cleanup would be adopted as complete.
 
 ---
 
