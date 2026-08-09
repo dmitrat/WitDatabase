@@ -513,6 +513,12 @@
   "Schema.Absent.MoveColumn": "Moving a column - there is no FIRST, AFTER, MODIFY or CHANGE",
   "Schema.Absent.Sequence": "A sequence's step, minimum, maximum or cycle - CREATE SEQUENCE takes a name and START WITH, nothing else",
 
+  "Update.Title": "Update",
+  "Update.Available": "Version {0} is available — you have {1}",
+  "Update.OpenPage": "Open the release page",
+  "Update.Later": "Remind me later",
+  "Update.Skip": "Skip this version",
+
   "Keys.Help": "Keyboard shortcuts",
   "Keys.Palette": "Command palette",
   "Keys.NewDatabase": "New database",

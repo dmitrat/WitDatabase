@@ -83,12 +83,65 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         {
             var settings = await Settings.LoadAsync();
             LoadRecentFiles(settings);
+
+            await CheckForUpdatesAsync(settings);
         }
         catch (Exception ex)
         {
             Logger.LogError(ex, "Failed to initialize settings");
         }
     }
+
+    /// <summary>
+    /// Asks whether a newer Studio has been published - and ONLY if the user turned that on (9.8).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The setting is off by default and the check is the only thing that reaches the network.</b>
+    /// A tool that goes out from a machine holding somebody's working database has to ask once,
+    /// explicitly - the database may be on a closed network, and the request itself is a fact about
+    /// that machine. So the feed is not merely ignored when the setting is off: it is never asked.
+    /// </para>
+    /// <para>
+    /// A failure says nothing to anybody. Nobody asked for this at the moment it runs, so an error
+    /// banner would be a report about a background task nobody wanted.
+    /// </para>
+    /// </remarks>
+    public async Task CheckForUpdatesAsync(Models.Settings settings)
+    {
+        if (!settings.CheckForUpdates)
+            return;
+
+        var feed = ReleaseFeed ??= new GitHubReleaseFeed(Logger);
+
+        var decision = UpdateCheck.Decide(
+            await feed.LatestAsync(),
+            UpdateViewModel.CurrentVersion,
+            settings.SkippedUpdate);
+
+        LastUpdateVerdict = decision.Verdict;
+
+        // What it concluded, in the log, at a level that is actually written. Without this a run that
+        // shows nothing is indistinguishable from a run that never reached the network - measured
+        // while verifying it in the application, where exactly that question could not be answered
+        // from outside.
+        Logger.LogInformation("Update check: {Verdict} (published {Version})",
+            decision.Verdict, decision.Version ?? "nothing");
+
+        if (!decision.IsOffered)
+            return;
+
+        await ApplicationVm.Dialogs.ShowUpdateAsync(new UpdateViewModel(ApplicationVm, decision));
+    }
+
+    /// <summary>
+    /// Where the release list comes from. Settable so a test can answer without a network - and so
+    /// that "was it asked at all?" is measurable, which is the claim that matters here.
+    /// </summary>
+    public IReleaseFeed? ReleaseFeed { get; set; }
+
+    /// <summary>What the last check concluded, for the tests and the log.</summary>
+    public UpdateVerdict? LastUpdateVerdict { get; private set; }
 
     private void LoadRecentFiles(Models.Settings settings)
     {

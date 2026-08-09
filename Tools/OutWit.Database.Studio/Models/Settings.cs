@@ -34,6 +34,7 @@ public sealed class Settings : ModelBase
             && RestoreConnections.Is(other.RestoreConnections)
             && RestoreTabs.Is(other.RestoreTabs)
             && CheckForUpdates.Is(other.CheckForUpdates)
+            && SkippedUpdate.Is(other.SkippedUpdate)
             && RecentFiles.Is(other.RecentFiles)
             && MaxRecentFiles.Is(other.MaxRecentFiles)
             && EditorFontFamily.Is(other.EditorFontFamily)
@@ -69,6 +70,7 @@ public sealed class Settings : ModelBase
             RestoreConnections = RestoreConnections,
             RestoreTabs = RestoreTabs,
             CheckForUpdates = CheckForUpdates,
+            SkippedUpdate = SkippedUpdate,
             RecentFiles = RecentFiles.ToList(),
             MaxRecentFiles = MaxRecentFiles,
             EditorFontFamily = EditorFontFamily,
@@ -118,6 +120,7 @@ public sealed class Settings : ModelBase
         RestoreConnections = other.RestoreConnections;
         RestoreTabs = other.RestoreTabs;
         CheckForUpdates = other.CheckForUpdates;
+        SkippedUpdate = other.SkippedUpdate;
         RecentFiles = other.RecentFiles.ToList();
         MaxRecentFiles = other.MaxRecentFiles;
         EditorFontFamily = other.EditorFontFamily;
@@ -175,6 +178,13 @@ public sealed class Settings : ModelBase
     /// </summary>
     [Notify]
     public bool CheckForUpdates { get; set; }
+
+    /// <summary>
+    /// The version the user pressed "skip" on, so it is not offered again (9.8). Per VERSION rather
+    /// than for good: a later one is still offered, and turning the check off is what
+    /// <see cref="CheckForUpdates"/> is for.
+    /// </summary>
+    public string? SkippedUpdate { get; set; }
 
     /// <summary>Recently opened databases, most recent first.</summary>
     [Notify]
