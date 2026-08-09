@@ -206,6 +206,27 @@ public static class StorageDetector
                 };
             }
         }
+        catch (IOException)
+        {
+            // Something is holding the file. Reporting this as "store type unknown" - which is what
+            // a text file gets - is what made a database open in Studio read as no database at all.
+            //
+            // The discriminator is the exception TYPE rather than an errno, because HResults for a
+            // sharing violation differ by platform and a message match would differ by language: the
+            // file exists (checked above) and is being opened for reading, so the ways this can fail
+            // are being held by someone (IOException) or being forbidden to us
+            // (UnauthorizedAccessException, which is not caught here and falls through to the answer
+            // below). A file that is merely too short does not throw at all - it is handled above.
+            return new StorageDetectionResult
+            {
+                Exists = true,
+                IsDirectory = false,
+                StoreType = null,
+                Path = path,
+                RequiresPassword = false,
+                IsLocked = true
+            };
+        }
         catch
         {
             return new StorageDetectionResult
@@ -218,6 +239,7 @@ public static class StorageDetector
             };
         }
     }
+
 }
 
 /// <summary>
@@ -289,6 +311,27 @@ public sealed class StorageDetectionResult
     /// Whether file locking was enabled (BTree only).
     /// </summary>
     public bool HasFileLocking { get; init; }
+
+    /// <summary>
+    /// The file exists and something else is holding it, so nothing about it could be read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Added 2026-08-09 because the alternative was a lie. A held file threw out of the read and the
+    /// bare <c>catch</c> answered <c>StoreType = null</c> - <b>the same answer a text file gets</b> -
+    /// so a caller could only conclude "not a database", and Studio's Open dialog told users there
+    /// was no database at a path it had open itself.
+    /// </para>
+    /// <para>
+    /// <b>Measured, not assumed:</b> on Windows a database held by an engine answers
+    /// <c>IOException</c> with HResult <c>0x80070020</c> (ERROR_SHARING_VIOLATION), while a file too
+    /// short to hold a header opens without throwing at all - so the two are cleanly distinguishable
+    /// and no heuristic is involved. <b>File locking is platform behaviour</b> and this flag says
+    /// only what the operating system said: where a held file can be read, it is read, and this stays
+    /// false.
+    /// </para>
+    /// </remarks>
+    public bool IsLocked { get; init; }
 
     /// <summary>
     /// Creates a result for non-existent path.

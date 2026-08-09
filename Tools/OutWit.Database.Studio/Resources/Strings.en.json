@@ -95,6 +95,8 @@
   "Dialog.Open.Connecting": "Connecting…",
   "Dialog.Open.NotFound": "There is no file at this path. To start a new database, use Create database.",
   "Dialog.Open.NotADatabaseFolder": "There is no WitDatabase in this folder: no manifest and no SSTable.",
+  "Dialog.Open.AlreadyOpenHere": "This database is already open in Studio. Opening it again adds a second connection to the same file.",
+  "Dialog.Open.HeldByAnother": "The file is held by another application, so nothing could be read from it. Opening it may fail.",
   "Dialog.Open.NotADatabaseFile": "This file is not a WitDatabase.",
   "Dialog.Open.Found": "Found a {0} database · {1} · {2}",
   "Dialog.Open.NoMvcc": "no MVCC",
