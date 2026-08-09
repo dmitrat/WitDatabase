@@ -82,15 +82,18 @@ public sealed partial class StatementExecutor
         if (update.WhereClause == null)
             return false;
 
-        // Check for BEFORE or INSTEAD OF triggers (they might modify behavior)
+        var assignedColumns = AssignedColumns(update);
+
+        // Check for BEFORE or INSTEAD OF triggers (they might modify behavior). A trigger this
+        // statement's columns do not reach will not fire, so it is no reason to leave the fast path.
         var beforeTriggers = m_context.Database.GetTriggersForTable(
             update.TableName, TriggerEvent.Update, TriggerTime.Before);
-        if (beforeTriggers.Any())
+        if (beforeTriggers.Any(trigger => trigger.WatchesAnyOf(assignedColumns)))
             return false;
 
         var insteadOfTriggers = m_context.Database.GetTriggersForTable(
             update.TableName, TriggerEvent.Update, TriggerTime.InsteadOf);
-        if (insteadOfTriggers.Any())
+        if (insteadOfTriggers.Any(trigger => trigger.WatchesAnyOf(assignedColumns)))
             return false;
 
         // Try to extract simple PK equality condition
@@ -238,7 +241,8 @@ public sealed partial class StatementExecutor
             oldValues.Skip(dataStartIndex).ToArray(), 
             columnNames.Skip(dataStartIndex).ToArray());
         WitSqlRow? afterRow = newRow;
-        FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.After, oldRow, ref afterRow);
+        FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.After, oldRow, ref afterRow,
+            assignedColumns);
 
         m_context.LastChangesCount = 1;
         return true;
@@ -263,15 +267,18 @@ public sealed partial class StatementExecutor
         if (update.WhereClause == null)
             return false;
 
-        // Check for BEFORE or INSTEAD OF triggers (they might modify behavior)
+        var assignedColumns = AssignedColumns(update);
+
+        // Check for BEFORE or INSTEAD OF triggers (they might modify behavior). A trigger this
+        // statement's columns do not reach will not fire, so it is no reason to leave the fast path.
         var beforeTriggers = m_context.Database.GetTriggersForTable(
             update.TableName, TriggerEvent.Update, TriggerTime.Before);
-        if (beforeTriggers.Any())
+        if (beforeTriggers.Any(trigger => trigger.WatchesAnyOf(assignedColumns)))
             return false;
 
         var insteadOfTriggers = m_context.Database.GetTriggersForTable(
             update.TableName, TriggerEvent.Update, TriggerTime.InsteadOf);
-        if (insteadOfTriggers.Any())
+        if (insteadOfTriggers.Any(trigger => trigger.WatchesAnyOf(assignedColumns)))
             return false;
 
         // Try to extract PK IN (...) condition
@@ -309,9 +316,6 @@ public sealed partial class StatementExecutor
         // Get computed and ROWVERSION columns info
         var storedComputedColumns = table.Columns.Where(c => c.IsComputed && c.IsStored).ToList();
         var rowVersionColumns = table.Columns.Where(c => c.Type == WitDataType.RowVersion).ToList();
-
-        // Determine which columns will be modified by SET clauses
-        var setColumnNames = update.SetClauses.Select(s => s.ColumnName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         int rowsAffected = 0;
         List<WitSqlRow>? returningRows = update.ReturningClause != null ? [] : null;
@@ -420,7 +424,8 @@ public sealed partial class StatementExecutor
                 oldValues.Skip(dataStartIndex).ToArray(),
                 columnNames.Skip(dataStartIndex).ToArray());
             WitSqlRow? afterRow = newRow;
-            FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.After, oldRow, ref afterRow);
+            FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.After, oldRow, ref afterRow,
+                assignedColumns);
         }
 
         m_context.LastChangesCount = rowsAffected;
@@ -458,21 +463,20 @@ public sealed partial class StatementExecutor
         if (update.ReturningClause != null)
             return false;
 
-        // Check for BEFORE or INSTEAD OF triggers
+        // Get columns being modified
+        var setColumnNames = AssignedColumns(update);
+
+        // Check for BEFORE or INSTEAD OF triggers. A trigger this statement's columns do not reach
+        // will not fire, so it is no reason to leave the streaming path.
         var beforeTriggers = m_context.Database.GetTriggersForTable(
             update.TableName, TriggerEvent.Update, TriggerTime.Before);
-        if (beforeTriggers.Any())
+        if (beforeTriggers.Any(trigger => trigger.WatchesAnyOf(setColumnNames)))
             return false;
 
         var insteadOfTriggers = m_context.Database.GetTriggersForTable(
             update.TableName, TriggerEvent.Update, TriggerTime.InsteadOf);
-        if (insteadOfTriggers.Any())
+        if (insteadOfTriggers.Any(trigger => trigger.WatchesAnyOf(setColumnNames)))
             return false;
-
-        // Get columns being modified
-        var setColumnNames = update.SetClauses
-            .Select(s => s.ColumnName)
-            .ToHashSet(StringComparer.OrdinalIgnoreCase);
 
         // Check if any UNIQUE constraint involves SET columns
         // (streaming could cause temporary duplicates which would fail validation)
@@ -540,10 +544,10 @@ public sealed partial class StatementExecutor
         var storedComputedColumns = table.Columns.Where(c => c.IsComputed && c.IsStored).ToList();
         var rowVersionColumns = table.Columns.Where(c => c.Type == WitDataType.RowVersion).ToList();
 
-        // Check if AFTER triggers exist
+        // Check if AFTER triggers this statement's columns reach exist
         var afterTriggers = m_context.Database.GetTriggersForTable(
             update.TableName, TriggerEvent.Update, TriggerTime.After);
-        bool hasAfterTriggers = afterTriggers.Any();
+        bool hasAfterTriggers = afterTriggers.Any(trigger => trigger.WatchesAnyOf(setColumnNames));
 
         var evaluator = new ExpressionEvaluator(m_context);
         int rowsAffected = 0;
@@ -651,13 +655,22 @@ public sealed partial class StatementExecutor
                     oldValues.Skip(dataStartIndex).ToArray(),
                     columnNames.Skip(dataStartIndex).ToArray());
                 WitSqlRow? afterRow = newRow;
-                FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.After, oldRow, ref afterRow);
+                FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.After, oldRow, ref afterRow,
+                    setColumnNames);
             }
         }
 
         m_context.LastChangesCount = rowsAffected;
         return new WitSqlResult(rowsAffected);
     }
+
+    /// <summary>
+    /// The columns the statement's SET clause names - which is what <c>UPDATE OF</c> is about. Not the
+    /// columns whose value actually changed (<c>modifiedColumns</c> below), which is a property of the
+    /// data and differs from row to row.
+    /// </summary>
+    private static HashSet<string> AssignedColumns(WitSqlStatementUpdate update) =>
+        update.SetClauses.Select(clause => clause.ColumnName).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Optimized constraint validation for UPDATE fast path.
@@ -1086,20 +1099,24 @@ public sealed partial class StatementExecutor
             returningRows = [];
         }
 
+        var assignedColumns = AssignedColumns(update);
+
         foreach (var (rowId, oldRow, originalNewRow, joinedRow) in rowsToUpdate)
         {
             var newRow = originalNewRow;
 
             // Fire BEFORE UPDATE triggers (can modify NEW row)
             WitSqlRow? newRowRef = newRow;
-            if (!FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.Before, oldRow, ref newRowRef))
+            if (!FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.Before, oldRow, ref newRowRef,
+                    assignedColumns))
                 continue; // Trigger cancelled
 
             newRow = newRowRef!.Value;
 
             // Check for INSTEAD OF triggers
             WitSqlRow? insteadOfRow = newRow;
-            if (FireInsteadOfTrigger(update.TableName, TriggerEvent.Update, oldRow, ref insteadOfRow))
+            if (FireInsteadOfTrigger(update.TableName, TriggerEvent.Update, oldRow, ref insteadOfRow,
+                    assignedColumns))
             {
                 rowsAffected++;
                 continue; // INSTEAD OF executed, skip normal update
@@ -1123,7 +1140,8 @@ public sealed partial class StatementExecutor
 
             // Fire AFTER UPDATE triggers
             WitSqlRow? afterRow = newRow;
-            FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.After, oldRow, ref afterRow);
+            FireTriggers(update.TableName, TriggerEvent.Update, TriggerTime.After, oldRow, ref afterRow,
+                assignedColumns);
         }
 
         m_context.LastChangesCount = rowsAffected;

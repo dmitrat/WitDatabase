@@ -83,7 +83,18 @@ public class SchemaMatrixTests
                 "OrderId", "Orders", "Id")),
             ("Rename a table", DdlWriter.RenameTable("Logs", "LogLines")),
             ("Rename it back", DdlWriter.RenameTable("LogLines", "Logs")),
-            ("Empty a table", DdlWriter.Truncate("Logs"))
+            ("Empty a table", DdlWriter.Truncate("Logs")),
+
+            // UPDATE OF is only legal after UPDATE and the writer knows it - a list written after
+            // INSERT would be a parse error, and this row is here so that the WRITER's rule is
+            // measured against the engine rather than asserted against a string.
+            ("Create a trigger watching two columns", DdlWriter.CreateTrigger(new TriggerDraft
+            {
+                Name = "TR_Orders_Watch", Table = "Orders", Timing = "AFTER", Event = "UPDATE",
+                UpdateColumns = ["Total", "Status"], ForEachRow = true,
+                Body = "INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);"
+            })),
+            ("Drop it again", DdlWriter.DropTrigger("TR_Orders_Watch"))
         };
 
         var refused = new List<string>();

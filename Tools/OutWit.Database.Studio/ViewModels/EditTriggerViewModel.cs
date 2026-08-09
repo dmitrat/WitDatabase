@@ -63,6 +63,7 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
             Name = Existing.Name;
             Timing = Existing.Timing;
             Event = Existing.Event;
+            UpdateColumnsText = string.Join(", ", Existing.UpdateColumns);
             ForEachRow = Existing.IsRowTrigger;
             Condition = Trim(Existing.Condition);
             Body = Existing.Body ?? string.Empty;
@@ -169,6 +170,7 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
         Table = Table,
         Timing = Timing,
         Event = Event,
+        UpdateColumns = ParseUpdateColumns(),
         ForEachRow = ForEachRow,
         Condition = string.IsNullOrWhiteSpace(Condition) ? null : Condition,
         Body = Body
@@ -239,6 +241,21 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
         ShouldCloseDialog(false);
     }
 
+    /// <summary>
+    /// The typed column list, as columns. The clause belongs to UPDATE alone, so it is dropped for any
+    /// other event rather than written into SQL the grammar refuses - and dropping it here is what
+    /// makes switching the event back and forth in the dialog harmless.
+    /// </summary>
+    private IReadOnlyList<string> ParseUpdateColumns()
+    {
+        if (!IsUpdateEvent || string.IsNullOrWhiteSpace(UpdateColumnsText))
+            return [];
+
+        return UpdateColumnsText
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .ToList();
+    }
+
     private static string? Trim(string? condition)
     {
         if (string.IsNullOrWhiteSpace(condition))
@@ -255,11 +272,15 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
 
     private void OnPropertyChanged(object? sender, PropertyChangedEventArgs e)
     {
+        if (e.IsProperty((EditTriggerViewModel vm) => vm.Event))
+            OnPropertyChanged(nameof(IsUpdateEvent));
+
         if (e.IsProperty((EditTriggerViewModel vm) => vm.Name) ||
             e.IsProperty((EditTriggerViewModel vm) => vm.Body) ||
             e.IsProperty((EditTriggerViewModel vm) => vm.Condition) ||
             e.IsProperty((EditTriggerViewModel vm) => vm.Timing) ||
             e.IsProperty((EditTriggerViewModel vm) => vm.Event) ||
+            e.IsProperty((EditTriggerViewModel vm) => vm.UpdateColumnsText) ||
             e.IsProperty((EditTriggerViewModel vm) => vm.ForEachRow))
             Validate();
     }
@@ -300,6 +321,24 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public string Event { get; set; } = "INSERT";
+
+    /// <summary>
+    /// The columns of <c>UPDATE OF</c>, comma-separated as they are written in SQL. Empty means every
+    /// column.
+    /// </summary>
+    /// <remarks>
+    /// The field exists because the engine honours the clause since 2026-08-09. Without it, opening an
+    /// existing <c>UPDATE OF Price</c> trigger here and pressing the button would DROP it and create
+    /// one watching every column - a silent widening, in the one place where the user is looking
+    /// straight at the trigger.
+    /// </remarks>
+    [Notify]
+    public string? UpdateColumnsText { get; set; }
+
+    /// <summary>
+    /// Whether the column list applies at all - the grammar allows <c>OF</c> only after UPDATE.
+    /// </summary>
+    public bool IsUpdateEvent => Event.Equals("UPDATE", StringComparison.OrdinalIgnoreCase);
 
     /// <summary>
     /// FOR EACH ROW. Unticked writes no FOR EACH clause at all - FOR EACH STATEMENT is a parse error

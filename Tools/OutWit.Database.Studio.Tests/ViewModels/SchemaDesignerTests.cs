@@ -36,6 +36,61 @@ public class SchemaDesignerTests
     private Task<StructureTabViewModel> OpenAsync(string table = "Orders") =>
         m_fixture.Workspace.OpenStructureTabAsync(m_fixture.Database, table, DatabaseNodeType.Table);
 
+    #region The trigger editor is reachable
+
+    /// <summary>
+    /// The structure tab opens the trigger editor - on an existing trigger and on a new one.
+    /// </summary>
+    /// <remarks>
+    /// <b>Nothing in the application called `ShowEditTriggerAsync` until 2026-08-09.</b> The dialog, its
+    /// window and six cases driving its ViewModel had been shipping since stage 8 with no command
+    /// anywhere that opened it - found by looking for it in the running Studio. This case is the one
+    /// that would have said so: it asserts a window was put in front of a person, which is what the
+    /// scripted dialog service is for.
+    /// </remarks>
+    [Test]
+    public async Task TheTriggerEditorCanBeOpenedFromTheStructureTabAsync()
+    {
+        var dialogs = new Helpers.ScriptedDialogService();
+        m_fixture.App.Dialogs = dialogs;
+
+        var tab = await OpenAsync();
+        var existing = tab.Triggers.First(t => t.Name == "TR_Orders_Audit");
+
+        await StudioFixture.PressAsync(tab.EditTriggerCommand, existing);
+
+        Assert.That(dialogs.LastTrigger, Is.Not.Null, "the edit button has to open the editor");
+        Assert.That(dialogs.LastTrigger!.Existing?.Name, Is.EqualTo("TR_Orders_Audit"),
+            "and open it on the trigger the button belongs to");
+
+        await StudioFixture.PressAsync(tab.CreateTriggerCommand);
+
+        Assert.That(dialogs.LastTrigger!.Existing, Is.Null, "and the other button opens it on a new one");
+        Assert.That(dialogs.LastTrigger.Table, Is.EqualTo("Orders"), "for the table the tab is about");
+    }
+
+    /// <summary>
+    /// The line under a trigger's name is SQL, and it has to include the <c>UPDATE OF</c> clause: a
+    /// trigger watching two columns of ten reads exactly like one watching all ten without it.
+    /// </summary>
+    [Test]
+    public async Task TheTriggerRowSaysWhichColumnsItWatchesAsync()
+    {
+        await m_fixture.Database.ExecuteNonQueryAsync(
+            "CREATE TRIGGER TR_Orders_Total AFTER UPDATE OF Total ON Orders FOR EACH ROW "
+            + "BEGIN INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id); END");
+
+        var tab = await OpenAsync();
+
+        Assert.That(tab.Triggers.First(t => t.Name == "TR_Orders_Total").UpdateColumnsClause,
+            Is.EqualTo("OF Total"));
+
+        Assert.That(tab.Triggers.First(t => t.Name == "TR_Orders_Audit").UpdateColumnsClause,
+            Is.Empty, "and a trigger that watches everything says nothing, as the SQL does");
+    }
+
+    #endregion
+
     #region 1. What is on screen
 
     [Test]

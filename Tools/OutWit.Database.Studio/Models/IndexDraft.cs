@@ -80,6 +80,17 @@ public sealed class TriggerDraft
     public string Event { get; set; } = "INSERT";
 
     /// <summary>
+    /// The columns of <c>UPDATE OF</c>, for an UPDATE trigger. Empty means every column, which is what
+    /// a plain <c>UPDATE</c> says.
+    /// </summary>
+    /// <remarks>
+    /// Carried since 2026-08-09, when the engine began honouring the clause. Before that a rebuilt
+    /// trigger silently watched every column, and it cost nothing because the engine ignored the
+    /// clause too; now dropping it here would narrow or widen a real behaviour.
+    /// </remarks>
+    public IReadOnlyList<string> UpdateColumns { get; set; } = [];
+
+    /// <summary>
     /// FOR EACH ROW when true. False writes no FOR EACH clause at all, which is the only way this
     /// grammar expresses a statement trigger.
     /// </summary>

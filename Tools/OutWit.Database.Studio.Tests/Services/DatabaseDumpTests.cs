@@ -271,19 +271,23 @@ public class DatabaseDumpTests
     /// publishes against the row the source published.
     /// </para>
     /// <para>
-    /// <b>What this instrument cannot see, measured rather than assumed:</b> <c>UPDATE OF V</c> is
-    /// accepted, stored, and published by <c>INFORMATION_SCHEMA.TRIGGERS</c> as a plain <c>UPDATE</c> -
-    /// there is no column for the column list - so the dump widens it to every column and both sides of
-    /// this comparison agree. It changes no behaviour today because <b>the engine does not honour
-    /// <c>UPDATE OF</c> either</b>: a trigger declared on one column fires on an update of another.
-    /// That is pinned in the engine's own suite, and when it is fixed the dump's widening becomes a
-    /// real loss that this fixture still will not see.
+    /// <b>The blind spot this fixture used to declare is gone, and the two halves had to move
+    /// together.</b> Until 2026-08-09 <c>UPDATE OF V</c> was accepted, stored, and published by
+    /// <c>INFORMATION_SCHEMA.TRIGGERS</c> as a plain <c>UPDATE</c> - there was no column for the list -
+    /// so the dump widened it to every column and both sides of this comparison agreed. It cost nothing
+    /// then only because the engine ignored the clause when firing too. Now the engine honours it and
+    /// the catalogue publishes it in <c>TRIGGERED_UPDATE_COLUMNS</c>, which
+    /// <see cref="CatalogueRowAsync"/> reads - so the widening would show up here as a difference, and
+    /// <see cref="ARebuiltUpdateOfTriggerStillWatchesOneColumnAsync"/> measures it as behaviour rather
+    /// than as text.
     /// </para>
     /// </remarks>
     [TestCase("AFTER INSERT ON Src FOR EACH ROW", TestName = "TriggerShape_AfterInsertPerRow")]
     [TestCase("BEFORE DELETE ON Src FOR EACH ROW", TestName = "TriggerShape_BeforeDelete")]
     [TestCase("INSTEAD OF INSERT ON Src FOR EACH ROW", TestName = "TriggerShape_InsteadOf")]
     [TestCase("AFTER UPDATE ON Src FOR EACH ROW", TestName = "TriggerShape_AfterUpdate")]
+    [TestCase("AFTER UPDATE OF V ON Src FOR EACH ROW", TestName = "TriggerShape_AfterUpdateOfOneColumn")]
+    [TestCase("AFTER UPDATE OF V, W ON Src FOR EACH ROW", TestName = "TriggerShape_AfterUpdateOfTwoColumns")]
     [TestCase("AFTER INSERT ON Src", TestName = "TriggerShape_PerStatement")]
     [TestCase("AFTER INSERT ON Src FOR EACH ROW WHEN (NEW.V > 10)", TestName = "TriggerShape_WithWhen")]
     public async Task ATriggerKeepsItsShapeThroughTheDumpAsync(string header)
@@ -301,15 +305,56 @@ public class DatabaseDumpTests
             "the rebuilt trigger has to be the same trigger, part for part");
     }
 
+    /// <summary>
+    /// A trigger that watches one column and not another, dumped and run back, and then MEASURED: the
+    /// copy must still ignore an update of the column it does not name.
+    /// </summary>
+    /// <remarks>
+    /// The case above compares catalogue rows, which is a proxy. This one is the thing itself, and it
+    /// is the case that goes red if the dump ever drops the clause again - a widened trigger fires on
+    /// every column and the log has a row in it.
+    /// </remarks>
+    [Test]
+    public async Task ARebuiltUpdateOfTriggerStillWatchesOneColumnAsync()
+    {
+        await BuildTriggerFixtureAsync(m_studio.Database);
+        await m_studio.Database.ExecuteNonQueryAsync(
+            "CREATE TRIGGER TShape AFTER UPDATE OF V ON Src FOR EACH ROW "
+            + "BEGIN INSERT INTO Log (V) VALUES (1); END");
+        await m_studio.Database.ExecuteNonQueryAsync("INSERT INTO Src (V, W) VALUES (1, 1)");
+
+        var rebuilt = await RunTheDumpIntoAnEmptyDatabaseAsync("update-of-target");
+
+        await rebuilt.ExecuteNonQueryAsync("UPDATE Src SET W = 2 WHERE Id = 1");
+
+        Assert.That(await LogCountAsync(rebuilt), Is.EqualTo(0),
+            "the rebuilt trigger watches V, and an update of W must not reach it");
+
+        await rebuilt.ExecuteNonQueryAsync("UPDATE Src SET V = 2 WHERE Id = 1");
+
+        Assert.That(await LogCountAsync(rebuilt), Is.EqualTo(1),
+            "and the rebuilt trigger is alive, so the first assertion is about the clause");
+    }
+
+    private static async Task<int> LogCountAsync(IDatabaseSession session)
+    {
+        var result = await session.ExecuteQueryAsync("SELECT Id FROM Log");
+
+        return result.Data?.Rows.Count ?? 0;
+    }
+
     private static async Task BuildTriggerFixtureAsync(IDatabaseSession session)
     {
-        await session.ExecuteNonQueryAsync("CREATE TABLE Src (Id INTEGER PRIMARY KEY AUTOINCREMENT, V INTEGER)");
+        await session.ExecuteNonQueryAsync(
+            "CREATE TABLE Src (Id INTEGER PRIMARY KEY AUTOINCREMENT, V INTEGER, W INTEGER)");
         await session.ExecuteNonQueryAsync(
             "CREATE TABLE Log (Id INTEGER PRIMARY KEY AUTOINCREMENT, V INTEGER, Note VARCHAR(50))");
     }
 
     /// <summary>
-    /// The trigger as the catalogue publishes it: every part a CREATE TRIGGER is built from.
+    /// The trigger as the catalogue publishes it: every part a CREATE TRIGGER is built from - including
+    /// the UPDATE OF column list, which lives in its own standard view and was invisible here until
+    /// 2026-08-09.
     /// </summary>
     private static async Task<string> CatalogueRowAsync(IDatabaseSession session)
     {
@@ -321,7 +366,16 @@ public class DatabaseDumpTests
         if (result.Data == null || result.Data.Rows.Count == 0)
             return "<the trigger is not in this database at all>";
 
-        return string.Join(" | ", result.Data.Rows[0].ItemArray.Select(value => value?.ToString() ?? "<null>"));
+        var watched = await session.ExecuteQueryAsync(
+            "SELECT EVENT_OBJECT_COLUMN FROM INFORMATION_SCHEMA.TRIGGERED_UPDATE_COLUMNS "
+            + "WHERE TRIGGER_NAME = 'TShape' ORDER BY EVENT_OBJECT_COLUMN");
+
+        var columns = watched.Data == null
+            ? "<the view answered nothing>"
+            : string.Join(",", watched.Data.Rows.Cast<System.Data.DataRow>().Select(row => row[0]?.ToString()));
+
+        return string.Join(" | ", result.Data.Rows[0].ItemArray.Select(value => value?.ToString() ?? "<null>"))
+               + $" | OF({columns})";
     }
 
     /// <summary>

@@ -125,30 +125,18 @@ public sealed class TriggerBodyFidelityTests : WitSqlEngineTestsBase
     }
 
     /// <summary>
-    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. <c>UPDATE OF</c> names the columns a trigger watches, and
-    /// the engine stores the list and never consults it: the trigger fires on an update of any column.
+    /// <c>UPDATE OF</c> names the columns a trigger watches, and an update of another column does not
+    /// reach it. This replaces the pin that recorded the opposite - known issue 12, fixed 2026-08-09,
+    /// and the pin inverted on the first run of the fix (expected 1, got 0).
     /// </summary>
     /// <remarks>
-    /// <para>
-    /// Measured 2026-08-08 from the other end - Studio's dump could not rebuild a trigger, and while
-    /// assembling <c>CREATE TRIGGER</c> from <c>INFORMATION_SCHEMA.TRIGGERS</c> it turned out the
-    /// catalogue publishes no column list at all, so the rebuilt trigger would watch every column.
-    /// That would be a fidelity loss in the dump if the engine honoured the clause. It does not, so
-    /// the dump loses nothing today - and the two are tied together: <b>fixing this makes the dump's
-    /// widening real</b>, and the catalogue needs somewhere to publish the list before it can.
-    /// </para>
-    /// <para>
-    /// The parser reads it (<c>triggerEvent : UPDATE (OF columnName (COMMA columnName)*)?</c>) and
-    /// <c>DefinitionTrigger.UpdateColumns</c> carries it as far as the catalogue. Nothing on the
-    /// firing path reads it.
-    /// </para>
-    /// <para>
-    /// When it is fixed this case goes RED and should be replaced by: a trigger declared on one column
-    /// does not fire when another is updated.
-    /// </para>
+    /// The clause belongs to this fixture because a trigger the engine widens to every column is the
+    /// same class of loss as a trigger whose body was rewritten on the way in. The rest of it - one
+    /// case per UPDATE execution path, the two other timings, and the catalogue view that lets a dump
+    /// rebuild the clause - is in <see cref="UpdateOfColumnsTests"/>.
     /// </remarks>
     [Test]
-    public void UpdateOfIsAcceptedAndIgnoredTest()
+    public void UpdateOfIsHonouredTest()
     {
         m_engine.Execute("ALTER TABLE Source ADD COLUMN Watched INT");
         m_engine.Execute("ALTER TABLE Source ADD COLUMN Ignored INT");
@@ -162,12 +150,11 @@ public sealed class TriggerBodyFidelityTests : WitSqlEngineTestsBase
 
         m_engine.Execute("UPDATE Source SET Ignored = 2 WHERE Id = 1");
 
-        Assert.That(Rows("SELECT Id FROM Log"), Has.Length.EqualTo(1),
-            "PINS A DEFECT: the trigger names Watched and fired for an update of Ignored");
+        Assert.That(Rows("SELECT Id FROM Log"), Has.Length.EqualTo(0),
+            "the trigger names Watched and must not fire for an update of Ignored");
 
         // The control, and it is what stops this case passing for the wrong reason - a trigger that
-        // never fires at all would also leave the log empty, and would satisfy the fixed behaviour.
-        m_engine.Execute("DELETE FROM Log");
+        // never fires at all would also leave the log empty.
         m_engine.Execute("UPDATE Source SET Watched = 2 WHERE Id = 1");
 
         Assert.That(Rows("SELECT Id FROM Log"), Has.Length.EqualTo(1),

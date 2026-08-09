@@ -68,14 +68,14 @@ public sealed partial class StatementExecutor
 
                 // Fire BEFORE INSERT triggers
                 WitSqlRow? newRow = row;
-                if (!FireTriggers(insert.TableName, TriggerEvent.Insert, TriggerTime.Before, null, ref newRow))
+                if (!FireTriggers(insert.TableName, TriggerEvent.Insert, TriggerTime.Before, null, ref newRow, null))
                     continue;
 
                 row = newRow!.Value;
 
                 // Check for INSTEAD OF triggers
                 WitSqlRow? insteadOfRow = row;
-                if (FireInsteadOfTrigger(insert.TableName, TriggerEvent.Insert, null, ref insteadOfRow))
+                if (FireInsteadOfTrigger(insert.TableName, TriggerEvent.Insert, null, ref insteadOfRow, null))
                 {
                     rowsAffected++;
                     continue;
@@ -96,7 +96,7 @@ public sealed partial class StatementExecutor
 
                 // Fire AFTER INSERT triggers
                 WitSqlRow? afterRow = row;
-                FireTriggers(insert.TableName, TriggerEvent.Insert, TriggerTime.After, null, ref afterRow);
+                FireTriggers(insert.TableName, TriggerEvent.Insert, TriggerTime.After, null, ref afterRow, null);
             }
         }
         else if (insert.SelectSource != null)
@@ -225,14 +225,14 @@ public sealed partial class StatementExecutor
 
                 // Fire BEFORE INSERT triggers
                 WitSqlRow? newRow = row;
-                if (!FireTriggers(insert.TableName, TriggerEvent.Insert, TriggerTime.Before, null, ref newRow))
+                if (!FireTriggers(insert.TableName, TriggerEvent.Insert, TriggerTime.Before, null, ref newRow, null))
                     continue;
 
                 row = newRow!.Value;
 
                 // Check for INSTEAD OF triggers
                 WitSqlRow? insteadOfRow = row;
-                if (FireInsteadOfTrigger(insert.TableName, TriggerEvent.Insert, null, ref insteadOfRow))
+                if (FireInsteadOfTrigger(insert.TableName, TriggerEvent.Insert, null, ref insteadOfRow, null))
                 {
                     rowsAffected++;
                     continue;
@@ -252,7 +252,7 @@ public sealed partial class StatementExecutor
 
                 // Fire AFTER INSERT triggers
                 WitSqlRow? afterRow = row;
-                FireTriggers(insert.TableName, TriggerEvent.Insert, TriggerTime.After, null, ref afterRow);
+                FireTriggers(insert.TableName, TriggerEvent.Insert, TriggerTime.After, null, ref afterRow, null);
             }
         }
         finally

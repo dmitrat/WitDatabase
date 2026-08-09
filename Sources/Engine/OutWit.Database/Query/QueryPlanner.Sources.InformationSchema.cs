@@ -74,6 +74,11 @@ public sealed partial class QueryPlanner
                 SchemaCatalog.GetInformationSchemaTriggersColumns(),
                 SchemaCatalog.GetInformationSchemaTriggersColumnTypes()),
                 
+            "TRIGGERED_UPDATE_COLUMNS" => new IteratorInformationSchema(
+                catalog.GetInformationSchemaTriggeredUpdateColumns(),
+                SchemaCatalog.GetInformationSchemaTriggeredUpdateColumnsColumns(),
+                SchemaCatalog.GetInformationSchemaTriggeredUpdateColumnsColumnTypes()),
+
             "ROUTINES" => new IteratorInformationSchema(
                 catalog.GetInformationSchemaRoutines(),
                 SchemaCatalog.GetInformationSchemaRoutinesColumns(),

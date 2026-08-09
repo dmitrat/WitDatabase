@@ -699,22 +699,95 @@ both sides, they matched, and the transfer reported itself complete.
 
 ## 12. `UPDATE OF` is accepted and ignored
 
-> **OPEN.** Pinned by
-> `AuditVerification/TriggerBodyFidelityTests.UpdateOfIsAcceptedAndIgnoredTest`,
-> with a control that proves the trigger is live either way.
+> **FIXED 2026-08-09**, both halves in one piece of work. Covered by
+> `AuditVerification/UpdateOfColumnsTests` (15 cases) and, in Studio, by
+> `DatabaseDumpTests`, `TableRebuildTests` and `SchemaDialogTests`.
 
 `CREATE TRIGGER T AFTER UPDATE OF Watched ON Source …` names the column the trigger
-watches. The parser reads the list, `DefinitionTrigger.UpdateColumns` stores it, and
-**nothing on the firing path ever consults it**: measured, the trigger fires on an
-update of a column it does not name. The phase-7 class again — accepted, and then
+watches. The parser read the list, `DefinitionTrigger.UpdateColumns` stored it, and
+**nothing on the firing path ever consulted it**: measured, the trigger fired on an
+update of a column it did not name. The phase-7 class again — accepted, and then
 ignored.
 
-**It is tied to the dump, which is how it surfaced.** `INFORMATION_SCHEMA.TRIGGERS`
+**It was tied to the dump, which is how it surfaced.** `INFORMATION_SCHEMA.TRIGGERS`
 publishes no column for the list, so Studio's `CREATE TRIGGER` — assembled from the
-catalogue — widens `UPDATE OF Watched` to every column. That loses nothing today
-precisely because the engine ignores the clause. **Fixing the firing path without
-giving the catalogue somewhere to publish the list would turn this into a silent
-fidelity loss in every dump**, so the two belong in one piece of work.
+catalogue — widened `UPDATE OF Watched` to every column. That lost nothing while the
+engine ignored the clause as well, and **fixing the firing path alone would have turned
+it into a silent fidelity loss in every dump**. So both halves landed together.
+
+### What was decided, before any code
+
+- **Where the catalogue publishes the list:** a new
+  `INFORMATION_SCHEMA.TRIGGERED_UPDATE_COLUMNS`, which is where ISO/IEC 9075-11 puts it
+  and the shape PostgreSQL publishes — one row per watched column, and **no rows at all**
+  for a trigger that watches every column. `TRIGGERS` keeps the shape every other
+  database has; a column of our own invention in a standard view would be a second place
+  holding one fact.
+- **When the clause fires:** the statement must **name** a watched column in its `SET`
+  clause. Not "the value changed" — that is what SQLite and PostgreSQL do, and it keeps
+  the answer a property of the statement rather than of the data. `SET Watched = Watched`
+  fires; one row of a multi-row `UPDATE` cannot fire while its neighbour does not.
+  `AssigningTheSameValueStillFiresTest` is that decision, and it is the case that tells
+  the two readings apart — `modifiedColumns`, the wrong answer, is already computed a few
+  lines away in three of the four paths.
+
+### How it was verified
+
+`UPDATE` has **four execution paths** and each fires triggers itself, so there is a case
+per statement shape rather than one case with four assertions. The routing was measured
+by instrumenting the four paths, not read off the code — and it turned up a fact worth
+keeping: with a `BEFORE` trigger present, a statement naming a column that trigger does
+not watch now takes the **fast** path, because the guard asks whether the trigger is
+*reached* rather than whether it *exists*.
+
+Power was measured the other way on the same day. With the filter returned to `true` —
+the defect restored — **8 cases went red**: all four paths, both other timings, the
+several-columns case and the replacement of the old pin. Narrowing the comparison to
+`Ordinal` reddened the case-insensitivity case and nothing else. The old pin,
+`UpdateOfIsAcceptedAndIgnoredTest`, **inverted on the first run of the fix** (expected 1,
+got 0) and is replaced by `UpdateOfIsHonouredTest`.
+
+**The census after the change is empty**: Core 2315, ADO.NET 1025, EF 544, Parser 797,
+IndexedDb 153, Studio 803, engine 2373 passing (the four `Performance` timing failures on
+this machine are pre-existing and were verified by name).
+
+### The Studio defect this uncovered, which was not about triggers
+
+The new "a replaced trigger still watches its column" case **could not fail**, and
+finding out why took a probe: `SchemaChangeSet.ApplyAsync` ran `InPlaceStatements`, and a
+trigger replacement is categorised `DropCreate`. Its `DROP` and `CREATE` were left out,
+the report came back **empty**, an empty report **is complete**, and the trigger editor
+said the trigger had been replaced, closed, and had changed nothing. Every earlier case
+asserted the trigger COUNT afterwards, which one untouched trigger satisfies exactly as
+well as one replaced. Fixed by running everything that carries statements; pinned by
+`SchemaDialogTests.ReplacingATriggerActuallyReplacesItAsync`, which was run red against
+the unfixed code first.
+
+---
+
+## 13. Three statements update a row and fire no trigger
+
+> **OPEN.** Pinned by `AuditVerification/TriggerlessWritePathsTests` — three cases, each
+> with a control that proves the row really was updated and the trigger really is live.
+
+`MERGE … WHEN MATCHED THEN UPDATE`, `INSERT … ON CONFLICT DO UPDATE` and a foreign key's
+`ON UPDATE CASCADE` all rewrite a row **without firing any UPDATE trigger**. Measured
+2026-08-09: in each case the value changes and the log stays empty.
+
+Found while fixing issue 12, by grepping for the SHAPE rather than the site —
+`Database.UpdateRow` is called from six places in `StatementExecutor` and only the four
+in `Update.cs` fire triggers. The other three are `Merge.cs`, the `ON CONFLICT` branch of
+`Insert.cs`, and the referential cascade in `Validation.cs`.
+
+**What it costs:** an audit trigger is the commonest reason to write a trigger at all,
+and it silently misses every row these three statements change. Nothing reports it.
+
+**Why it is not fixed with issue 12:** it has decisions of its own that have to be
+answered first — whether a `BEFORE` trigger may cancel a cascade (which would leave the
+foreign key dangling), whether an `INSTEAD OF` trigger stands in for the matched half of
+a `MERGE`, and what the assigned-column set is for a cascade, which names no columns in
+any `SET` clause the user wrote. The foreign key's own columns are the obvious answer to
+the last one.
 
 ---
 

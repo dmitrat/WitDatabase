@@ -71,6 +71,44 @@ namespace OutWit.Database.Definitions
             return $"TRIGGER {Name} {Time} {Event} ON {TableName}";
         }
 
+        /// <summary>
+        /// Whether an <c>UPDATE</c> whose <c>SET</c> clause assigns <paramref name="assignedColumns"/>
+        /// reaches this trigger.
+        /// </summary>
+        /// <param name="assignedColumns">
+        /// The columns the statement names in its <c>SET</c> clause, or <c>null</c> for an operation
+        /// that has no such list. Every <c>UPDATE</c> path passes one; <c>INSERT</c> and <c>DELETE</c>
+        /// pass <c>null</c>, and cannot reach a trigger carrying <see cref="UpdateColumns"/> anyway,
+        /// because the grammar allows <c>OF</c> only after <c>UPDATE</c>.
+        /// </param>
+        /// <remarks>
+        /// <para>
+        /// The question is whether the statement <b>names</b> a watched column, not whether the value
+        /// changed - which is what SQLite and PostgreSQL both do, and it keeps the answer a property of
+        /// the statement rather than of the data: <c>SET Watched = Watched</c> fires, and one row of a
+        /// multi-row <c>UPDATE</c> cannot fire while its neighbour does not.
+        /// </para>
+        /// </remarks>
+        public bool WatchesAnyOf(IReadOnlyCollection<string>? assignedColumns)
+        {
+            if (UpdateColumns is not { Count: > 0 })
+                return true;
+
+            if (assignedColumns is null)
+                return true;
+
+            foreach (var watched in UpdateColumns)
+            {
+                foreach (var assigned in assignedColumns)
+                {
+                    if (string.Equals(watched, assigned, StringComparison.OrdinalIgnoreCase))
+                        return true;
+                }
+            }
+
+            return false;
+        }
+
         #endregion
 
         #region Properties

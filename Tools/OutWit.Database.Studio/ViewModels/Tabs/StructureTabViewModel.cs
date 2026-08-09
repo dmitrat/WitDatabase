@@ -159,6 +159,8 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         RecreateIndexCommand = new RelayCommandAsync<IndexInfo>(RecreateIndexAsync);
 
         DropTriggerCommand = new RelayCommandAsync<TriggerInfo>(DropTriggerAsync);
+        EditTriggerCommand = new RelayCommandAsync<TriggerInfo>(EditTriggerAsync);
+        CreateTriggerCommand = new RelayCommandAsync(() => EditTriggerAsync(null));
 
         CopyDdlCommand = new RelayCommandAsync(CopyDdlAsync);
         ShowSectionCommand = new RelayCommand<StructureSection>(section => SelectedSection = section);
@@ -693,6 +695,30 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         await RunDdlAsync(DdlWriter.DropTrigger(trigger.Name), $"Dropped trigger {trigger.Name}");
     }
 
+    /// <summary>
+    /// Opens the trigger editor on an existing trigger, or on a new one when
+    /// <paramref name="trigger"/> is null.
+    /// </summary>
+    /// <remarks>
+    /// <b>Nothing opened that dialog until 2026-08-09.</b> `EditTriggerViewModel` was built in stage 8,
+    /// has a window and six cases driving it, and no command anywhere in the application called
+    /// `ShowEditTriggerAsync` - found by looking for it in the running Studio while checking that the
+    /// new UPDATE OF field appeared. A dialog nothing opens is decoration, which is the same rule the
+    /// notification service was wired up under in stage 4.
+    /// </remarks>
+    private async Task EditTriggerAsync(TriggerInfo? trigger)
+    {
+        var session = Session;
+
+        if (session?.IsConnected != true)
+            return;
+
+        var vm = new EditTriggerViewModel(ApplicationVm, session, ObjectName, trigger);
+
+        if (await Dialogs.ShowEditTriggerAsync(vm))
+            await LoadStructureAsync();
+    }
+
     private async Task RunDdlAsync(string sql, string success)
     {
         var session = Session;
@@ -1032,6 +1058,10 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     public ICommand RecreateIndexCommand { get; private set; } = null!;
 
     public ICommand DropTriggerCommand { get; private set; } = null!;
+
+    public ICommand EditTriggerCommand { get; private set; } = null!;
+
+    public ICommand CreateTriggerCommand { get; private set; } = null!;
 
     public ICommand CopyDdlCommand { get; private set; } = null!;
 

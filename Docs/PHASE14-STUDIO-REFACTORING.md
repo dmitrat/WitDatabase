@@ -1899,6 +1899,98 @@ Studio **770 -> 794**.
 
 ---
 
+## `UPDATE OF`, the catalogue and the dump, 2026-08-09 (known issue 12)
+
+The engine accepted `CREATE TRIGGER … AFTER UPDATE OF Watched` and then ignored the list: the trigger
+fired on an update of any column. Studio's dump had the mirror image - `INFORMATION_SCHEMA.TRIGGERS`
+publishes no column list, so a trigger rebuilt from the catalogue watched everything. **Neither half
+could be fixed alone**: fixing the engine alone turns the dump's widening from harmless into a silent
+loss of fidelity, and fixing the dump alone has nothing to write.
+
+The full record is in `Docs/KnownIssues.md` under 12. What belongs here is what it took in Studio, and
+what it turned up.
+
+### Two decisions, taken before any code
+
+- **The catalogue publishes the list in `INFORMATION_SCHEMA.TRIGGERED_UPDATE_COLUMNS`** - the standard's
+  own view, one row per watched column, none at all when every column is watched. `TRIGGERS` keeps the
+  fourteen columns it had.
+- **A trigger fires when the statement NAMES a watched column**, not when the value changes. SQLite and
+  PostgreSQL both do this, and it keeps the answer a property of the statement rather than of the data.
+
+### Four places in Studio carry the list, not one
+
+The dump (`DatabaseSession.GetTriggerDefinitionAsync`), the table rebuild
+(`DatabaseSession.GetTableTriggersAsync` -> `TableRebuild.WriteTrigger` - a rebuild drops the table and
+its triggers with it), `DdlWriter.CreateTrigger`, and **the trigger editor**, which is the one worth
+naming: without a field for it, opening an `UPDATE OF Total` trigger and pressing the button would DROP
+it and create one watching every column, in the one place where the user is looking straight at the
+trigger. The field appears only for an UPDATE trigger, because `OF` is legal nowhere else.
+
+The reader is deliberately **not** wrapped in a catch of its own: a missing list is indistinguishable
+from a trigger that watches everything, so a swallowed failure would put the silent widening straight
+back. The caller reports a trigger it cannot write, which is what it already does for a body the
+catalogue cannot render.
+
+### The shape matrix could not see this, and now can
+
+`DatabaseDumpTests.ATriggerKeepsItsShapeThroughTheDumpAsync` compares the source catalogue row against
+the target's, and its own remarks said in as many words that `UPDATE OF` was invisible to it. The
+comparison now includes the new view and there are two more shapes in the matrix - plus
+`ARebuiltUpdateOfTriggerStillWatchesOneColumnAsync`, which measures the rebuilt trigger's **behaviour**
+rather than its catalogue row.
+
+### The defect this uncovered, and it was not about triggers
+
+The new "a replaced trigger still watches its column" case **could not fail**. Chasing that with a probe
+found a silent no-op that had been shipping: `SchemaChangeSet.ApplyAsync` ran `InPlaceStatements`, and a
+trigger replacement is categorised `DropCreate` - so **the DROP and the CREATE were never executed**, the
+report came back empty, an empty report is COMPLETE, and the dialog reported success and closed having
+changed nothing.
+
+Three earlier cases covered the trigger editor's replace path and none could see it: they asserted the
+trigger COUNT afterwards, and one untouched trigger satisfies that exactly as well as one replaced.
+`ReplacingATriggerActuallyReplacesItAsync` asserts the BODY, and was run red against the unfixed code
+before the fix. This is the count-cannot-distinguish family again, and the fix is one line plus a
+property that says what "applicable" means.
+
+### The application run, and the third finding - which was the biggest
+
+Driven end to end on 2026-08-09, and it is the fifth time the running executable has found something
+803 tests could not.
+
+**Nothing in the application opened the trigger editor.** `EditTriggerViewModel` has a window and six
+cases driving it and has been shipping since stage 8; **no command anywhere called
+`ShowEditTriggerAsync`.** It was found by going to change a trigger in the running Studio and having
+nowhere to do it - and it means the new UPDATE OF field, and the `ApplyAsync` fix above, would both
+have been repairs to code no user could reach. There is an **Изменить** button on each trigger row and
+a **Новый триггер…** below the list now, and
+`SchemaDesignerTests.TheTriggerEditorCanBeOpenedFromTheStructureTabAsync` asserts that a window was put
+in front of a person, which is the only assertion that could have caught it.
+
+**And the trigger row did not say which columns it watched** - `AFTER UPDATE - ROW` for a trigger on
+`Total` alone, which was true while the clause meant nothing and is a wrong answer now. The line is
+SQL end to end, so the clause goes in it as SQL.
+
+What the run confirmed, in order: an update of `Status` left the audit table alone and an update of
+`Total` added a row (0 → 1); the inspector's DEFINITION carried `AFTER UPDATE OF Total`; the section
+row read `AFTER UPDATE OF Total - ROW`; the editor opened with «Отслеживаемые столбцы» = `Total`; and
+after pressing «Удалить и создать», one `Status` update and one `Total` update took the audit table
+from 1 to **2**, not to 3 - the recreated trigger still watches one column.
+
+### A new engine defect, pinned rather than fixed
+
+Grepping for the shape rather than the site - `Database.UpdateRow` has six callers and only the four in
+`Update.cs` fire triggers - found that **`MERGE … WHEN MATCHED THEN UPDATE`, `INSERT … ON CONFLICT DO
+UPDATE` and a foreign key's `ON UPDATE CASCADE` update a row and fire no trigger at all**. Measured,
+three cases, each with a control. It is known issue 13 and `TriggerlessWritePathsTests` pins it; it has
+decisions of its own that have to be settled first and does not belong in this piece of work.
+
+Studio **794 -> 803**, engine **2292 -> 2310** on CI (15 new cases plus 3 pins). Census empty: Core 2315,
+ADO.NET 1025, EF 544, Parser 797, IndexedDb 153.
+
+---
+
 ## Findings for the engine, not fixed here
 **A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
 class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner
