@@ -1,5 +1,45 @@
 ﻿# Changelog
 
+## 12.3.0
+
+**A UNIQUE constraint is enforced by an index now, because without one every insert scanned the whole
+table.** The uniqueness check seeks a unique index when one covers exactly those columns, and
+otherwise falls back to a full table scan - once per row inserted, which is quadratic. Nothing
+created an index for a UNIQUE constraint, so it always scanned.
+
+Measured in memory, so neither the disk nor the per-statement commit is in the numbers. Four thousand
+inserts into a table with one UNIQUE column, best of three interleaved rounds:
+
+| | cost of 16x the rows | ms per row at 4,000 |
+|---|---|---|
+| no key at all | 24x | 0.071 |
+| `AUTOINCREMENT` | 27x | 0.072 |
+| explicit `PRIMARY KEY` | 82x | 0.404 |
+| `UNIQUE` **with** an index | 88x | 0.409 |
+| `UNIQUE` with **no** index | **240x** | **4.43** |
+
+A linear engine ends at 16x and `n log n` at about 21x. With the index the last row becomes 0.42 ms
+and 82x - the same as an index created by hand.
+
+### Changed
+
+- **`CREATE TABLE` creates a unique index for every `UNIQUE` constraint it declares.** The index is
+  *implicit*, exactly like the primary key's own `_PK_` one: it does not appear in
+  `INFORMATION_SCHEMA.INDEXES`, so it is not in a dump and nobody gains an object they did not ask
+  for. A `PRIMARY KEY` is **not** given another - it already has one, which is why its inserts were
+  already fast, and a redundant second index measured *slower* (0.65 ms per row).
+- **Only new tables.** An existing database has no such index and needs none for correctness - the
+  scan still answers, it is only slow. Nothing has to be migrated; a table that wants the faster
+  path can be given an explicit `CREATE UNIQUE INDEX` over the same columns.
+
+### Fixed
+
+- **Dropping a `UNIQUE` constraint drops the index that enforces it.** The code meant to do this
+  looked for `UQ_<table>_<constraint>` - a name nothing creates. That cost nothing while no index
+  existed and became a wrong answer the moment one did: the duplicate the drop exists to allow would
+  still have been refused, by the index left behind. It drops by *columns* now, which is what the
+  operation means.
+
 ## 12.2.1
 
 A republish, and the reason is the one the version guard exists for: **the feed's 12.2.0 was not
