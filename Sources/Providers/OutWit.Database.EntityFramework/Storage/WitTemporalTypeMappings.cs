@@ -5,14 +5,27 @@ using Microsoft.EntityFrameworkCore.Storage;
 namespace OutWit.Database.EntityFramework.Storage;
 
 /// <summary>
-/// Temporal literals in the form WitSQL can read.
-///
-/// EF Core's own temporal mappings emit ANSI typed literals - <c>TIMESTAMP '1970-01-01 …'</c>,
-/// <c>DATE '…'</c>, <c>TIME '…'</c> - and the WitSQL grammar has no such form, so any query that
-/// compared against a constant date failed to parse before it ever reached the engine
-/// (<c>no viable alternative at input '&gt;TIMESTAMP'</c>). A plain quoted string is what the
-/// grammar accepts and what EF Core's SQLite provider emits for the same values.
+/// Temporal literals in the form WitSQL reads, which is the TYPED form.
 /// </summary>
+/// <remarks>
+/// <para>
+/// <b>These used to emit a plain quoted string, and that was a silent defect.</b> EF Core's own
+/// mappings emit ANSI typed literals and the grammar had no such form, so a query comparing against
+/// an inlined constant failed to parse before it reached the engine
+/// (<c>no viable alternative at input '&gt;TIMESTAMP'</c>) - <c>Docs/KnownIssues.md</c> 2. Quoting the
+/// value instead made it parse, and made it answer wrongly: measured 2026-08-09, <b>a row written
+/// with a bare string cannot be found by that very same string</b> - 0 rows for a DATETIME and 0 for
+/// a DATETIMEOFFSET, while the typed literal finds the row and the row is demonstrably there. Text
+/// compared with a temporal column is not converted, so the loud parse error had been traded for an
+/// empty result set.
+/// </para>
+/// <para>
+/// The grammar has typed literals now and the WORD in front decides the type, so these mappings emit
+/// the keyword that names the type they carry. <c>DATETIMEOFFSET</c> is its own word rather than an
+/// offset smuggled inside a <c>TIMESTAMP</c>: the engine refuses that shape by name, where PostgreSQL
+/// would accept it and discard the offset.
+/// </para>
+/// </remarks>
 internal static class WitTemporalLiteral
 {
     /// <summary>
@@ -21,11 +34,11 @@ internal static class WitTemporalLiteral
     public const string DATETIME_FORMAT = "yyyy-MM-dd HH:mm:ss.fffffff";
 
     /// <summary>
-    /// Quotes a formatted temporal value as a plain string literal.
+    /// Writes a formatted temporal value as the typed literal its <paramref name="keyword"/> names.
     /// </summary>
+    /// <param name="keyword">The type's name, spelled as it is spelled in DDL.</param>
     /// <param name="text">The formatted value.</param>
-    /// <returns>The value as a SQL string literal.</returns>
-    public static string Quote(string text) => $"'{text}'";
+    public static string Typed(string keyword, string text) => $"{keyword} '{text}'";
 }
 
 /// <inheritdoc />
@@ -51,7 +64,7 @@ public sealed class WitDateTimeTypeMapping : DateTimeTypeMapping
 
     /// <inheritdoc />
     protected override string GenerateNonNullSqlLiteral(object value)
-        => WitTemporalLiteral.Quote(
+        => WitTemporalLiteral.Typed("TIMESTAMP",
             ((DateTime)value).ToString(WitTemporalLiteral.DATETIME_FORMAT, CultureInfo.InvariantCulture));
 }
 
@@ -78,7 +91,7 @@ public sealed class WitDateTimeOffsetTypeMapping : DateTimeOffsetTypeMapping
 
     /// <inheritdoc />
     protected override string GenerateNonNullSqlLiteral(object value)
-        => WitTemporalLiteral.Quote(
+        => WitTemporalLiteral.Typed("DATETIMEOFFSET",
             ((DateTimeOffset)value).ToString(
                 WitTemporalLiteral.DATETIME_FORMAT + "zzz", CultureInfo.InvariantCulture));
 }
@@ -106,7 +119,8 @@ public sealed class WitDateOnlyTypeMapping : DateOnlyTypeMapping
 
     /// <inheritdoc />
     protected override string GenerateNonNullSqlLiteral(object value)
-        => WitTemporalLiteral.Quote(((DateOnly)value).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
+        => WitTemporalLiteral.Typed("DATE",
+            ((DateOnly)value).ToString("yyyy-MM-dd", CultureInfo.InvariantCulture));
 }
 
 /// <inheritdoc />
@@ -132,5 +146,6 @@ public sealed class WitTimeOnlyTypeMapping : TimeOnlyTypeMapping
 
     /// <inheritdoc />
     protected override string GenerateNonNullSqlLiteral(object value)
-        => WitTemporalLiteral.Quote(((TimeOnly)value).ToString("HH:mm:ss.fffffff", CultureInfo.InvariantCulture));
+        => WitTemporalLiteral.Typed("TIME",
+            ((TimeOnly)value).ToString("HH:mm:ss.fffffff", CultureInfo.InvariantCulture));
 }

@@ -72,10 +72,10 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
     // Boolean mapping
     private readonly BoolTypeMapping m_boolMapping = new(TYPE_BOOLEAN);
 
-    // Date/Time mappings
-    // WitSQL has no ANSI typed literals, so these emit plain quoted strings - see
-    // WitTemporalTypeMappings. With EF Core's own mappings a query comparing against a constant
-    // date produced TIMESTAMP '...' and failed to parse before reaching the engine.
+    // Date/Time mappings. They emit WitSQL's TYPED literals - DATE '...', TIME '...',
+    // TIMESTAMP '...', DATETIMEOFFSET '...' - see WitTemporalTypeMappings. EF Core's own mappings
+    // are close but not the same: theirs write a DateTimeOffset as a TIMESTAMP with an offset
+    // inside, which this engine refuses by name rather than silently dropping the offset.
     private readonly DateOnlyTypeMapping m_dateOnlyMapping = new WitDateOnlyTypeMapping(TYPE_DATE);
     private readonly TimeOnlyTypeMapping m_timeOnlyMapping = new WitTimeOnlyTypeMapping(TYPE_TIME);
     private readonly DateTimeTypeMapping m_dateTimeMapping = new WitDateTimeTypeMapping(TYPE_DATETIME);

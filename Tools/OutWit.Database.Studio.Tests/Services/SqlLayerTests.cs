@@ -77,16 +77,19 @@ public class SqlLayerTests
     }
 
     /// <summary>
-    /// A DATETIME goes to the database as a DateTime. The literal path formats it as
-    /// 'yyyy-MM-dd HH:mm:ss', so everything under a second is silently dropped - the value read back
-    /// is not the value the user entered.
-    ///
-    /// Both directions in one case: the parameterised write keeps the milliseconds, and the literal
-    /// the formatter would have produced is asserted NOT to contain them. That second assertion is
-    /// what makes this a measurement of the fix rather than a description of the present.
+    /// A DATETIME goes to the database as a DateTime, whichever way it is written.
     /// </summary>
+    /// <remarks>
+    /// <b>This case's own control had to be replaced on 2026-08-09, and the reason is the good one:
+    /// the defect it recorded is gone.</b> It used to assert that the literal path produced
+    /// <c>'yyyy-MM-dd HH:mm:ss'</c> and therefore did NOT contain the milliseconds - true when it was
+    /// written, and the argument for binding a parameter instead. The formatter writes a typed literal
+    /// to the last tick now (<c>TIMESTAMP '…​.fffffff'</c>), so the old control had become an assertion
+    /// that the fix had not happened. Both paths keep the value now, and the case says so - a control
+    /// whose premise is a defect stops being a control the moment the defect is fixed.
+    /// </remarks>
     [Test]
-    public async Task APrecisionThatTheLiteralPathDropsSurvivesAsAParameterTest()
+    public async Task APrecisionKeptByBothTheParameterAndTheLiteralTest()
     {
         await using var studio = await StudioFixture.CreateAsync(withSchema: false);
 
@@ -109,9 +112,12 @@ public class SqlLayerTests
             Assert.That(stored, Is.EqualTo(moment), "the value read back is the value written");
             Assert.That(((DateTime)stored!).Millisecond, Is.EqualTo(789));
 
-            Assert.That(SqlValueFormatter.FormatForSql(moment), Does.Not.Contain("789"),
-                "CONTROL: the literal the old path would have built has no milliseconds in it at all, "
-                + "so this case could not have passed before");
+            // The literal path, measured rather than assumed: it carries the fraction AND says what
+            // type it is, so a value written this way can be found again by the same literal.
+            Assert.That(SqlValueFormatter.FormatForSql(moment), Does.Contain("789"),
+                "the literal keeps the milliseconds now - it used to stop at whole seconds");
+            Assert.That(SqlValueFormatter.FormatForSql(moment), Does.StartWith("TIMESTAMP "),
+                "and it names the type, which is what makes the comparison a temporal one");
         });
     }
 

@@ -134,12 +134,12 @@ public static class SqlValueFormatter
     /// - Text (string) -> 'escaped string'
     /// - Blob (byte[]) -> X'hex'
     /// - Boolean -> TRUE/FALSE
-    /// - DateTime -> 'yyyy-MM-dd HH:mm:ss'
-    /// - DateOnly -> 'yyyy-MM-dd'
-    /// - TimeOnly -> 'HH:mm:ss'
+    /// - DateTime -> TIMESTAMP 'yyyy-MM-dd HH:mm:ss.fffffff'
+    /// - DateOnly -> DATE 'yyyy-MM-dd'
+    /// - TimeOnly -> TIME 'HH:mm:ss.fffffff'
     /// - TimeSpan -> 'hh:mm:ss'
     /// - Guid -> 'guid-string'
-    /// - DateTimeOffset -> 'yyyy-MM-dd HH:mm:ss zzz'
+    /// - DateTimeOffset -> DATETIMEOFFSET 'yyyy-MM-dd HH:mm:ss.fffffff zzz'
     /// - Json (JsonDocument/JsonElement) -> 'json string'
     /// - RowVersion (ulong) -> numeric literal
     /// </remarks>
@@ -153,11 +153,17 @@ public static class SqlValueFormatter
             // Text types
             string str => $"'{EscapeString(str)}'",
             
-            // Date/Time types - use fixed format for SQL
-            DateTime dt => $"'{dt:yyyy-MM-dd HH:mm:ss}'",
-            DateOnly d => $"'{d:yyyy-MM-dd}'",
-            TimeOnly t => $"'{t:HH:mm:ss}'",
-            DateTimeOffset dto => $"'{dto:yyyy-MM-dd HH:mm:ss zzz}'",
+            // Date/Time types, as TYPED literals and to the last tick. Written as quoted strings to
+            // whole seconds until 2026-08-09, which lost two things at once: the fraction, and the
+            // TYPE - a dumped row could not be found again by the value it was dumped with, because
+            // text is not converted to a temporal column's type before a comparison. The grammar has
+            // typed literals now and the word in front names the type.
+            DateTime dt => $"TIMESTAMP '{dt:yyyy-MM-dd HH:mm:ss.fffffff}'",
+            DateOnly d => $"DATE '{d:yyyy-MM-dd}'",
+            TimeOnly t => $"TIME '{t:HH:mm:ss.fffffff}'",
+            DateTimeOffset dto => $"DATETIMEOFFSET '{dto:yyyy-MM-dd HH:mm:ss.fffffff zzz}'",
+
+            // An interval has no literal form of its own in this grammar, so it stays a string.
             TimeSpan ts => $"'{ts:hh\\:mm\\:ss}'",
             
             // Boolean

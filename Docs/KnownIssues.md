@@ -16,7 +16,7 @@ cause was not chased into the engine.
 | # | Area | Severity | Status | One line |
 |---|------|----------|--------|----------|
 | [1](#1-alter-table-add-column-is-unusable-schema-cannot-evolve) | EF migrations + engine DDL | **Blocker** | **FIXED** | A schema can be created but never changed |
-| [2](#2-inline-date-literals-are-rejected-by-the-parser) | EF query translation | Major | open — root-caused | `WitSqlParsingException` on an inlined `DateOnly` |
+| [2](#2-inline-date-literals-are-rejected-by-the-parser) | EF query translation + grammar | Major | **FIXED** | `WitSqlParsingException` on an inlined `DateOnly` — and then, worse, no rows at all |
 | [3](#3-intstring-conversion-inside-a-query-is-not-translated) | EF query translation | Minor | open — root-caused | `group.Key.ToString()` does not translate |
 
 A full audit of the engine and both providers was carried out in 2026-07. It is a
@@ -160,6 +160,51 @@ migration. A product with real data on WitDatabase has no such escape.
 ---
 
 ## 2. Inline DATE literals are rejected by the parser
+
+> **FIXED, 2026-08-09 — and the interim workaround was worse than the defect.**
+>
+> **The grammar has typed temporal literals now**, and the rule is that **the word in front decides
+> the type**, spelled the way the type is spelled in DDL:
+>
+> | literal | value |
+> |---|---|
+> | `DATE '2026-07-01'` | `DateOnly` |
+> | `TIME '13:45:30'` | `TimeOnly` |
+> | `TIMESTAMP '2026-07-01 13:45:30.1234567'`, or `DATETIME '…'` | `DateTime` |
+> | `DATETIMEOFFSET '2026-07-01 13:45:30 +03:00'` | `DateTimeOffset` |
+>
+> `TIMESTAMP` carrying an offset is **refused by name** rather than truncated — the message says to
+> write `DATETIMEOFFSET`. PostgreSQL accepts that shape and silently discards the offset, which is one
+> row meaning two different instants in two databases.
+>
+> **What had happened in between, and it is the part worth reading.** Rather than wait for the
+> grammar, the EF provider was given four custom mappings that emit a plain quoted string. That
+> parses — and **measured 2026-08-09, it answers with nothing**: a row written by this provider could
+> not be found by the very text this provider writes, because text is not converted to a temporal
+> column's type before a comparison.
+>
+> ```
+>   1 rows   a DATETIME found by a typed literal
+>   0 rows   a DATETIME found by the very text it was written with
+>   0 rows   a DATETIMEOFFSET found by the very text it was written with
+>   1 rows   CONTROL: the row is there at all
+> ```
+>
+> A loud parse error had been traded for a silently empty result set — which is exactly what the
+> analysis below warned would happen, written before the workaround was made. `DateOnly` was the
+> exception and is why it went unnoticed: an ISO date is ten characters with nothing after it, so the
+> quoted form and the typed form happen to agree.
+>
+> **Where the fix lives:** the grammar (`WitSqlParser.g4`), the visitor that turns a literal into a
+> typed value, the serializer that writes one back, `AsLiteral` so a column DEFAULT keeps its type
+> instead of becoming text, the four EF mappings, and Studio's dump — which used to write
+> `'yyyy-MM-dd HH:mm:ss'` and lost the fraction of a second as well as the type.
+>
+> **Regression tests:** `ExpressionParserTests` (the keyword decides the type; DATE and TIME are still
+> function names), `AuditVerification/TypedTemporalLiteralTests` in the engine (including two cases
+> that **pin** the text-versus-temporal comparison as it is, so a future change to it has to go red on
+> purpose), and `Integration/InlinedTemporalConstantTests` in the EF provider — four of whose eight
+> cases go red again if the mappings are put back to quoted strings.
 
 > **Root-caused, not yet fixed — and wider than described here.** This is not a
 > `DateOnly` problem, it is a **typed-literal** problem, and it also breaks `DateTime`,

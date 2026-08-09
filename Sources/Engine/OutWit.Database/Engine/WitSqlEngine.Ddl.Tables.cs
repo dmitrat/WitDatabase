@@ -539,8 +539,17 @@ public sealed partial class WitSqlEngine
             WitSqlType.Decimal => Literal(LiteralType.Decimal, literal.AsDecimal()),
             WitSqlType.Boolean => Literal(LiteralType.Boolean, literal.AsBool()),
             WitSqlType.Blob => Literal(LiteralType.Blob, literal.AsBlob()),
-            // Dates, GUIDs and the rest have no literal form of their own in this grammar; they are
-            // written as text, which is how they were already being stored.
+
+            // The four temporal types have a literal form of their own since typed literals were added
+            // for KnownIssues 2, so a date default keeps its TYPE instead of becoming text that has to
+            // be converted back on every insert. The comment that used to be here said they had none.
+            WitSqlType.DateOnly => Literal(LiteralType.Date, literal.AsDateOnly()),
+            WitSqlType.TimeOnly => Literal(LiteralType.Time, literal.AsTimeOnly()),
+            WitSqlType.DateTime => Literal(LiteralType.Timestamp, literal.AsDateTime()),
+            WitSqlType.DateTimeOffset => Literal(LiteralType.TimestampOffset, literal.AsDateTimeOffset()),
+
+            // A GUID and the rest still have none, and are written as text - which is how they were
+            // already being stored.
             _ => Literal(LiteralType.String, literal.AsString())
         };
     }

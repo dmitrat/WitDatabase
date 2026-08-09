@@ -1,3 +1,4 @@
+using OutWit.Database.Parser.Exceptions;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Types;
 using OutWit.Database.Parser.Statements;
@@ -733,6 +734,124 @@ public class ExpressionParserTests
     {
         var expr = (WitSqlExpressionLiteral)WitSql.ParseExpression("NULL");
         Assert.That(expr.Type, Is.EqualTo(LiteralType.Null));
+    }
+
+    #endregion
+
+    #region Typed temporal literals (KnownIssues 2)
+
+    /// <summary>
+    /// The four typed literals, and the rule they were built to: <b>the WORD in front decides the
+    /// type</b>, spelled the way the type is spelled in DDL.
+    /// </summary>
+    /// <remarks>
+    /// EF Core's stock mappings emit exactly these shapes, and the engine refused all of them - so an
+    /// inlined <c>new DateOnly(2026, 7, 1)</c> threw where the same value passed as a parameter
+    /// worked, and every <c>HasData</c> seed row with a temporal column was unusable. Measured before
+    /// the grammar was touched: <c>DATE '…'</c>, <c>TIME '…'</c> and <c>DATETIME '…'</c> came back
+    /// "extraneous input", and <c>TIMESTAMP '…'</c> was not even an expression.
+    /// </remarks>
+    [TestCase("DATE '2026-07-01'", LiteralType.Date)]
+    [TestCase("TIME '13:45:30'", LiteralType.Time)]
+    [TestCase("TIMESTAMP '2026-07-01 13:45:30'", LiteralType.Timestamp)]
+    [TestCase("DATETIME '2026-07-01 13:45:30'", LiteralType.Timestamp)]
+    [TestCase("DATETIMEOFFSET '2026-07-01 13:45:30 +03:00'", LiteralType.TimestampOffset)]
+    public void ATypedTemporalLiteralIsTypedByItsKeywordTest(string sql, LiteralType expected)
+    {
+        var lit = (WitSqlExpressionLiteral)WitSql.ParseExpression(sql);
+
+        Assert.That(lit.Type, Is.EqualTo(expected));
+    }
+
+    [Test]
+    public void ATypedTemporalLiteralCarriesTheValueOfItsTypeTest()
+    {
+        var date = (WitSqlExpressionLiteral)WitSql.ParseExpression("DATE '2026-07-01'");
+        var time = (WitSqlExpressionLiteral)WitSql.ParseExpression("TIME '13:45:30'");
+        var stamp = (WitSqlExpressionLiteral)WitSql.ParseExpression("TIMESTAMP '2026-07-01 13:45:30.123'");
+        var offset = (WitSqlExpressionLiteral)WitSql
+            .ParseExpression("DATETIMEOFFSET '2026-07-01 13:45:30 +03:00'");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(date.Value, Is.EqualTo(new DateOnly(2026, 7, 1)));
+            Assert.That(time.Value, Is.EqualTo(new TimeOnly(13, 45, 30)));
+            Assert.That(stamp.Value, Is.EqualTo(new DateTime(2026, 7, 1, 13, 45, 30, 123)),
+                "the fraction survives - it is what a bare string literal to whole seconds loses");
+            Assert.That(offset.Value,
+                Is.EqualTo(new DateTimeOffset(2026, 7, 1, 13, 45, 30, TimeSpan.FromHours(3))));
+        });
+    }
+
+    /// <summary>
+    /// <b>An offset inside a TIMESTAMP is refused by name, not truncated.</b> PostgreSQL accepts this
+    /// shape and silently discards the offset, so the same row means two different instants in two
+    /// databases and nothing is said about it. The refusal names the keyword that would keep it.
+    /// </summary>
+    [Test]
+    public void ATimestampWithAnOffsetIsRefusedAndNamesTheKeywordThatKeepsItTest()
+    {
+        var refused = Assert.Throws<WitSqlParsingException>(
+            () => WitSql.ParseExpression("TIMESTAMP '2026-07-01 13:45:30 +03:00'"));
+
+        Assert.That(refused!.Message, Does.Contain("DATETIMEOFFSET"));
+    }
+
+    /// <summary>
+    /// CONTROL for the case above: the same instant IS accepted under the keyword that names its type,
+    /// and with the offset intact. Without this, "TIMESTAMP refuses an offset" would be satisfied by a
+    /// grammar that refuses every offset there is.
+    /// </summary>
+    [Test]
+    public void TheSameInstantIsAcceptedUnderTheKeywordThatNamesItsTypeTest()
+    {
+        var lit = (WitSqlExpressionLiteral)WitSql
+            .ParseExpression("DATETIMEOFFSET '2026-07-01 13:45:30 +03:00'");
+
+        Assert.That(((DateTimeOffset)lit.Value!).Offset, Is.EqualTo(TimeSpan.FromHours(3)));
+    }
+
+    [Test]
+    public void TextThatIsNotOfTheKeywordsTypeIsRefusedTest()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(() => WitSql.ParseExpression("DATE 'yesterday'"),
+                Throws.TypeOf<WitSqlParsingException>());
+            Assert.That(() => WitSql.ParseExpression("TIME '2026-07-01'"),
+                Throws.TypeOf<WitSqlParsingException>());
+        });
+    }
+
+    /// <summary>
+    /// <b>The keyword is still a function name.</b> DATE, TIME and DATETIME were function names before
+    /// they were literal keywords, and the two are told apart by what follows - a bracket or a string.
+    /// This is the case that would go red if the new alternatives had swallowed the calls.
+    /// </summary>
+    [Test]
+    public void TheKeywordsAreStillFunctionNamesTest()
+    {
+        Assert.Multiple(() =>
+        {
+            Assert.That(WitSql.ParseExpression("DATE('2026-07-01')"),
+                Is.InstanceOf<WitSqlExpressionFunctionCall>());
+            Assert.That(WitSql.ParseExpression("TIME('13:45:30')"),
+                Is.InstanceOf<WitSqlExpressionFunctionCall>());
+            Assert.That(WitSql.ParseExpression("DATETIME('2026-07-01 13:45:30')"),
+                Is.InstanceOf<WitSqlExpressionFunctionCall>());
+        });
+    }
+
+    /// <summary>
+    /// And a bare quoted string is still a string - the shape that WORKED before this change and had
+    /// to go on working, because it is what every existing database's SQL is written with.
+    /// </summary>
+    [Test]
+    public void ABareQuotedStringIsStillTextTest()
+    {
+        var lit = (WitSqlExpressionLiteral)WitSql.ParseExpression("'2026-07-01'");
+
+        Assert.That(lit.Type, Is.EqualTo(LiteralType.String));
     }
 
     [Test]

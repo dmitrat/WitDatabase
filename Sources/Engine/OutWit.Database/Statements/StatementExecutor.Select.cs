@@ -580,6 +580,10 @@ public sealed partial class StatementExecutor
                 LiteralType.Boolean => WitSqlType.Boolean,
                 LiteralType.Null => WitSqlType.Null,
                 LiteralType.Blob => WitSqlType.Blob,
+                LiteralType.Date => WitSqlType.DateOnly,
+                LiteralType.Time => WitSqlType.TimeOnly,
+                LiteralType.Timestamp => WitSqlType.DateTime,
+                LiteralType.TimestampOffset => WitSqlType.DateTimeOffset,
                 _ => WitSqlType.Text
             },
             WitSqlExpressionFunctionCall func => InferSelectFunctionReturnType(func.FunctionName),
