@@ -305,11 +305,9 @@ above is believed.
 > **Earlier figures withdrawn twice, and the second time is worth recording.** Releases before
 > 11.1.0 advertised transaction ratios measured on the least discriminating workload in the suite,
 > and before that "4-20x faster" numbers from a benchmark project no longer in the repository. The
-> tables above replace both. What changed in between is documented in
-> [Docs/PHASE10-PERFORMANCE-PLAN.md](Docs/PHASE10-PERFORMANCE-PLAN.md): the benchmark suite had no
-> assertion of any kind in 113 methods, so nothing had ever checked that the three engines compute
-> the same answer, and several published claims turned out to describe an engine that no longer
-> existed.
+> tables above replace both. What changed in between: the benchmark suite had no assertion of any
+> kind in 113 methods, so nothing had ever checked that the three engines compute the same answer,
+> and several published claims turned out to describe an engine that no longer existed.
 
 ## Requirements
 
@@ -344,6 +342,10 @@ WitDatabase/
 - [Docs/KnownIssues.md](Docs/KnownIssues.md) - Known issues
 - [CHANGELOG.md](CHANGELOG.md) - What changed in each release, and why
 - [Sources/Core/OutWit.Database.Core/EXTENSIBILITY.md](Sources/Core/OutWit.Database.Core/EXTENSIBILITY.md) - Extension guide
+
+The audit and the phase plans are working papers rather than documentation and are no longer shipped
+in `Docs/`. Source comments that cite one by name - `AUDIT-2026-07.md`, `NEXT-SESSION-PLAN.md`,
+`PHASE*-*.md` - refer to files that remain in the git history.
 
 ## Running Tests
 

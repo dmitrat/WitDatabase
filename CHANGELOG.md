@@ -1234,7 +1234,7 @@ fails outright.
 ## 2.3.0
 
 An EF Core conformance release. It opens phase 2 of
-[Docs/NEXT-SESSION-PLAN.md](Docs/NEXT-SESSION-PLAN.md) by referencing EF Core's own provider
+`Docs/NEXT-SESSION-PLAN.md` by referencing EF Core's own provider
 specification suite - the canonical proof of drop-in compatibility, which this provider had never
 been run against - and fixes what that surfaced.
 
@@ -1356,7 +1356,7 @@ keep. `Docs/NEXT-SESSION-PLAN.md` has the ledger; the marker count across the re
 ## 2.2.0
 
 A referential-integrity release. Everything here comes out of the verified backlog
-([Docs/NEXT-SESSION-PLAN.md](Docs/NEXT-SESSION-PLAN.md), phase 1), and these are the defects that
+(`Docs/NEXT-SESSION-PLAN.md`, phase 1), and these are the defects that
 **corrupted data** rather than returning a wrong answer - a cascade that deleted the wrong row, a
 constraint that never fired, a column write that wrapped.
 
@@ -1431,7 +1431,7 @@ upgrading.
 
 The first release out of the verification pass over the 2026-07 audit's backlog. Every one of the
 104 findings that audit raised but never attacked now has a verdict backed by a running test
-([Docs/NEXT-SESSION-PLAN.md](Docs/NEXT-SESSION-PLAN.md), workstream B); ten of the confirmed defects
+(`Docs/NEXT-SESSION-PLAN.md`, workstream B); ten of the confirmed defects
 are fixed here.
 
 Roughly four claims in five survived scrutiny. The number worth knowing is the other one: twenty
@@ -1530,7 +1530,7 @@ stay as passing pins. 100 such specifications remain.
 ## 2.0.0
 
 A correctness release. It comes out of a full audit of the engine and both providers
-([Docs/AUDIT-2026-07.md](Docs/AUDIT-2026-07.md)) and fixes both halves of the schema-evolution
+(`Docs/AUDIT-2026-07.md`) and fixes both halves of the schema-evolution
 blocker in [Docs/KnownIssues.md](Docs/KnownIssues.md), three silent data-corruption paths, and
 several cases where a query returned the wrong rows without any error.
 
@@ -1657,7 +1657,7 @@ and read rows back.
 - In the MVCC path: the tombstone written when a version is superseded is not transaction-gated and
   rollback does not revert it, so a failure part-way through a commit still destroys the previous
   value; pruning the committed-transaction map can make committed data invisible.
-- The remaining items are listed in [Docs/AUDIT-2026-07.md](Docs/AUDIT-2026-07.md) §3.
+- The remaining items are listed in `Docs/AUDIT-2026-07.md` §3.
 
 ## 1.1.0 and earlier
 
