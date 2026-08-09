@@ -1,5 +1,6 @@
 using System.Buffers.Binary;
 using OutWit.Database.Core.Comparers;
+using OutWit.Database.Core.Exceptions;
 using OutWit.Database.Core.Interfaces;
 
 namespace OutWit.Database.Core.IndexedDb.Indexes;
@@ -246,7 +247,7 @@ public sealed class SecondaryIndexIndexedDb : ISecondaryIndex
             var existing = await m_interop.GetAsync(indexKeyArray);
             if (existing != null)
             {
-                throw new InvalidOperationException(
+                throw new UniqueIndexViolationException(
                     $"Unique index '{Name}' already contains an entry for this key.");
             }
             

@@ -1,4 +1,5 @@
 using NUnit.Framework;
+using OutWit.Database.Core.Exceptions;
 using OutWit.Database.Core.Indexes;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Stores;
@@ -66,8 +67,12 @@ namespace OutWit.Database.Core.Tests.Indexes
 
             index.Add(indexKey, pk1);
 
-            // Act & Assert
-            Assert.Throws<InvalidOperationException>(() => index.Add(indexKey, pk2));
+            // Act & Assert. The type is the specific one now, and it still IS an
+            // InvalidOperationException - the second assertion is what says a caller written against
+            // the old type keeps working, which is the whole reason the new one derives from it.
+            var violation = Assert.Throws<UniqueIndexViolationException>(() => index.Add(indexKey, pk2));
+
+            Assert.That(violation, Is.InstanceOf<InvalidOperationException>());
         }
 
         [Test]

@@ -81,14 +81,25 @@ namespace OutWit.Database.Core.Indexes
                 {
                     m_indexes.Remove(name);
 
-                    // Empty the index before releasing it. Disposing only closes the backing store;
-                    // on a persistent one the entries stay under the index's own name, and the next
-                    // index created with that name reopens them. That made a recreated table reject
-                    // rows it did not contain - the primary key index was still holding the dropped
-                    // table's keys.
-                    ClearBackingStore(index);
+                    try
+                    {
+                        // Empty the index before releasing it. Disposing only closes the backing
+                        // store; on a persistent one the entries stay under the index's own name,
+                        // and the next index created with that name reopens them. That made a
+                        // recreated table reject rows it did not contain - the primary key index was
+                        // still holding the dropped table's keys.
+                        ClearBackingStore(index);
+                    }
+                    finally
+                    {
+                        // In a finally because the index is already out of the manager: whatever
+                        // emptying it does, nothing else will ever dispose it, and on a file-backed
+                        // index that means the file stays open for the life of the process. Measured
+                        // 2026-08-09: a CREATE INDEX whose build exhausted the page cache left the
+                        // .idx file held, and the database could not be reopened at all.
+                        index.Dispose();
+                    }
 
-                    index.Dispose();
                     return true;
                 }
                 return false;
