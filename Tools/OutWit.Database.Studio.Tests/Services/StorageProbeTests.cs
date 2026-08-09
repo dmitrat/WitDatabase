@@ -237,5 +237,55 @@ public class StorageProbeTests
         Assert.That(StorageProbe.Look(path).Kind, Is.EqualTo(StorageKind.NotADatabase));
     }
 
+    /// <summary>
+    /// PINS A DEFECT, NOT CORRECT BEHAVIOUR. **A database that is OPEN is reported as not a database
+    /// at all** - so the Open dialog, handed the path of a database this very application has open,
+    /// says there is nothing there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Measured 2026-08-09, and it had been derived from the «База» tab's finding without being
+    /// reproduced: while a connection holds the file, <c>StorageDetector.Detect</c> answers with a
+    /// null store type - the same answer it gives for a text file - and everything downstream reads
+    /// that as "not a database". The lock is exclusive, so this is true even inside the process that
+    /// holds it.
+    /// </para>
+    /// <para>
+    /// <b>The proper fix is engine-side and is the phase-10 remainder's first item:</b> an open
+    /// database should be able to describe itself through its connection rather than by re-reading
+    /// its own file behind its own lock. When that lands, this case goes RED and should be replaced
+    /// by: an open database is reported as a database.
+    /// </para>
+    /// <para>
+    /// The control is the second half - the same path, the same file, after the connection has gone -
+    /// which is what makes this a statement about the LOCK rather than about the file.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AnOpenDatabaseIsReportedAsNotADatabaseTest()
+    {
+        var fixture = await StudioFixture.CreateAsync();
+
+        try
+        {
+            var path = fixture.Database.Connection?.FilePath;
+
+            Assert.That(path, Is.Not.Null.And.Not.Empty);
+
+            Assert.That(StorageProbe.Look(path).Kind, Is.EqualTo(StorageKind.NotADatabase),
+                "PINS A DEFECT: an open database reads as if there were no database at the path");
+
+            await fixture.Connections.CloseAllAsync();
+
+            Assert.That(StorageProbe.Look(path).Kind, Is.EqualTo(StorageKind.Database),
+                "and the same file answers correctly once nothing holds it - so this is the lock, "
+                + "not the file");
+        }
+        finally
+        {
+            await fixture.DisposeAsync();
+        }
+    }
+
     #endregion
 }
