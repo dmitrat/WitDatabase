@@ -1016,6 +1016,47 @@ nothing names that file any more - the database reopens.
 
 ---
 
+## 15. A column the query GROUPS BY cannot be reached from `ORDER BY` or `HAVING`
+
+> **OPEN.** Pinned by `Engine/Query/GroupingKeyReachabilityTests` - five `ORDER BY`
+> shapes, one `HAVING`, and two controls. The pins invert when it is fixed.
+
+A grouped row is built out of the SELECT list and nothing else, so a clause naming
+anything else is evaluated against a row that does not have it:
+
+```sql
+SELECT COUNT(*) FROM T GROUP BY Kind ORDER BY Kind     -- Column 'Kind' not found
+SELECT COUNT(*) FROM T GROUP BY Kind HAVING Kind > 'a' -- Column 'Kind' not found
+```
+
+Both are ordinary SQL and **PostgreSQL, SQL Server and SQLite all accept them.**
+Adding `Kind` to the select list makes each work, which is the control.
+
+### Two things the earlier record got wrong, both measured 2026-08-09
+
+- **It is not "refused".** Nothing checks it and nothing says so. From `ORDER BY` the
+  failure arrives as .NET's own **`Failed to compare two elements in the array`** -
+  the sort could not compare two rows - with `Column 'Kind' not found` one level in.
+  A consumer sees a sentence about arrays.
+- **It was recorded as an `ORDER BY` limitation and `HAVING` has the identical
+  hole**, which matters more: filtering groups by the column you grouped by is an
+  everyday shape, while ordering by it is often a convenience.
+
+### What a fix has to change
+
+`IteratorGroupBy.BuildResultRow` builds exactly `m_selectList`, and the planner's
+`ResolveAggregateExpression` can only rewrite an `ORDER BY` item to a **column index
+in that list**. So the grouped row has to be able to answer for its grouping
+expressions as well - either by carrying them and trimming them off after the sort,
+or by evaluating those clauses against the group's own key rather than against the
+projected row.
+
+`HAVING` takes the same path (`PassesHavingFilter` evaluates against the result row),
+so one mechanism serves both. `ORDER BY 1`, `ORDER BY <alias>` and `ORDER BY
+<aggregate>` already work and must keep working - they are the controls.
+
+---
+
 ## Verifying a fix
 
 WitAnalytics is a ready-made regression harness: its stats test fixture runs the
