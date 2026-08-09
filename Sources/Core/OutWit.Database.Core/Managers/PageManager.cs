@@ -732,6 +732,18 @@ public sealed class PageManager : IDisposable, IAsyncDisposable
     }
 
     /// <summary>
+    /// How full the page cache is right now: which cache, how many pages it holds and how many of
+    /// those are dirty.
+    /// </summary>
+    /// <remarks>
+    /// Both caches have kept these two numbers since they were written and neither handed them out,
+    /// so nothing above the page manager could see them. Occupancy only - there is no hit or miss
+    /// counter in either cache to build a hit rate from.
+    /// </remarks>
+    public PageCacheOccupancy CacheOccupancy =>
+        new(m_cache.ProviderKey, m_cache.Count, m_cache.DirtyCount);
+
+    /// <summary>
     /// Gets the current database header (read-only).
     /// </summary>
     public DatabaseHeader GetHeader()

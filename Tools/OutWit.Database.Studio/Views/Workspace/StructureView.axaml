@@ -423,10 +423,22 @@
                                FontFamily="Consolas,Courier New" FontSize="12"
                                TextWrapping="Wrap"/>
 
-                    <TextBlock Text="{Binding ViewDefinition}"
-                               FontFamily="Consolas,Courier New" FontSize="12"
-                               TextWrapping="Wrap"
-                               IsVisible="{Binding HasViewDefinition}"/>
+                    <!-- A view's whole structure is this text, so it is a box rather than a label: the
+                         kind of edit it makes existed, with a category and a sentence describing how it
+                         would be carried out, and nothing in the application had ever constructed one. -->
+                    <StackPanel Spacing="4" IsVisible="{Binding HasViewDefinition}">
+                        <TextBlock Text="{DynamicResource S.Structure.ViewBody}" FontSize="12" Opacity="0.7"/>
+                        <TextBox AutomationProperties.AutomationId="StructureViewBody"
+                                 AutomationProperties.Name="{DynamicResource S.Structure.ViewBody}"
+                                 Text="{Binding ViewDefinition, Mode=TwoWay}"
+                                 IsEnabled="{Binding CanEditView}"
+                                 AcceptsReturn="True" TextWrapping="Wrap"
+                                 FontFamily="Consolas,Courier New" FontSize="12"
+                                 MinHeight="120"/>
+                        <TextBlock Text="{DynamicResource S.Structure.ViewBodyHint}"
+                                   FontSize="11" Opacity="0.55" TextWrapping="Wrap"
+                                   IsVisible="{Binding CanEditView}"/>
+                    </StackPanel>
 
                     <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
                             CornerRadius="4" Padding="10"

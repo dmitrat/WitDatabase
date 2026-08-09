@@ -88,6 +88,12 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
         {
             OnPropertyChanged(nameof(Heading));
             OnPropertyChanged(nameof(SaveText));
+
+            // The refusals are built once, when the body changes, so switching language would leave
+            // whichever ones are on screen in the language they were built in - stage 10's "a
+            // converter is asked ONCE", in a list rather than in a binding. Rebuilding them is what
+            // a translated refusal means.
+            Validate();
         };
     }
 
@@ -111,36 +117,35 @@ public class EditTriggerViewModel : ViewModelBase<ApplicationViewModel>
         var problems = new List<string>();
 
         if (string.IsNullOrWhiteSpace(Name))
-            problems.Add("The trigger needs a name.");
+            problems.Add(Localization["Dialog.Trigger.Problem.NoName"]);
 
         if (string.IsNullOrWhiteSpace(Body))
         {
-            problems.Add("The body is empty.");
+            problems.Add(Localization["Dialog.Trigger.Problem.EmptyBody"]);
         }
         else
         {
             if (Body.Contains("SET NEW.", StringComparison.OrdinalIgnoreCase) ||
                 Body.Contains("SET OLD.", StringComparison.OrdinalIgnoreCase))
             {
-                problems.Add(
-                    "Assigning to NEW or OLD is not in this language yet - SET is read as SET " +
-                    "TRANSACTION, so the statement will not parse. A BEFORE trigger cannot fill in a " +
-                    "column here.");
+                problems.Add(Localization["Dialog.Trigger.Problem.AssignsNewOrOld"]);
             }
 
             var split = SqlScript.Split(Body);
 
             if (!split.IsSuccess)
             {
-                problems.Add($"The body does not parse: {split.Errors[0].Message}");
+                // The engine's own message, which is English and stays that way: it is the parser
+                // speaking, not Studio. The sentence around it is translated.
+                problems.Add(Localization.Format("Dialog.Trigger.Problem.DoesNotParse",
+                    split.Errors[0].Message));
             }
             else
             {
                 foreach (var statement in split.Statements.Where(s => s.ChangesSchema))
                 {
-                    problems.Add(
-                        $"\"{statement.Summary}\" changes the schema. A trigger body may contain only " +
-                        "SELECT, INSERT, UPDATE, DELETE and MERGE.");
+                    problems.Add(Localization.Format("Dialog.Trigger.Problem.ChangesSchema",
+                        statement.Summary));
                 }
             }
         }

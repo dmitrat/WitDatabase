@@ -411,6 +411,25 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
         m_store.FindCapability<IStoredConfigurationSource>()?.StoredConfiguration;
 
     /// <summary>
+    /// How full the page cache is right now - which cache, pages held, and how many of those are
+    /// dirty. Null for a store that has no page cache, which is the LSM one.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Both page caches have kept these two numbers since they were written and neither handed them
+    /// out, so the only thing a tool could say about the cache was the size it was configured with.
+    /// Found the same way as the configuration above it: by building the screen that wanted it.
+    /// </para>
+    /// <para>
+    /// <b>Occupancy, not a hit rate.</b> Neither cache counts a hit or a miss, so a hit rate is absent
+    /// from the engine rather than unexposed - see <see cref="IPageCacheOccupancySource"/>. And unlike
+    /// the configuration, this is a reading that goes stale the moment a page is read.
+    /// </para>
+    /// </remarks>
+    public PageCacheOccupancy? CacheOccupancy =>
+        m_store.FindCapability<IPageCacheOccupancySource>()?.CacheOccupancy;
+
+    /// <summary>
     /// Gets information about a database without opening it.
     /// Works with both BTree (file) and LSM (directory) databases.
     /// </summary>

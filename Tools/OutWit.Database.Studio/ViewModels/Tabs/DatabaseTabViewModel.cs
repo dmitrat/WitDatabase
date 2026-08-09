@@ -247,8 +247,17 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
         Journal = string.IsNullOrEmpty(overview.JournalProviderKey)
             ? Localization["Database.Journal.None"]
             : overview.JournalProviderKey;
-        Cache = Localization.Format("Database.Cache.Sized", overview.CacheProviderKey,
-            Localization.Plural("Count.Pages", overview.CacheSizeInPages));
+        // The cache the database was created with, and - since 2026-08-09 - what it is HOLDING. The
+        // second half is a reading taken with the rest of this refresh, so it belongs on the line that
+        // is re-read rather than in the Configuration block, which cannot change while the database is
+        // open. Absent for an LSM database, which has no page cache to ask.
+        Cache = overview.CachePagesHeld is { } held
+            ? Localization.Format("Database.Cache.Holding", overview.CacheProviderKey,
+                Localization.Plural("Count.Pages", overview.CacheSizeInPages),
+                Localization.Plural("Count.Pages", held),
+                overview.CacheDirtyPages ?? 0)
+            : Localization.Format("Database.Cache.Sized", overview.CacheProviderKey,
+                Localization.Plural("Count.Pages", overview.CacheSizeInPages));
         Locking = Localization[overview.HasFileLocking switch
         {
             true => "Database.Locking.On",

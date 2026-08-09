@@ -242,10 +242,10 @@ public sealed class SchemaChangeSet
     public async Task<DdlApplyReport> ApplyAsync(IDatabaseSession session, ILogger? logger = null,
         CancellationToken ct = default)
     {
-        var statements = ApplicableStatements;
-
-        if (statements.Count == 0)
+        if (!HasSomethingToRun)
             return DdlApplyReport.Empty;
+
+        var statements = ApplicableStatements;
 
         var outcomes = new List<DdlStatementOutcome>();
         var stopped = false;
@@ -318,6 +318,20 @@ public sealed class SchemaChangeSet
 
     public IReadOnlyList<string> ApplicableStatements =>
         Applicable.SelectMany(e => e.Statements).ToList();
+
+    /// <summary>
+    /// Whether there is anything here for <see cref="ApplyAsync"/> to run - the one question the Apply
+    /// button and the executor both ask, so that they cannot disagree.
+    /// </summary>
+    /// <remarks>
+    /// They did disagree, in the same direction and one layer apart. <c>ApplyAsync</c> ran
+    /// <c>InPlaceStatements</c> and silently skipped a whole category, and the structure tab's gate
+    /// asked for <c>InPlace.Count > 0</c> - so a change set made only of <c>DropCreate</c> edits would
+    /// have left the button grey in front of statements that were ready to run. The executor was fixed
+    /// on 2026-08-09; this is the gate's half, and putting the question in one place is what stops the
+    /// next category from having to be remembered twice.
+    /// </remarks>
+    public bool HasSomethingToRun => ApplicableStatements.Count > 0;
 
     /// <summary>
     /// The whole set as text, which is what the DDL panel shows (WS-38). A rebuild appears as a

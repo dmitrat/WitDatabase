@@ -75,8 +75,14 @@ public static class StorageCapabilities
         new("Database.Cap.Statistics", "Database.Cap.Source.Provider", StorageAvailability.Available,
             "Database.Cap.Note.NoLevels"),
 
-        new("Database.Cap.CacheOccupancy", "Database.Cap.Source.Cache",
-            StorageAvailability.NeedsProviderAccess),
+        // Available since 2026-08-09, and it was the last row in this matrix needing provider access.
+        // Both caches had kept Count and DirtyCount from the start and neither handed them out;
+        // IPageCacheOccupancySource carries them out through WitDatabase and the connection.
+        // (Written without quotation marks on purpose: rule 4 of the localisation lint reads this
+        //  declaration as a data table and does not skip comments, so a quoted phrase in here is a
+        //  sentence in a table as far as it is concerned. It caught this one.)
+        new("Database.Cap.CacheOccupancy", "Database.Cap.Source.Cache", StorageAvailability.Available,
+            "Database.Cap.Note.PagedOnly"),
 
         new("Database.Cap.CacheHitRate", "Database.Cap.Source.Cache", StorageAvailability.NotInEngine,
             "Database.Cap.Note.NothingCounts"),

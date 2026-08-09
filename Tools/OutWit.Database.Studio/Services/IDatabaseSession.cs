@@ -1,5 +1,6 @@
 using System.Data;
 using OutWit.Database.AdoNet.Maintenance;
+using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Providers;
 using OutWit.Database.Studio.Models;
 
@@ -77,6 +78,17 @@ public interface IDatabaseSession
     /// earlier is the current one. Null when there was nothing to read.
     /// </remarks>
     StoredConfiguration? StoredConfiguration { get; }
+
+    /// <summary>
+    /// How full the page cache is at the moment of the call: which cache, pages held, and how many of
+    /// those are dirty. Null when nothing is open, and for a store with no page cache (LSM).
+    /// </summary>
+    /// <remarks>
+    /// A READING rather than a fact, which is what makes it a property and not a captured value the
+    /// way <see cref="StoredConfiguration"/> is: the next statement changes it, so it is asked again
+    /// every time the Database tab is refreshed.
+    /// </remarks>
+    PageCacheOccupancy? CacheOccupancy { get; }
 
     /// <summary>
     /// Whether the connection was opened read-only (WS-10). A property of the connection, so every

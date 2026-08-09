@@ -372,6 +372,69 @@ public class SchemaDesignerTests
     }
 
     /// <summary>
+    /// <b>The Apply button and the executor ask one question, and until 2026-08-09 they asked two.</b>
+    /// <c>ApplyAsync</c> ran only the in-place statements - a silent no-op for a whole category, fixed
+    /// with issue 12 - and the structure tab's gate asked for <c>InPlace.Count > 0</c> in the same
+    /// direction, so a change set made only of <c>DropCreate</c> edits would have left Apply grey in
+    /// front of statements that were ready to run.
+    ///
+    /// <para>
+    /// It is measured HERE rather than through the tab because the designer produces no such edit
+    /// today - the trap is what a category added later would walk into - so this case pins the
+    /// reading that made the gate wrong, and <c>CanApply</c> now asks
+    /// <see cref="SchemaChangeSet.HasSomethingToRun"/>, which is the same property
+    /// <c>ApplyAsync</c> returns on.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void ASetOfNothingButDropCreateStillHasSomethingToRunTest()
+    {
+        var set = new SchemaChangeSet("Orders");
+
+        set.Add(new SchemaEdit
+        {
+            Kind = SchemaEditKind.ReplaceTriggerBody,
+            Table = "Orders",
+            Description = "replace trigger TR_Orders_Audit",
+            Statements =
+            [
+                "DROP TRIGGER TR_Orders_Audit",
+                "CREATE TRIGGER TR_Orders_Audit AFTER INSERT ON Orders FOR EACH ROW BEGIN SELECT 1; END"
+            ]
+        });
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(set.InPlace, Is.Empty,
+                "the reading the old gate asked for, and it is empty for a whole category");
+            Assert.That(set.HasSomethingToRun, Is.True);
+            Assert.That(set.ApplicableStatements, Has.Count.EqualTo(2));
+        });
+    }
+
+    /// <summary>
+    /// CONTROL for the case above: a rebuild carries no statements, so there is nothing to run and the
+    /// button stays grey. Without it, "has something to run" would be satisfied by a property that is
+    /// always true.
+    /// </summary>
+    [Test]
+    public void ASetOfNothingButARebuildHasNothingToRunTest()
+    {
+        var set = new SchemaChangeSet("Orders");
+
+        set.Add(new SchemaEdit
+        {
+            Kind = SchemaEditKind.ChangeColumnType,
+            Table = "Orders",
+            Column = "Total",
+            Description = "change Total to DECIMAL(20,4)",
+            Statements = []
+        });
+
+        Assert.That(set.HasSomethingToRun, Is.False);
+    }
+
+    /// <summary>
     /// Dropping a key column is refused by the engine, and Studio knows it will be - so the row says
     /// "rebuild" while the user is still deciding, and Apply never sends a statement that cannot work.
     /// </summary>
@@ -571,6 +634,79 @@ public class SchemaDesignerTests
 
         Assert.That(tab.ViewDefinition, Does.Contain("SELECT"));
         Assert.That(tab.CanEditView, Is.True);
+    }
+
+    /// <summary>
+    /// <b>And now it can actually be edited.</b> <c>SchemaEditKind.ReplaceViewBody</c> existed from
+    /// stage 8 with a category and a catalogue sentence describing how it would be carried out, and
+    /// <b>nothing ever constructed one</b>: <c>CreateViewViewModel</c> runs its own SQL and can only
+    /// CREATE, so a view's body could not be changed from the interface at all. Named as a product
+    /// decision while fixing issue 12 and decided on 2026-08-09.
+    ///
+    /// <para>
+    /// The proof is the ROWS the view returns afterwards, not the text in the box: a DROP and a CREATE
+    /// that both ran leave a view answering a different question.
+    /// </para>
+    /// </summary>
+    [Test]
+    public async Task AViewsBodyCanBeReplacedAndTheViewAnswersDifferentlyAsync()
+    {
+        var tab = await m_fixture.Workspace.OpenStructureTabAsync(
+            m_fixture.Database, "ActiveOrders", DatabaseNodeType.View);
+
+        var before = await m_fixture.Database.ExecuteQueryAsync(
+            SqlStatement.Of("SELECT * FROM ActiveOrders"));
+
+        Assert.That(tab.CanApply, Is.False, "nothing has been edited yet");
+
+        tab.ViewDefinition = "SELECT Id, CustomerId, Total FROM Orders WHERE Status = 'archived'";
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(tab.PendingCount, Is.EqualTo(1));
+            Assert.That(tab.Pending!.Edits[0].Kind, Is.EqualTo(SchemaEditKind.ReplaceViewBody));
+            Assert.That(tab.PendingSql, Does.Contain("DROP VIEW").And.Contain("CREATE VIEW"));
+            Assert.That(tab.CanApply, Is.True,
+                "and the button is live for a set made of nothing but DropCreate");
+        });
+
+        await StudioFixture.PressAsync(tab.ApplyCommand);
+
+        Assert.That(tab.ApplyReport!.IsComplete, Is.True, tab.ApplyReport.ErrorMessage);
+
+        // The database, not the ViewModel that asked it.
+        var after = await m_fixture.Database.ExecuteQueryAsync(
+            SqlStatement.Of("SELECT * FROM ActiveOrders"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(before.Data!.Rows.Count, Is.GreaterThan(0), "CONTROL: it answered before too");
+            Assert.That(after.Data!.Rows.Count, Is.Not.EqualTo(before.Data.Rows.Count),
+                "the view answers the new question, so both statements ran");
+        });
+    }
+
+    /// <summary>
+    /// CONTROL: a body that is put back exactly as it was read is not a change. Without it, "editing
+    /// makes a pending edit" would be satisfied by a tab that makes one for every keystroke, including
+    /// the ones that undo each other.
+    /// </summary>
+    [Test]
+    public async Task AViewBodyPutBackUnchangedIsNoChangeAsync()
+    {
+        var tab = await m_fixture.Workspace.OpenStructureTabAsync(
+            m_fixture.Database, "ActiveOrders", DatabaseNodeType.View);
+
+        var loaded = tab.ViewDefinition!;
+
+        tab.ViewDefinition = loaded + " ";
+        Assert.That(tab.PendingCount, Is.EqualTo(0), "trailing space is not a change");
+
+        tab.ViewDefinition = "SELECT Id FROM Orders";
+        Assert.That(tab.PendingCount, Is.EqualTo(1));
+
+        tab.ViewDefinition = loaded;
+        Assert.That(tab.PendingCount, Is.EqualTo(0), "and putting it back takes the edit away again");
     }
 
     [Test]

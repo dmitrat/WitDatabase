@@ -229,6 +229,7 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel, ISearchTarget
         ErrorName = null;
         Statements.Clear();
         DdlWasExecuted = false;
+        TablesWritten.Clear();
 
         m_executionCts?.Dispose();
         m_executionCts = new CancellationTokenSource();
@@ -303,6 +304,12 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel, ISearchTarget
 
                 if (statement.ChangesSchema)
                     DdlWasExecuted = true;
+
+                // Recorded only once the statement has come back without an error: a table an INSERT
+                // was refused for has the count it had, and asking again would be a query bought for
+                // nothing.
+                if (statement.WritesTable is { Length: > 0 } written)
+                    TablesWritten.Add(written);
             }
 
             ApplicationVm.MainWindowVm.StatusText = split.Statements.Count == 1
@@ -715,6 +722,12 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel, ISearchTarget
     /// </summary>
     [Notify]
     public bool DdlWasExecuted { get; set; }
+
+    /// <summary>
+    /// The tables this run wrote rows into, so that whoever owns the tree can count those and no
+    /// others. Empty for a script of nothing but queries, which is what keeps a SELECT free.
+    /// </summary>
+    public HashSet<string> TablesWritten { get; } = new(StringComparer.OrdinalIgnoreCase);
 
     /// <summary>
     /// Number of rows affected by the query.

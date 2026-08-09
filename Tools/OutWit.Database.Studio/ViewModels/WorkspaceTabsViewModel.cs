@@ -470,8 +470,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         {
             await queryTab.ExecuteCurrentStatementAsync();
 
-            if (queryTab.DdlWasExecuted && queryTab.Session != null)
-                await ApplicationVm.DatabaseExplorerVm.RefreshAsync(queryTab.Session);
+            await FollowTheScriptAsync(queryTab);
         }
         finally
         {
@@ -547,26 +546,59 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         {
             await tab.ExecuteSqlAsync(sql);
 
-            if (tab.DdlWasExecuted && tab.Session != null)
-            {
-                Logger.LogInformation("The script changed the schema; reloading the tree of {Connection}",
-                    tab.Session.DisplayName);
-
-                try
-                {
-                    // The branch of the connection the statement ran in, not the selected one.
-                    await ApplicationVm.DatabaseExplorerVm.RefreshAsync(tab.Session);
-                }
-                catch (Exception ex)
-                {
-                    Logger.LogError(ex, "Failed to refresh schema tree after DDL");
-                }
-            }
+            await FollowTheScriptAsync(tab);
         }
         finally
         {
             IsExecuting = false;
             CurrentExecutingTab = null;
+        }
+    }
+
+    /// <summary>
+    /// Brings the tree into line with what a run just did: a reload when the schema changed, and a
+    /// fresh count of the tables that were WRITTEN TO when it did not.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The second half is new on 2026-08-09 and it closes phase 10's item 5 - fifty rows went in
+    /// through the editor and the node still said 39. It was recorded as probably the deliberate
+    /// laziness of <c>WS-16</c>; measured, it was that nothing asked. DDL had reloaded the branch
+    /// since stage 6, and a script that writes rows changes no schema, so it went past both.
+    /// </para>
+    /// <para>
+    /// Only the tables named, and only after a statement came back clean - a count is a query. A
+    /// reload counts everything anyway, so the two are exclusive rather than cumulative.
+    /// </para>
+    /// </remarks>
+    private async Task FollowTheScriptAsync(QueryTabViewModel tab)
+    {
+        if (tab.Session == null)
+            return;
+
+        try
+        {
+            if (tab.DdlWasExecuted)
+            {
+                Logger.LogInformation("The script changed the schema; reloading the tree of {Connection}",
+                    tab.Session.DisplayName);
+
+                // The branch of the connection the statement ran in, not the selected one.
+                await ApplicationVm.DatabaseExplorerVm.RefreshAsync(tab.Session);
+                return;
+            }
+
+            if (tab.TablesWritten.Count == 0)
+                return;
+
+            Logger.LogInformation("The script wrote to {Count} table(s) of {Connection}; counting those again",
+                tab.TablesWritten.Count, tab.Session.DisplayName);
+
+            await ApplicationVm.DatabaseExplorerVm.CountRowsAsync(tab.Session, tab.TablesWritten);
+        }
+        catch (Exception ex)
+        {
+            Logger.LogError(ex, "Failed to bring the tree into line with the script that just ran");
         }
     }
 
@@ -716,6 +748,11 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         SelectedQueryTab = SelectedTab as QueryTabViewModel;
         IsTableEditTabSelected = SelectedTab is TableEditTabViewModel;
         IsStructureTabSelected = SelectedTab is StructureTabViewModel;
+
+        // The fourth kind of tab, and it had no band at all: the query toolbar hides for it and
+        // nothing took its place, so selecting the Database tab left an empty strip across the
+        // window. Seen in the running application and carried forward from phase 10.
+        IsDatabaseTabSelected = SelectedTab is DatabaseTabViewModel;
     }
 
     #endregion
@@ -831,6 +868,9 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public bool IsStructureTabSelected { get; private set; }
+
+    [Notify]
+    public bool IsDatabaseTabSelected { get; private set; }
 
     [Notify]
     public bool CanCloseTab { get; private set; }
