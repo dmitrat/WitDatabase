@@ -86,19 +86,18 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
             m_logger.LogInformation("Attempting to connect with connection string: {ConnectionString}",
                 Connection.ToLogString());
 
-            // BEFORE the open, and that is the whole point of doing it here. Since 12.2.0 an open
-            // database holds an exclusive file lock, so reading the header afterwards fails - which is
-            // exactly the case the «База» tab is for, and it came back as an empty Configuration block
-            // until a test asked for it (WS-54).
-            //
-            // Reading it a moment early is not a compromise: everything in it - the store, the page
-            // size, the format version, the providers and the feature flags - is decided when the
-            // database is CREATED and cannot change while it is open.
-            StoredConfiguration = StorageDetector.ReadStoredConfiguration(Connection.FilePath ?? string.Empty);
-
             m_connection = new WitDbConnection(connectionString);
 
             await m_connection.OpenAsync(ct);
+
+            // AFTER the open, and asked of the CONNECTION. This used to read the file a moment before
+            // connecting, because an open paged database holds an exclusive lock and re-reading its
+            // own header answers nothing - so the «База» tab's Configuration block was blank without
+            // the trick. An open database describes itself now (the paged store keeps its header in
+            // memory), which is the honest version of the same answer and the only one available when
+            // something else already has the database open.
+            StoredConfiguration = m_connection.StoredConfiguration
+                                  ?? StorageDetector.ReadStoredConfiguration(Connection.FilePath ?? string.Empty);
 
             m_logger.LogInformation("Successfully connected to database: {FilePath}", Connection.FilePath);
 

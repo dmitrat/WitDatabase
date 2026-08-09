@@ -70,22 +70,25 @@ public class DatabaseTabTests
     }
 
     /// <summary>
-    /// The configuration block, and the pair is the whole case.
+    /// The configuration block is there for BOTH - a database that was on disk first and one the open
+    /// created - and the pair is still the whole case.
     ///
     /// <para>
-    /// <b>An open database cannot be read - at all.</b> Measured 2026-08-08: with a connection holding
-    /// the file, <c>ReadStoredConfiguration</c> answers null and <c>Detect</c> answers an empty store
-    /// type. So the session reads the header a moment BEFORE it opens the database, and a database
-    /// that did not exist until that open has nothing to have read - the block is then absent and says
-    /// why, rather than showing a page size of zero and "no transactions".
+    /// <b>This case inverted on 2026-08-09 and that is the point of it.</b> It used to assert the
+    /// second arm ABSENT. With a connection holding the file, <c>ReadStoredConfiguration</c> answers
+    /// null, so the session read the header a moment BEFORE opening - and a database that did not
+    /// exist until that open had nothing to have read. The block was absent and said why.
     /// </para>
     /// <para>
-    /// The fixture takes both arms: connecting to a path with nothing at it CREATES the database,
-    /// which is the case without an answer; a database that was on disk first is the case with one.
+    /// The phase-10 remainder's first item removed the workaround: an open database describes itself
+    /// now (<c>WitDbConnection.StoredConfiguration</c>, from the header the paged store holds in
+    /// memory), so it makes no difference whether the file existed a moment earlier. The two arms are
+    /// kept because they are still two different routes into the session, and because the case that
+    /// was hardest is now the one that reads the same as the easy one.
     /// </para>
     /// </summary>
     [Test]
-    public async Task TheConfigurationIsThereForADatabaseThatExistedFirstAndAbsentForOneJustCreatedAsync()
+    public async Task TheConfigurationIsThereForADatabaseThatExistedFirstAndForOneJustCreatedAsync()
     {
         m_fixture = await StudioFixture.CreateAsync(StudioStorage.BTree);
 
@@ -101,12 +104,11 @@ public class DatabaseTabTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(justCreated.HasConfiguration, Is.False,
-                "the database was created by the open that would have read its header");
-            Assert.That(justCreated.Overview!.PageSize, Is.Null);
-            Assert.That(justCreated.Overview.HasFileLocking, Is.Null,
-                "null and not false - 'could not be read' is not 'switched off'");
-            Assert.That(justCreated.HasFormat, Is.False);
+            Assert.That(justCreated.HasConfiguration, Is.True,
+                "a database created by the open describes itself too - it is the open database that "
+                + "answers now, not its file");
+            Assert.That(justCreated.Overview!.PageSize, Is.Not.Null.And.GreaterThan(0));
+            Assert.That(justCreated.HasFormat, Is.True);
 
             Assert.That(reopened.HasConfiguration, Is.True,
                 "and a database that was on disk before the session opened it has all of it");
