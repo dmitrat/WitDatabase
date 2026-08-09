@@ -24,8 +24,8 @@
     <PackageReference Include="Antlr4BuildTasks" Version="12.11.0"
                       PrivateAssets="all" ExcludeAssets="compile" />
 
-    <PackageReference Include="OutWit.Common" Version="1.3.2" />
-    <PackageReference Include="OutWit.Common.MemoryPack" Version="1.1.3" />
+    <PackageReference Include="OutWit.Common" Version="1.4.0" />
+    <PackageReference Include="OutWit.Common.MemoryPack" Version="1.1.6" />
   </ItemGroup>
 
   <ItemGroup>

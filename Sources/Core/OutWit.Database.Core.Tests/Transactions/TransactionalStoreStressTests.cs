@@ -181,7 +181,7 @@ public class TransactionalStoreStressTests : IDisposable
     #region Concurrent Read/Write Stress
 
     [Test]
-    [Timeout(30000)] // 30 second timeout
+    [CancelAfter(30000)] // 30 second timeout
     public async Task ConcurrentReadsWhileWritingTest()
     {
         using var store = CreateStore("conc_rw", TimeSpan.FromSeconds(10));
@@ -258,7 +258,7 @@ public class TransactionalStoreStressTests : IDisposable
     }
 
     [Test]
-    [Timeout(60000)] // 60 second timeout
+    [CancelAfter(60000)] // 60 second timeout
     public async Task ConcurrentWritersSerializeTest()
     {
         using var store = CreateStore("conc_wr", TimeSpan.FromSeconds(30));
@@ -299,7 +299,7 @@ public class TransactionalStoreStressTests : IDisposable
     }
 
     [Test]
-    [Timeout(30000)]
+    [CancelAfter(30000)]
     public async Task ManySequentialTransactionsNoDeadlockTest()
     {
         using var store = CreateStore("many_tx", TimeSpan.FromSeconds(10));
@@ -482,7 +482,7 @@ public class TransactionalStoreStressTests : IDisposable
     }
 
     [Test]
-    [Timeout(30000)]
+    [CancelAfter(30000)]
     public async Task AsyncTransactionsConcurrentTest()
     {
         using var store = CreateStore("async_conc", TimeSpan.FromSeconds(30));

@@ -645,7 +645,7 @@ public class ConcurrentInsertAdoNetStressTests : IDisposable
     #region Large Transaction Tests
 
     [Test]
-    [Timeout(60000)]
+    [CancelAfter(60000)]
     public void LargeTransactionTest()
     {
         var dbPath = Path.Combine(m_testDir, "large_tx.witdb");
