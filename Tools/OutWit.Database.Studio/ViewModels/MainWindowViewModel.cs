@@ -64,6 +64,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         ConnectionsCommand = new RelayCommandAsync(ShowConnectionsAsync);
         DumpDatabaseCommand = new RelayCommandAsync(DumpDatabaseAsync);
         AboutCommand = new RelayCommandAsync(ShowAboutAsync);
+        KeyboardHelpCommand = new RelayCommandAsync(ShowKeyboardHelpAsync);
         ExitCommand = new RelayCommandAsync(ExitAsync);
         ShowNotificationsCommand = new RelayCommand(ShowNotifications);
         HideNotificationsCommand = new RelayCommand(() => AreNotificationsVisible = false);
@@ -346,6 +347,15 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     /// The saved connections (WS-68). Rebuilt each time rather than kept: the window's whole job is to
     /// say what is on disk NOW, and a network drive comes and goes between one opening and the next.
     /// </summary>
+    /// <summary>
+    /// The keyboard reference (9.6). A fresh ViewModel each time: the filter is a question about this
+    /// visit, not a setting.
+    /// </summary>
+    private async Task ShowKeyboardHelpAsync()
+    {
+        await ApplicationVm.Dialogs.ShowKeyboardHelpAsync(new KeyboardHelpViewModel(ApplicationVm));
+    }
+
     private async Task ShowConnectionsAsync()
     {
         ConnectionsVm = new ConnectionsViewModel(ApplicationVm);
@@ -611,6 +621,9 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand DumpDatabaseCommand { get; private set; } = null!;
 
     public ICommand AboutCommand { get; private set; } = null!;
+
+    /// <summary>The keyboard reference behind Ctrl+? and Help (WS-69).</summary>
+    public ICommand KeyboardHelpCommand { get; private set; } = null!;
 
     public ICommand ExitCommand { get; private set; } = null!;
 
