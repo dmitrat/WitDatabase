@@ -19,9 +19,9 @@ cause was not chased into the engine.
 | [2](#2-inline-date-literals-are-rejected-by-the-parser) | EF query translation | Major | open — root-caused | `WitSqlParsingException` on an inlined `DateOnly` |
 | [3](#3-intstring-conversion-inside-a-query-is-not-translated) | EF query translation | Minor | open — root-caused | `group.Key.ToString()` does not translate |
 
-A full audit of the engine and both providers is in
-[AUDIT-2026-07.md](AUDIT-2026-07.md); §0 of that document is the execution-verified
-part and supersedes the analysis below wherever the two disagree.
+A full audit of the engine and both providers was carried out in 2026-07. It is a
+working paper rather than documentation and is not published here; its §0 - the
+execution-verified part - supersedes the analysis below wherever the two disagree.
 
 ---
 

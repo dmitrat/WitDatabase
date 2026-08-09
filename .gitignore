@@ -83,3 +83,11 @@ BenchmarkDotNet.Artifacts/
 
 # VS Code workspace file - local, not shared
 *.code-workspace
+
+# Working papers: the audit and the phase plans. They are kept LOCALLY - they are
+# where the planning and the record of each phase live - but they are not part of
+# what a visitor to Docs/ should see. Only the language specification and the known
+# issues are published, so the folder is ignored with those two allowed back in.
+Docs/*
+!Docs/WitSQL.md
+!Docs/KnownIssues.md
