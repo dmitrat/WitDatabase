@@ -1402,6 +1402,42 @@ database reports it as not found. `Transactions=false` is the one worth reading 
 durable *because* each statement runs in an implicit transaction, and with the transaction layer
 switched off there is none.
 
+### A statement that did not return is not atomic
+
+Everything above is about a statement, or a commit, that **returned**. A process that dies in the
+**middle** of one is a different question, and the answer is a documented limit rather than a defect
+being worked on.
+
+**A statement in autocommit puts its writes on the media as it runs.** Counted, not timed - an
+`UPDATE` over 20,000 rows with a page cache of eight, `StatementReachesTheMediaTests`:
+
+| how the statement runs | pages on the media **before** it ends |
+|---|---|
+| autocommit, `MVCC=false` | 2,222 |
+| autocommit, MVCC (the default) | 10,245 |
+| inside an explicit transaction, either store | **0** - all of them at the commit |
+
+So a kill in the middle of a statement leaves part of it behind, and what that looks like depends on
+the configuration:
+
+| configuration | after a kill in the middle of an `UPDATE` |
+|---|---|
+| MVCC - the default | **the database will not open**: pages have moved on and the header has not |
+| `MVCC=false`, no journal | it opens with the statement **half applied** |
+| `MVCC=false;Journal=wal` or `Journal=rollback` | clean - the journal holds the before-images |
+| **any configuration, inside an explicit transaction** | **clean** - nothing had reached the media |
+
+**The rule that follows, and it is the useful part: wrap a large write in an explicit transaction and
+it becomes all-or-nothing against an abrupt end.** The same write left to autocommit is not. This
+costs nothing else - a transaction that commits is exactly as durable, and it is faster, because one
+commit flushes once instead of once per statement.
+
+The default configuration has no crash-recovery mechanism and no setting turns one on: the two
+journals cannot be combined with MVCC, and the builder says so. Closing the window without a journal
+would mean buffering every statement in memory in proportion to its size - the `UPDATE` above would
+hold about ten thousand pages before writing any of them - which is why the limit is documented
+rather than removed.
+
 ### Selecting a provider from another package
 
 `Encryption=chacha20-poly1305` comes from `OutWit.Database.Core.BouncyCastle`, and **referencing the

@@ -711,11 +711,44 @@ recorded at all, and it is broken on the transactional store with no journal. An
 journal is **half** a remedy: it closes the DML half and cannot touch the index half,
 because an index is a separate file the journal does not cover.
 
-The same `UPDATE` inside an EXPLICIT transaction left nothing behind in 6 of 6 runs
-at the same depth, so the two paths differ. The mechanism behind that is **not**
-attributed, and is not guessed at here.
+### The mechanism, attributed by counting rather than by reading
 
-Evidence and the probe: `@Evidence/item8`, outside every working tree.
+The same `UPDATE` inside an EXPLICIT transaction left nothing behind in 6 of 6 runs
+at the same depth. That difference is now measured, and it needs no kill to see it -
+count what reaches the storage while the statement is still running:
+
+| store | how the statement runs | pages on the media BEFORE it ends | at the commit |
+|---|---|---|---|
+| `MVCC=false` | autocommit | **2,222** | - |
+| `MVCC=false` | inside a transaction | **0** | 2,222 |
+| MVCC (the default) | autocommit | **10,245** | - |
+| MVCC | inside a transaction | **0** | 10,245 |
+
+**A statement in autocommit writes through to the media as it runs; the same
+statement inside an explicit transaction writes nothing until the commit.** The rule
+is the same on both stores, so this is not about MVCC and not about a journal - it is
+what an implicit per-statement transaction is.
+
+That single fact explains every outcome above. Under MVCC ten thousand pages land
+while the statement runs and the header is not among them, so the two are at
+different vintages and the file will not open. Without MVCC two thousand land and
+nothing can take them back, so the statement is half applied - unless a journal holds
+the before-images, which is why `wal` and `rollback` come back clean. And an explicit
+transaction is atomic against a kill in every configuration, because nothing has
+reached the media to be atomic about.
+
+**The consequence a user can act on today:** a large write wrapped in an explicit
+transaction survives an abrupt end as all-or-nothing; the same write left to
+autocommit does not.
+
+**What a fix would have to choose between**, and none of these is free: make the
+implicit transaction buffer the way an explicit one does, which costs memory in
+proportion to the statement (this one would hold ~10,000 pages); give the paged store
+a journal that can be replayed at open and let it be combined with MVCC, which it
+currently refuses; or document the limit as a limit.
+
+Evidence and the probes: `@Evidence/item8`, outside every working tree - `Mid` for
+the kill and `Reach` for the counts above.
 
 ---
 
