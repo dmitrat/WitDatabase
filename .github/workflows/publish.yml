@@ -30,6 +30,10 @@ on:
 permissions:
   contents: read
   packages: write
+  # Lets GitHub mint the OIDC token that nuget.org exchanges for a short-lived
+  # key. Without it the exchange fails quietly rather than loudly, which is the
+  # one failure worth naming here.
+  id-token: write
 
 jobs:
   publish:
@@ -145,6 +149,16 @@ jobs:
           --name github
           "https://nuget.pkg.github.com/${{ github.repository_owner }}/index.json"
 
+      # The runner proves to nuget.org which workflow is asking, nuget.org checks that against its
+      # policy and returns a key valid for an hour. Nothing long-lived exists to leak, and nothing
+      # has to be rotated on a calendar.
+      - name: Authenticate to nuget.org (trusted publishing)
+        id: login
+        if: github.event.inputs.pushToNuGet == 'true' && (steps.collect.outputs.hasNupkg == 'true' || steps.collect.outputs.hasSnupkg == 'true')
+        uses: NuGet/login@v1
+        with:
+          user: ${{ secrets.NUGET_USER }}
+
       # --skip-duplicate is kept so a partially-failed chain can be re-run, but a skip is no longer
       # silent: if every package we meant to push already existed, this run published nothing and
       # saying "success" would be a lie.
@@ -153,7 +167,7 @@ jobs:
         shell: bash
         run: |
           set -euo pipefail
-          out=$(dotnet nuget push "NuGet/*.nupkg"             --api-key "${{ secrets.NUGET_API_KEY }}"             --source https://api.nuget.org/v3/index.json             --skip-duplicate 2>&1) || { echo "$out"; exit 1; }
+          out=$(dotnet nuget push "NuGet/*.nupkg"             --api-key "${{ steps.login.outputs.NUGET_API_KEY }}"             --source https://api.nuget.org/v3/index.json             --skip-duplicate 2>&1) || { echo "$out"; exit 1; }
           echo "$out"
           if echo "$out" | grep -q "already exists at feed" && ! echo "$out" | grep -q "Your package was pushed"; then
             echo "::error::Nothing was published - the package already exists at the feed. This usually means the version was not bumped."
@@ -164,7 +178,7 @@ jobs:
         if: github.event.inputs.pushToNuGet == 'true' && steps.collect.outputs.hasSnupkg == 'true'
         run: >
           dotnet nuget push "NuGet/*.snupkg"
-          --api-key ${{ secrets.NUGET_API_KEY }}
+          --api-key ${{ steps.login.outputs.NUGET_API_KEY }}
           --source https://api.nuget.org/v3/index.json
           --skip-duplicate
 
