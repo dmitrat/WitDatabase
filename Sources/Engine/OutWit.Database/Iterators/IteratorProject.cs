@@ -106,6 +106,10 @@ public sealed class IteratorProject : IteratorBase
             WitSqlExpressionLiteral { Type: LiteralType.String } => WitSqlType.Text,
             WitSqlExpressionLiteral { Type: LiteralType.Blob } => WitSqlType.Blob,
             WitSqlExpressionLiteral { Type: LiteralType.Null } => WitSqlType.Null,
+            WitSqlExpressionLiteral { Type: LiteralType.Date } => WitSqlType.DateOnly,
+            WitSqlExpressionLiteral { Type: LiteralType.Time } => WitSqlType.TimeOnly,
+            WitSqlExpressionLiteral { Type: LiteralType.Timestamp } => WitSqlType.DateTime,
+            WitSqlExpressionLiteral { Type: LiteralType.TimestampOffset } => WitSqlType.DateTimeOffset,
             
             // Unary operations
             WitSqlExpressionUnary { Operator: UnaryOperatorType.Not } => WitSqlType.Boolean,

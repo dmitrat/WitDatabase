@@ -419,6 +419,16 @@ internal sealed partial class WitSqlVisitor
                 Column = col,
                 Type = LiteralType.CurrentTime
             },
+
+            WitSqlParser.DateLiteralContext date =>
+                ParseTemporalLiteral(LiteralType.Date, date.STRING_LITERAL().GetText(), line, col),
+            WitSqlParser.TimeLiteralContext time =>
+                ParseTemporalLiteral(LiteralType.Time, time.STRING_LITERAL().GetText(), line, col),
+            WitSqlParser.TimestampLiteralContext timestamp =>
+                ParseTemporalLiteral(LiteralType.Timestamp, timestamp.STRING_LITERAL().GetText(), line, col),
+            WitSqlParser.TimestampOffsetLiteralContext offset =>
+                ParseTemporalLiteral(LiteralType.TimestampOffset, offset.STRING_LITERAL().GetText(), line, col),
+
             _ => throw new InvalidOperationException($"Unknown literal type: {context.GetType()}")
         };
     }
@@ -515,6 +525,105 @@ internal sealed partial class WitSqlVisitor
             Type = LiteralType.Integer,
             Value = unchecked((long)magnitude)
         };
+    }
+
+    /// <summary>
+    /// Turns the text of a typed temporal literal into a value of the type its KEYWORD named.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The keyword decides, always. <c>TIMESTAMP</c> carrying an offset is refused by name instead of
+    /// being truncated to a local time: PostgreSQL accepts that shape and silently discards the
+    /// offset, so the same row means two different instants in two databases and nothing says so.
+    /// </para>
+    /// <para>
+    /// The formats accepted are round-trip ISO 8601 and the space-separated form every provider and
+    /// every person writes; the text is read culture-invariantly, because SQL is not written in a
+    /// locale.
+    /// </para>
+    /// </remarks>
+    private static WitSqlExpressionLiteral ParseTemporalLiteral(LiteralType type, string quoted,
+        int line, int col)
+    {
+        var text = ParseStringLiteral(quoted).Trim();
+
+        object? value = type switch
+        {
+            LiteralType.Date => DateOnly.TryParse(text, CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var date) ? date : null,
+
+            LiteralType.Time => TimeOnly.TryParse(text, CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var time) ? time : null,
+
+            // RoundtripKind, so that a Z or an offset is NOT quietly applied to the local clock -
+            // reading '…Z' with the default styles would shift the value by this machine's offset,
+            // which is a wrong answer that depends on where the process runs. Anything carrying one is
+            // refused below instead.
+            LiteralType.Timestamp => !HasOffset(text) &&
+                                     DateTime.TryParse(text, CultureInfo.InvariantCulture,
+                                         DateTimeStyles.RoundtripKind, out var stamp)
+                ? stamp
+                : null,
+
+            LiteralType.TimestampOffset => DateTimeOffset.TryParse(text, CultureInfo.InvariantCulture,
+                DateTimeStyles.None, out var withOffset) ? withOffset : null,
+
+            _ => null
+        };
+
+        if (value != null)
+        {
+            return new WitSqlExpressionLiteral
+            {
+                Line = line,
+                Column = col,
+                Type = type,
+                Value = value
+            };
+        }
+
+        var keyword = type switch
+        {
+            LiteralType.Date => "DATE",
+            LiteralType.Time => "TIME",
+            LiteralType.Timestamp => "TIMESTAMP",
+            _ => "DATETIMEOFFSET"
+        };
+
+        var reason = type == LiteralType.Timestamp && HasOffset(text)
+            ? $"{keyword} carries no time zone, and '{text}' has one. Write "
+              + $"DATETIMEOFFSET '{text}' to keep the offset, or drop it to mean a local time."
+            : $"'{text}' is not a {keyword}.";
+
+        throw new WitSqlParsingException(new[]
+        {
+            new WitSqlParsingError
+            {
+                Line = line,
+                Column = col,
+                Message = reason
+            }
+        });
+    }
+
+    /// <summary>
+    /// Whether the text of a temporal literal carries a time zone: a trailing <c>Z</c>, or a sign and
+    /// a time after the date and clock parts.
+    /// </summary>
+    /// <remarks>
+    /// Asked of the tail rather than of the whole string, because the date part is full of hyphens: a
+    /// naive search for '-' or '+' would call every ISO date offset-bearing.
+    /// </remarks>
+    private static bool HasOffset(string text)
+    {
+        if (text.EndsWith('Z') || text.EndsWith('z'))
+            return true;
+
+        // The offset can only be in the last stretch, after the time. Ten characters is the length of
+        // an ISO date, so anything before that is the date's own hyphens.
+        var tail = text.Length > 10 ? text[10..] : string.Empty;
+
+        return tail.Contains('+') || tail.Contains('-');
     }
 
     /// <summary>

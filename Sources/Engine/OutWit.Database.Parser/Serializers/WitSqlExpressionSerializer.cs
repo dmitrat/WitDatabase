@@ -156,6 +156,15 @@ public sealed class WitSqlExpressionSerializer : IWitSqlVisitor<string>
             LiteralType.CurrentTimestamp => "CURRENT_TIMESTAMP",
             LiteralType.CurrentDate => "CURRENT_DATE",
             LiteralType.CurrentTime => "CURRENT_TIME",
+
+            // Written with the keyword that names the TYPE and in round-trip format, so that what
+            // comes back out is the value that went in - a temporal written as a bare quoted string
+            // loses its type, and the "o" formats lose no fraction of a second either.
+            LiteralType.Date => $"DATE '{(DateOnly)node.Value!:yyyy-MM-dd}'",
+            LiteralType.Time => $"TIME '{(TimeOnly)node.Value!:HH:mm:ss.fffffff}'",
+            LiteralType.Timestamp => $"TIMESTAMP '{(DateTime)node.Value!:yyyy-MM-dd HH:mm:ss.fffffff}'",
+            LiteralType.TimestampOffset =>
+                $"DATETIMEOFFSET '{(DateTimeOffset)node.Value!:yyyy-MM-dd HH:mm:ss.fffffff zzz}'",
             _ => throw new NotSupportedException($"Unsupported literal type: {node.Type}")
         };
     }

@@ -722,6 +722,17 @@ literal
     | CURRENT_TIMESTAMP                             # currentTimestampLiteral
     | CURRENT_DATE                                  # currentDateLiteral
     | CURRENT_TIME                                  # currentTimeLiteral
+
+    // Typed temporal literals: the word in front is the TYPE, spelled the way it is spelled in DDL.
+    // Without these, EF Core's stock mappings emit SQL this engine refuses - DATE '2026-07-01' for a
+    // DateOnly, TIMESTAMP '...' for a DateTime - so an inlined constant threw where the same value as
+    // a parameter worked, and every HasData seed row with a temporal column was unusable
+    // (Docs/KnownIssues.md 2). DATE and TIME are also function names; the string that follows is what
+    // tells the two apart, and a function call needs a bracket.
+    | DATE STRING_LITERAL                           # dateLiteral
+    | TIME STRING_LITERAL                           # timeLiteral
+    | (TIMESTAMP | DATETIME) STRING_LITERAL         # timestampLiteral
+    | DATETIMEOFFSET STRING_LITERAL                 # timestampOffsetLiteral
     ;
 
 columnRef

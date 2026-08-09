@@ -26,6 +26,15 @@ public sealed partial class ExpressionEvaluator
             LiteralType.CurrentTimestamp => WitSqlValue.FromDateTime(DateTime.UtcNow),
             LiteralType.CurrentDate => WitSqlValue.FromDateOnly(DateOnly.FromDateTime(DateTime.UtcNow)),
             LiteralType.CurrentTime => WitSqlValue.FromTimeOnly(TimeOnly.FromDateTime(DateTime.UtcNow)),
+
+            // Typed temporal literals. They carry a VALUE of the type their keyword named, so nothing
+            // is converted here - that is the whole point of them: a bare quoted string reaching a
+            // temporal column would be compared ordinally as text.
+            LiteralType.Date => WitSqlValue.FromDateOnly((DateOnly)lit.Value!),
+            LiteralType.Time => WitSqlValue.FromTimeOnly((TimeOnly)lit.Value!),
+            LiteralType.Timestamp => WitSqlValue.FromDateTime((DateTime)lit.Value!),
+            LiteralType.TimestampOffset => WitSqlValue.FromDateTimeOffset((DateTimeOffset)lit.Value!),
+
             _ => throw new NotSupportedException($"Literal type not supported: {lit.Type}")
         };
     }
