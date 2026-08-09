@@ -1,4 +1,4 @@
-using OutWit.Database.Definitions;
+﻿using OutWit.Database.Definitions;
 using OutWit.Database.Expressions;
 using OutWit.Database.Parser;
 using OutWit.Database.Parser.Statements;
@@ -293,7 +293,7 @@ public sealed partial class StatementExecutor
             };
 
             if (newChildRow != null)
-                m_context.Database.UpdateRow(childTableName, rowId, newChildRow.Value);
+                WriteCascadedChildRow(childTableName, rowId, oldChildRow, newChildRow.Value, fk.Columns);
         }
     }
 
@@ -444,7 +444,7 @@ public sealed partial class StatementExecutor
                 foreach (var (rowId, oldRow) in childRowsToProcess)
                 {
                     var newRow = SetColumnsToNull(oldRow, fk.Columns, childTable);
-                    m_context.Database.UpdateRow(childTableName, rowId, newRow);
+                    WriteCascadedChildRow(childTableName, rowId, oldRow, newRow, fk.Columns);
                 }
                 break;
 
@@ -453,7 +453,7 @@ public sealed partial class StatementExecutor
                 foreach (var (rowId, oldRow) in childRowsToProcess)
                 {
                     var newRow = SetColumnsToDefault(oldRow, fk.Columns, childTable);
-                    m_context.Database.UpdateRow(childTableName, rowId, newRow);
+                    WriteCascadedChildRow(childTableName, rowId, oldRow, newRow, fk.Columns);
                 }
                 break;
         }
@@ -1283,6 +1283,63 @@ public sealed partial class StatementExecutor
             + "engine does not have. A function named in a CHECK, a computed column, a DEFAULT or an "
             + "index expression is evaluated for every row, so it has to exist before the schema can "
             + "depend on it.");
+    }
+
+    /// <summary>
+    /// Writes one row a foreign key is cascading to, firing the child table's UPDATE triggers around
+    /// it - which is what a cascade never did until known issue 13 was fixed on 2026-08-09.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The columns a cascade "names"</b>, for <c>UPDATE OF</c>, are the foreign key's own: they are
+    /// exactly the ones it rewrites. So a trigger declared on the FK column fires and one declared on
+    /// another column does not, which is the same rule an ordinary UPDATE follows.
+    /// </para>
+    /// <para>
+    /// <b>A cancellation is an error, not a skip.</b> A BEFORE trigger that cancels a cascaded row -
+    /// or an INSTEAD OF trigger standing in for the write - would leave the child pointing at a parent
+    /// key that no longer exists, so the trigger would be given the power to break referential
+    /// integrity silently. The statement fails instead and says which trigger did it. Decided with
+    /// Dmitry, 2026-08-09; PostgreSQL allows the skip and lets the constraint break, and this engine
+    /// does not.
+    /// </para>
+    /// </remarks>
+    private void WriteCascadedChildRow(string childTableName, long rowId, WitSqlRow oldRow,
+        WitSqlRow newRow, IReadOnlyList<string> foreignKeyColumns)
+    {
+        var assignedColumns = foreignKeyColumns.ToHashSet(StringComparer.OrdinalIgnoreCase);
+
+        var insteadOf = m_context.Database
+            .GetTriggersForTable(childTableName, TriggerEvent.Update, TriggerTime.InsteadOf)
+            .FirstOrDefault(trigger => trigger.WatchesAnyOf(assignedColumns));
+
+        if (insteadOf != null)
+        {
+            throw new InvalidOperationException(
+                $"The trigger '{insteadOf.Name}' is INSTEAD OF UPDATE on '{childTableName}', and a "
+                + "foreign key is cascading to a row of that table. Standing in for that write would "
+                + "leave the row pointing at a key that no longer exists, so the statement is refused "
+                + "rather than the constraint broken.");
+        }
+
+        WitSqlRow? beforeRow = newRow;
+
+        if (!FireTriggers(childTableName, TriggerEvent.Update, TriggerTime.Before, oldRow, ref beforeRow,
+                assignedColumns))
+        {
+            throw new InvalidOperationException(
+                $"A BEFORE UPDATE trigger on '{childTableName}' cancelled a row a foreign key was "
+                + "cascading to. Skipping it would leave the row pointing at a key that no longer "
+                + "exists, so the statement is refused rather than the constraint broken.");
+        }
+
+        var written = beforeRow!.Value;
+
+        m_context.Database.UpdateRow(childTableName, rowId, written);
+
+        WitSqlRow? afterRow = written;
+        FireTriggers(childTableName, TriggerEvent.Update, TriggerTime.After, oldRow, ref afterRow,
+            assignedColumns);
     }
 
     #endregion

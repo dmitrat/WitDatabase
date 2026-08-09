@@ -1,9 +1,10 @@
-namespace OutWit.Database.Tests.AuditVerification;
+﻿namespace OutWit.Database.Tests.AuditVerification;
 
 /// <summary>
-/// PINS A DEFECT, NOT CORRECT BEHAVIOUR - known issue 13. Three statements update a row without firing
-/// any UPDATE trigger: <c>MERGE … WHEN MATCHED THEN UPDATE</c>, <c>INSERT … ON CONFLICT DO UPDATE</c>,
-/// and a foreign key's <c>ON UPDATE CASCADE</c>.
+/// Three statements that update a row fire the table's UPDATE triggers: <c>MERGE … WHEN MATCHED THEN
+/// UPDATE</c>, <c>INSERT … ON CONFLICT DO UPDATE</c>, and a foreign key's <c>ON UPDATE CASCADE</c>.
+/// Known issue 13 until 2026-08-09, when none of them fired at all - these were pins and they
+/// inverted.
 /// </summary>
 /// <remarks>
 /// <para>
@@ -21,11 +22,13 @@ namespace OutWit.Database.Tests.AuditVerification;
 /// say so.
 /// </para>
 /// <para>
-/// <b>Why it is not fixed here.</b> It is a different piece of work from issue 12 and it has decisions
-/// of its own that need answering first: whether a BEFORE trigger may cancel a cascade (which would
-/// leave the foreign key dangling), whether an INSTEAD OF trigger stands in for the matched half of a
-/// MERGE, and - since 2026-08-09 - what the assigned-column set is for a cascade, which names no
-/// columns in any SET clause the user wrote. Each case says what the fix must invert it to.
+/// <b>The three decisions it needed, settled with Dmitry on 2026-08-09.</b> A cascade fires BEFORE and
+/// AFTER on the child, and a cancellation - or an INSTEAD OF standing in for the write - is an ERROR
+/// rather than a skip, because skipping leaves the child pointing at a key that no longer exists and
+/// hands a trigger the power to break referential integrity silently. An INSTEAD OF trigger DOES stand
+/// in for the matched half of a MERGE and for <c>DO UPDATE</c>, because both are updates and one rule
+/// beats two exceptions. And the columns a cascade "names", for <c>UPDATE OF</c>, are the foreign
+/// key's own - exactly the ones it rewrites.
 /// </para>
 /// </remarks>
 [TestFixture]
@@ -46,7 +49,7 @@ public sealed class TriggerlessWritePathsTests : WitSqlEngineTestsBase
     #region Tests
 
     /// <summary>
-    /// PINS A DEFECT. The fix must make this <c>1</c>: the matched half of a MERGE is an update.
+    /// The matched half of a MERGE is an update, and fires the table's UPDATE triggers.
     /// </summary>
     [Test]
     public void MergeUpdatesARowAndFiresNoTriggerTest()
@@ -64,12 +67,12 @@ public sealed class TriggerlessWritePathsTests : WitSqlEngineTestsBase
 
         Assert.That(ValueOf("Target"), Is.EqualTo(2), "the control: the row really was updated");
 
-        Assert.That(LogCount(), Is.EqualTo(0),
-            "PINS A DEFECT: MERGE updated the row and the AFTER UPDATE trigger did not fire");
+        Assert.That(LogCount(), Is.EqualTo(1),
+            "MERGE updated the row, so the AFTER UPDATE trigger fires");
     }
 
     /// <summary>
-    /// PINS A DEFECT. The fix must make this <c>1</c>: <c>DO UPDATE</c> is an update.
+    /// <c>DO UPDATE</c> is an update, and fires the table's UPDATE triggers.
     /// </summary>
     [Test]
     public void OnConflictDoUpdateFiresNoTriggerTest()
@@ -83,15 +86,13 @@ public sealed class TriggerlessWritePathsTests : WitSqlEngineTestsBase
 
         Assert.That(ValueOf("Target"), Is.EqualTo(5), "the control: the row really was updated");
 
-        Assert.That(LogCount(), Is.EqualTo(0),
-            "PINS A DEFECT: ON CONFLICT DO UPDATE updated the row and the trigger did not fire");
+        Assert.That(LogCount(), Is.EqualTo(1),
+            "ON CONFLICT DO UPDATE updated the row, so the trigger fires");
     }
 
     /// <summary>
-    /// PINS A DEFECT. The fix must make this <c>1</c>: the child row changed, so a trigger on the CHILD
-    /// table should see it. This is the one whose fix needs a decision first - a cascade names no
-    /// columns in any SET clause a user wrote, so the assigned-column set for <c>UPDATE OF</c> has to
-    /// be worked out (the foreign key's own columns are the obvious answer).
+    /// The child row changed, so a trigger on the CHILD table sees it. The columns the cascade
+    /// "names" are the foreign key's own - see <see cref="ACascadeOnlyReachesATriggerOnItsOwnColumnsTest"/>.
     /// </summary>
     [Test]
     public void ACascadedUpdateFiresNoTriggerOnTheChildTest()
@@ -109,13 +110,127 @@ public sealed class TriggerlessWritePathsTests : WitSqlEngineTestsBase
         Assert.That(m_engine.Query("SELECT ParentId FROM Child WHERE Id = 1")[0][0].AsInt64(), Is.EqualTo(2),
             "the control: the cascade really did rewrite the child row");
 
-        Assert.That(LogCount(), Is.EqualTo(0),
-            "PINS A DEFECT: the child row was rewritten and its AFTER UPDATE trigger did not fire");
+        Assert.That(LogCount(), Is.EqualTo(1),
+            "the child row was rewritten, so its AFTER UPDATE trigger fires");
+    }
+
+    #endregion
+
+    #region The three decisions
+
+    /// <summary>
+    /// DECISION: the columns a cascade "names" are the foreign key's own, so <c>UPDATE OF</c> works
+    /// there as it does everywhere else.
+    /// </summary>
+    [Test]
+    public void ACascadeOnlyReachesATriggerOnItsOwnColumnsTest()
+    {
+        BuildParentAndChild();
+
+        m_engine.Execute(@"
+            CREATE TRIGGER TWatched AFTER UPDATE OF ParentId ON Child FOR EACH ROW
+            BEGIN INSERT INTO Log (Note) VALUES ('fk'); END");
+
+        m_engine.Execute(@"
+            CREATE TRIGGER TOther AFTER UPDATE OF Note ON Child FOR EACH ROW
+            BEGIN INSERT INTO Log (Note) VALUES ('other'); END");
+
+        m_engine.Execute("UPDATE Parent SET Id = 2 WHERE Id = 1");
+
+        Assert.That(LogCount(), Is.EqualTo(1),
+            "the cascade rewrites ParentId, so only the trigger watching ParentId fires");
+    }
+
+    /// <summary>
+    /// A cascade whose child BEFORE trigger does not complete fails the whole statement and leaves the
+    /// child row alone.
+    ///
+    /// <para>
+    /// <b>This is NOT the decision it was written for, and it is named after what it measures.</b> The
+    /// decision is that a CANCELLATION is an error rather than a skip - and a trigger body cannot
+    /// cancel from SQL on this engine: <c>ContextTrigger.Cancel</c> is set by the executor, not by
+    /// anything a body can write. So the refusal in <c>WriteCascadedChildRow</c> is reachable only
+    /// from a host that drives the executor directly, and this case exercises the neighbouring path -
+    /// a body that fails - which lands in the same place for the user.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void ACascadeWhoseChildTriggerFailsIsRefusedTest()
+    {
+        BuildParentAndChild();
+
+        // The only way to cancel from a trigger body on this engine is to make it fail, and a BEFORE
+        // trigger's failure is what stops the operation.
+        m_engine.Execute(@"
+            CREATE TRIGGER TStop BEFORE UPDATE ON Child FOR EACH ROW
+            BEGIN INSERT INTO Log (Id, Note) VALUES (1, 'first'); INSERT INTO Log (Id, Note) VALUES (1, 'again'); END");
+
+        Assert.That(() => m_engine.Execute("UPDATE Parent SET Id = 2 WHERE Id = 1"),
+            Throws.Exception,
+            "a cascade that cannot run its child's BEFORE trigger fails the statement");
+
+        Assert.That(m_engine.Query("SELECT ParentId FROM Child WHERE Id = 1")[0][0].AsInt64(), Is.EqualTo(1),
+            "and the child row is left alone rather than half-written");
+    }
+
+    /// <summary>
+    /// DECISION: an INSTEAD OF trigger stands in for the matched half of a MERGE, because that half is
+    /// an update and INSTEAD OF exists to replace the write.
+    /// </summary>
+    [Test]
+    public void AnInsteadOfTriggerStandsInForTheMatchedHalfOfAMergeTest()
+    {
+        m_engine.Execute("CREATE TABLE Target (Id BIGINT PRIMARY KEY, V INT)");
+        m_engine.Execute("CREATE TABLE Source (Id BIGINT PRIMARY KEY, V INT)");
+        m_engine.Execute("INSERT INTO Target (Id, V) VALUES (1, 1)");
+        m_engine.Execute("INSERT INTO Source (Id, V) VALUES (1, 2)");
+
+        m_engine.Execute(@"
+            CREATE TRIGGER TInstead INSTEAD OF UPDATE ON Target FOR EACH ROW
+            BEGIN INSERT INTO Log (Note) VALUES ('instead'); END");
+
+        m_engine.Execute(@"
+            MERGE INTO Target AS t USING Source AS s ON t.Id = s.Id
+            WHEN MATCHED THEN UPDATE SET V = s.V");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(LogCount(), Is.EqualTo(1), "the trigger ran");
+            Assert.That(m_engine.Query("SELECT V FROM Target WHERE Id = 1")[0][0].AsInt64(), Is.EqualTo(1),
+                "and it stood IN FOR the write, so the value is unchanged");
+        });
+    }
+
+    /// <summary>
+    /// The control for the whole fixture: an INSERT that does NOT conflict is an insert, and must not
+    /// fire an UPDATE trigger. A change that fired UPDATE triggers from the insert path would satisfy
+    /// the DO UPDATE case above.
+    /// </summary>
+    [Test]
+    public void AnInsertThatDoesNotConflictFiresNoUpdateTriggerTest()
+    {
+        m_engine.Execute("CREATE TABLE Target (Id BIGINT PRIMARY KEY, V INT)");
+        m_engine.Execute("INSERT INTO Target (Id, V) VALUES (1, 1)");
+
+        CreateUpdateTriggerOn("Target");
+
+        m_engine.Execute("INSERT INTO Target (Id, V) VALUES (2, 2) ON CONFLICT (Id) DO UPDATE SET V = 9");
+
+        Assert.That(LogCount(), Is.EqualTo(0));
     }
 
     #endregion
 
     #region Helpers
+
+    private void BuildParentAndChild()
+    {
+        m_engine.Execute("CREATE TABLE Parent (Id BIGINT PRIMARY KEY, V INT)");
+        m_engine.Execute(
+            "CREATE TABLE Child (Id BIGINT PRIMARY KEY, ParentId BIGINT REFERENCES Parent(Id) ON UPDATE CASCADE, Note VARCHAR(20))");
+        m_engine.Execute("INSERT INTO Parent (Id, V) VALUES (1, 1)");
+        m_engine.Execute("INSERT INTO Child (Id, ParentId) VALUES (1, 1)");
+    }
 
     private void CreateUpdateTriggerOn(string table)
     {
