@@ -1868,6 +1868,37 @@ Studio **758 -> 770**.
 
 ---
 
+## The update check, 2026-08-08 (9.8, WS-70) - section 9 is finished
+
+A message and a link. **Nothing is downloaded and nothing is run**: the installers are signed, but
+replacing the executable underneath a running Studio holding a database open is a risk out of all
+proportion to saving one click.
+
+**The promise that needed a test is not "nothing was shown" but "nothing was SENT".** The check is off
+by default because a tool that reaches out from a machine holding somebody's working database has to
+ask once and explicitly - the database may be on a closed network, and the request itself is a fact
+about that machine. So the feed is an interface that COUNTS how often it was asked, and
+`NothingIsSentWhenTheCheckIsOffTest` asserts the count is zero. Measured: removing the guard turns it
+red, and it is the only case that moves.
+
+**A pre-release is never offered**, which in this repository is not an edge case - the newest
+`studio-v*` tag is normally a dev build, and a check that offered it would push every user of a
+released Studio onto one. Skipping is per VERSION rather than for good: skipping 3.1.0 still hears
+about 3.2.0, because "never again" is what the checkbox says properly and reversibly.
+
+**Verified against the real repository**, which is what made it worth doing in the application: with
+the setting turned on, Studio read GitHub's release list at startup and the log says
+`Update check: OnlyAPrerelease`. The user's setting was backed up and put back afterwards.
+
+**And the run found a gap in the product, not in the code:** the first attempt could not tell whether
+the check had concluded "prerelease" or had never reached the network at all, because the only log
+line was at Debug. The verdict is written at Information now - a background check that says nothing
+about itself is one nobody can support.
+
+Studio **770 -> 794**.
+
+---
+
 ## Findings for the engine, not fixed here
 **A function over an indexed column returns the WRONG ROWS.** Measured 2026-08-06, and it is the worst
 class of defect there is: when a `WHERE` predicate wraps an indexed column in a function, the planner

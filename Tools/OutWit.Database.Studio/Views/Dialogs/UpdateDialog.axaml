@@ -1,0 +1,59 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:OutWit.Database.Studio.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="460" d:DesignHeight="280"
+        x:Class="OutWit.Database.Studio.Views.Dialogs.UpdateDialog"
+        x:DataType="vm:UpdateViewModel"
+        Title="{DynamicResource S.Update.Title}"
+        Width="460" SizeToContent="Height"
+        WindowStartupLocation="CenterOwner">
+
+    <!-- A message and a link (9.8). Nothing is downloaded and nothing is run: replacing the
+         executable underneath a running Studio that holds a database open is a risk out of all
+         proportion to saving one click. -->
+    <StackPanel Margin="16" Spacing="12">
+
+        <TextBlock Name="UpdateHeadline"
+                   AutomationProperties.AutomationId="UpdateHeadline"
+                   Text="{Binding Headline}"
+                   FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/>
+
+        <!-- The publisher's own words, never translated (WS-64), and absent when there are none
+             rather than filled with an apology. -->
+        <Border IsVisible="{Binding HasNotes}"
+                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                CornerRadius="3" Padding="10" MaxHeight="220">
+            <ScrollViewer>
+                <SelectableTextBlock Name="UpdateNotes"
+                                     AutomationProperties.AutomationId="UpdateNotes"
+                                     Text="{Binding Notes}"
+                                     FontSize="12" TextWrapping="Wrap"/>
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
+            <Button Name="UpdateSkip"
+                    AutomationProperties.AutomationId="UpdateSkip"
+                    AutomationProperties.Name="{DynamicResource S.Update.Skip}"
+                    Content="{DynamicResource S.Update.Skip}"
+                    Command="{Binding SkipCommand}"/>
+
+            <Button Name="UpdateLater"
+                    AutomationProperties.AutomationId="UpdateLater"
+                    AutomationProperties.Name="{DynamicResource S.Update.Later}"
+                    Content="{DynamicResource S.Update.Later}"
+                    Command="{Binding RemindLaterCommand}"
+                    IsCancel="True"/>
+
+            <Button Name="UpdateOpenPage"
+                    AutomationProperties.AutomationId="UpdateOpenPage"
+                    AutomationProperties.Name="{DynamicResource S.Update.OpenPage}"
+                    Content="{DynamicResource S.Update.OpenPage}"
+                    Classes="accent"
+                    Command="{Binding OpenPageCommand}"
+                    IsDefault="True"/>
+        </StackPanel>
+    </StackPanel>
+</Window>

@@ -521,6 +521,12 @@
   "Schema.Absent.MoveColumn": "Переместить столбец — нет FIRST, AFTER, MODIFY и CHANGE",
   "Schema.Absent.Sequence": "Шаг, минимум, максимум или цикличность последовательности — CREATE SEQUENCE принимает только имя и START WITH",
 
+  "Update.Title": "Обновление",
+  "Update.Available": "Доступна версия {0} — у вас {1}",
+  "Update.OpenPage": "Открыть страницу выпуска",
+  "Update.Later": "Напомнить позже",
+  "Update.Skip": "Пропустить версию",
+
   "Keys.Help": "Клавиши",
   "Keys.Palette": "Палитра команд",
   "Keys.NewDatabase": "Создать базу",

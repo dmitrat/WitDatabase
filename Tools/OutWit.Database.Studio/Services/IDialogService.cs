@@ -72,6 +72,9 @@ public interface IDialogService
     /// <summary>The keyboard reference (WS-69).</summary>
     Task ShowKeyboardHelpAsync(KeyboardHelpViewModel viewModel);
 
+    /// <summary>A newer Studio has been published (WS-70).</summary>
+    Task ShowUpdateAsync(UpdateViewModel viewModel);
+
     Task ShowExportAsync(ExportViewModel viewModel);
 
     Task ShowImportAsync(ImportViewModel viewModel);
@@ -144,6 +147,8 @@ public sealed class NoDialogService : IDialogService
     public Task ShowConnectionsAsync(ConnectionsViewModel viewModel) => Task.CompletedTask;
 
     public Task ShowKeyboardHelpAsync(KeyboardHelpViewModel viewModel) => Task.CompletedTask;
+
+    public Task ShowUpdateAsync(UpdateViewModel viewModel) => Task.CompletedTask;
 
     public Task ShowExportAsync(ExportViewModel viewModel) => Task.CompletedTask;
 
