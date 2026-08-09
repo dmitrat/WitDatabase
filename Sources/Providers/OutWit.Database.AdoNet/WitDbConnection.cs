@@ -10,6 +10,8 @@ using OutWit.Database.Core.Utils;
 using OutWit.Database.Engine;
 using OutWit.Database.Schema;
 
+using OutWit.Database.Core.Providers;
+
 namespace OutWit.Database.AdoNet;
 
 /// <summary>
@@ -778,6 +780,25 @@ public sealed partial class WitDbConnection : DbConnection
             m_connectionString = value;
         }
     }
+
+    /// <summary>
+    /// What the database this connection has OPEN was created with - store, page size, providers,
+    /// feature flags and the on-disk format version. Null when the connection is closed, and for a
+    /// database that records no configuration (an in-memory one).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// It is here because the alternative was reading the file, and a paged database that is open
+    /// holds an exclusive lock: <c>StorageDetector.ReadStoredConfiguration</c> answers null for
+    /// exactly the database a caller is most likely to be asking about. Studio worked around that by
+    /// reading the header a moment BEFORE connecting - which is fine until something has the database
+    /// open already, and then there is no "before".
+    /// </para>
+    /// <para>
+    /// Everything in it is decided when the database is CREATED and cannot change while it is open.
+    /// </para>
+    /// </remarks>
+    public StoredConfiguration? StoredConfiguration => m_database?.StoredConfiguration;
 
     /// <inheritdoc/>
     public override string Database

@@ -1,7 +1,9 @@
-using System.Runtime.CompilerServices;
+﻿using System.Runtime.CompilerServices;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Managers;
 using OutWit.Database.Core.Stores;
+
+using OutWit.Database.Core.Providers;
 
 namespace OutWit.Database.Core.Tree;
 
@@ -31,7 +33,7 @@ namespace OutWit.Database.Core.Tree;
 /// The same reasoning is why <see cref="Scan"/> hands its results out in chunks rather than holding
 /// the read lock across the consumer's code.
 /// </remarks>
-public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoreWrapper, IAsyncDisposable
+public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoredConfigurationSource, IStoreWrapper, IAsyncDisposable
 {
     #region Constants
 
@@ -464,6 +466,9 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
     /// asking the wrapper.
     /// </remarks>
     public ProviderMetadata? StoredMetadata => m_store.StoredMetadata;
+
+    /// <summary>The configuration of the store underneath, which is the one that owns the file.</summary>
+    public StoredConfiguration? StoredConfiguration => m_store.StoredConfiguration;
 
     #endregion
 

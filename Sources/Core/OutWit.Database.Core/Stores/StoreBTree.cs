@@ -2,6 +2,7 @@
 using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Managers;
+using OutWit.Database.Core.Providers;
 using OutWit.Database.Core.Storage;
 using OutWit.Database.Core.Tree;
 
@@ -11,7 +12,7 @@ namespace OutWit.Database.Core.Stores;
 /// Key-value store implementation backed by B+Tree.
 /// Implements IKeyValueStore for unified storage engine interface.
 /// </summary>
-public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IKeyRangeSource, IAsyncDisposable
+public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoredConfigurationSource, IKeyRangeSource, IAsyncDisposable
 {
     #region Constants
 
@@ -562,6 +563,24 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
         {
             ThrowIfDisposed();
             return m_pageManager.GetProviderMetadata();
+        }
+    }
+
+    /// <summary>
+    /// The whole configuration this database was created with, answered from the header the page
+    /// manager holds IN MEMORY - so it works while the store owns the file, which is the case
+    /// <c>StorageDetector.ReadStoredConfiguration</c> cannot serve.
+    /// </summary>
+    public StoredConfiguration? StoredConfiguration
+    {
+        get
+        {
+            ThrowIfDisposed();
+
+            var header = m_pageManager.GetHeader();
+
+            return new StoredConfiguration(header.Providers, header.PageSize, IsDirectory: false,
+                Lsm: null, header.FormatVersion);
         }
     }
 

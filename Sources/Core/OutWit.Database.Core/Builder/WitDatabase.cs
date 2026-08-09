@@ -1,8 +1,10 @@
-using OutWit.Database.Core.Indexes;
+﻿using OutWit.Database.Core.Indexes;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Providers;
 using OutWit.Database.Core.Storage;
 using OutWit.Database.Core.Transactions;
+
+using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.Builder;
 
@@ -381,6 +383,32 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
             .WithTransactions()
             .Build();
     }
+
+    /// <summary>
+    /// What this OPEN database was created with - store, page size, providers, feature flags and the
+    /// on-disk format version.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The point of it is that it works while the database is open</b>, which
+    /// <see cref="GetDatabaseInfo"/> and <c>StorageDetector.ReadStoredConfiguration</c> cannot do for
+    /// a paged database: since 12.2.0 an open one holds an exclusive lock, so re-reading its own file
+    /// answers nothing. The paged store keeps the header in memory and answers from there. An LSM
+    /// directory never had the problem - its sidecar is a separate file the lock does not cover.
+    /// </para>
+    /// <para>
+    /// Null for a store that records no configuration, which is an in-memory database and any store a
+    /// caller supplied itself. Everything in it is decided when the database is CREATED and cannot
+    /// change while it is open, so the answer cannot go stale.
+    /// </para>
+    /// <para>
+    /// The chain is walked with <c>FindCapability</c> rather than each wrapper forwarding, which is
+    /// what <c>IStoreWrapper</c> is for: a capability added later is found without every wrapper being
+    /// edited again.
+    /// </para>
+    /// </remarks>
+    public StoredConfiguration? StoredConfiguration =>
+        m_store.FindCapability<IStoredConfigurationSource>()?.StoredConfiguration;
 
     /// <summary>
     /// Gets information about a database without opening it.
