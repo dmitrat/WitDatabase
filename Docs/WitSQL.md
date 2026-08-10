@@ -571,12 +571,21 @@ while `ORDER BY -1` is a position and is refused. A position outside the select 
 the range in the message; a grouping key carried for `ORDER BY`'s or `HAVING`'s benefit is **not**
 reachable by position, because it is not a column the query returns.
 
-#### One limit in this area
+#### `ORDER BY` and `LIMIT` over a `UNION`
 
-- **`ORDER BY`, `LIMIT` and `DISTINCT` over a `UNION` apply to the first arm only**, not to the
-  combined result — so a sorted union is sorted per arm, and `LIMIT 1` over one still returns
-  everything the second arm has. Wrap the union in a derived table if you need it ordered as a
-  whole; that form is correct and is covered by a test. Tracked as `Docs/KnownIssues.md` 18.
+A trailing `ORDER BY`, `LIMIT` and `OFFSET` belong to the **whole** set expression, not to the arm
+they are written after — there is no way to attach one to an arm without parentheses:
+
+```sql
+SELECT Kind FROM Current UNION ALL SELECT Kind FROM Archive ORDER BY Kind LIMIT 10;
+```
+
+`DISTINCT` is the exception and belongs to the arm it is written in: `SELECT DISTINCT a FROM t UNION
+ALL SELECT b FROM u` de-duplicates the first arm only, which is what standard SQL says.
+
+The ordering clause may only name a **result column or its position** — after a union there is no
+source row left to evaluate an expression against, and naming a column the result does not have is
+refused with the available columns listed.
 
 ### 3.2 INSERT
 

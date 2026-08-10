@@ -124,6 +124,50 @@ public sealed partial class QueryPlanner
         return new IteratorSort(iterator, resolvedOrderBy, m_context);
     }
 
+    /// <summary>
+    /// Refuses an <c>ORDER BY</c> over a set operation that names anything but a result column.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// After a <c>UNION</c> there is no source row left to evaluate an expression against - only the
+    /// combined result - so PostgreSQL restricts the clause to an output column name or a position,
+    /// and so does this. Without the check the failure is .NET's own <i>"Failed to compare two
+    /// elements in the array"</i>, which is the message <c>Docs/KnownIssues.md</c> 15 existed to get
+    /// rid of; it is not worth re-introducing one issue along.
+    /// </para>
+    /// <para>
+    /// Before <c>KnownIssues</c> 18 this shape did not fail at all: the clause was applied to the
+    /// FIRST ARM, where the source row still had the column, so
+    /// <c>… UNION ALL … ORDER BY Amount</c> quietly ordered half the answer by something the caller
+    /// could not see.
+    /// </para>
+    /// </remarks>
+    private static void ValidateSetOperationOrderBy(
+        IReadOnlyList<ClauseOrderByItem>? orderByClause,
+        IReadOnlyList<WitSqlColumnInfo> resultSchema)
+    {
+        foreach (var item in orderByClause ?? [])
+        {
+            if (item.Expression == null || ReadOrdinalPosition(item.Expression) != null)
+                continue;
+
+            if (item.Expression is WitSqlExpressionColumnRef column
+                && resultSchema.Any(result => string.Equals(result.Name, column.ColumnName, StringComparison.OrdinalIgnoreCase)))
+            {
+                continue;
+            }
+
+            var named = item.Expression is WitSqlExpressionColumnRef unknown
+                ? $"'{unknown.ColumnName}' is not a column of the result"
+                : "it is not a column of the result";
+
+            throw new InvalidOperationException(
+                "ORDER BY over a UNION, INTERSECT or EXCEPT may only name a result column or its "
+                + $"position - {named}. The columns are: "
+                + $"{string.Join(", ", resultSchema.Select(result => result.Name))}.");
+        }
+    }
+
     #endregion
 
     #region ORDER BY &lt;position&gt;

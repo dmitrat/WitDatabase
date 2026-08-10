@@ -97,20 +97,42 @@ public sealed partial class QueryPlanner
         // Apply FOR UPDATE/SHARE locking (before aggregation/ordering)
         iterator = ApplyLockingClause(iterator, select);
 
+        // A trailing ORDER BY, LIMIT and OFFSET belong to the WHOLE set expression, not to the arm
+        // they are written after - there is no way to attach one to an arm without parentheses. They
+        // were applied inside the branch below and the union was then wrapped around them, so a
+        // sorted union came back sorted per arm and `LIMIT 1` over one returned everything the
+        // second arm had. KnownIssues 18.
+        //
+        // DISTINCT is NOT deferred, because `SELECT DISTINCT a FROM t UNION ALL SELECT b FROM u`
+        // de-duplicates the FIRST ARM - that is where SQL puts it, and it is what this engine
+        // already did.
+        var setOperationFollows = select.SetOperations is { Count: > 0 };
+
         // Handle aggregation vs non-aggregation paths
         if (IsAggregateQuery(select))
         {
-            iterator = PlanAggregateQuery(iterator, select);
+            iterator = PlanAggregateQuery(iterator, select, setOperationFollows);
         }
         else
         {
-            iterator = PlanNonAggregateQuery(iterator, select);
+            iterator = PlanNonAggregateQuery(iterator, select, setOperationFollows);
         }
+
+        if (!setOperationFollows)
+            return iterator;
 
         // Handle set operations (UNION, INTERSECT, EXCEPT)
         iterator = ApplySetOperations(iterator, select);
 
-        return iterator;
+        // And then order and cut the COMBINED result. No select list is passed: the rows here are
+        // already the output, so an ORDER BY position counts its columns, and a name is looked up on
+        // the result row - which is why a column that is not in the result is now an error instead of
+        // a silent ordering of one arm by something nobody asked to see.
+        ValidateSetOperationOrderBy(select.OrderByClause, iterator.Schema);
+
+        iterator = ApplyOrderByClause(iterator, select.OrderByClause);
+
+        return ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
     }
 
     #endregion
@@ -488,8 +510,23 @@ public sealed partial class QueryPlanner
 
     #region Query Planning
 
-    private IResultIterator PlanAggregateQuery(IResultIterator iterator, WitSqlStatementSelect select)
+    /// <param name="setOperationFollows">
+    /// Whether this query is one arm of a set operation. When it is, the trailing <c>ORDER BY</c>,
+    /// <c>LIMIT</c> and <c>OFFSET</c> belong to the combined result and are applied by
+    /// <see cref="Plan"/> after the union - so this arm must not only skip them, it must not carry
+    /// grouping keys for an <c>ORDER BY</c> that is not its own either, because that would widen the
+    /// arm's schema and the set operation compares the two schemas.
+    /// </param>
+    private IResultIterator PlanAggregateQuery(
+        IResultIterator iterator,
+        WitSqlStatementSelect select,
+        bool setOperationFollows = false)
     {
+        // Not select.OrderByClause: when this query is one arm of a set operation, the trailing
+        // ORDER BY is the union's and not this arm's - so this arm neither sorts by it nor carries
+        // grouping keys for it.
+        var orderByClause = setOperationFollows ? null : select.OrderByClause;
+
         // A `*` becomes the columns it stands for before anything else looks at the list, so the
         // check below and the group iterator both see a list they can evaluate rather than an item
         // with no expression - which is what used to answer NULL. KnownIssues 17.
@@ -497,7 +534,7 @@ public sealed partial class QueryPlanner
 
         // And then: a column no group can answer for is refused rather than answered from an
         // arbitrary row of the group. PostgreSQL's and SQL Server's rule, in its strict form.
-        ValidateGroupedQuery(selectList, select);
+        ValidateGroupedQuery(selectList, select, orderByClause);
 
         // Check if we can use streaming aggregation (more efficient)
         // Requirements: no GROUP BY, no HAVING, simple aggregates only
@@ -513,7 +550,7 @@ public sealed partial class QueryPlanner
 
             // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
             iterator = ApplyOrderByClauseForAggregate(
-                iterator, select.OrderByClause, selectList, selectList.Count);
+                iterator, orderByClause, selectList, selectList.Count);
         }
         else
         {
@@ -523,7 +560,7 @@ public sealed partial class QueryPlanner
             // clauses resolve against that wider list, and the extra columns are dropped again as
             // soon as the sort has used them. Nothing is carried when the query has neither clause
             // to serve, so the commonest grouped query keeps exactly the plan it had.
-            var groupedSelectList = select.OrderByClause is { Count: > 0 } || select.HavingClause != null
+            var groupedSelectList = orderByClause is { Count: > 0 } || select.HavingClause != null
                 ? BuildGroupedSelectList(selectList, select.GroupByClause)
                 : selectList;
 
@@ -543,7 +580,7 @@ public sealed partial class QueryPlanner
 
             // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
             iterator = ApplyOrderByClauseForAggregate(
-                iterator, select.OrderByClause, groupedSelectList, selectList.Count);
+                iterator, orderByClause, groupedSelectList, selectList.Count);
 
             // The carried keys are the planner's business, not the caller's: they are dropped before
             // LIMIT and DISTINCT, so both count and compare the columns the query asked for.
@@ -551,17 +588,28 @@ public sealed partial class QueryPlanner
                 iterator = new IteratorHideGroupingKeys(iterator, selectList.Count);
         }
 
-        // LIMIT/OFFSET
-        iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
+        // LIMIT/OFFSET - the union's, when there is one, so Plan applies it after the arms are
+        // combined rather than to this one alone.
+        if (!setOperationFollows)
+            iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
 
-        // DISTINCT (after aggregation)
+        // DISTINCT (after aggregation). NOT deferred: SQL puts a SELECT DISTINCT on the arm it is
+        // written in, not on the set expression.
         iterator = ApplyDistinct(iterator, select.IsDistinct);
 
         return iterator;
     }
 
-    private IResultIterator PlanNonAggregateQuery(IResultIterator iterator, WitSqlStatementSelect select)
+    /// <inheritdoc cref="PlanAggregateQuery"/>
+    private IResultIterator PlanNonAggregateQuery(
+        IResultIterator iterator,
+        WitSqlStatementSelect select,
+        bool setOperationFollows = false)
     {
+        // Not select.OrderByClause: when this query is one arm of a set operation, the trailing
+        // ORDER BY and LIMIT belong to the combined result and Plan applies them after the union.
+        var orderByClause = setOperationFollows ? null : select.OrderByClause;
+
         // Check if query contains window functions
         bool hasWindowFunctions = HasWindowFunctions(select.SelectList);
 
@@ -577,7 +625,7 @@ public sealed partial class QueryPlanner
             // ORDER BY - apply after window functions for final ordering. IteratorWindow's schema is
             // the select list, so the row here already IS the output and no select list is passed:
             // an ORDER BY position counts columns of it.
-            iterator = ApplyOrderByClause(iterator, select.OrderByClause);
+            iterator = ApplyOrderByClause(iterator, orderByClause);
 
             // DISTINCT - after window processing, and BEFORE the limit: SQL evaluates DISTINCT
             // first, so limiting ahead of it truncates the rows the duplicates are drawn from and
@@ -585,8 +633,10 @@ public sealed partial class QueryPlanner
             // occurrences, so the ordering above survives it.
             iterator = ApplyDistinct(iterator, select.IsDistinct);
 
-            // LIMIT/OFFSET - last, over the distinct result
-            iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
+            // LIMIT/OFFSET - last, over the distinct result. The union's, when there is one, so
+            // Plan applies it after the arms are combined rather than to this one alone.
+            if (!setOperationFollows)
+                iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
         }
         else
         {
@@ -605,7 +655,7 @@ public sealed partial class QueryPlanner
             // ORDER BY - before projection to access original column names, which is why the select
             // list has to come with it: an ORDER BY position counts OUTPUT columns, and the row in
             // front of the sort here is the source's.
-            iterator = ApplyOrderByClause(iterator, select.OrderByClause, selectList);
+            iterator = ApplyOrderByClause(iterator, orderByClause, selectList);
 
             // Projection (SELECT columns)
             iterator = ApplyProjection(iterator, selectList);
@@ -615,8 +665,10 @@ public sealed partial class QueryPlanner
 
             // LIMIT/OFFSET - last. It used to sit before the projection "for efficiency", which put
             // it ahead of DISTINCT: the limit then truncated the rows the duplicates were drawn
-            // from, so SELECT DISTINCT ... LIMIT n returned fewer than n distinct values.
-            iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
+            // from, so SELECT DISTINCT ... LIMIT n returned fewer than n distinct values. And the
+            // union's, when there is one, is applied by Plan over the combined result.
+            if (!setOperationFollows)
+                iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);
         }
 
         return iterator;
