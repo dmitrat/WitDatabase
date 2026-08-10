@@ -1,7 +1,6 @@
 {
   "$language": "Русский",
   "$plural": "slavic",
-
   "Menu.File": "_Файл",
   "Menu.Edit": "_Правка",
   "Menu.Query": "_Запрос",
@@ -82,7 +81,6 @@
   "Common.ConnectionString": "Строка подключения…",
   "Common.Yes": "Да",
   "Common.No": "Нет",
-
   "Dialog.Open.Title": "Открыть базу данных",
   "Dialog.Open.Path": "Путь",
   "Dialog.Open.PathExample": "D:\\данные\\продажи.witdb",
@@ -103,7 +101,6 @@
   "Dialog.Open.Encrypted": "Найдена зашифрованная база {0} · {1} · {2}. Для открытия нужен пароль.",
   "Dialog.Open.EncryptedOrNot": "Зашифрована — или вовсе не база · {0}. Снаружи эти два случая неразличимы.",
   "Dialog.Open.WrongPassword": "Не удалось расшифровать: неверный пароль или файл повреждён.",
-
   "Dialog.Export.What": "Что",
   "Dialog.Connections.Title": "Подключения",
   "Dialog.Connections.NameAndPath": "ИМЯ И ПУТЬ",
@@ -112,7 +109,6 @@
   "Dialog.Connections.Missing": "файл не найден",
   "Dialog.Connections.ReadOnly": "только чтение",
   "Dialog.Connections.CouldNotOpen": "Не удалось открыть базу.",
-
   "Dialog.Create.Title": "Создать базу данных",
   "Dialog.Create.Storage": "ХРАНИЛИЩЕ",
   "Dialog.Create.Encryption": "ШИФРОВАНИЕ",
@@ -135,7 +131,6 @@
   "Dialog.Create.FolderHint": "Выбран LSM, поэтому спрашивается пустая папка.",
   "Dialog.Create.PasswordsDiffer": "Пароли не совпадают.",
   "Dialog.Create.PathRequired": "Выберите, где будет лежать база.",
-
   "Settings.Title": "Настройки",
   "Settings.General": "Общие",
   "Settings.General.Hint": "Язык, оформление и поведение приложения при запуске",
@@ -192,7 +187,6 @@
   "Settings.Reset": "Сбросить настройки",
   "Settings.ClearHistory": "Очистить историю запросов",
   "Settings.Reset.Hint": "Сохранённые подключения и пароли не затрагиваются.",
-
   "About.Engine": "Движок",
   "About.FileFormat": "Формат файла",
   "About.Interface": "Интерфейс",
@@ -201,11 +195,9 @@
   "About.CopyDetails.Hint": "Кладёт в буфер готовый блок для issue: версии Studio, движка, формата файла, среды выполнения и библиотеки интерфейса.",
   "About.Website": "Сайт",
   "About.Sources": "Исходники",
-
   "Language.Name": "Русский",
   "Status.Elapsed": "{0} мс",
   "Status.Size": "{0} МБ",
-
   "Count.Rows": {
     "one": "{0} строка",
     "few": "{0} строки",
@@ -231,7 +223,6 @@
     "few": "{0} таблицы",
     "many": "{0} таблиц"
   },
-
   "Common.Refresh": "Обновить",
   "Explorer.Title": "Обозреватель базы данных",
   "Explorer.Filter": "Фильтр объектов",
@@ -253,7 +244,6 @@
   "Explorer.Menu.Rename": "Переименовать (F2)",
   "Explorer.Menu.Truncate": "Очистить таблицу…",
   "Explorer.Menu.Drop": "Удалить…",
-
   "Common.Save": "Сохранить",
   "Common.SaveAs": "Сохранить как…",
   "Inspector.Empty": "Выберите объект в дереве, чтобы увидеть, что это.",
@@ -279,7 +269,6 @@
   "Tabs.CloseTab": "Закрыть вкладку",
   "Tabs.NewTab": "Новая вкладка запроса",
   "Tabs.NewTab.Tip": "Новая вкладка запроса (Ctrl+N)",
-
   "Common.Name": "Имя",
   "Common.ToEditor": "В редактор",
   "Dialog.Unsaved.Title": "Несохранённые изменения",
@@ -323,7 +312,6 @@
   "Dialog.Trigger.Problem.DoesNotParse": "Тело не разбирается: {0}",
   "Dialog.Trigger.Problem.ChangesSchema": "«{0}» меняет схему. Тело триггера может содержать только SELECT, INSERT, UPDATE, DELETE и MERGE.",
   "Common.WhatWillRun": "Что будет выполнено",
-
   "Common.Actions": "Действия",
   "Column.DataType": "Тип данных",
   "Column.Nullable": "Допускает NULL",
@@ -341,7 +329,6 @@
   "Dialog.CreateTable.GenerateDdl": "Сгенерировать DDL",
   "Dialog.CreateTable.Create": "Создать таблицу",
   "Dialog.CreateTable.Creating": "Создание таблицы…",
-
   "Common.Table": "Таблица",
   "Common.Columns": "Столбцы",
   "Common.Create": "Создать",
@@ -360,7 +347,6 @@
   "Dialog.CreateIndex.Partial": "Частичный — WHERE",
   "Dialog.CreateIndex.CreateName": "Создать индекс",
   "Dialog.CreateIndex.Creating": "Создание индекса…",
-
   "Dialog.Export.Title": "Экспорт данных",
   "Dialog.Export.Source": "Источник",
   "Dialog.Export.QueryResult": "Результат запроса: {0} ({1} строк)",
@@ -383,7 +369,6 @@
   "Dialog.Export.Scope.Page": "Страница · {0}",
   "Dialog.Export.Scope.Everything": "Всё · {0}",
   "Dialog.Export.Progress": "Экспорт… {0} из {1} строк",
-
   "Dialog.Import.Title": "Импорт данных",
   "Dialog.Import.Step.File": "1 · Файл",
   "Dialog.Import.Step.Destination": "2 · Назначение",
@@ -419,7 +404,6 @@
   "Dialog.Import.CancelImport": "Прервать импорт",
   "Dialog.Import.Preview.Approx": "В файле примерно {0}",
   "Dialog.Import.Progress": "Импорт… {0} из {1} строк",
-
   "Status.Elapsed2": "{0:F2} мс",
   "Query.SyntaxError": "{0} · строка {1}",
   "Query.StatementDetail": "строк: {0} · {1:F2} мс",
@@ -457,7 +441,6 @@
     "few": "Всего: {0} строки",
     "many": "Всего: {0} строк"
   },
-
   "Common.NotConnected": "Нет подключения к базе данных",
   "Common.Filter.Files": "Файлы {0}",
   "Common.Filter.AllFiles": "Все файлы",
@@ -488,13 +471,11 @@
     "few": "Отвергнуто {0} строки",
     "many": "Отвергнуто {0} строк"
   },
-
   "Common.Drop": "Удалить",
   "Common.Edit": "Изменить",
   "Schema.Marker.InPlace": "на месте",
   "Schema.Marker.Rebuild": "перестройка",
   "Schema.Marker.DropCreate": "удалить + создать",
-
   "Schema.Reason.InPlace": "Один ALTER TABLE. Строки не затрагиваются.",
   "Schema.Reason.ChangeColumnType": "Смена типа переписывает каждую строку, и значение, которое не преобразуется, заменяется без предупреждения. Studio вместо этого перестраивает таблицу: преобразование идёт через видимый CAST, а потери подсчитываются заранее.",
   "Schema.Reason.AddPrimaryKey": "Движок отказывается добавлять первичный ключ в уже существующую таблицу.",
@@ -502,7 +483,6 @@
   "Schema.Reason.ReorderColumns": "В языке нет способа переместить столбец.",
   "Schema.Reason.ReplaceViewBody": "В этом языке нет ALTER VIEW, поэтому представление удаляется и создаётся заново.",
   "Schema.Reason.ReplaceTriggerBody": "В этом языке нет ALTER TRIGGER, поэтому триггер удаляется и создаётся заново.",
-
   "Schema.Cap.AddColumn": "Добавить столбец",
   "Schema.Cap.AddColumn.Why": "ADD COLUMN, включая UNIQUE, CHECK, REFERENCES, DEFAULT и вычисляемые столбцы",
   "Schema.Cap.DropColumn": "Удалить столбец",
@@ -525,18 +505,15 @@
   "Schema.Cap.ViewBody.Why": "Нет ни ALTER VIEW, ни CREATE OR REPLACE",
   "Schema.Cap.TriggerBody": "Изменить тело триггера",
   "Schema.Cap.TriggerBody.Why": "Нет ALTER TRIGGER — и нет способа включить или выключить триггер",
-
   "Schema.Absent.Reindex": "Перестроить индекс на месте — нет ни REINDEX, ни ALTER INDEX; Studio удаляет и создаёт его заново",
   "Schema.Absent.EnableTrigger": "Включить или выключить триггер — нет ALTER TRIGGER",
   "Schema.Absent.MoveColumn": "Переместить столбец — нет FIRST, AFTER, MODIFY и CHANGE",
   "Schema.Absent.Sequence": "Шаг, минимум, максимум или цикличность последовательности — CREATE SEQUENCE принимает только имя и START WITH",
-
   "Update.Title": "Обновление",
   "Update.Available": "Доступна версия {0} — у вас {1}",
   "Update.OpenPage": "Открыть страницу выпуска",
   "Update.Later": "Напомнить позже",
   "Update.Skip": "Пропустить версию",
-
   "Keys.Help": "Клавиши",
   "Keys.Palette": "Палитра команд",
   "Keys.NewDatabase": "Создать базу",
@@ -569,7 +546,6 @@
   "Keys.Copied": "Сочетания скопированы",
   "Keys.Nothing": "Ничего не найдено",
   "Keys.NoRebinding": "Переназначение сочетаний пока не сделано: клавиши объявлены в окне, а не читаются из этого списка, поэтому поле здесь ничего бы не меняло. Список показывает то, что приложение делает на самом деле.",
-
   "Search.Find": "Найти",
   "Search.Replace": "Заменить",
   "Search.FindPlaceholder": "Найти",
@@ -589,12 +565,10 @@
   "Search.NoMatches": "совпадений нет",
   "Search.BadPattern": "выражение не дописано",
   "Search.Replaced": "Заменено: {0}",
-
   "Structure.ObjectType.Table": "Таблица",
   "Structure.ObjectType.View": "Представление",
   "Structure.ObjectType.Index": "Индекс",
   "Structure.ObjectType.Other": "Объект",
-
   "Structure.Column": "Столбец",
   "Structure.AddColumn.Tip": "Добавить столбец",
   "Structure.Rebuild": "Пересобрать…",
@@ -637,7 +611,6 @@
     "few": "{0} изменения",
     "many": "{0} изменений"
   },
-
   "Grid.PrevPage": "Предыдущая страница",
   "Grid.NextPage": "Следующая страница",
   "Grid.PageLabel": "страница",
@@ -682,7 +655,6 @@
     "few": "показано {0} строки",
     "many": "показано {0} строк"
   },
-
   "Toolbar.Script.Name": "Выполнить скрипт",
   "Toolbar.Selection.Name": "Выполнить выделенное",
   "Toolbar.Clear.Name": "Очистить результат",
@@ -704,7 +676,6 @@
   "Color.Grey": "Серый",
   "Settings.About.StudioVersion": "Studio {0}",
   "Settings.About.EngineVersion": "движок {0}",
-
   "Common.Filter.Database": "Файлы WitDatabase",
   "Status.Ready": "Готово",
   "Status.Error": "Ошибка: {0}",
@@ -780,19 +751,16 @@
   "Grid.Conflict.Row": "Строку изменило другое подключение уже после того, как она была прочитана здесь.",
   "Grid.Conflict.Deleted": "Строка {0} УДАЛЕНА другим подключением.",
   "Grid.Conflict.Changed": "Строку {0} изменило другое подключение уже после того, как она была прочитана здесь. Оператор {1} из {2} не нашёл ни одной строки, поэтому не применено ничего.",
-
   "Status.SaveFileFailed": "Ошибка при сохранении файла: {0}",
   "Status.OpenFileFailed": "Ошибка при открытии файла: {0}",
   "Dialog.Rebuild.Done": "Таблица {0} пересобрана",
   "Dialog.Rebuild.Stopped": "Пересборка таблицы {0} остановлена",
-
   "Dialog.Unsaved.Header": "{0} — {1}",
   "Count.UnsavedChanges": {
     "one": "{0} несохранённое изменение",
     "few": "{0} несохранённых изменения",
     "many": "{0} несохранённых изменений"
   },
-
   "Settings.Section.General": "Общие",
   "Settings.Section.Editor": "Редактор",
   "Settings.Section.Data": "Данные",
@@ -807,11 +775,9 @@
   "Explorer.Summary": "{0}: таблиц {1}, представлений {2}, индексов {3}, триггеров {4}, последовательностей {5}",
   "Query.Autocommit": "Автофиксация",
   "Query.TransactionOpen": "Транзакция открыта · {0}",
-
   "Settings.Theme.System": "Как в системе",
   "Settings.Theme.Light": "Светлая",
   "Settings.Theme.Dark": "Тёмная",
-
   "Common.Unknown": "неизвестно",
   "Grid.LoadedRows": "Прочитано {0}{1}{2}",
   "Grid.OnPage": " (страница {0})",
@@ -830,7 +796,6 @@
     "few": "{0} изменения",
     "many": "{0} изменений"
   },
-
   "Inspector.Subtitle": "{0} — {1}",
   "Inspector.UnindexedKey": "У первичного ключа нет собственного индекса. Этот движок его не создаёт, и вставка строк с явными ключами резко замедляется по мере роста таблицы.",
   "Inspector.Access.Indexed": "{0}: {1}",
@@ -855,7 +820,6 @@
     "few": "{0} фильтра",
     "many": "{0} фильтров"
   },
-
   "Count.Matches": {
     "one": "{0} совпадение",
     "few": "{0} совпадения",
@@ -898,7 +862,6 @@
   "Format.Reason.DoesNotParse": "оператор, который сам по себе не разбирается, остаётся как есть",
   "Format.Reason.CannotBeSerialized": "парсер не умеет записывать такой оператор обратно, поэтому он остаётся как есть",
   "Format.Reason.NoRoundTrip": "этот оператор не переживает обратный разбор, поэтому остаётся как есть",
-
   "Tab.DatabaseOf": "{0} — база",
   "Tab.Database": "База",
   "Count.Views": {
@@ -1046,7 +1009,6 @@
   "ReadCheck.Note.PlannerDidNotUseIt": "планировщик ответил без него, так что сам индекс не прочитан — этот движок не рассматривает индекс меньше чем на десяти строках",
   "ReadCheck.Note.NothingToSeekWith": "в колонке нет значения, по которому можно искать, так что до индекса дело не дошло",
   "ReadCheck.Note.SeekNotTraversal": "поиск, а не обход: до индекса этот движок доходит только равенством, а ORDER BY и диапазон отвечает полным сканом",
-
   "ReadCheck.Title": "Проверка чтением",
   "ReadCheck.Heading": "Проверка чтением — {0}",
   "ReadCheck.Open": "Проверить чтением…",
@@ -1072,7 +1034,6 @@
   "ReadCheck.Result.Disagrees": "прочитано {0}, а COUNT(*) говорит {1} — счётчик и строки расходятся",
   "ReadCheck.Limits": "Чего эта проверка заведомо НЕ находит: внутреннюю рассогласованность B-дерева, потерянные страницы, ошибки в свободных списках. Настоящая проверка целостности читает структуру, а эта — данные через неё, поэтому зелёный прогон ничего не говорит о тех частях файла, которыми никто не пользуется. Она появится, когда появится PRAGMA integrity_check.",
   "ReadCheck.Result.Catalog": "прочитан, в нём {0}",
-
   "Copy.Title": "Копия базы",
   "Copy.Heading": "Копия {0}",
   "Copy.Open": "Копия…",
@@ -1102,7 +1063,6 @@
   "Password.Step.Reading": "Схема и данные прочитаны",
   "Password.Step.Writing": "Записаны в новую базу",
   "Password.Step.Verifying": "Каждая таблица посчитана с обеих сторон",
-
   "Password.Title": "Смена пароля",
   "Password.Heading": "Смена пароля базы {0}",
   "Password.Open": "Пароль…",
@@ -1125,5 +1085,17 @@
   "Password.RowsMatch": "число строк совпадает по всем таблицам",
   "Password.RowsDoNotMatch": "а здесь НЕ совпало: {0}",
   "Password.Mismatch": "{0} ({1} против {2})",
-  "Password.Failed": "Перенос не завершился: {0}"
+  "Password.Failed": "Перенос не завершился: {0}",
+  "Dialog.Destructive.Title": "Подтверждение",
+  "Dialog.Destructive.Proceed": "Удалить",
+  "Dialog.Destructive.Cancel": "Отмена",
+  "Dialog.Destructive.Consequences": "Это затронет:",
+  "Dialog.Destructive.NoConsequences": "Ничто в этой базе на него не ссылается.",
+  "Confirm.Drop.Headline": "Удалить {0} «{1}»? Отменить будет нельзя.",
+  "Confirm.Drop.ReferencedBy": "{0}.{1} ссылается на него и останется висеть",
+  "Confirm.Drop.ReadByView": "представление {0} читает его и перестанет работать",
+  "Confirm.Drop.Indexes": "вместе с ним уйдёт индексов: {0}",
+  "Confirm.Drop.Triggers": "вместе с ним уйдёт триггеров: {0}",
+  "Confirm.Drop.Rows": "будет удалено строк: {0}",
+  "Confirm.Drop.ConsequencesUnknown": "Не удалось выяснить, что от него зависит: {0}"
 }

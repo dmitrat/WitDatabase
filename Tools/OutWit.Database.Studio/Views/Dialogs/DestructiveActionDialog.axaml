@@ -1,0 +1,69 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        x:Class="OutWit.Database.Studio.Views.Dialogs.DestructiveActionDialog"
+        Title="{DynamicResource S.Dialog.Destructive.Title}"
+        AutomationProperties.AutomationId="DestructiveActionDialog"
+        Width="560" SizeToContent="Height" MaxHeight="560"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        ShowInTaskbar="False">
+
+    <Grid Margin="20" RowDefinitions="Auto,Auto,Auto,*,Auto">
+
+        <TextBlock Grid.Row="0"
+                   x:Name="HeadlineText"
+                   AutomationProperties.AutomationId="DestructiveHeadline"
+                   FontWeight="SemiBold"
+                   TextWrapping="Wrap"/>
+
+        <TextBlock Grid.Row="1"
+                   x:Name="ConsequencesHeader"
+                   AutomationProperties.AutomationId="DestructiveConsequencesHeader"
+                   Margin="0,14,0,4"
+                   Opacity="0.7"/>
+
+        <ItemsControl Grid.Row="2"
+                      x:Name="ConsequencesList"
+                      AutomationProperties.AutomationId="DestructiveConsequences">
+            <ItemsControl.ItemTemplate>
+                <DataTemplate>
+                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Margin="0,1"/>
+                </DataTemplate>
+            </ItemsControl.ItemTemplate>
+        </ItemsControl>
+
+        <Border Grid.Row="3"
+                x:Name="SqlBlock"
+                Margin="0,14,0,0"
+                BorderThickness="1"
+                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                Padding="8">
+            <ScrollViewer MaxHeight="180" HorizontalScrollBarVisibility="Auto">
+                <TextBox x:Name="SqlText"
+                         AutomationProperties.AutomationId="DestructiveSql"
+                         IsReadOnly="True"
+                         BorderThickness="0"
+                         Background="Transparent"
+                         AcceptsReturn="True"
+                         TextWrapping="NoWrap"
+                         FontFamily="Cascadia Code,Consolas,monospace"/>
+            </ScrollViewer>
+        </Border>
+
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Margin="0,18,0,0"
+                    Spacing="8">
+            <Button x:Name="CancelButton"
+                    AutomationProperties.AutomationId="DestructiveCancel"
+                    Content="{DynamicResource S.Dialog.Destructive.Cancel}"
+                    IsCancel="True"
+                    MinWidth="92"/>
+            <Button x:Name="ProceedButton"
+                    AutomationProperties.AutomationId="DestructiveProceed"
+                    Content="{DynamicResource S.Dialog.Destructive.Proceed}"
+                    MinWidth="92"/>
+        </StackPanel>
+    </Grid>
+</Window>
