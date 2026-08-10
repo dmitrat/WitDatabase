@@ -654,10 +654,18 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
             // The counts are NOT awaited (2.2): the tree is usable the moment it is drawn, and each
             // number appears when its query comes back - or does not, if it takes too long.
-            _ = CountRowsAsync(session).ContinueWith(
-                task => Logger.LogError(task.Exception, "Counting the tables of {Connection} failed",
-                    session.DisplayName),
-                TaskContinuationOptions.OnlyOnFaulted);
+            //
+            // And they are not taken at all when the user has said not to (WS-16). A count is the one
+            // thing the tree does that touches every table, so on a large database it is exactly the
+            // work someone would want to switch off - which is why the setting exists and why it did
+            // nothing until 2026-08-10.
+            if (ApplicationVm.Settings.Current.CountRowsAutomatically)
+            {
+                _ = CountRowsAsync(session).ContinueWith(
+                    task => Logger.LogError(task.Exception, "Counting the tables of {Connection} failed",
+                        session.DisplayName),
+                    TaskContinuationOptions.OnlyOnFaulted);
+            }
 
             ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Summary",
                 session.DisplayName, tables.Count, views.Count, indexes.Count, triggers.Count,

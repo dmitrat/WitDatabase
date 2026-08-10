@@ -120,6 +120,20 @@ public partial class QueryTabViewModel : ISqlCompletionSource
     }
 
     /// <summary>
+    /// Drops whatever the as-you-type check had found, and any wait it had started.
+    /// </summary>
+    /// <remarks>
+    /// Used when the setting is switched off mid-edit: a pending check must not land afterwards and
+    /// re-underline text nobody is being corrected on any more.
+    /// </remarks>
+    private void ClearSyntaxError()
+    {
+        m_syntaxCts?.Cancel();
+
+        SetSyntaxError(null);
+    }
+
+    /// <summary>
     /// The same check without the wait, for a caller that already knows the text has settled.
     /// </summary>
     public void CheckSyntaxNow()

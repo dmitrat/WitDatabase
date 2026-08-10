@@ -108,24 +108,28 @@ public class SettingsAreActedOnTests
         // known and not yet done. A new dead setting fails here; a listed one that gets wired must be
         // struck off or the test fails the other way, so the list cannot rot into a permanent excuse.
         //
-        // Two classes, and they are different pieces of work:
+        // Seven of class B were wired on 2026-08-10 and struck off here - which the rule made
+        // compulsory rather than optional: it is asserted EQUIVALENT, so a remainder that gets fixed
+        // and is left on the list fails just as loudly as a new dead setting. It did, on the run that
+        // wired them.
         //
-        //   B - the feature EXISTS and does not consult its setting. Completion, the syntax
-        //       underline, the formatter, paging and the lazy counts were all built in stages 5-7;
-        //       nothing asks the setting. Wiring, not development.
+        // What is left is two different kinds of work and neither is wiring:
         //
-        //   C - the feature DOES NOT EXIST. Studio has no session restore across restarts at all
-        //       (only "reopen closed tab" inside one run), so three settings offer something that was
-        //       never built. Whether to build it or withdraw the settings is Dmitry's decision,
-        //       outstanding as of 2026-08-10.
+        //   KeywordCase - the formatter regenerates SQL from the PARSE TREE, so the casing the user
+        //       typed is gone by the time there is anything to case. "Upper" and "Lower" are a
+        //       post-pass over keyword tokens; "AsTyped" means nothing there, and pretending it does
+        //       would be a setting that lies in a third way.
+        //
+        //   DefaultRowLimit - WS-23 asks for a selector ON THE TAB that APPENDS `LIMIT` rather than
+        //       truncating a result already fetched, with "no limit" an explicit choice. The setting
+        //       is only the value a new tab starts at. That is a feature, not a wire.
+        //
+        //   C, the three Restore* - the feature DOES NOT EXIST. Studio has no session restore across
+        //       restarts at all (only "reopen closed tab" inside one run), so these offer something
+        //       that was never built. Build it or withdraw them: Dmitry's decision, outstanding.
         var knownUnwired = new[]
         {
-            // B
-            "EditorFontFamily", "EditorFontSize", "ShowWhitespace", "CompleteAsYouType",
-            "CheckSyntaxAsYouType", "KeywordCase", "DefaultRowLimit", "GridPageSize",
-            "CountRowsAutomatically",
-
-            // C
+            "KeywordCase", "DefaultRowLimit",
             "RestoreConnections", "RestoreTabs", "RestoreUnsavedTabs"
         };
 

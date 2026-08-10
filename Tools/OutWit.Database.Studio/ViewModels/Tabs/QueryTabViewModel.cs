@@ -565,7 +565,18 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel, ISearchTarget
         {
             // The underline follows the text, on a delay (3.6). Fire and forget: the check cancels its
             // own previous run, and a keystroke must not wait for a parse.
-            _ = CheckSyntaxAsync();
+            //
+            // Unless the user switched it off. Note what is NOT switched off: CheckSyntaxNow, which
+            // runs when a statement is executed - the setting is about being corrected WHILE TYPING,
+            // not about being told why a query was refused.
+            //
+            // Switching it off CLEARS what is already underlined rather than leaving it: an underline
+            // that no longer follows the text is worse than none, because it points at a position in
+            // a document that has since changed.
+            if (ApplicationVm.Settings.Current.CheckSyntaxAsYouType)
+                _ = CheckSyntaxAsync();
+            else
+                ClearSyntaxError();
 
             // And so does the search band: it stays open while the query is edited, and a count that
             // was true a moment ago is worse than no count. Not while the band is writing its own
