@@ -587,6 +587,25 @@ The ordering clause may only name a **result column or its position** — after 
 source row left to evaluate an expression against, and naming a column the result does not have is
 refused with the available columns listed.
 
+#### Comparing text with a typed column
+
+Text meeting a value of another type is **read as that type**, as it is in PostgreSQL and SQL Server
+— so a column may be filtered with a plain quoted string whatever its type:
+
+```sql
+SELECT * FROM Events WHERE Stamp = '2026-07-01 13:45:30';   -- a DATETIME column
+SELECT * FROM Events WHERE Stamp > '2026-07-01';            -- and ranges compare as moments
+SELECT * FROM Orders WHERE Quantity > '9';                  -- 42 > 9, not "42" before "9"
+```
+
+Parsing is invariant-culture, so a stored value is not read differently on a machine whose locale
+writes dates the other way round. Text that is **not** a value of that type — `Stamp = 'yesterday'` —
+is not refused: the comparison answers "not equal", so a filter built from user input returns an
+empty result rather than throwing.
+
+Text against text is unaffected and stays ordinal: on a `VARCHAR` column `'42'` really does sort
+before `'9'`.
+
 ### 3.2 INSERT
 
 ```sql

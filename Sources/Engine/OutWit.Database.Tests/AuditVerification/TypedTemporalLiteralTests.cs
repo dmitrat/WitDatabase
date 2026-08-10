@@ -112,21 +112,26 @@ public sealed class TypedTemporalLiteralTests
 
     #endregion
 
-    #region What a bare string does - PINS, not endorsements
+    #region What a bare string does
 
     /// <summary>
-    /// <b>PINS A DEFECT, NOT CORRECT BEHAVIOUR.</b> A row written by a quoted string cannot be found
-    /// by that very same string: text is not converted to the column's type before the comparison, so
-    /// the two are compared as different things and nothing matches. This is what the EF provider was
-    /// doing until 2026-08-09 - it had traded a loud parse error for an empty result set.
-    ///
-    /// <para>
-    /// If a future change makes text compare as the column's type, these two go GREEN and should be
-    /// deleted rather than inverted: the fix would make the question uninteresting.
-    /// </para>
+    /// A row written by a quoted string is found by that very same string.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// This case PINNED a defect until 2026-08-10 and said, in its own text, that a change making
+    /// text compare as the column's type should <b>delete</b> it rather than invert it, because the
+    /// fix would make the question uninteresting. That change landed - <c>Docs/KnownIssues.md</c> 20
+    /// - so what is left is the ordinary assertion that the two forms agree.
+    /// </para>
+    /// <para>
+    /// It is kept rather than removed because it is the shape the EF provider used to emit, and the
+    /// one issue 2 was reported for: a row the provider wrote could not be found by the very text
+    /// the provider writes.
+    /// </para>
+    /// </remarks>
     [Test]
-    public void ABareStringDoesNotFindTheStampItWroteTest()
+    public void ABareStringFindsTheStampItWroteTest()
     {
         m_engine.Execute(
             "INSERT INTO Events (Id, S, O) VALUES (2, '2026-07-01 09:00:00.1234567', "
@@ -137,21 +142,22 @@ public sealed class TypedTemporalLiteralTests
             Assert.That(Count("SELECT Id FROM Events WHERE Id = 2"), Is.EqualTo(1),
                 "CONTROL: the row is there");
 
-            Assert.That(Count("SELECT Id FROM Events WHERE S = '2026-07-01 09:00:00.1234567'"), Is.Zero,
-                "PINS A DEFECT: written with this text and not found by it");
+            Assert.That(Count("SELECT Id FROM Events WHERE S = '2026-07-01 09:00:00.1234567'"),
+                Is.EqualTo(1), "written with this text and found by it");
 
             Assert.That(Count("SELECT Id FROM Events WHERE O = '2026-07-01 09:00:00.0000000+03:00'"),
-                Is.Zero, "PINS A DEFECT: the same, for a moment with an offset");
+                Is.EqualTo(1), "and the same for a moment with an offset");
 
             Assert.That(Count("SELECT Id FROM Events WHERE S = TIMESTAMP '2026-07-01 09:00:00.1234567'"),
-                Is.EqualTo(1), "and the typed literal finds it, which is what says the row is fine");
+                Is.EqualTo(1), "the typed literal finds it too - the two spellings agree now");
         });
     }
 
     /// <summary>
-    /// A bare string DOES find a date, and that is why the defect above went unnoticed: an ISO date is
-    /// ten characters with nothing after it, so the two forms happen to agree. Recorded so that
-    /// "temporal literals are broken" is not read wider than it is.
+    /// A bare string finds a date, and always did - which is why the defect above went unnoticed for
+    /// so long: an ISO date is ten characters with nothing after it, so the stored value's rendering
+    /// and the text a person writes happen to be the same string. Kept as the control that says the
+    /// fix did not have to break what already worked.
     /// </summary>
     [Test]
     public void ABareStringStillFindsADateTest()

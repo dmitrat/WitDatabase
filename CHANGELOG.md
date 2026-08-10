@@ -1,5 +1,37 @@
 ﻿# Changelog
 
+## Unreleased
+
+**Text compared with a typed column is read as that type.** Every comparison between a text value and
+a value of another type fell through to an ordinal comparison of the two RENDERINGS - which gives
+wrong answers rather than missing ones, and the two worst are wrong in opposite directions on the
+same row:
+
+| written | answered | should be |
+|---|---|---|
+| `N > '9'` with `N = 42` | no rows | the row |
+| `N < '9'` with `N = 42` | the row | no rows |
+| `S = '2026-07-01 13:45:30'` | no rows | the row |
+| `S > '2026-07-01 13:45:30'` on that very instant | the row | no rows |
+
+`Docs/KnownIssues.md` 20, and the other half of issue 2: the grammar and the EF provider were fixed
+on 2026-08-09, the comparison rule was not.
+
+### Fixed
+
+- **Text meeting a value of another type is read as that type**, as PostgreSQL and SQL Server read
+  it, with invariant-culture parsing so a stored value is not read differently on a machine whose
+  locale writes dates the other way round. It was recorded as a temporal-literal problem and is not
+  one: `DATE`, `TIME`, `GUID` and `BOOLEAN` happened to work because their rendering is the way a
+  person writes them, so the defect was visible only for `DATETIME`, `DATETIMEOFFSET` and **every
+  number**.
+- **Text that is not a value of that type is still not refused.** `D = 'not a date'` answers "not
+  equal", as before - a comparison is not the place to refuse, and a filter built from user input
+  needs an answer. Text against text is unchanged and stays ordinal.
+
+### Documented
+
+- **Comparing text with a typed column**, in `WitSQL.md` §3.1.
 ## 12.6.0
 
 **A minor that carries one break, on the record as 12.5.0's was.** By this project's test - *can an

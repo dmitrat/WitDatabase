@@ -206,7 +206,9 @@ migration. A product with real data on WitDatabase has no such escape.
 > purpose), and `Integration/InlinedTemporalConstantTests` in the EF provider — four of whose eight
 > cases go red again if the mappings are put back to quoted strings.
 
-> **Root-caused, not yet fixed — and wider than described here.** This is not a
+> **The original analysis, kept for the record and no longer current.** It was root-caused
+> here and fixed on 2026-08-09 - see the banner at the top of this entry, and issue 20 for the
+> comparison rule that was the other half of it. This is not a
 > `DateOnly` problem, it is a **typed-literal** problem, and it also breaks `DateTime`,
 > `DateTimeOffset` and `TimeOnly`, plus every `HasData` seed row with a temporal column.
 > `Storage/WitTypeMappingSource.cs:75-78` uses EF Core's stock `DateOnlyTypeMapping`,
@@ -292,7 +294,8 @@ Note that `DateOnly` → `DATE` mapping itself works correctly, as does
 > failed"*) and `AuditVerification/GroupedOrderByExpressionTests` in the engine (six, four of which go
 > red again if the resolution is removed).
 
-> **Root-caused, not yet fixed. The engine is not at fault** — all four conversion forms
+> **The original analysis, kept for the record and no longer current** - it was fixed on
+> 2026-08-09, see the banner at the top of this entry. **The engine was not at fault** — all four conversion forms
 > work when executed directly:
 > `CAST(DeviceType AS VARCHAR)`, `CAST(… AS VARCHAR(20))`, `CAST(… AS TEXT)` and
 > `CONVERT(VARCHAR, DeviceType)` all return `'42'`. The gap is that no
@@ -1338,6 +1341,56 @@ comparison was quiet whether the defect was present or not. The reproduction tha
 is the reported one - a scratch project referencing the provider, `dotnet ef migrations
 add` twice, and read the file. The shipped regression test therefore pins the
 **mechanism** at the mapping layer, where it is exact, and says why.
+
+---
+
+## 20. Text compared with a typed column was compared as two renderings
+
+> **FIXED, 2026-08-10.** Pinned by `Engine/Query/TextComparedWithATypedColumnTests`.
+> The other half of issue 2: the grammar and the provider were fixed then, the
+> comparison rule was not. Evidence in `@Evidence/coercion`.
+
+Every comparison between a text value and a value of another type fell through to an
+**ordinal comparison of the two renderings**. That is not a near-miss - it gives wrong
+answers, and the two worst are wrong in opposite directions on the same row:
+
+| written | answered | should be |
+|---|---|---|
+| `N > '9'` with `N = 42` | no rows | the row |
+| `N < '9'` with `N = 42` | the row | no rows |
+| `S = '2026-07-01 13:45:30'` | no rows | the row |
+| `S > '2026-07-01 13:45:30'` on that very instant | the row | no rows |
+
+A `DateTime` renders as `2026-07-01T13:45:30.0000000` and nobody writes that; the `T`
+sorts after a space, which is why the last line answers "greater" for an equal moment.
+
+### It was recorded as a temporal-literal problem and it is not one
+
+`DATE`, `TIME`, `GUID` and `BOOLEAN` happened to work, because their rendering **is**
+the way a person writes them. So the defect was visible only where the rendering and
+the writing disagree - `DATETIME`, `DATETIMEOFFSET`, and **every number**. An integer
+column compared with a string parameter is the commonest shape there is, and it was
+answering wrongly.
+
+### The rule now
+
+Text meeting a value of another type is **read as that type**, which is what PostgreSQL
+and SQL Server do. Invariant culture throughout, so a stored value is not read
+differently on a machine whose locale writes dates the other way round.
+
+Text that is not a value of that type at all - `D = 'not a date'` - keeps the old
+behaviour and answers "not equal" rather than being refused. **A comparison is not the
+place to refuse**: a caller filtering on user input needs an answer, not an exception.
+That case has a control, and so does text against text, which stays ordinal - on a
+`VARCHAR` column `'42'` really does sort before `'9'`.
+
+### Census
+
+Empty. Engine 2524, Core 2323, Parser 808, ADO.NET 1025, EF 590, IndexedDb 153, Studio
+818, and the EF specification suite's 1198 failures identical by name - a change to the
+comparison primitive that moved nothing, which also says how little of this the suites
+were covering. With the coercion removed, 7 of the fixture's 34 cases go red and every
+control stays green.
 
 ---
 
