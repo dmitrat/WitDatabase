@@ -1,6 +1,19 @@
 ﻿# Changelog
 
-## Unreleased
+## 12.5.0
+
+**A minor that carries a break, taken knowingly.** By this project's own test - *can an application
+that worked fail on this version without changing a line?* - the answer here is **yes**: a query that
+names a column no group can answer for is now refused where it used to return a row. It ships as a
+minor because those queries were **answering wrongly** - the value came from an arbitrary row of the
+group, with the row count right - so an application relying on one was relying on an accident, and
+the new refusal names the column and says what to do about it. The reasons are written here rather
+than implied, and the cost was measured before the rule was adopted: it turned one test red across
+~11,000, and that one was the test recording the defect.
+
+The same applies, more mildly, to `ORDER BY <position>`: a query that asked for one and silently got
+no ordering at all now gets the ordering it asked for, and an out-of-range position is refused where
+it used to be accepted.
 
 **A grouped query no longer answers with columns no group can answer for.** Four shapes returned a
 value taken from an arbitrary row, or no value at all, with the row and group counts right — which is
