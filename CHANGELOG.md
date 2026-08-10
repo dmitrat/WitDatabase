@@ -11,6 +11,14 @@ same thing happened when the clause named the column.
 
 ### Fixed
 
+- **Every second migration no longer alters every sized column.** A model snapshot writes both
+  `HasMaxLength(100)` and `HasColumnType("VARCHAR(100)")`, and the two resolved to different store
+  types - the length gave `VARCHAR(100)`, the type name gave `TEXT`, because the size was cut off to
+  look the name up and then thrown away. EF's differ compares the resolved types, so generating a
+  second migration produced one spurious `AlterColumn` per sized column **in both directions**, and
+  the `Down` half narrowed each column back to `TEXT`. `DECIMAL(p,s)` and `VARBINARY(n)` had the
+  identical fault. Reported from WitAnalytics against 12.3.0 and reproduced on 12.5.0;
+  `Docs/KnownIssues.md` 19.
 - **A trailing `ORDER BY`, `LIMIT` and `OFFSET` wrap the set operation** instead of being wrapped by
   it. There is no way to attach one to an arm without parentheses, which is why they belong to the
   whole expression. `UNION`, `UNION ALL`, `INTERSECT` and `EXCEPT` alike, and any number of arms.
