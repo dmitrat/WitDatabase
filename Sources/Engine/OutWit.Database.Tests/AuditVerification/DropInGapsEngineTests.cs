@@ -27,42 +27,54 @@ public sealed class DropInGapsEngineTests : WitSqlEngineTestsBase
         // The documented usage, and it works. StatementExecutor.Transactions.cs says so in as many
         // words: "Use SET TRANSACTION ISOLATION LEVEL before BEGIN TRANSACTION if needed." BEGIN
         // then consumes the pending level and clears it.
-        var context = new ContextExecution { Database = m_engine };
-        var executor = new StatementExecutor(context);
+        // Two SEPARATE Execute calls, which is what a driver does and what the executor-level
+        // version of this case could not see: the level is recorded on the DATABASE, so it survives
+        // between them. While it lived on the per-call context this passed with one shared context
+        // and the behaviour was broken for every real consumer.
+        m_engine.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
 
-        executor.Execute(WitSql.Parse("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")[0]);
-        Assert.That(context.PendingIsolationLevel, Is.EqualTo(WitIsolationLevel.Serializable),
+        Assert.That(m_engine.PendingIsolationLevel, Is.EqualTo(WitIsolationLevel.Serializable),
             "SET must record the requested level");
 
-        executor.Execute(WitSql.Parse("BEGIN TRANSACTION")[0]);
+        m_engine.Execute("BEGIN TRANSACTION");
 
-        Assert.That(context.PendingIsolationLevel, Is.Null,
+        Assert.That(m_engine.PendingIsolationLevel, Is.Null,
             "BEGIN must consume the pending level, i.e. actually apply it to this transaction");
 
-        executor.Execute(WitSql.Parse("ROLLBACK")[0]);
+        Assert.That(m_engine.CurrentTransaction!.IsolationLevel, Is.EqualTo(WitIsolationLevel.Serializable),
+            "and the transaction must CARRY it - the assertion the plumbing check could not make");
+
+        m_engine.Execute("ROLLBACK");
     }
 
+    /// <summary>
+    /// SET after BEGIN affects the NEXT transaction, not the running one - which is what every
+    /// reference database does, and is why the order matters.
+    /// </summary>
+    /// <remarks>
+    /// This was <c>[Ignore]</c>d on 2026-07-27 with the text "the requested level is still sitting in
+    /// PendingIsolationLevel, unapplied. The transaction ran at ReadCommitted", citing
+    /// <c>WitDbConnection.cs:164</c> - and that was the diagnosis of `Docs/KnownIssues.md` 21, sitting
+    /// under a marker for six months. The ADO layer emits the two the right way round now; what this
+    /// asserts is the SQL rule underneath, so that a driver written against it cannot be surprised.
+    /// </remarks>
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: after BEGIN then SET - the order WitDbConnection.BeginDbTransaction "
-            + "actually emits - the requested level is still sitting in PendingIsolationLevel, "
-            + "unapplied. The transaction ran at ReadCommitted. "
-            + "dropin-gaps / core-mvcc, AdoNet/WitDbConnection.cs:164")]
-    public void BeginThenSetLeavesTheTransactionAtTheDefaultLevelTest()
+    public void SetAfterBeginAppliesToTheNextTransactionNotTheRunningOneTest()
     {
-        // The order WitDbConnection.BeginDbTransaction actually emits: BEGIN TRANSACTION first, then
-        // SET TRANSACTION ISOLATION LEVEL. The transaction has already started at ReadCommitted by
-        // the time the level is recorded, so the requested level is left sitting in
-        // PendingIsolationLevel, unapplied.
-        var context = new ContextExecution { Database = m_engine };
-        var executor = new StatementExecutor(context);
+        m_engine.Execute("BEGIN TRANSACTION");
+        m_engine.Execute("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE");
 
-        executor.Execute(WitSql.Parse("BEGIN TRANSACTION")[0]);
-        executor.Execute(WitSql.Parse("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")[0]);
+        Assert.That(m_engine.CurrentTransaction!.IsolationLevel, Is.EqualTo(WitIsolationLevel.ReadCommitted),
+            "the running transaction keeps the level it began with");
 
-        Assert.That(context.PendingIsolationLevel, Is.Null,
-            "the level requested for this transaction must have been applied to it, not left pending");
+        m_engine.Execute("ROLLBACK");
 
-        executor.Execute(WitSql.Parse("ROLLBACK")[0]);
+        m_engine.Execute("BEGIN TRANSACTION");
+
+        Assert.That(m_engine.CurrentTransaction!.IsolationLevel, Is.EqualTo(WitIsolationLevel.Serializable),
+            "and the NEXT one gets what was set - which is why the level must be sent first");
+
+        m_engine.Execute("ROLLBACK");
     }
 
     [Test]

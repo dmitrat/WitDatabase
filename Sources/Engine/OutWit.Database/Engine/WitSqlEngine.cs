@@ -541,5 +541,8 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, IAsyncDisposa
     /// </summary>
     public ITransaction? CurrentTransaction => m_currentTransaction;
 
+    /// <inheritdoc/>
+    public Core.Interfaces.WitIsolationLevel? PendingIsolationLevel { get; set; }
+
     #endregion
 }

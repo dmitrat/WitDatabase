@@ -1394,6 +1394,55 @@ control stays green.
 
 ---
 
+## 21. The isolation level was accepted and applied to nothing
+
+> **FIXED, 2026-08-10.** `Modularity/IsolationLevelIsAppliedTests` is the fix's fixture -
+> the pin is inverted. Evidence in `@Evidence/isolation`.
+
+A transaction opened at `Serializable`, `RepeatableRead` or `Snapshot` saw a row
+another connection committed after it began - which is the one thing each of those
+three levels exists to prevent. Every level answered identically, on a scan and on a
+single-key seek.
+
+### Neither the store nor the transaction was at fault
+
+Both are correct, and measuring them is what made the attribution possible. At the Core
+level, one MVCC database, a reader at `Serializable` and another transaction
+committing: the reader stays at 1 row while `ReadCommitted` goes to 2. `MvccTransaction`
+honours every level it is given.
+
+**It was never given one.** `SET TRANSACTION ISOLATION LEVEL` recorded the level on the
+**execution context**, and `WitSqlEngine.Execute` builds a fresh context per call - so
+the level could survive to `BEGIN TRANSACTION` only when both statements arrived in one
+batch. A driver that sends them separately always opened at the default.
+
+And the ADO layer sent them separately **in the wrong order**: `BEGIN TRANSACTION`
+first, then `SET TRANSACTION ISOLATION LEVEL`, which in SQL applies to the *next*
+transaction. Either fault alone is enough; both were fixed, and each is measured -
+restoring the order alone leaves the case red, and it was restoring the order alone
+that first *refuted* the obvious explanation.
+
+### Where the answer already was
+
+Two `[Ignore]`d markers in `DropInGapsEngineTests`, written **2026-07-27**, carried the
+whole diagnosis - one naming `WitDbConnection.cs:164` and the ordering, the other
+saying in as many words that *"WitSqlEngine.Execute builds a fresh ContextExecution per
+call, so through ADO.NET the level is silently DROPPED"*. Both are live tests now,
+asserting the SQL rule they were describing.
+
+**Four green tests were pinning the defect**, and all four asserted on
+`context.PendingIsolationLevel` - the plumbing - using a single shared context, which is
+the one arrangement in which the plumbing worked. They assert the transaction's actual
+level now.
+
+### Census
+
+Engine 2525, Core 2323, Parser 808, ADO.NET 1025, EF 590, IndexedDb 153, Studio 818 -
+green; the EF specification suite's 1198 failures identical by name. The `[Ignore]`
+ledger is one lighter.
+
+---
+
 ## Verifying a fix
 
 WitAnalytics is a ready-made regression harness: its stats test fixture runs the

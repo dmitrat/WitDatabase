@@ -19,19 +19,25 @@ public sealed partial class StatementExecutor
     /// </summary>
     private WitSqlResult ExecuteBeginTransaction(WitSqlStatementBeginTransaction statement)
     {
-        // Use pending isolation level from SET TRANSACTION, or default to ReadCommitted
+        // Use pending isolation level from SET TRANSACTION, or default to ReadCommitted.
+        //
+        // Read from the DATABASE and not from the execution context: a context is built per Execute
+        // call, so while this lived there the level survived only when both statements arrived in
+        // one batch. A driver that sends them separately - which is what the ADO layer does - always
+        // opened at the default, and Serializable, RepeatableRead and Snapshot all behaved as
+        // ReadCommitted. The transaction and the store were never at fault.
         Core.Interfaces.WitIsolationLevel isolationLevel;
-        
-        if (m_context.PendingIsolationLevel.HasValue)
+
+        if (m_context.Database.PendingIsolationLevel.HasValue)
         {
-            isolationLevel = m_context.PendingIsolationLevel.Value;
-            m_context.PendingIsolationLevel = null; // Consume the pending level
+            isolationLevel = m_context.Database.PendingIsolationLevel.Value;
+            m_context.Database.PendingIsolationLevel = null; // Consume the pending level
         }
         else
         {
             isolationLevel = Core.Interfaces.WitIsolationLevel.ReadCommitted;
         }
-        
+
         m_context.Database.BeginTransaction(isolationLevel);
         return new WitSqlResult();
     }
@@ -122,10 +128,12 @@ public sealed partial class StatementExecutor
     /// </summary>
     private WitSqlResult ExecuteSetTransaction(WitSqlStatementSetTransaction statement)
     {
-        // SET TRANSACTION ISOLATION LEVEL - stores the preference for the next transaction
-        // Most databases require this before BEGIN TRANSACTION
-        // We store it in context for the next BeginTransaction call
-        m_context.PendingIsolationLevel = MapIsolationLevel(statement.IsolationLevel);
+        // SET TRANSACTION ISOLATION LEVEL - stores the preference for the next transaction.
+        // Most databases require this before BEGIN TRANSACTION.
+        //
+        // Stored on the DATABASE, which is per connection and lives across Execute calls - see
+        // ExecuteBeginTransaction for what storing it on the per-call context cost.
+        m_context.Database.PendingIsolationLevel = MapIsolationLevel(statement.IsolationLevel);
         
         return new WitSqlResult();
     }

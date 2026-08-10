@@ -19,6 +19,13 @@ on 2026-08-09, the comparison rule was not.
 
 ### Fixed
 
+- **The isolation level is applied, not only reported.** A transaction opened at `Serializable`,
+  `RepeatableRead` or `Snapshot` saw a row another connection committed after it began - the one
+  thing each of those levels exists to prevent. Neither the store nor the transaction was at fault:
+  `SET TRANSACTION ISOLATION LEVEL` recorded the level on the per-`Execute` execution context, so it
+  reached `BEGIN TRANSACTION` only when both statements arrived in one batch, and the ADO layer sent
+  them separately **and** in the wrong order. Both are fixed and both are needed.
+  `Docs/KnownIssues.md` 21.
 - **Text meeting a value of another type is read as that type**, as PostgreSQL and SQL Server read
   it, with invariant-culture parsing so a stored value is not read differently on a machine whose
   locale writes dates the other way round. It was recorded as a temporal-literal problem and is not

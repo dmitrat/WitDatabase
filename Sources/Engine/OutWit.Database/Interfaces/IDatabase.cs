@@ -238,6 +238,20 @@ public interface IDatabase
     ITransaction? CurrentTransaction { get; }
 
     /// <summary>
+    /// The isolation level <c>SET TRANSACTION ISOLATION LEVEL</c> recorded for the next
+    /// <c>BEGIN TRANSACTION</c>, which consumes it.
+    /// </summary>
+    /// <remarks>
+    /// <b>It lives here rather than on the execution context because a context is built per
+    /// <c>Execute</c> call.</b> While it was on the context, the level could only survive when both
+    /// statements were sent in one batch - so every transaction opened by a driver that sends them
+    /// separately ran at the default, and `Serializable`, `RepeatableRead` and `Snapshot` all
+    /// behaved as `ReadCommitted`. The engine is per-connection, which is the scope this setting
+    /// has in every database that has it.
+    /// </remarks>
+    WitIsolationLevel? PendingIsolationLevel { get; set; }
+
+    /// <summary>
     /// Create a savepoint within the current transaction.
     /// </summary>
     /// <param name="name">The savepoint name.</param>
