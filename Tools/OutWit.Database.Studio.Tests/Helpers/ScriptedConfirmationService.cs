@@ -32,6 +32,31 @@ public sealed class ScriptedConfirmationService : IConfirmationService
         return Task.FromResult(Decision);
     }
 
+    public Task<bool> AskAboutDestructiveActionAsync(DestructiveAction action)
+    {
+        DestructiveQuestions.Add(action);
+
+        return Task.FromResult(AllowDestructive);
+    }
+
+    #endregion
+
+    #region Destructive actions
+
+    /// <summary>
+    /// The answer every destructive question gets. <b>Defaults to false</b>, so a case that forgets to
+    /// set it cannot destroy anything by accident - and a case that expects the drop to go through has
+    /// to say so, which makes the permission visible in the test rather than assumed.
+    /// </summary>
+    public bool AllowDestructive { get; set; }
+
+    /// <summary>
+    /// Every destructive question asked, in order. The QUESTION is the artifact worth asserting on -
+    /// "was the user told what breaks" is a different claim from "did the drop happen", and only this
+    /// list can answer the first one.
+    /// </summary>
+    public List<DestructiveAction> DestructiveQuestions { get; } = [];
+
     #endregion
 
     #region Properties

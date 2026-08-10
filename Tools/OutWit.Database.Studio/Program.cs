@@ -148,8 +148,13 @@ sealed class Program
 
         // The owner window is resolved when the question is asked, not now: the ViewModel graph is
         // built before any window exists, and this singleton outlives every one of them.
+        // The settings are read the same way and for the same reason: the service is a singleton and
+        // the settings are live, so a question must ask what the setting says NOW rather than what it
+        // said when the container was built.
         services.AddSingleton<IConfirmationService>(
-            _ => new ConfirmationService(() => ViewModels.ApplicationViewModel.Instance.MainWindow));
+            provider => new ConfirmationService(
+                () => ViewModels.ApplicationViewModel.Instance.MainWindow,
+                () => provider.GetRequiredService<ISettingsService>().Current));
 
         // The only place in Studio that is allowed to construct a window.
         services.AddSingleton<IDialogService>(

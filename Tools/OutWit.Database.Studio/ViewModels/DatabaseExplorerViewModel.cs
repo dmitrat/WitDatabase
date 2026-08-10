@@ -244,6 +244,27 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         var objectName = SelectedNode.Name;
         var sql = $"DROP {objectType} IF EXISTS [{objectName}]";
 
+        // WS-20. Until 2026-08-10 this method went straight to ExecuteNonQueryAsync: one click in the
+        // tree and the table was gone, while the settings page showed a ticked "ask before dropping an
+        // object". The question is asked through the confirmation service so that the SETTING is
+        // consulted in one place rather than here - a caller that decides for itself is a caller that
+        // can forget, which is how all four of these questions came to be missing at once.
+        var consequences = await DropConsequencesAsync(session, SelectedNode.NodeType, objectName);
+
+        var proceed = await ApplicationVm.Confirmations.AskAboutDestructiveActionAsync(
+            new DestructiveAction(
+                ConfirmationKind.DroppingObject,
+                Localization.Format("Confirm.Drop.Headline", objectType.ToLower(), objectName),
+                sql,
+                consequences));
+
+        if (!proceed)
+        {
+            Logger.LogInformation("Drop of {ObjectType} {ObjectName} was refused by the user",
+                objectType, objectName);
+            return;
+        }
+
         try
         {
             await session.ExecuteNonQueryAsync(sql);
@@ -261,6 +282,68 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         {
             ErrorMessage = Localization.Format("Explorer.DropFailed", objectType.ToLower(), ex.Message);
             Logger.LogError(ex, "Failed to drop {ObjectType}: {ObjectName}", objectType, objectName);
+        }
+    }
+
+    /// <summary>
+    /// What breaks if this object goes, in the user's language (WS-20).
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The walk is the one the rebuild dialog already uses - referencing foreign keys and views that
+    /// mention the table - rather than a second one written for this dialog. Indexes and triggers are
+    /// listed too, because they go with the table and a person deciding about a DROP wants to know
+    /// they will have to be made again.
+    /// </para>
+    /// <para>
+    /// <b>A failure to work out the consequences is reported, never swallowed.</b> An empty list means
+    /// "nothing else refers to this", and the dialog says so out loud; if the walk itself failed, an
+    /// empty list would be a lie in the one direction that matters. So the failure becomes an entry.
+    /// </para>
+    /// </remarks>
+    private async Task<IReadOnlyList<string>> DropConsequencesAsync(
+        IDatabaseSession session, DatabaseNodeType nodeType, string objectName)
+    {
+        if (nodeType != DatabaseNodeType.Table && nodeType != DatabaseNodeType.View)
+            return [];
+
+        try
+        {
+            var consequences = new List<string>();
+
+            var referencing = await session.GetReferencingKeysAsync(objectName);
+            foreach (var key in referencing)
+            {
+                consequences.Add(Localization.Format(
+                    "Confirm.Drop.ReferencedBy", key.FromTable, key.FromColumn));
+            }
+
+            var views = await session.GetViewsMentioningAsync(objectName);
+            foreach (var view in views.Where(v => !v.Equals(objectName, StringComparison.OrdinalIgnoreCase)))
+                consequences.Add(Localization.Format("Confirm.Drop.ReadByView", view));
+
+            if (nodeType == DatabaseNodeType.Table)
+            {
+                var indexes = await session.GetTableIndexesAsync(objectName);
+                if (indexes.Count > 0)
+                    consequences.Add(Localization.Format("Confirm.Drop.Indexes", indexes.Count));
+
+                var triggers = await session.GetTableTriggersAsync(objectName);
+                if (triggers.Count > 0)
+                    consequences.Add(Localization.Format("Confirm.Drop.Triggers", triggers.Count));
+
+                var rows = await session.TryCountRowsAsync(objectName, TimeSpan.FromSeconds(2));
+                if (rows is > 0)
+                    consequences.Add(Localization.Format("Confirm.Drop.Rows", rows.Value));
+            }
+
+            return consequences;
+        }
+        catch (Exception ex)
+        {
+            Logger.LogWarning(ex, "Could not work out what depends on {ObjectName}", objectName);
+
+            return [Localization.Format("Confirm.Drop.ConsequencesUnknown", ex.Message)];
         }
     }
 

@@ -1,7 +1,6 @@
 {
   "$language": "English",
   "$plural": "one-other",
-
   "Menu.File": "_File",
   "Menu.Edit": "_Edit",
   "Menu.Query": "_Query",
@@ -82,7 +81,6 @@
   "Common.ConnectionString": "Connection string…",
   "Common.Yes": "Yes",
   "Common.No": "No",
-
   "Dialog.Open.Title": "Open database",
   "Dialog.Open.Path": "Path",
   "Dialog.Open.PathExample": "D:\\data\\sales.witdb",
@@ -103,7 +101,6 @@
   "Dialog.Open.Encrypted": "Found an encrypted {0} database · {1} · {2}. The password is needed to open it.",
   "Dialog.Open.EncryptedOrNot": "Encrypted, or not a database at all · {0}. The two look the same from outside.",
   "Dialog.Open.WrongPassword": "Could not decrypt: wrong password, or the file is damaged.",
-
   "Dialog.Export.What": "What",
   "Dialog.Connections.Title": "Connections",
   "Dialog.Connections.NameAndPath": "NAME AND PATH",
@@ -112,7 +109,6 @@
   "Dialog.Connections.Missing": "file not found",
   "Dialog.Connections.ReadOnly": "read only",
   "Dialog.Connections.CouldNotOpen": "The database could not be opened.",
-
   "Dialog.Create.Title": "Create database",
   "Dialog.Create.Storage": "STORAGE",
   "Dialog.Create.Encryption": "ENCRYPTION",
@@ -135,7 +131,6 @@
   "Dialog.Create.FolderHint": "LSM was chosen, so an empty folder is asked for.",
   "Dialog.Create.PasswordsDiffer": "The two passwords are not the same.",
   "Dialog.Create.PathRequired": "Choose where the database goes.",
-
   "Settings.Title": "Settings",
   "Settings.General": "General",
   "Settings.General.Hint": "Language, appearance and what happens when Studio starts",
@@ -192,7 +187,6 @@
   "Settings.Reset": "Reset settings",
   "Settings.ClearHistory": "Clear the query history",
   "Settings.Reset.Hint": "Saved connections and passwords are not touched.",
-
   "About.Engine": "Engine",
   "About.FileFormat": "File format",
   "About.Interface": "Interface",
@@ -201,11 +195,9 @@
   "About.CopyDetails.Hint": "Puts a ready block into the clipboard for an issue: the versions of Studio, the engine, the file format, the runtime and the interface toolkit.",
   "About.Website": "Website",
   "About.Sources": "Sources",
-
   "Language.Name": "English",
   "Status.Elapsed": "{0} ms",
   "Status.Size": "{0} MB",
-
   "Count.Rows": {
     "one": "{0} row",
     "other": "{0} rows"
@@ -226,7 +218,6 @@
     "one": "{0} table",
     "other": "{0} tables"
   },
-
   "Common.Refresh": "Refresh",
   "Explorer.Title": "Database Explorer",
   "Explorer.Filter": "Filter objects",
@@ -248,7 +239,6 @@
   "Explorer.Menu.Rename": "Rename (F2)",
   "Explorer.Menu.Truncate": "Empty the table...",
   "Explorer.Menu.Drop": "Drop...",
-
   "Common.Save": "Save",
   "Common.SaveAs": "Save As...",
   "Inspector.Empty": "Select an object in the tree to see what it is.",
@@ -274,7 +264,6 @@
   "Tabs.CloseTab": "Close tab",
   "Tabs.NewTab": "New Query Tab",
   "Tabs.NewTab.Tip": "New Query Tab (Ctrl+N)",
-
   "Common.Name": "Name",
   "Common.ToEditor": "To the editor",
   "Dialog.Unsaved.Title": "Unsaved changes",
@@ -318,7 +307,6 @@
   "Dialog.Trigger.Problem.DoesNotParse": "The body does not parse: {0}",
   "Dialog.Trigger.Problem.ChangesSchema": "\"{0}\" changes the schema. A trigger body may contain only SELECT, INSERT, UPDATE, DELETE and MERGE.",
   "Common.WhatWillRun": "What will run",
-
   "Common.Actions": "Actions",
   "Column.DataType": "Data Type",
   "Column.Nullable": "Nullable",
@@ -336,7 +324,6 @@
   "Dialog.CreateTable.GenerateDdl": "Generate DDL",
   "Dialog.CreateTable.Create": "Create Table",
   "Dialog.CreateTable.Creating": "Creating table...",
-
   "Common.Table": "Table",
   "Common.Columns": "Columns",
   "Common.Create": "Create",
@@ -355,7 +342,6 @@
   "Dialog.CreateIndex.Partial": "Partial - WHERE",
   "Dialog.CreateIndex.CreateName": "Create index",
   "Dialog.CreateIndex.Creating": "Creating index...",
-
   "Dialog.Export.Title": "Export Data",
   "Dialog.Export.Source": "Source",
   "Dialog.Export.QueryResult": "Query Result: {0} ({1} rows)",
@@ -378,7 +364,6 @@
   "Dialog.Export.Scope.Page": "Page · {0}",
   "Dialog.Export.Scope.Everything": "All · {0}",
   "Dialog.Export.Progress": "Exporting... {0} / {1} rows",
-
   "Dialog.Import.Title": "Import Data",
   "Dialog.Import.Step.File": "1 · File",
   "Dialog.Import.Step.Destination": "2 · Destination",
@@ -414,7 +399,6 @@
   "Dialog.Import.CancelImport": "Cancel Import",
   "Dialog.Import.Preview.Approx": "File contains approximately {0}",
   "Dialog.Import.Progress": "Importing... {0} / {1} rows",
-
   "Status.Elapsed2": "{0:F2} ms",
   "Query.SyntaxError": "{0} · line {1}",
   "Query.StatementDetail": "{0} rows · {1:F2} ms",
@@ -451,7 +435,6 @@
     "one": "Total: {0} row",
     "other": "Total: {0} rows"
   },
-
   "Common.NotConnected": "Not connected to a database",
   "Common.Filter.Files": "{0} Files",
   "Common.Filter.AllFiles": "All Files",
@@ -480,13 +463,11 @@
     "one": "{0} row was refused",
     "other": "{0} rows were refused"
   },
-
   "Common.Drop": "Drop",
   "Common.Edit": "Edit",
   "Schema.Marker.InPlace": "in place",
   "Schema.Marker.Rebuild": "rebuild",
   "Schema.Marker.DropCreate": "drop + create",
-
   "Schema.Reason.InPlace": "One ALTER TABLE. The rows are not touched.",
   "Schema.Reason.ChangeColumnType": "A type change rewrites every row, and a value that will not convert is replaced without a word. Studio rebuilds the table instead, so the conversion is a CAST you can see and the casualties are counted first.",
   "Schema.Reason.AddPrimaryKey": "The engine refuses to add a primary key to a table that already exists.",
@@ -494,7 +475,6 @@
   "Schema.Reason.ReorderColumns": "The language has no way to move a column.",
   "Schema.Reason.ReplaceViewBody": "There is no ALTER VIEW in this language, so the view is dropped and created again.",
   "Schema.Reason.ReplaceTriggerBody": "There is no ALTER TRIGGER in this language, so the trigger is dropped and created again.",
-
   "Schema.Cap.AddColumn": "Add a column",
   "Schema.Cap.AddColumn.Why": "ADD COLUMN, including UNIQUE, CHECK, REFERENCES, DEFAULT and computed columns",
   "Schema.Cap.DropColumn": "Drop a column",
@@ -517,18 +497,15 @@
   "Schema.Cap.ViewBody.Why": "There is no ALTER VIEW and no CREATE OR REPLACE",
   "Schema.Cap.TriggerBody": "Change a trigger's body",
   "Schema.Cap.TriggerBody.Why": "There is no ALTER TRIGGER - and none to enable or disable one either",
-
   "Schema.Absent.Reindex": "Rebuilding an index in place - there is no REINDEX and no ALTER INDEX; Studio drops and creates it",
   "Schema.Absent.EnableTrigger": "Enabling or disabling a trigger - there is no ALTER TRIGGER",
   "Schema.Absent.MoveColumn": "Moving a column - there is no FIRST, AFTER, MODIFY or CHANGE",
   "Schema.Absent.Sequence": "A sequence's step, minimum, maximum or cycle - CREATE SEQUENCE takes a name and START WITH, nothing else",
-
   "Update.Title": "Update",
   "Update.Available": "Version {0} is available — you have {1}",
   "Update.OpenPage": "Open the release page",
   "Update.Later": "Remind me later",
   "Update.Skip": "Skip this version",
-
   "Keys.Help": "Keyboard shortcuts",
   "Keys.Palette": "Command palette",
   "Keys.NewDatabase": "New database",
@@ -561,7 +538,6 @@
   "Keys.Copied": "The shortcuts were copied",
   "Keys.Nothing": "Nothing matches that",
   "Keys.NoRebinding": "Reassigning a shortcut is not built yet: the keys are declared in the window rather than read from this list, so a box here would change nothing. The list is what the application really does.",
-
   "Search.Find": "Find",
   "Search.Replace": "Replace",
   "Search.FindPlaceholder": "Find",
@@ -581,12 +557,10 @@
   "Search.NoMatches": "no matches",
   "Search.BadPattern": "the pattern is not finished",
   "Search.Replaced": "Replaced {0}",
-
   "Structure.ObjectType.Table": "Table",
   "Structure.ObjectType.View": "View",
   "Structure.ObjectType.Index": "Index",
   "Structure.ObjectType.Other": "Object",
-
   "Structure.Column": "Column",
   "Structure.AddColumn.Tip": "Add a column",
   "Structure.Rebuild": "Rebuild...",
@@ -628,7 +602,6 @@
     "one": "{0} change pending",
     "other": "{0} changes pending"
   },
-
   "Grid.PrevPage": "Previous page",
   "Grid.NextPage": "Next page",
   "Grid.PageLabel": "page",
@@ -671,7 +644,6 @@
     "one": "{0} row shown",
     "other": "{0} rows shown"
   },
-
   "Toolbar.Script.Name": "Execute script",
   "Toolbar.Selection.Name": "Execute selection",
   "Toolbar.Clear.Name": "Clear results",
@@ -693,7 +665,6 @@
   "Color.Grey": "Grey",
   "Settings.About.StudioVersion": "Studio {0}",
   "Settings.About.EngineVersion": "engine {0}",
-
   "Common.Filter.Database": "WitDatabase Files",
   "Status.Ready": "Ready",
   "Status.Error": "Error: {0}",
@@ -769,18 +740,15 @@
   "Grid.Conflict.Row": "A row was changed by another connection after it was read here.",
   "Grid.Conflict.Deleted": "The row {0} has been DELETED by another connection.",
   "Grid.Conflict.Changed": "The row {0} was changed by another connection after it was read here. Statement {1} of {2} matched nothing, so nothing was applied.",
-
   "Status.SaveFileFailed": "Error saving file: {0}",
   "Status.OpenFileFailed": "Error opening file: {0}",
   "Dialog.Rebuild.Done": "{0} was rebuilt",
   "Dialog.Rebuild.Stopped": "The rebuild of {0} stopped",
-
   "Dialog.Unsaved.Header": "{0} - {1}",
   "Count.UnsavedChanges": {
     "one": "{0} unsaved change",
     "other": "{0} unsaved changes"
   },
-
   "Settings.Section.General": "General",
   "Settings.Section.Editor": "Editor",
   "Settings.Section.Data": "Data",
@@ -795,11 +763,9 @@
   "Explorer.Summary": "{0}: {1} tables, {2} views, {3} indexes, {4} triggers, {5} sequences",
   "Query.Autocommit": "Autocommit",
   "Query.TransactionOpen": "Transaction open · {0}",
-
   "Settings.Theme.System": "System",
   "Settings.Theme.Light": "Light",
   "Settings.Theme.Dark": "Dark",
-
   "Common.Unknown": "unknown",
   "Grid.LoadedRows": "Loaded {0}{1}{2}",
   "Grid.OnPage": " (page {0})",
@@ -817,7 +783,6 @@
     "one": "{0} change",
     "other": "{0} changes"
   },
-
   "Inspector.Subtitle": "{0} - {1}",
   "Inspector.UnindexedKey": "The primary key has no index of its own. This engine does not create one, and inserting rows with explicit keys degrades sharply as the table grows.",
   "Inspector.Access.Indexed": "{0}: {1}",
@@ -841,7 +806,6 @@
     "one": "{0} filter",
     "other": "{0} filters"
   },
-
   "Count.Matches": {
     "one": "{0} match",
     "other": "{0} matches"
@@ -883,7 +847,6 @@
   "Format.Reason.DoesNotParse": "a statement that does not parse on its own stays as written",
   "Format.Reason.CannotBeSerialized": "the parser cannot write this kind of statement back out, so it stays as written",
   "Format.Reason.NoRoundTrip": "this statement does not survive a round trip through the parser, so it stays as written",
-
   "Tab.DatabaseOf": "{0} - Database",
   "Tab.Database": "Database",
   "Count.Views": {
@@ -1025,7 +988,6 @@
   "ReadCheck.Note.PlannerDidNotUseIt": "the planner answered without it, so the index itself was not read - this engine will not consider an index below ten rows",
   "ReadCheck.Note.NothingToSeekWith": "the column holds no value to seek with, so the index was not reached",
   "ReadCheck.Note.SeekNotTraversal": "a seek and not a traversal: this engine reaches an index only through an equality, and answers ORDER BY and a range with a full scan",
-
   "ReadCheck.Title": "Verification by reading",
   "ReadCheck.Heading": "Verification by reading - {0}",
   "ReadCheck.Open": "Verify by reading…",
@@ -1051,7 +1013,6 @@
   "ReadCheck.Result.Disagrees": "{0} read, and COUNT(*) says {1} - the counter and the rows disagree",
   "ReadCheck.Limits": "What this does NOT find: an inconsistent B-tree, lost pages, errors in the free lists. A real integrity check reads the structure; this reads the data through it, so a green run says nothing about the parts of the file nobody is using. It will exist when PRAGMA integrity_check does.",
   "ReadCheck.Result.Catalog": "read, and it names {0}",
-
   "Copy.Title": "Copy of the database",
   "Copy.Heading": "Copy of {0}",
   "Copy.Open": "Copy…",
@@ -1080,7 +1041,6 @@
   "Password.Step.Reading": "The schema and the data are read out",
   "Password.Step.Writing": "They are written into the new database",
   "Password.Step.Verifying": "Every table is counted on both sides",
-
   "Password.Title": "Change the password",
   "Password.Heading": "Change the password of {0}",
   "Password.Open": "Password…",
@@ -1103,5 +1063,17 @@
   "Password.RowsMatch": "every table has the same number of rows on both sides",
   "Password.RowsDoNotMatch": "and these do NOT match: {0}",
   "Password.Mismatch": "{0} ({1} against {2})",
-  "Password.Failed": "The transfer did not finish: {0}"
+  "Password.Failed": "The transfer did not finish: {0}",
+  "Dialog.Destructive.Title": "Confirm",
+  "Dialog.Destructive.Proceed": "Delete",
+  "Dialog.Destructive.Cancel": "Cancel",
+  "Dialog.Destructive.Consequences": "This will affect:",
+  "Dialog.Destructive.NoConsequences": "Nothing else in this database refers to it.",
+  "Confirm.Drop.Headline": "Delete {0} «{1}»? This cannot be undone.",
+  "Confirm.Drop.ReferencedBy": "{0}.{1} points at it and will be left dangling",
+  "Confirm.Drop.ReadByView": "view {0} reads it and will stop working",
+  "Confirm.Drop.Indexes": "{0} index(es) go with it",
+  "Confirm.Drop.Triggers": "{0} trigger(s) go with it",
+  "Confirm.Drop.Rows": "{0} row(s) will be deleted",
+  "Confirm.Drop.ConsequencesUnknown": "What depends on it could not be worked out: {0}"
 }
