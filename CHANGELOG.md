@@ -1,6 +1,18 @@
 ﻿# Changelog
 
-## Unreleased
+## 12.6.0
+
+**A minor that carries one break, on the record as 12.5.0's was.** By this project's test - *can an
+application that worked fail on this version without changing a line?* - the answer is yes in exactly
+one place: `ORDER BY` over a `UNION`, `INTERSECT` or `EXCEPT` may now only name a result column or a
+position, and a query naming anything else is refused. That shape did **not** fail before - the clause
+was applied to the first arm, whose source row still carried the column - so what it used to do was
+order half the answer by something the caller could not see. Turning that into a refusal is the point
+of the change, not a side effect of it.
+
+Everything else here makes a wrong answer right rather than a working query fail: a sorted union is
+sorted, `LIMIT` over one no longer returns more rows than it was given, and a second EF migration no
+longer alters every sized column.
 
 **`ORDER BY`, `LIMIT` and `OFFSET` over a `UNION` apply to the combined result.** They were applied
 inside the arm and the union was wrapped around them, so a sorted union came back sorted per arm -
