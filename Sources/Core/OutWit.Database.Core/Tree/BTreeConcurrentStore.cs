@@ -1,4 +1,5 @@
 ﻿using System.Runtime.CompilerServices;
+using OutWit.Database.Core.Concurrency;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Managers;
 using OutWit.Database.Core.Stores;
@@ -20,18 +21,30 @@ namespace OutWit.Database.Core.Tree;
 /// For maximum single-threaded performance, use StoreBTree directly.
 /// This wrapper adds ~1-5% overhead for thread safety.
 ///
-/// <b>No method here may hold the lock across an await.</b> <see cref="ReaderWriterLockSlim"/> is
-/// thread-affine: it records which THREAD holds the lock, so a continuation that resumes on another
-/// one throws <c>SynchronizationLockException: The write lock is being released without being held</c>
-/// out of the release - and, far worse, leaves the lock held by a thread that has moved on, so every
-/// later reader and writer waits for ever. All four asynchronous entry points did exactly that until
-/// 2026-07-30; it went unnoticed while only the main store used this wrapper, and surfaced the moment
-/// secondary indexes did, because <c>IndexManager.FlushAsync</c> is a genuinely asynchronous path.
-/// The asynchronous methods therefore do their work through the synchronous ones, which is what they
-/// effectively did before - the lock was held for the whole await anyway.
+/// <b>The lock may be held across an await, and that is new as of 2026-08-10.</b>
+/// <see cref="ReaderWriterLockSlim"/> is thread-affine: it records which THREAD holds the lock, so a
+/// continuation resuming on another one throws <c>SynchronizationLockException</c> out of the release
+/// and - far worse - leaves the lock held by a thread that has moved on, so every later reader and
+/// writer waits for ever. All four asynchronous entry points did exactly that until 2026-07-30; it
+/// went unnoticed while only the main store used this wrapper and surfaced the moment secondary
+/// indexes did, because <c>IndexManager.FlushAsync</c> is a genuinely asynchronous path. The repair
+/// then was to make every asynchronous method do its work through the synchronous one.
 ///
-/// The same reasoning is why <see cref="Scan"/> hands its results out in chunks rather than holding
-/// the read lock across the consumer's code.
+/// <b>That repair was correct and it had a cost nobody had measured for a year.</b> Since 12.0.0 this
+/// wrapper wraps <b>every</b> B+Tree store, so the genuinely asynchronous path underneath -
+/// <c>BTree.UpsertAsync</c> through <c>PageManager.AllocatePageAsync</c> to
+/// <c>IStorage.WritePageAsync</c> - was unreachable in every supported configuration, and
+/// <c>OutWit.Database.Core.IndexedDb</c>, which exists so a database can live in a browser, could
+/// build a database and never write to it. Measured 2026-08-10: driving <see cref="StoreBTree"/>
+/// directly, 400 writes with leaf splits over a storage whose every synchronous member throws cost
+/// zero synchronous calls; through this wrapper the first split reached <c>IStorage.SetSize</c>.
+///
+/// The lock is <see cref="AsyncReaderWriterLock"/> now - semaphore-based, so not thread-affine - and
+/// the asynchronous methods await the store's own asynchronous path.
+///
+/// <see cref="Scan"/> still hands its results out in chunks rather than holding the read lock across
+/// the consumer's code, and that reason is unchanged: the engine's own DML writes to this store while
+/// a scan is open.
 /// </remarks>
 public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoredConfigurationSource, IStoreWrapper, IAsyncDisposable
 {
@@ -59,7 +72,7 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
     #region Fields
 
     private readonly StoreBTree m_store;
-    private readonly ReaderWriterLockSlim m_lock;
+    private readonly AsyncReaderWriterLock m_lock;
     private readonly BTreeConcurrencyOptions m_options;
     private readonly bool m_ownsStore;
 
@@ -87,7 +100,7 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
         m_options = options ?? BTreeConcurrencyOptions.Default;
         m_store = new StoreBTree(filePath, pageSize, cacheSize);
         m_ownsStore = true;
-        m_lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
+        m_lock = new AsyncReaderWriterLock();
     }
 
     /// <summary>
@@ -106,7 +119,7 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
         m_store = store;
         m_options = options ?? BTreeConcurrencyOptions.Default;
         m_ownsStore = ownsStore;
-        m_lock = new ReaderWriterLockSlim(LockRecursionPolicy.NoRecursion);
+        m_lock = new AsyncReaderWriterLock();
     }
 
     #endregion
@@ -119,26 +132,38 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
         ThrowIfDisposed();
         IncrementReadCount();
 
-        m_lock.EnterReadLock();
+        m_lock.EnterRead();
         try
         {
             return m_store.Get(key);
         }
         finally
         {
-            m_lock.ExitReadLock();
+            m_lock.ExitRead();
         }
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Synchronous under the lock, deliberately - see the type's remarks on why no method here may
-    /// await inside <see cref="m_lock"/>.
+    /// Genuinely asynchronous since 2026-08-10: the lock may now be held across an <c>await</c>, so
+    /// this reaches <see cref="StoreBTree.GetAsync"/> and through it the asynchronous page path. It
+    /// used to call the synchronous <see cref="Get"/>, which is why a database over a storage with no
+    /// synchronous operations could be built and never read from below the wrapper.
     /// </remarks>
-    public ValueTask<byte[]?> GetAsync(byte[] key, CancellationToken cancellationToken = default)
+    public async ValueTask<byte[]?> GetAsync(byte[] key, CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(Get(key));
+        ThrowIfDisposed();
+        IncrementReadCount();
+
+        await m_lock.EnterReadAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await m_store.GetAsync(key, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            m_lock.ExitRead();
+        }
     }
 
     #endregion
@@ -151,28 +176,38 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
         ThrowIfDisposed();
         IncrementWriteCount();
 
-        m_lock.EnterWriteLock();
+        m_lock.EnterWrite();
         try
         {
             m_store.Put(key, value);
         }
         finally
         {
-            m_lock.ExitWriteLock();
+            m_lock.ExitWrite();
         }
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Synchronous under the lock, deliberately - see the type's remarks on why no method here may
-    /// await inside <see cref="m_lock"/>.
+    /// Genuinely asynchronous since 2026-08-10. This is the link the browser story turned on: it used
+    /// to call the synchronous <see cref="Put"/>, so a leaf split reached
+    /// <c>PageManager.AllocatePage</c> and <c>IStorage.SetSize</c> - measured 2026-08-10 to be the
+    /// first synchronous storage call an asynchronous write hit.
     /// </remarks>
-    public ValueTask PutAsync(byte[] key, byte[] value, CancellationToken cancellationToken = default)
+    public async ValueTask PutAsync(byte[] key, byte[] value, CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
+        IncrementWriteCount();
 
-        Put(key, value);
-        return ValueTask.CompletedTask;
+        await m_lock.EnterWriteAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await m_store.PutAsync(key, value, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            m_lock.ExitWrite();
+        }
     }
 
     #endregion
@@ -185,26 +220,35 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
         ThrowIfDisposed();
         IncrementWriteCount();
 
-        m_lock.EnterWriteLock();
+        m_lock.EnterWrite();
         try
         {
             return m_store.Delete(key);
         }
         finally
         {
-            m_lock.ExitWriteLock();
+            m_lock.ExitWrite();
         }
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Synchronous under the lock, deliberately - see the type's remarks on why no method here may
-    /// await inside <see cref="m_lock"/>.
+    /// Genuinely asynchronous since 2026-08-10 - see <see cref="PutAsync"/>.
     /// </remarks>
-    public ValueTask<bool> DeleteAsync(byte[] key, CancellationToken cancellationToken = default)
+    public async ValueTask<bool> DeleteAsync(byte[] key, CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(Delete(key));
+        ThrowIfDisposed();
+        IncrementWriteCount();
+
+        await m_lock.EnterWriteAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await m_store.DeleteAsync(key, cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            m_lock.ExitWrite();
+        }
     }
 
     #endregion
@@ -251,14 +295,14 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
             List<(byte[] Key, byte[] Value)> chunk;
             bool rangeExhausted;
 
-            m_lock.EnterReadLock();
+            m_lock.EnterRead();
             try
             {
                 chunk = ReadChunk(next, endKey, out rangeExhausted);
             }
             finally
             {
-                m_lock.ExitReadLock();
+                m_lock.ExitRead();
             }
 
             foreach (var entry in chunk)
@@ -289,14 +333,14 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
             List<(byte[] Key, byte[] Value)> chunk;
             bool rangeExhausted;
 
-            m_lock.EnterReadLock();
+            await m_lock.EnterReadAsync(cancellationToken).ConfigureAwait(false);
             try
             {
-                chunk = ReadChunk(next, endKey, out rangeExhausted);
+                (chunk, rangeExhausted) = await ReadChunkAsync(next, endKey, cancellationToken).ConfigureAwait(false);
             }
             finally
             {
-                m_lock.ExitReadLock();
+                m_lock.ExitRead();
             }
 
             foreach (var entry in chunk)
@@ -344,6 +388,34 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
     }
 
     /// <summary>
+    /// One chunk of the range, read through the store's asynchronous scan so that a page which is not
+    /// resident is fetched with <c>IStorage.ReadPageAsync</c>. The caller must hold the read lock.
+    /// </summary>
+    private async Task<(List<(byte[] Key, byte[] Value)> Chunk, bool RangeExhausted)> ReadChunkAsync(
+        byte[]? startKey,
+        byte[]? endKey,
+        CancellationToken cancellationToken)
+    {
+        var chunk = new List<(byte[] Key, byte[] Value)>();
+        long bytes = 0;
+        var rangeExhausted = true;
+
+        await foreach (var entry in m_store.ScanAsync(startKey, endKey, cancellationToken).ConfigureAwait(false))
+        {
+            chunk.Add(entry);
+            bytes += entry.Key.Length + (entry.Value?.Length ?? 0);
+
+            if (chunk.Count >= SCAN_CHUNK_ENTRIES || bytes >= SCAN_CHUNK_BYTES)
+            {
+                rangeExhausted = false;
+                break;
+            }
+        }
+
+        return (chunk, rangeExhausted);
+    }
+
+    /// <summary>
     /// The smallest key that sorts strictly after <paramref name="key"/>. Keys are compared
     /// lexicographically, so appending a zero byte lands between <paramref name="key"/> and every
     /// key above it, whether or not that key has this one as a prefix.
@@ -365,14 +437,14 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
     {
         ThrowIfDisposed();
 
-        m_lock.EnterWriteLock();
+        m_lock.EnterWrite();
         try
         {
             m_store.Flush();
         }
         finally
         {
-            m_lock.ExitWriteLock();
+            m_lock.ExitWrite();
         }
     }
 
@@ -388,29 +460,38 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
     {
         ThrowIfDisposed();
 
-        m_lock.EnterWriteLock();
+        m_lock.EnterWrite();
         try
         {
             ((IKeyValueStore)m_store).Checkpoint();
         }
         finally
         {
-            m_lock.ExitWriteLock();
+            m_lock.ExitWrite();
         }
     }
 
     /// <inheritdoc/>
     /// <remarks>
-    /// Synchronous under the lock, deliberately - see the type's remarks on why no method here may
-    /// await inside <see cref="m_lock"/>. This is the one that was caught: an index flush resumed on
-    /// a different thread and threw <c>SynchronizationLockException</c> out of <c>ExitWriteLock</c>.
+    /// <b>This is the one that was caught in 2026-07:</b> an index flush resumed on a different thread
+    /// and threw <c>SynchronizationLockException</c> out of <c>ExitWriteLock</c>, and the repair then
+    /// was to make it synchronous. Since 2026-08-10 the lock survives a thread change, so it is
+    /// genuinely asynchronous again - and this is the path that makes a write DURABLE, so on a storage
+    /// with no synchronous operations it is the one that decides whether anything reaches the media.
     /// </remarks>
-    public ValueTask FlushAsync(CancellationToken cancellationToken = default)
+    public async ValueTask FlushAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
+        ThrowIfDisposed();
 
-        Flush();
-        return ValueTask.CompletedTask;
+        await m_lock.EnterWriteAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            await m_store.FlushAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            m_lock.ExitWrite();
+        }
     }
 
     #endregion
@@ -422,22 +503,31 @@ public sealed class BTreeConcurrentStore : IKeyValueStore, IKeyValueStoreStatist
     {
         ThrowIfDisposed();
 
-        m_lock.EnterReadLock();
+        m_lock.EnterRead();
         try
         {
             return m_store.Count();
         }
         finally
         {
-            m_lock.ExitReadLock();
+            m_lock.ExitRead();
         }
     }
 
     /// <inheritdoc/>
-    public ValueTask<long> CountAsync(CancellationToken cancellationToken = default)
+    public async ValueTask<long> CountAsync(CancellationToken cancellationToken = default)
     {
-        cancellationToken.ThrowIfCancellationRequested();
-        return ValueTask.FromResult(Count());
+        ThrowIfDisposed();
+
+        await m_lock.EnterReadAsync(cancellationToken).ConfigureAwait(false);
+        try
+        {
+            return await m_store.CountAsync(cancellationToken).ConfigureAwait(false);
+        }
+        finally
+        {
+            m_lock.ExitRead();
+        }
     }
 
     /// <inheritdoc/>
