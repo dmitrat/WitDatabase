@@ -1,5 +1,44 @@
 ﻿# Changelog
 
+## Unreleased
+
+**A column the query GROUPS BY is reachable from `ORDER BY` and `HAVING` whether or not it is also
+in the SELECT list.** Both shapes are ordinary SQL and PostgreSQL, SQL Server and SQLite all accept
+them; here a grouped row was built out of the SELECT list and nothing else, so either clause naming
+anything else was evaluated against a row that does not have it. From `ORDER BY` the failure reached
+the caller as .NET's own **"Failed to compare two elements in the array"** - a sentence about arrays,
+with `Column 'Kind' not found` one level in.
+
+```sql
+SELECT COUNT(*) FROM Orders GROUP BY Status ORDER BY Status;      -- both work now
+SELECT COUNT(*) FROM Orders GROUP BY Status HAVING Status <> 'Draft';
+```
+
+### Fixed
+
+- **The grouped row carries the query's grouping expressions and drops them again after the sort.**
+  One mechanism serves both clauses, which is what the defect asked for: the carried columns keep
+  their natural names, so an expression *over* a grouping column (`ORDER BY UPPER(Status)`) resolves
+  by ordinary evaluation, and a grouping expression appearing in `HAVING`
+  (`GROUP BY UPPER(Status) HAVING UPPER(Status) > 'A'`) is rewritten to the column carrying it.
+- **The carried columns are removed before `LIMIT` and `DISTINCT`**, so both count and compare
+  exactly the columns the query asked for. The result's width is unchanged.
+- **Nothing is carried when the query has neither clause to serve**, so a grouped query that does not
+  need this keeps exactly the plan it had. When keys are carried, `EXPLAIN` shows
+  `HIDE GROUPING KEYS`.
+
+A column that is neither grouped by nor aggregated remains unavailable to both clauses, which is what
+the reference databases do with it.
+
+### Documented
+
+- **What `ORDER BY` and `HAVING` may name over a grouped query**, in `WitSQL.md` §3.1, with the two
+  limits found next to it while measuring the above: **`ORDER BY <position>` is accepted and does
+  nothing** - an integer is read as an ordinary constant, so `ORDER BY 1` changes no order and
+  `ORDER BY 2 DESC` is not a descending sort either - and **`SELECT * … GROUP BY` does not expand the
+  star**, answering one row per group with a single NULL column. Both are pinned by tests and
+  tracked in `Docs/KnownIssues.md` as 16 and 17.
+
 ## 12.4.0
 
 **A `CREATE INDEX` that failed left an index the query planner used and the file could not answer
