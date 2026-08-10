@@ -62,7 +62,7 @@ public sealed class StatementExecutorTransactionTests : StatementExecutorTestsBa
     public void BeginTransactionUsesPendingIsolationLevelTest()
     {
         // Arrange - set pending isolation level via SET TRANSACTION
-        m_context.PendingIsolationLevel = WitIsolationLevel.Serializable;
+        m_database.PendingIsolationLevel = WitIsolationLevel.Serializable;
         var statement = WitSql.ParseStatement("BEGIN TRANSACTION");
 
         // Act
@@ -70,14 +70,14 @@ public sealed class StatementExecutorTransactionTests : StatementExecutorTestsBa
 
         // Assert
         m_database.Received(1).BeginTransaction(WitIsolationLevel.Serializable);
-        Assert.That(m_context.PendingIsolationLevel, Is.Null, "Pending isolation level should be consumed");
+        Assert.That(m_database.PendingIsolationLevel, Is.Null, "Pending isolation level should be consumed");
     }
 
     [Test]
     public void BeginTransactionWithoutPendingLevelUsesDefaultTest()
     {
         // Arrange
-        m_context.PendingIsolationLevel = null;
+        m_database.PendingIsolationLevel = null;
         var statement = WitSql.ParseStatement("BEGIN TRANSACTION");
 
         // Act
@@ -315,7 +315,7 @@ public sealed class StatementExecutorTransactionTests : StatementExecutorTestsBa
         m_executor.Execute(statement);
 
         // Assert
-        Assert.That(m_context.PendingIsolationLevel, Is.EqualTo(WitIsolationLevel.Serializable));
+        Assert.That(m_database.PendingIsolationLevel, Is.EqualTo(WitIsolationLevel.Serializable));
     }
 
     [Test]
@@ -353,13 +353,13 @@ public sealed class StatementExecutorTransactionTests : StatementExecutorTestsBa
             {
                 IsolationLevel = parserLevel
             };
-            m_context.PendingIsolationLevel = null;
+            m_database.PendingIsolationLevel = null;
 
             // Act
             m_executor.Execute(statement);
 
             // Assert
-            Assert.That(m_context.PendingIsolationLevel, Is.EqualTo(expectedCoreLevel),
+            Assert.That(m_database.PendingIsolationLevel, Is.EqualTo(expectedCoreLevel),
                 $"Failed for isolation level: {parserLevel}");
         }
     }
@@ -380,7 +380,7 @@ public sealed class StatementExecutorTransactionTests : StatementExecutorTestsBa
 
         // Assert
         m_database.Received(1).BeginTransaction(WitIsolationLevel.Snapshot);
-        Assert.That(m_context.PendingIsolationLevel, Is.Null, "Should be consumed");
+        Assert.That(m_database.PendingIsolationLevel, Is.Null, "Should be consumed");
     }
 
     #endregion

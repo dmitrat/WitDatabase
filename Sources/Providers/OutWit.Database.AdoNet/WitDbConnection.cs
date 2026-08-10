@@ -1,4 +1,4 @@
-﻿using System.Data;
+using System.Data;
 using System.Data.Common;
 using Transaction = System.Transactions.Transaction;
 using OutWit.Database.AdoNet.Engines;
@@ -350,12 +350,23 @@ public sealed partial class WitDbConnection : DbConnection
             throw new InvalidOperationException("A transaction is already in progress.");
 
         var witIsolation = isolationLevel.ToIsolationLevel();
-        
-        // Use SQL command to start transaction - this properly coordinates with statement execution
-        m_engine!.Execute("BEGIN TRANSACTION");
 
-        if (witIsolation != WitIsolationLevel.ReadCommitted)
-            m_engine.Execute($"SET TRANSACTION ISOLATION LEVEL {witIsolation.IsolationName()}");
+        // THE LEVEL IS SET BEFORE THE TRANSACTION BEGINS, which is the order the engine documents and
+        // every other database requires.
+        //
+        // These two statements used to be the other way round, and that was the whole of "the
+        // isolation level is accepted and ignored": SET TRANSACTION records a level for the NEXT
+        // transaction and BEGIN TRANSACTION consumes it, so a transaction opened at Serializable ran
+        // at the default and saw rows another connection committed after it began - which is the one
+        // thing Serializable, RepeatableRead and Snapshot exist to prevent. The engine was never at
+        // fault; MvccTransaction honours every level it is given.
+        //
+        // The level is sent even when it is ReadCommitted, so that a pending level left over by
+        // anything else cannot be inherited by a transaction that did not ask for it.
+        m_engine!.Execute($"SET TRANSACTION ISOLATION LEVEL {witIsolation.IsolationName()}");
+
+        // Use SQL command to start transaction - this properly coordinates with statement execution
+        m_engine.Execute("BEGIN TRANSACTION");
 
         m_currentTransaction = new WitDbTransaction(this, isolationLevel);
         return m_currentTransaction;
