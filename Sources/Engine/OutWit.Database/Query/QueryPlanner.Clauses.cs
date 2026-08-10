@@ -217,6 +217,103 @@ public sealed partial class QueryPlanner
     }
 
     /// <summary>
+    /// The SELECT list a grouped row is built from: the query's own, with every GROUP BY expression
+    /// that is not selected already appended to it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is what makes a grouping column reachable from <c>ORDER BY</c> and <c>HAVING</c></b> -
+    /// <c>Docs/KnownIssues.md</c> 15. A grouped row used to be exactly the SELECT list, so
+    /// <c>SELECT COUNT(*) FROM T GROUP BY Kind ORDER BY Kind</c> sorted rows that have no
+    /// <c>Kind</c>; the user saw .NET's own "Failed to compare two elements in the array". All three
+    /// target databases accept both shapes.
+    /// </para>
+    /// <para>
+    /// The carried columns keep their natural names, which is what lets an expression OVER a
+    /// grouping column - <c>ORDER BY UPPER(Kind)</c> - resolve by ordinary evaluation without the
+    /// planner having to recurse into every node type. <see cref="IteratorHideGroupingKeys"/> drops
+    /// them again after the sort.
+    /// </para>
+    /// <para>
+    /// Only expressions the serializer can identify are carried: <see cref="Render"/> renders a
+    /// subquery as the literal <c>SELECT ...</c>, so two different ones cannot be told apart, and a
+    /// grouping key carried under a name that matches the wrong expression would order by the wrong
+    /// column. Those keep the old behaviour rather than gain a wrong answer.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<ClauseSelectItem> BuildGroupedSelectList(
+        IReadOnlyList<ClauseSelectItem> selectList,
+        IReadOnlyList<WitSqlExpression>? groupByClause)
+    {
+        if (groupByClause == null || groupByClause.Count == 0)
+            return selectList;
+
+        List<ClauseSelectItem>? carried = null;
+
+        foreach (var expression in groupByClause)
+        {
+            if (expression == null || Render(expression) == null)
+                continue;
+
+            if (MatchSelectItem(expression, carried ?? selectList) >= 0)
+                continue;
+
+            carried ??= [.. selectList];
+            carried.Add(new ClauseSelectItem { Expression = expression });
+        }
+
+        return carried ?? selectList;
+    }
+
+    /// <summary>
+    /// Rewrites every occurrence of a CARRIED grouping expression to a reference to the column it is
+    /// carried in, so that <c>HAVING</c> reaches it the same way <c>ORDER BY</c> does.
+    /// </summary>
+    /// <remarks>
+    /// Only the carried items are matched - the ones appended by
+    /// <see cref="BuildGroupedSelectList"/>, which did not exist until this query was planned. So the
+    /// rewrite is additive by construction: every shape that resolved before resolves the same way,
+    /// and the only expressions it can change are the ones that used to throw.
+    /// </remarks>
+    private static WitSqlExpression ResolveCarriedGroupingKeys(
+        WitSqlExpression expression,
+        IReadOnlyList<ClauseSelectItem> groupedSelectList,
+        int firstCarried)
+    {
+        var text = Render(expression);
+
+        if (text != null)
+        {
+            for (var i = firstCarried; i < groupedSelectList.Count; i++)
+            {
+                if (groupedSelectList[i].Expression is { } key && Render(key) == text)
+                    return new WitSqlExpressionOrderByColumnIndex { ColumnIndex = i };
+            }
+        }
+
+        if (expression is WitSqlExpressionBinary binary)
+        {
+            return new WitSqlExpressionBinary
+            {
+                Left = ResolveCarriedGroupingKeys(binary.Left, groupedSelectList, firstCarried),
+                Operator = binary.Operator,
+                Right = ResolveCarriedGroupingKeys(binary.Right, groupedSelectList, firstCarried)
+            };
+        }
+
+        if (expression is WitSqlExpressionUnary unary)
+        {
+            return new WitSqlExpressionUnary
+            {
+                Operand = ResolveCarriedGroupingKeys(unary.Operand, groupedSelectList, firstCarried),
+                Operator = unary.Operator
+            };
+        }
+
+        return expression;
+    }
+
+    /// <summary>
     /// The index of the SELECT item that is the same expression as <paramref name="expr"/>, or -1.
     /// </summary>
     /// <remarks>

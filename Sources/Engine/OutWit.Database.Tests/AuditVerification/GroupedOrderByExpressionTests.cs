@@ -152,31 +152,45 @@ public sealed class GroupedOrderByExpressionTests
     }
 
     /// <summary>
-    /// <b>PINS A LIMIT, NOT A DEFECT TO LIVE WITH.</b> Ordering by the grouping column itself, when
-    /// that column is NOT in the SELECT list, is still refused: a grouped row carries only what was
-    /// selected, so there is nothing to sort on. Standard SQL allows it and this engine does not.
-    ///
+    /// Ordering by the grouping column itself, when that column is NOT in the SELECT list.
+    /// </summary>
+    /// <remarks>
     /// <para>
-    /// It refuses LOUDLY, which is why it was left rather than widened: making the group iterator
-    /// carry its key is a change to what a grouped row IS, and it belongs with its own decision. If
-    /// that lands, this case goes red and should be replaced by one asserting the order.
+    /// This case PINNED the refusal until 2026-08-10 - a grouped row carried only what was selected,
+    /// so there was nothing to sort on, and the caller was handed the sort's own <i>"Failed to
+    /// compare two elements in the array"</i>. Its own text said that making the group iterator carry
+    /// its key would turn it red and that it should then assert the ORDER; that is what it does now.
+    /// <c>Docs/KnownIssues.md</c> 15, and <see cref="GroupingKeyReachabilityTests"/> is the fix's own
+    /// fixture.
     /// </para>
     /// <para>
-    /// The message a caller sees is the SORT's - <i>"Failed to compare two elements in the array"</i>
-    /// - and the reason is underneath it, which is asserted here rather than glossed over: a refusal
-    /// whose text says nothing about the column is a poor one, and this case is where that would be
-    /// noticed if it is ever improved.
+    /// The answer here is <c>7, 42</c> where every other case in this file answers <c>42, 7</c>:
+    /// ordering by the NUMBER is not ordering by the cast, and that is what says the clause reached
+    /// the grouping column rather than falling back on the select item that renders it.
     /// </para>
+    /// </remarks>
+    [Test]
+    public void OrderingByAGroupingColumnThatIsNotSelectedWorksTest()
+    {
+        var keys = Keys("SELECT CAST(DeviceType AS TEXT) AS K, COUNT(*) AS C FROM Events "
+                        + "GROUP BY DeviceType ORDER BY DeviceType");
+
+        Assert.That(keys, Is.EqualTo(new[] { "7", "42" }));
+    }
+
+    /// <summary>
+    /// And the width is unchanged: the carried key is the planner's, and a query that asked for two
+    /// columns gets two. Asserted on a file-backed database rather than an in-memory one, so that
+    /// nothing about the fix rests on the store.
     /// </summary>
     [Test]
-    public void OrderingByAGroupingColumnThatIsNotSelectedIsStillRefusedTest()
+    public void TheCarriedKeyDoesNotWidenTheResultTest()
     {
-        var refused = Assert.Throws<InvalidOperationException>(() =>
-            m_engine.Query("SELECT CAST(DeviceType AS TEXT) AS K, COUNT(*) AS C FROM Events "
-                           + "GROUP BY DeviceType ORDER BY DeviceType").ToList());
+        var rows = m_engine.Query("SELECT CAST(DeviceType AS TEXT) AS K, COUNT(*) AS C FROM Events "
+                                  + "GROUP BY DeviceType ORDER BY DeviceType");
 
-        Assert.That(refused!.GetBaseException().Message, Does.Contain("DeviceType"),
-            "the reason is under the sort's own message");
+        Assert.That(rows.Count, Is.EqualTo(2));
+        Assert.That(rows.Select(row => row.ColumnCount), Is.All.EqualTo(2));
     }
 
     #endregion
