@@ -490,21 +490,30 @@ public sealed partial class QueryPlanner
 
     private IResultIterator PlanAggregateQuery(IResultIterator iterator, WitSqlStatementSelect select)
     {
+        // A `*` becomes the columns it stands for before anything else looks at the list, so the
+        // check below and the group iterator both see a list they can evaluate rather than an item
+        // with no expression - which is what used to answer NULL. KnownIssues 17.
+        var selectList = ExpandStars(select.SelectList, iterator.Schema);
+
+        // And then: a column no group can answer for is refused rather than answered from an
+        // arbitrary row of the group. PostgreSQL's and SQL Server's rule, in its strict form.
+        ValidateGroupedQuery(selectList, select);
+
         // Check if we can use streaming aggregation (more efficient)
         // Requirements: no GROUP BY, no HAVING, simple aggregates only
-        bool canUseStreaming = 
+        bool canUseStreaming =
             (select.GroupByClause == null || select.GroupByClause.Count == 0) &&
             select.HavingClause == null &&
-            IteratorStreamingAggregate.CanUseStreamingAggregation(select.SelectList);
+            IteratorStreamingAggregate.CanUseStreamingAggregation(selectList);
 
         if (canUseStreaming)
         {
             // Use streaming aggregation - O(1) memory
-            iterator = new IteratorStreamingAggregate(iterator, select.SelectList, m_context);
+            iterator = new IteratorStreamingAggregate(iterator, selectList, m_context);
 
             // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
             iterator = ApplyOrderByClauseForAggregate(
-                iterator, select.OrderByClause, select.SelectList, select.SelectList.Count);
+                iterator, select.OrderByClause, selectList, selectList.Count);
         }
         else
         {
@@ -515,13 +524,13 @@ public sealed partial class QueryPlanner
             // soon as the sort has used them. Nothing is carried when the query has neither clause
             // to serve, so the commonest grouped query keeps exactly the plan it had.
             var groupedSelectList = select.OrderByClause is { Count: > 0 } || select.HavingClause != null
-                ? BuildGroupedSelectList(select.SelectList, select.GroupByClause)
-                : select.SelectList;
+                ? BuildGroupedSelectList(selectList, select.GroupByClause)
+                : selectList;
 
-            var carriesGroupingKeys = groupedSelectList.Count > select.SelectList.Count;
+            var carriesGroupingKeys = groupedSelectList.Count > selectList.Count;
 
             var having = carriesGroupingKeys && select.HavingClause != null
-                ? ResolveCarriedGroupingKeys(select.HavingClause, groupedSelectList, select.SelectList.Count)
+                ? ResolveCarriedGroupingKeys(select.HavingClause, groupedSelectList, selectList.Count)
                 : select.HavingClause;
 
             // Use full GROUP BY aggregation - stores all rows
@@ -534,12 +543,12 @@ public sealed partial class QueryPlanner
 
             // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
             iterator = ApplyOrderByClauseForAggregate(
-                iterator, select.OrderByClause, groupedSelectList, select.SelectList.Count);
+                iterator, select.OrderByClause, groupedSelectList, selectList.Count);
 
             // The carried keys are the planner's business, not the caller's: they are dropped before
             // LIMIT and DISTINCT, so both count and compare the columns the query asked for.
             if (carriesGroupingKeys)
-                iterator = new IteratorHideGroupingKeys(iterator, select.SelectList.Count);
+                iterator = new IteratorHideGroupingKeys(iterator, selectList.Count);
         }
 
         // LIMIT/OFFSET
@@ -581,14 +590,25 @@ public sealed partial class QueryPlanner
         }
         else
         {
-            // Original non-window path
+            // Original non-window path.
+            //
+            // A `*` beside another item becomes the columns it stands for FIRST, and the same list
+            // then serves the ordering and the projection - an ORDER BY position counts output
+            // columns, and after an expansion there are more of them than there are select items.
+            // The lone `SELECT *` is deliberately not expanded: ApplyProjection answers that one
+            // with IteratorExcludeInternal, and expanding it would give the commonest query in the
+            // language a different plan for nothing.
+            var selectList = IsSelectStar(select.SelectList)
+                ? select.SelectList
+                : ExpandStars(select.SelectList, iterator.Schema);
+
             // ORDER BY - before projection to access original column names, which is why the select
             // list has to come with it: an ORDER BY position counts OUTPUT columns, and the row in
             // front of the sort here is the source's.
-            iterator = ApplyOrderByClause(iterator, select.OrderByClause, select.SelectList);
+            iterator = ApplyOrderByClause(iterator, select.OrderByClause, selectList);
 
             // Projection (SELECT columns)
-            iterator = ApplyProjection(iterator, select.SelectList);
+            iterator = ApplyProjection(iterator, selectList);
 
             // DISTINCT - after projection so internal columns (like _rowid) are excluded
             iterator = ApplyDistinct(iterator, select.IsDistinct);

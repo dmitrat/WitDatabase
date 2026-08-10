@@ -1162,33 +1162,62 @@ its case goes red when 17 is fixed.
 
 ---
 
-## 17. `SELECT *` is only expanded when it is the ONLY select item
+## 17. A grouped query answered with columns no group could answer for
 
-> **OPEN.** Pinned by `Engine/Query/SelectStarOverAGroupedQueryTests`. Measured
-> 2026-08-10 alongside 15 and 16.
+> **FIXED, 2026-08-10.** `Engine/Query/GroupedQueryColumnRulesTests` is the fix's
+> fixture; it replaces `SelectStarOverAGroupedQueryTests`, which pinned only the star.
+
+The entry began as "`SELECT *` is only expanded when it is the only select item", and
+measuring it found the star was the least likely way into a much larger hole:
 
 ```sql
-SELECT * FROM T GROUP BY Kind   -- one row per group, one column each, every value NULL
-SELECT *, Amount * 2 FROM T     -- two columns; the first is NULL on every row
+SELECT * FROM T GROUP BY Kind      -- was: one row per group, ONE column, always NULL
+SELECT *, Amount * 2 FROM T        -- was: two columns, the first NULL on every row
+SELECT Kind, Amount FROM T GROUP BY Kind  -- was: Amount from an ARBITRARY row of the group
+SELECT Kind, COUNT(*) FROM T       -- was: one row, Kind from the first row of the table
 ```
 
-The projection expands a star only when the select list is exactly one star item;
-anywhere else the star is a select item with no expression, and one NULL is written
-for it. In a grouped query that is the whole result. **The row and group counts are
-right**, which is what makes the answer look like data.
+The last two need no star at all and are far likelier to be written. **The row and
+group counts were right in every case**, which is what made the answers look like
+data.
 
-This engine matches nobody: PostgreSQL and SQL Server **refuse** the grouped form,
-naming the first column that is neither grouped by nor aggregated; SQLite **accepts**
-it and answers with the columns of an arbitrary row from each group, and expands a
-star sharing its list. Either would be defensible.
+### Two changes, and only one of them was a decision
 
-### What a fix has to decide
+- **A star is expanded into the columns it stands for.** All three reference
+  databases do this, so there was nothing to choose. The lone `SELECT *` of an
+  ordinary query is deliberately left alone - the projection already answers that one
+  directly, and expanding it would give the commonest query in the language a
+  different plan for nothing.
+- **Every column that is neither in `GROUP BY` nor inside an aggregate is refused**,
+  in the SELECT list, in `ORDER BY` and in `HAVING` alike - PostgreSQL's and SQL
+  Server's rule. **Dmitry's decision, taken with the cost measured first:** adopting
+  it turned **one** test red across the engine, ADO.NET, EF, Studio and the 8,145-case
+  EF specification suite, and that one was the pin recording the defect.
 
-Which of the two to become for the grouped form. Refusing is the safer reading and
-turns a silent answer into a loud one; answering the way SQLite does keeps a shape
-existing callers may already have written. The mixed-list form
-(`SELECT *, expr`) has no such question - expanding it is simply right - but it is
-the same missing expansion, so both belong in one change.
+**The two had to land together.** The refusal alone would have let
+`SELECT * FROM T GROUP BY Id, Kind, Amount` through - it is legal under the rule - to
+the same NULLs it always gave. A rule that blesses a wrong answer is worse than no
+rule.
+
+### The strict form, deliberately
+
+PostgreSQL also accepts a column functionally dependent on a grouped PRIMARY KEY -
+`SELECT * FROM T GROUP BY Id` - and SQL Server does not. The stricter reading is
+implemented because widening it later cannot break a query that works today, while
+narrowing it could. A case pins that choice and says what to do if it is ever
+revisited.
+
+An output ALIAS is not a source column: `ORDER BY` and `HAVING` may still name one,
+as they always could and as every reference database allows. Measured - without that
+arm, four working cases go red. A qualified name and a bare one are the same column,
+because a check that refuses more than it understands turns a working query into an
+error, which is the one outcome worse than the defect it replaces.
+
+### Both halves measured
+
+With the refusal removed, 8 of the fixture's cases go red and every control stays
+green; with the star expansion removed, 5, three of them cases the refusal alone
+would have left answering NULLs.
 
 ---
 
