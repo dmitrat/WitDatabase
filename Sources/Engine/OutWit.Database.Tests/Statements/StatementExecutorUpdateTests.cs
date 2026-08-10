@@ -414,51 +414,19 @@ public class StatementExecutorUpdateTests : StatementExecutorTestsBase
         m_database.Received(100).UpdateRow("Products", Arg.Any<long>(), Arg.Any<WitSqlRow>());
     }
 
-    [Test]
-    [Ignore("Requires integration test - mock doesn't reflect actual DB state during batch UPDATE")]
-    public void BulkUpdateDetectsDuplicateInBatchTest()
-    {
-        // This test verifies that a bulk UPDATE that would create duplicate values
-        // in a UNIQUE column is rejected. However, this requires integration testing
-        // because the mock doesn't update its state during the UPDATE operation.
-        // 
-        // The actual behavior in a real database:
-        // 1. UPDATE Users SET Email = 'same@test.com' is executed
-        // 2. For each row, UNIQUE constraint is checked against current DB state
-        // 3. First row updates successfully
-        // 4. Second row fails because first row already has 'same@test.com'
-        //
-        // With mocks, the CreateTableScan always returns original data, so
-        // the UNIQUE check never sees the conflict.
-        
-        var table = CreateUsersTableWithConstraints();
-        m_database.GetTable("Users").Returns(table);
-
-        var row1 = CreateRow(
-            ("_rowid", WitSqlValue.FromInt(1)),
-            ("Id", WitSqlValue.FromInt(1)),
-            ("Name", WitSqlValue.FromText("Alice")),
-            ("Email", WitSqlValue.FromText("alice@test.com")),
-            ("Age", WitSqlValue.FromInt(25))
-        );
-        var row2 = CreateRow(
-            ("_rowid", WitSqlValue.FromInt(2)),
-            ("Id", WitSqlValue.FromInt(2)),
-            ("Name", WitSqlValue.FromText("Bob")),
-            ("Email", WitSqlValue.FromText("bob@test.com")),
-            ("Age", WitSqlValue.FromInt(30))
-        );
-
-        m_database.CreateTableScan("Users").Returns(_ => CreateMockIterator(row1, row2));
-        m_database.GetRowById("Users", 1).Returns(row1);
-        m_database.GetRowById("Users", 2).Returns(row2);
-
-        var executor = new StatementExecutor(m_context);
-        var stmt = WitSql.ParseStatement("UPDATE Users SET Email = 'same@test.com'");
-
-        var ex = Assert.Throws<InvalidOperationException>(() => executor.Execute(stmt));
-        Assert.That(ex!.Message, Does.Contain("UNIQUE"));
-    }
+    // DELETED 2026-08-10 by the ledger census: BulkUpdateDetectsDuplicateInBatchTest.
+    //
+    // Its marker was right about the fixture and silent about the subject. "The mock doesn't reflect
+    // actual DB state during batch UPDATE" is true - CreateTableScan always returns the original rows,
+    // so the UNIQUE check can never see the conflict and the case could not pass however the engine
+    // behaved. But the marker then deferred the real question to "an integration test" that nobody
+    // wrote, and it went unasked for six months.
+    //
+    // The census asked it against the real engine, and the answer is good: a bulk UPDATE that collides
+    // rows onto one value is REFUSED, on a UNIQUE column, on an explicit UNIQUE INDEX and on the
+    // PRIMARY KEY alike, and the rows are left untouched. A table with no constraint accepts it, which
+    // is the control showing the probe can see an accepted bulk update. That measurement is now
+    // EngineDmlFindingsTests.BulkUpdateOntoOneValueIsRefusedTest, against an engine rather than a mock.
 
     [Test]
     public void BulkUpdateNonUniqueColumnSucceedsTest()

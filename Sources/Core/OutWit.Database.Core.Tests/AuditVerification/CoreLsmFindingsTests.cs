@@ -146,13 +146,13 @@ public class CoreLsmFindingsTests
 
     #endregion
 
-    #region LsmParallelWriter.Dispose discards unsubmitted buffers
+    #region LsmParallelWriter.Dispose flushes what it buffered
+
+    // FIXED by phase 5's second half, released as 6.0.0: Dispose drains the thread-local buffers rather
+    // than discarding them, which is the tail of every workload. Marker lifted by the 2026-08-10 ledger
+    // census, which ran it rather than reading it.
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and totally: all five entries were lost - k0..k4 all missing "
-            + "after Dispose() followed by store.Checkpoint(). The ordinary `using` shape throws away "
-            + "everything the caller wrote that had not yet crossed the buffer threshold. "
-            + "core-lsm, Core/LSM/LsmParallelWriter.cs:497")]
     public void DisposingTheParallelWriterFlushesWhatItBufferedTest()
     {
         // Finding: LsmParallelWriter.cs:497 - Dispose discards thread-local buffers that were never

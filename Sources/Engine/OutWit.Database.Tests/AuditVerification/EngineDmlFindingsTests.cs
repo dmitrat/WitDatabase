@@ -173,12 +173,11 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
 
     #region Narrowing numeric writes and unparseable text
 
-    // CONFIRMED 2026-07-27: none of these raise. WitSQL.md documents the exact range of each type
-    // (TINYINT -128..127, SMALLINT -32,768..32,767), so the written value is outside the declared
-    // contract and is silently altered rather than rejected. engine-dml, Types/WitTypeConverter.cs:576
-    private const string NarrowingIgnore =
-        "CONFIRMED 2026-07-27: no exception is raised and the out-of-range value is written " +
-        "silently. engine-dml, Types/WitTypeConverter.cs:576";
+    // FIXED by phase 7 (8.0.0): an out-of-range write is refused rather than silently narrowed. The
+    // suppression reason that used to live here was a FOSSIL - the [TestCase]s below stopped naming it
+    // when they were un-ignored, so the constant sat unreferenced while its text still read "CONFIRMED
+    // 2026-07-27: none of these raise". Found by the 2026-08-10 ledger census; anyone grepping the
+    // ledger for a diagnosis would have read a sentence that had been false for months.
 
     [TestCase("SMALLINT", "100000")]
     [TestCase("TINYINT", "999")]
@@ -202,16 +201,15 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
 
     #endregion
 
-    #region Declared VARCHAR length and DECIMAL precision are not enforced
+    #region Declared VARCHAR length and DECIMAL precision are enforced
+
+    // FIXED by phase 7, released as 8.0.0 - the DDL path captures MaxLength, Precision and Scale, and
+    // the write path enforces them on INSERT and on UPDATE alike. The three markers here were lifted by
+    // the 2026-08-10 ledger census, which ran them rather than reading them: all three passed on the
+    // first run. They are regression guards now, and the reason the census was worth doing is that the
+    // marker text below them had been describing a fixed defect since 8.0.0.
 
     [Test]
-    [Ignore("CONFIRMED, and the audit's wording is wrong about WHY. It says the declared length is "
-            + "\"recorded but never enforced\". Measured 2026-07-27: it is not recorded at all - after "
-            + "CREATE TABLE T (S VARCHAR(5)), DefinitionColumn.MaxLength is NULL, and the same holds "
-            + "for Precision and Scale on DECIMAL(5,2). So enforcement cannot be added on its own; "
-            + "the DDL path has to capture the sizes first. INFORMATION_SCHEMA reports them from "
-            + "the same empty fields, so it under-reports too. "
-            + "engine-dml, Definitions/DefinitionColumn.cs:148")]
     public void VarcharLengthIsEnforcedTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, S VARCHAR(5))");
@@ -221,8 +219,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED - same root cause as VarcharLengthIsEnforcedTest: Precision and Scale are never "
-            + "populated by CREATE TABLE, so there is nothing to enforce against.")]
     public void DecimalPrecisionIsEnforcedTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, V DECIMAL(5, 2))");
@@ -232,9 +228,6 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
     }
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: stored and read back as 1.23456 rather than rounded to the " +
-            "declared scale of 1.23. Scale is recorded and never applied, so a DECIMAL column does " +
-            "not round-trip at the precision the schema promises.")]
     public void DecimalScaleIsAppliedTest()
     {
         m_engine.Execute("CREATE TABLE T (Id INT PRIMARY KEY, V DECIMAL(10, 2))");
@@ -242,6 +235,80 @@ public sealed class EngineDmlFindingsTests : WitSqlEngineTestsBase
 
         Assert.That(m_engine.Query("SELECT V FROM T")[0][0].AsDecimal(), Is.EqualTo(1.23m),
             "the value must be stored at the declared scale");
+    }
+
+    #endregion
+
+    #region Bulk UPDATE collapsing many rows onto one value
+
+    /// <summary>
+    /// The question <c>StatementExecutorUpdateTests.BulkUpdateDetectsDuplicateInBatchTest</c> deferred
+    /// to "an integration test" on 2026-01 and nobody wrote. Asked against a real engine by the
+    /// 2026-08-10 ledger census.
+    /// </summary>
+    /// <remarks>
+    /// The suppressed original could not have answered it: its fixture is a mock whose
+    /// <c>CreateTableScan</c> always returns the ORIGINAL rows, so the UNIQUE check never sees the
+    /// conflict whatever the engine does. The marker described that limitation accurately and then
+    /// left the subject unmeasured - which is the shape the census exists to find.
+    ///
+    /// Three arms plus a control, because the constraint reaches the row by three different routes and
+    /// a single arm cannot tell "the engine checks" from "this one route checks". The control is the
+    /// same UPDATE on a column with no constraint: it must be ACCEPTED, otherwise a probe reporting
+    /// refusal everywhere would prove nothing.
+    /// </remarks>
+    [TestCase("Email TEXT UNIQUE", null, TestName = "BulkUpdateOntoOneValue_UniqueColumn")]
+    [TestCase("Email TEXT", "CREATE UNIQUE INDEX IX_U_Email ON U (Email)", TestName = "BulkUpdateOntoOneValue_UniqueIndex")]
+    public void BulkUpdateOntoOneValueIsRefusedTest(string column, string? index)
+    {
+        m_engine.Execute($"CREATE TABLE U (Id INT PRIMARY KEY, {column})");
+        if (index is not null)
+            m_engine.Execute(index);
+
+        m_engine.Execute("INSERT INTO U (Id, Email) VALUES (1, 'a@t.com')");
+        m_engine.Execute("INSERT INTO U (Id, Email) VALUES (2, 'b@t.com')");
+        m_engine.Execute("INSERT INTO U (Id, Email) VALUES (3, 'c@t.com')");
+
+        Assert.That(() => m_engine.Execute("UPDATE U SET Email = 'same@t.com'"),
+            Throws.Exception, "collapsing three rows onto one value breaks UNIQUE");
+
+        // And the statement must leave nothing behind - a partial bulk UPDATE would be the worse
+        // half of this defect, and only the VALUES can tell the two apart.
+        var emails = m_engine.Query("SELECT Email FROM U ORDER BY Id").Select(r => r[0].AsString());
+        Assert.That(emails, Is.EqualTo(new[] { "a@t.com", "b@t.com", "c@t.com" }),
+            "the refused statement must leave every row as it was");
+    }
+
+    [Test]
+    public void BulkUpdateOntoOneValueIsRefusedOnThePrimaryKeyTest()
+    {
+        m_engine.Execute("CREATE TABLE U (Id INT PRIMARY KEY, Email TEXT)");
+        m_engine.Execute("INSERT INTO U (Id, Email) VALUES (1, 'a@t.com')");
+        m_engine.Execute("INSERT INTO U (Id, Email) VALUES (2, 'b@t.com')");
+
+        Assert.That(() => m_engine.Execute("UPDATE U SET Id = 9"),
+            Throws.Exception, "collapsing two rows onto one primary key breaks the key");
+
+        Assert.That(m_engine.Query("SELECT Id FROM U ORDER BY Id").Count, Is.EqualTo(2),
+            "the refused statement must leave both rows");
+    }
+
+    /// <summary>
+    /// The control on the three arms above: without a constraint the very same statement is ACCEPTED.
+    /// Without it, "refused" is an outcome no run could fail to produce.
+    /// </summary>
+    [Test]
+    public void BulkUpdateOntoOneValueIsAcceptedWithoutAConstraintTest()
+    {
+        m_engine.Execute("CREATE TABLE U (Id INT PRIMARY KEY, Email TEXT)");
+        m_engine.Execute("INSERT INTO U (Id, Email) VALUES (1, 'a@t.com')");
+        m_engine.Execute("INSERT INTO U (Id, Email) VALUES (2, 'b@t.com')");
+
+        m_engine.Execute("UPDATE U SET Email = 'same@t.com'");
+
+        var emails = m_engine.Query("SELECT Email FROM U ORDER BY Id").Select(r => r[0].AsString());
+        Assert.That(emails, Is.EqualTo(new[] { "same@t.com", "same@t.com" }),
+            "nothing forbids this, so it must go through");
     }
 
     #endregion
