@@ -1221,40 +1221,68 @@ would have left answering NULLs.
 
 ---
 
-## 18. `ORDER BY` and `LIMIT` over a `UNION` apply to the first arm only
+## 18. `ORDER BY` and `LIMIT` over a `UNION` applied to the first arm only
 
-> **OPEN.** Pinned by `Engine/Query/OrderByOverASetOperationTests`. Measured
-> 2026-08-10 while fixing 16, and **pre-existing and independent of it** - the same
-> thing happens when the clause names the column.
+> **FIXED, 2026-08-10.** `Engine/Query/OrderByOverASetOperationTests` is the fix's
+> fixture - the pins are inverted. Found while fixing 16 and **pre-existing and
+> independent of it**: the same thing happened when the clause named the column.
 
 ```sql
 SELECT Kind FROM T WHERE Amount > 25
 UNION ALL SELECT Kind FROM T WHERE Amount < 25
-ORDER BY Kind;   -- c d a b: the first arm sorted, the second left where it was
-                 -- SQLite answers a b c d
+ORDER BY Kind;   -- was: c d a b, the first arm sorted and the second left where it was
+                 -- SQLite answers a b c d, and so does this now
 ```
 
-`QueryPlanner.Plan` applies `ORDER BY`, `LIMIT` and `DISTINCT` inside the
-aggregate/non-aggregate branch and only then calls `ApplySetOperations`, so each of
-them is wrapped **by** the union rather than wrapping it. The parser is not at fault:
-it hangs the clauses on the outer statement, which is where SQL puts them.
+`QueryPlanner.Plan` applied `ORDER BY`, `LIMIT` and `DISTINCT` inside the
+aggregate/non-aggregate branch and only then called `ApplySetOperations`, so each of
+them was wrapped **by** the union rather than wrapping it. The parser was never at
+fault: it hangs the clauses on the outer statement, which is where SQL puts them.
 
-**The `LIMIT` half loses rows rather than misplacing them.** `LIMIT 1` over a union
-cuts the first arm and still returns everything the second arm has.
+**The `LIMIT` half lost rows rather than misplacing them.** Measured: `LIMIT 1` over
+a two-arm union answered **three** rows - the first arm cut to one, the second
+returned whole.
+
+### The fix
+
+A trailing `ORDER BY`, `LIMIT` and `OFFSET` belong to the whole set expression -
+there is no way to attach one to an arm without parentheses - so the arm is planned
+without them and `Plan` applies them after the arms are combined.
+
+- **`DISTINCT` is deliberately NOT deferred.** `SELECT DISTINCT a FROM t UNION ALL
+  SELECT b FROM u` de-duplicates the FIRST ARM, which is where SQL puts it and what
+  this engine already did. A case pins that, and deferring it along with the other
+  two - the easy mistake - reddens exactly that one case and nothing else.
+- **An aggregate arm must not carry a grouping key for a clause that is not its own.**
+  Issue 15 makes a grouped arm carry its grouping expressions when it has an
+  `ORDER BY`; if the union's clause counted, the arm's schema would widen and the set
+  operation compares the two schemas. The arm is planned as if it had no `ORDER BY`
+  at all.
+
+### A shape that now fails, and did not before
+
+`ORDER BY` over a set operation may only name a **result column or a position**, as
+PostgreSQL restricts it: after a union there is no source row left to evaluate an
+expression against. Previously `… UNION ALL … ORDER BY Amount` did not fail - the
+clause was applied to the first arm, whose source row still had `Amount`, so half the
+answer was quietly ordered by something the caller could not see.
+
+The refusal names the column and lists the ones there are. Without it the failure is
+.NET's own *"Failed to compare two elements in the array"*, which is the message
+issue 15 existed to get rid of.
 
 ### Why nobody had seen it
 
 Two arms whose values do not interleave answer correctly whatever the plan does -
 sorting each and concatenating gives the same list as sorting the whole. A case that
 can fail needs the second arm to hold values that must come *before* the first arm's,
-and that control is written into the fixture beside the pins.
+and that control is in the fixture beside the cases.
 
-### What a fix has to change
+### Both directions measured
 
-The three clauses have to move outside `ApplySetOperations`, which means the set
-operation is planned first and the ordering, limiting and de-duplication wrap it.
-That is a change to the shape of every plan carrying a set operation, so it wants its
-own measurement of what the existing suites were asserting about those plans.
+With the old clause order restored, 9 of the fixture's 13 cases go red and four stay
+green: the two controls that cannot fail, the derived-table form, and an out-of-range
+position, which is out of range for one arm as well.
 
 ---
 

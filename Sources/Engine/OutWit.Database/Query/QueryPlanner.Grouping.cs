@@ -120,9 +120,15 @@ public sealed partial class QueryPlanner
     /// Applies to an aggregate query only, which includes one with aggregates and no <c>GROUP BY</c>
     /// at all - there the whole table is one group, so no bare column is answerable either.
     /// </remarks>
+    /// <param name="orderByClause">
+    /// This query's OWN <c>ORDER BY</c>, which is not <c>select.OrderByClause</c> when the query is
+    /// one arm of a set operation: the trailing clause belongs to the combined result there, and is
+    /// checked against the union's columns rather than against this arm's grouping.
+    /// </param>
     private static void ValidateGroupedQuery(
         IReadOnlyList<ClauseSelectItem> selectList,
-        WitSqlStatementSelect select)
+        WitSqlStatementSelect select,
+        IReadOnlyList<ClauseOrderByItem>? orderByClause)
     {
         var grouping = select.GroupByClause ?? [];
 
@@ -139,7 +145,7 @@ public sealed partial class QueryPlanner
 
         CheckGroupedExpression(select.HavingClause, grouping, aliases);
 
-        foreach (var order in select.OrderByClause ?? [])
+        foreach (var order in orderByClause ?? [])
             CheckGroupedExpression(order.Expression, grouping, aliases);
     }
 

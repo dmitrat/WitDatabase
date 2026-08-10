@@ -1,5 +1,31 @@
 ﻿# Changelog
 
+## Unreleased
+
+**`ORDER BY`, `LIMIT` and `OFFSET` over a `UNION` apply to the combined result.** They were applied
+inside the arm and the union was wrapped around them, so a sorted union came back sorted per arm -
+and the `LIMIT` half **lost rows** rather than misplacing them: measured, `LIMIT 1` over a two-arm
+union answered **three**, the first arm cut to one and the second returned whole.
+`Docs/KnownIssues.md` 18, pre-existing and independent of 12.5.0's `ORDER BY <position>` work - the
+same thing happened when the clause named the column.
+
+### Fixed
+
+- **A trailing `ORDER BY`, `LIMIT` and `OFFSET` wrap the set operation** instead of being wrapped by
+  it. There is no way to attach one to an arm without parentheses, which is why they belong to the
+  whole expression. `UNION`, `UNION ALL`, `INTERSECT` and `EXCEPT` alike, and any number of arms.
+- **`DISTINCT` is deliberately not moved**: `SELECT DISTINCT a FROM t UNION ALL SELECT b FROM u`
+  de-duplicates the first arm, which is where SQL puts it and what this engine already did.
+- **An aggregate arm no longer carries a grouping key for a clause that is not its own** - which
+  would have widened that arm's schema, and a set operation compares the two schemas.
+
+### Changed
+
+- **`ORDER BY` over a set operation may only name a result column or its position**, as PostgreSQL
+  restricts it: after a union there is no source row left to evaluate an expression against. This
+  shape did not fail before - the clause was applied to the first arm, whose source row still had
+  the column, so half the answer was quietly ordered by something the caller could not see. The
+  refusal names the column and lists the ones there are.
 ## 12.5.0
 
 **A minor that carries a break, taken knowingly.** By this project's own test - *can an application
