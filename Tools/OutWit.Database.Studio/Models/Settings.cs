@@ -31,8 +31,6 @@ public sealed class Settings : ModelBase
 
         return Language.Is(other.Language)
             && Theme.Is(other.Theme)
-            && RestoreConnections.Is(other.RestoreConnections)
-            && RestoreTabs.Is(other.RestoreTabs)
             && CheckForUpdates.Is(other.CheckForUpdates)
             && SkippedUpdate.Is(other.SkippedUpdate)
             && RecentFiles.Is(other.RecentFiles)
@@ -45,7 +43,6 @@ public sealed class Settings : ModelBase
             && CheckSyntaxAsYouType.Is(other.CheckSyntaxAsYouType)
             && KeywordCase.Is(other.KeywordCase)
             && DefaultRowLimit.Is(other.DefaultRowLimit)
-            && RestoreUnsavedTabs.Is(other.RestoreUnsavedTabs)
             && DateTimeFormat.Is(other.DateTimeFormat)
             && NumberFormat.Is(other.NumberFormat)
             && BinaryDisplay.Is(other.BinaryDisplay)
@@ -67,8 +64,6 @@ public sealed class Settings : ModelBase
         {
             Language = Language,
             Theme = Theme,
-            RestoreConnections = RestoreConnections,
-            RestoreTabs = RestoreTabs,
             CheckForUpdates = CheckForUpdates,
             SkippedUpdate = SkippedUpdate,
             RecentFiles = RecentFiles.ToList(),
@@ -81,7 +76,6 @@ public sealed class Settings : ModelBase
             CheckSyntaxAsYouType = CheckSyntaxAsYouType,
             KeywordCase = KeywordCase,
             DefaultRowLimit = DefaultRowLimit,
-            RestoreUnsavedTabs = RestoreUnsavedTabs,
             DateTimeFormat = DateTimeFormat,
             NumberFormat = NumberFormat,
             BinaryDisplay = BinaryDisplay,
@@ -117,8 +111,6 @@ public sealed class Settings : ModelBase
     {
         Language = other.Language;
         Theme = other.Theme;
-        RestoreConnections = other.RestoreConnections;
-        RestoreTabs = other.RestoreTabs;
         CheckForUpdates = other.CheckForUpdates;
         SkippedUpdate = other.SkippedUpdate;
         RecentFiles = other.RecentFiles.ToList();
@@ -131,7 +123,6 @@ public sealed class Settings : ModelBase
         CheckSyntaxAsYouType = other.CheckSyntaxAsYouType;
         KeywordCase = other.KeywordCase;
         DefaultRowLimit = other.DefaultRowLimit;
-        RestoreUnsavedTabs = other.RestoreUnsavedTabs;
         DateTimeFormat = other.DateTimeFormat;
         NumberFormat = other.NumberFormat;
         BinaryDisplay = other.BinaryDisplay;
@@ -162,14 +153,6 @@ public sealed class Settings : ModelBase
     /// <summary>Light, Dark or System.</summary>
     [Notify]
     public string Theme { get; set; } = "Light";
-
-    /// <summary>Reopen the connections of the last session at startup.</summary>
-    [Notify]
-    public bool RestoreConnections { get; set; } = true;
-
-    /// <summary>Reopen the tabs of the last session at startup.</summary>
-    [Notify]
-    public bool RestoreTabs { get; set; } = true;
 
     /// <summary>
     /// Ask the release feed whether a newer Studio exists (WS-70). <b>Off by default</b>: a tool that
@@ -222,10 +205,6 @@ public sealed class Settings : ModelBase
     /// <summary>The row limit a new query tab starts with.</summary>
     [Notify]
     public int DefaultRowLimit { get; set; } = 1000;
-
-    /// <summary>Keep the text of unsaved query tabs and bring them back at startup.</summary>
-    [Notify]
-    public bool RestoreUnsavedTabs { get; set; } = true;
 
     #endregion
 
