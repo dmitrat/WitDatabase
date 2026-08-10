@@ -1,6 +1,17 @@
 ﻿# Changelog
 
-## Unreleased
+## 12.7.0
+
+**Two wrong answers made right, and nothing newly refused.** Unlike 12.5.0 and 12.6.0 this release
+adds no refusal - every change here turns an answer that was wrong into one that is right. But both
+are visible, so they are named rather than buried:
+
+- a comparison between text and a typed column **changes its answer**, and for numbers it can change
+  in either direction: `N > '9'` answered no for `N = 42` and now answers yes, `N < '9'` answered yes
+  and now answers no;
+- a transaction opened at `Serializable`, `RepeatableRead` or `Snapshot` **stops seeing** rows other
+  connections commit after it began. Code written against the old behaviour - reading fresh data
+  inside a snapshot transaction - will now read the snapshot, which is what it asked for.
 
 **Text compared with a typed column is read as that type.** Every comparison between a text value and
 a value of another type fell through to an ordinal comparison of the two RENDERINGS - which gives
