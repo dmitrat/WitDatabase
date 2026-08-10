@@ -71,6 +71,9 @@ public partial class SqlEditor : TextEditor
         FontFamily = new FontFamily("Consolas, Courier New, monospace");
         FontSize = 13;
         ShowLineNumbers = true;
+        // The four values above that a person can change are overwritten by ApplySettings below; they
+        // stay here so the control is usable on its own, in a designer or a test with no application
+        // around it.
         HorizontalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
         VerticalScrollBarVisibility = Avalonia.Controls.Primitives.ScrollBarVisibility.Auto;
         WordWrap = false;
@@ -101,6 +104,46 @@ public partial class SqlEditor : TextEditor
         {
             Application.Current.ActualThemeVariantChanged += OnThemeChanged;
         }
+
+        // The editor's own appearance is four settings, and none of them had a reader before
+        // 2026-08-10 (WS-52). They are LIVE - the settings service has no Save, so a change applies
+        // where it is made - which is why this subscribes rather than reading once.
+        //
+        // Reached through the singleton because a control is not handed a ViewModel; the null guard is
+        // what keeps the control constructible with no application around it.
+        var settings = ViewModels.ApplicationViewModel.Instance?.Settings;
+
+        if (settings != null)
+        {
+            ApplySettings(settings.Current);
+            settings.Changed += OnSettingsChanged;
+        }
+    }
+
+    private void OnSettingsChanged(object? sender, SettingChangedEventArgs e)
+    {
+        var settings = ViewModels.ApplicationViewModel.Instance?.Settings;
+
+        if (settings != null)
+            ApplySettings(settings.Current);
+    }
+
+    /// <summary>
+    /// Puts the four editor settings onto the control. Whitespace is one setting and two options,
+    /// because a person asking to see whitespace means both.
+    /// </summary>
+    private void ApplySettings(Models.Settings settings)
+    {
+        if (!string.IsNullOrWhiteSpace(settings.EditorFontFamily))
+            FontFamily = new FontFamily(settings.EditorFontFamily);
+
+        if (settings.EditorFontSize > 0)
+            FontSize = settings.EditorFontSize;
+
+        ShowLineNumbers = settings.ShowLineNumbers;
+
+        Options.ShowSpaces = settings.ShowWhitespace;
+        Options.ShowTabs = settings.ShowWhitespace;
     }
 
     #endregion
@@ -265,7 +308,10 @@ public partial class SqlEditor : TextEditor
     /// </summary>
     private void OnTextEntered(object? sender, TextInputEventArgs e)
     {
-        if (e.Text == ".")
+        // Only the UNASKED half is switched off. Ctrl+Space below still opens the list, because the
+        // setting is called "complete as you type" and asking for completion is not typing - a person
+        // who turns the list off while typing has not asked to lose the feature.
+        if (e.Text == "." && (ViewModels.ApplicationViewModel.Instance?.Settings.Current.CompleteAsYouType ?? true))
             _ = ShowCompletionAsync();
     }
 

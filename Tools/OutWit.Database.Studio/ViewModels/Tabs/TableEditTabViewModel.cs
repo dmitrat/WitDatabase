@@ -64,14 +64,26 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     private void InitDefault()
     {
         Columns = [];
-        PageSize = DEFAULT_PAGE_SIZE;
+
+        // The setting is what a NEW tab starts at; the selector on the tab moves it from there, which
+        // is the shape WS-23 asks for and the reason it is a default rather than a fixed size. It had
+        // no reader at all until 2026-08-10.
+        PageSize = ApplicationVm.Settings.Current.GridPageSize;
 
         // Initialize column settings for the edit grid
         EditColumnSettings = new GridColumnSettings();
 
         Filters = [];  // one box per column, filled when the columns are known
         ConflictColumns = [];
-        PageSizes = [200, DEFAULT_PAGE_SIZE, 5000, 0];
+
+        // The chosen size is offered even when it is not one of the four, so a tab cannot open showing
+        // a number the selector has no entry for. 0 is "no limit" and stays last.
+        PageSizes = new[] { 200, DEFAULT_PAGE_SIZE, 5000, PageSize }
+            .Where(size => size > 0)
+            .Distinct()
+            .OrderBy(size => size)
+            .Append(0)
+            .ToList();
     }
 
     private void InitEvents()
