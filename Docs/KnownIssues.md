@@ -1096,68 +1096,136 @@ identical.
 
 ---
 
-## 16. `ORDER BY <position>` is accepted and does nothing
+## 16. `ORDER BY <position>` was accepted and did nothing
 
-> **OPEN.** Pinned by `Engine/Query/OrderByOrdinalTests` - five shapes plus the
-> out-of-range case, with a control that the same queries sort when the column is
-> named. Measured 2026-08-10 while fixing 15.
+> **FIXED, 2026-08-10**, in the commit after the one that found it.
+> `Engine/Query/OrderByOrdinalTests` is the fix's fixture - the pins are inverted.
 
 ```sql
-SELECT Kind FROM T ORDER BY 1          -- rows come back in insertion order
-SELECT Kind, Amount FROM T ORDER BY 2 DESC  -- likewise; the DESC is ignored too
-SELECT Kind FROM T ORDER BY 99         -- accepted, not refused
+SELECT Kind FROM T ORDER BY 1               -- rows came back in insertion order
+SELECT Kind, Amount FROM T ORDER BY 2 DESC  -- likewise; the DESC was ignored too
+SELECT Kind FROM T ORDER BY 99              -- accepted, not refused
 ```
 
-The parser makes the integer an ordinary literal, nothing turns it into a position,
-and `IteratorSort` evaluates it once per row: every row answers the same number,
-every comparison is equal, and the sort is a no-op. **The answer is exactly what the
-same query without any `ORDER BY` answers**, which is what the pins assert - "not
-sorted" would also be satisfied by a sort that is merely wrong.
+The parser makes the integer an ordinary literal, nothing turned it into a position,
+and `IteratorSort` evaluated it once per row: every row answered the same number,
+every comparison was equal, and the sort was a no-op. **The answer was exactly what
+the same query without any `ORDER BY` answers**, which is what the pins asserted -
+"not sorted" would also be satisfied by a sort that is merely wrong.
 
 PostgreSQL, SQL Server and SQLite all implement the positional form, so a query
-written for any of them is quietly answered in the wrong order here. **That is worse
-in kind than 15 was**, which at least failed loudly.
+written for any of them was quietly answered in the wrong order here. **That is worse
+in kind than 15 was**, which at least failed loudly. It affected every query, not
+only grouped ones.
 
-It affects every query, not only grouped ones. The record of issue 15 named
-`ORDER BY 1` as one of the shapes that "already works and must keep working"; it does
-not work and never did.
+The record of issue 15 named `ORDER BY 1` as one of the shapes that "already works
+and must keep working". It never worked - which is why a record's *controls* are
+claims to re-measure exactly as its findings are.
 
-### What a fix has to decide
+### The fix: two resolutions, because the clause runs in two places
 
-An unadorned integer in `ORDER BY` means an output column position; `ORDER BY 1+1`
-does not (PostgreSQL refuses it as a non-integer constant). So the rewrite is for a
-top-level integer literal only. The position has to resolve to the **N-th select
-item**, not to the N-th column of the row being sorted: in the non-aggregate path
-`ORDER BY` runs *before* projection, so the row at sort time is the source row and
-those two are not the same thing. `SELECT *` is the case that needs its own answer,
-because there is no select item to substitute.
+- **Over a grouped, windowed or `VALUES` result the row already IS the output**, so a
+  position becomes a reference to that column.
+- **For an ordinary query the sort runs BEFORE the projection** - deliberately, so it
+  can reach the source's own column names - so the row in front of it is the source's
+  and column one of that is not the first selected column. There a position becomes
+  the **N-th select item's own expression**, which is what the user would otherwise
+  have had to write. Measured: using the first rule everywhere reddens 13 cases.
+- **`SELECT *` is the shape whose output columns are not its select list.** A position
+  there counts the source's columns minus the internal ones, so the `_rowid` every
+  scanned row carries is not position four.
+
+Out of range is refused, with the range in the message. A **carried grouping key**
+from issue 15 is not reachable by position - it is not a column the query returns -
+and one case holds that seam: counting the grouped row instead of the select list
+reddens `SELECT COUNT(*) FROM G GROUP BY Kind ORDER BY 2` and nothing else.
+
+### What is a position, measured against SQLite rather than assumed
+
+Three of the corners are not guessable, so they were run through SQLite first:
+
+| shape | SQLite | now |
+|---|---|---|
+| `ORDER BY 1 + 1` | a constant - sorts nothing | same |
+| `ORDER BY '1'` | a constant - sorts nothing | same |
+| `ORDER BY -1` | **a position**, refused as out of range | same |
+
+The sign is read as part of the position for exactly that reason: the parser gives
+`-1` as a unary negation over a literal, so without it that form would stay the
+silent no-op this issue is about.
+
+`SELECT *, Amount * 2 FROM T ORDER BY 4` is the one shape where this engine and
+SQLite differ, and the cause is issue 17: SQLite expands the star, so position four
+is the expression, while here a star sharing its select list is not expanded at all.
+The refusal names that reason rather than sorting by the NULL the star becomes, and
+its case goes red when 17 is fixed.
 
 ---
 
-## 17. `SELECT * … GROUP BY` answers with NULLs
+## 17. `SELECT *` is only expanded when it is the ONLY select item
 
 > **OPEN.** Pinned by `Engine/Query/SelectStarOverAGroupedQueryTests`. Measured
-> 2026-08-10 alongside 15.
+> 2026-08-10 alongside 15 and 16.
 
 ```sql
-SELECT * FROM T GROUP BY Kind   -- three groups, one column each, every value NULL
+SELECT * FROM T GROUP BY Kind   -- one row per group, one column each, every value NULL
+SELECT *, Amount * 2 FROM T     -- two columns; the first is NULL on every row
 ```
 
-A grouped row is built out of the SELECT list, and a star is not an expression, so
-the group iterator writes one NULL for it. **The group count is right**, which is
-what makes the answer look like data.
+The projection expands a star only when the select list is exactly one star item;
+anywhere else the star is a select item with no expression, and one NULL is written
+for it. In a grouped query that is the whole result. **The row and group counts are
+right**, which is what makes the answer look like data.
 
-This engine matches nobody: PostgreSQL and SQL Server **refuse** the query, naming
-the first column that is neither grouped by nor aggregated; SQLite **accepts** it and
-answers with the columns of an arbitrary row from each group. Either would be
-defensible.
+This engine matches nobody: PostgreSQL and SQL Server **refuse** the grouped form,
+naming the first column that is neither grouped by nor aggregated; SQLite **accepts**
+it and answers with the columns of an arbitrary row from each group, and expands a
+star sharing its list. Either would be defensible.
 
 ### What a fix has to decide
 
-Which of the two to become. Refusing is the safer reading and turns a silent answer
-into a loud one; answering the way SQLite does keeps a shape existing callers may
-already have written. It is a decision about other people's data rather than a
-mechanical repair, which is why it is recorded rather than chosen here.
+Which of the two to become for the grouped form. Refusing is the safer reading and
+turns a silent answer into a loud one; answering the way SQLite does keeps a shape
+existing callers may already have written. The mixed-list form
+(`SELECT *, expr`) has no such question - expanding it is simply right - but it is
+the same missing expansion, so both belong in one change.
+
+---
+
+## 18. `ORDER BY` and `LIMIT` over a `UNION` apply to the first arm only
+
+> **OPEN.** Pinned by `Engine/Query/OrderByOverASetOperationTests`. Measured
+> 2026-08-10 while fixing 16, and **pre-existing and independent of it** - the same
+> thing happens when the clause names the column.
+
+```sql
+SELECT Kind FROM T WHERE Amount > 25
+UNION ALL SELECT Kind FROM T WHERE Amount < 25
+ORDER BY Kind;   -- c d a b: the first arm sorted, the second left where it was
+                 -- SQLite answers a b c d
+```
+
+`QueryPlanner.Plan` applies `ORDER BY`, `LIMIT` and `DISTINCT` inside the
+aggregate/non-aggregate branch and only then calls `ApplySetOperations`, so each of
+them is wrapped **by** the union rather than wrapping it. The parser is not at fault:
+it hangs the clauses on the outer statement, which is where SQL puts them.
+
+**The `LIMIT` half loses rows rather than misplacing them.** `LIMIT 1` over a union
+cuts the first arm and still returns everything the second arm has.
+
+### Why nobody had seen it
+
+Two arms whose values do not interleave answer correctly whatever the plan does -
+sorting each and concatenating gives the same list as sorting the whole. A case that
+can fail needs the second arm to hold values that must come *before* the first arm's,
+and that control is written into the fixture beside the pins.
+
+### What a fix has to change
+
+The three clauses have to move outside `ApplySetOperations`, which means the set
+operation is planned first and the ordering, limiting and de-duplication wrap it.
+That is a change to the shape of every plan carrying a set operation, so it wants its
+own measurement of what the existing suites were asserting about those plans.
 
 ---
 

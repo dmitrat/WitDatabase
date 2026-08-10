@@ -531,14 +531,32 @@ neither clause carries nothing extra.
 A column that is **neither grouped by nor aggregated** remains unavailable to both clauses, which is
 what the reference databases do with it: there is no one value of it per group to answer with.
 
+#### `ORDER BY <position>`
+
+An integer in `ORDER BY` is a 1-based **output column position**, as it is in PostgreSQL, SQL Server
+and SQLite:
+
+```sql
+SELECT Kind, Amount FROM T ORDER BY 2 DESC;          -- by Amount, descending
+SELECT Kind, COUNT(*) FROM T GROUP BY Kind ORDER BY 2;
+SELECT * FROM T ORDER BY 3;                          -- the third column of the table
+```
+
+Only a **bare** integer is a position, and a leading sign belongs to it. `ORDER BY 1 + 1` and
+`ORDER BY '1'` are ordinary constants — they sort nothing, which is also what SQLite does with them —
+while `ORDER BY -1` is a position and is refused. A position outside the select list is refused with
+the range in the message; a grouping key carried for `ORDER BY`'s or `HAVING`'s benefit is **not**
+reachable by position, because it is not a column the query returns.
+
 #### Two limits in this area
 
-- **`ORDER BY <position>` is not implemented.** An integer in `ORDER BY` is read as an ordinary
-  constant rather than as an output column position, so `ORDER BY 1` is accepted and changes nothing
-  — including the direction, so `ORDER BY 2 DESC` is not a descending sort either. Name the column,
-  the alias or the expression instead. Tracked as `Docs/KnownIssues.md` 16.
-- **`SELECT * … GROUP BY` does not expand the star.** It answers one row per group with a single
-  NULL column. Name the columns you want. Tracked as `Docs/KnownIssues.md` 17.
+- **`SELECT *` is expanded only when it is the ONLY select item.** `SELECT *, Amount * 2 FROM T`
+  answers two columns with the first NULL, and `SELECT * FROM T GROUP BY Kind` answers one NULL
+  column per group. Name the columns you want. Tracked as `Docs/KnownIssues.md` 17.
+- **`ORDER BY`, `LIMIT` and `DISTINCT` over a `UNION` apply to the first arm only**, not to the
+  combined result — so a sorted union is sorted per arm, and `LIMIT 1` over one still returns
+  everything the second arm has. Wrap the union in a derived table if you need it ordered as a
+  whole. Tracked as `Docs/KnownIssues.md` 18.
 
 ### 3.2 INSERT
 

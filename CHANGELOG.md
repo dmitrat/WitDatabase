@@ -30,14 +30,38 @@ SELECT COUNT(*) FROM Orders GROUP BY Status HAVING Status <> 'Draft';
 A column that is neither grouped by nor aggregated remains unavailable to both clauses, which is what
 the reference databases do with it.
 
+**`ORDER BY <position>` sorts by that column.** An integer in `ORDER BY` was read as an ordinary
+constant and nothing turned it into an output column position, so the sort evaluated the same number
+on every row, every comparison was equal, and the clause did nothing: `ORDER BY 1` answered exactly
+what the query without any `ORDER BY` answers, and `ORDER BY 2 DESC` was not a descending sort
+either. It affected **every** query, not only grouped ones, and PostgreSQL, SQL Server and SQLite all
+implement the form - so a query written for any of them was quietly answered in the wrong order.
+`Docs/KnownIssues.md` 16.
+
+### Fixed
+
+- **A position resolves against the query's OUTPUT columns**, in both of the places the clause runs:
+  over a grouped, windowed or `VALUES` result the row already is the output, so a position names a
+  column of it; for an ordinary query the sort runs before the projection, so a position becomes the
+  N-th select item's own expression. Over `SELECT *` it counts the source's columns minus the
+  internal ones, so the `_rowid` every scanned row carries is not one of them.
+- **A position outside the select list is refused**, with the range in the message, where every one
+  of them used to be accepted in silence. A grouping key carried for `ORDER BY`'s or `HAVING`'s
+  benefit is not reachable by position, because it is not a column the query returns.
+- What counts as a position was **measured against SQLite** rather than assumed: `ORDER BY 1 + 1`
+  and `ORDER BY '1'` are constants and sort nothing, while `ORDER BY -1` is a position and is
+  refused. All three now answer as SQLite does.
+
 ### Documented
 
-- **What `ORDER BY` and `HAVING` may name over a grouped query**, in `WitSQL.md` §3.1, with the two
-  limits found next to it while measuring the above: **`ORDER BY <position>` is accepted and does
-  nothing** - an integer is read as an ordinary constant, so `ORDER BY 1` changes no order and
-  `ORDER BY 2 DESC` is not a descending sort either - and **`SELECT * … GROUP BY` does not expand the
-  star**, answering one row per group with a single NULL column. Both are pinned by tests and
-  tracked in `Docs/KnownIssues.md` as 16 and 17.
+- **What `ORDER BY` and `HAVING` may name over a grouped query**, and what a position means, in
+  `WitSQL.md` §3.1 - with the two limits found beside them while measuring: **`SELECT *` is expanded
+  only when it is the only select item** (`SELECT *, Amount * 2` answers two columns with the first
+  NULL; `SELECT * … GROUP BY` answers one NULL column per group), and **`ORDER BY`, `LIMIT` and
+  `DISTINCT` over a `UNION` apply to the first arm only** - which is pre-existing, happens by column
+  name as well as by position, and makes `LIMIT 1` over a union return more than one row. Both are
+  pinned by tests and tracked in `Docs/KnownIssues.md` as 17 and 18; the derived-table workaround
+  the reference recommends for 18 is asserted by a test rather than merely suggested.
 
 ## 12.4.0
 
