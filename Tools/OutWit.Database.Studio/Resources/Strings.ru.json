@@ -1097,5 +1097,20 @@
   "Confirm.Drop.Indexes": "вместе с ним уйдёт индексов: {0}",
   "Confirm.Drop.Triggers": "вместе с ним уйдёт триггеров: {0}",
   "Confirm.Drop.Rows": "будет удалено строк: {0}",
-  "Confirm.Drop.ConsequencesUnknown": "Не удалось выяснить, что от него зависит: {0}"
+  "Confirm.Drop.ConsequencesUnknown": "Не удалось выяснить, что от него зависит: {0}",
+  "Confirm.Drop.Headline.Table": "Удалить таблицу «{0}»? Отменить будет нельзя.",
+  "Explorer.Dropped.Table": "Таблица удалена: {0}",
+  "Explorer.DropFailed.Table": "Не удалось удалить таблицу: {0}",
+  "Confirm.Drop.Headline.View": "Удалить представление «{0}»? Отменить будет нельзя.",
+  "Explorer.Dropped.View": "Представление удалено: {0}",
+  "Explorer.DropFailed.View": "Не удалось удалить представление: {0}",
+  "Confirm.Drop.Headline.Index": "Удалить индекс «{0}»? Отменить будет нельзя.",
+  "Explorer.Dropped.Index": "Индекс удалён: {0}",
+  "Explorer.DropFailed.Index": "Не удалось удалить индекс: {0}",
+  "Confirm.Drop.Headline.Trigger": "Удалить триггер «{0}»? Отменить будет нельзя.",
+  "Explorer.Dropped.Trigger": "Триггер удалён: {0}",
+  "Explorer.DropFailed.Trigger": "Не удалось удалить триггер: {0}",
+  "Confirm.Drop.Headline.Sequence": "Удалить последовательность «{0}»? Отменить будет нельзя.",
+  "Explorer.Dropped.Sequence": "Последовательность удалена: {0}",
+  "Explorer.DropFailed.Sequence": "Не удалось удалить последовательность: {0}"
 }

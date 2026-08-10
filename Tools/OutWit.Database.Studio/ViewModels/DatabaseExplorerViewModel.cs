@@ -244,17 +244,25 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         var objectName = SelectedNode.Name;
         var sql = $"DROP {objectType} IF EXISTS [{objectName}]";
 
+        // Captured BEFORE the selection is cleared below, and it is what names the object in the
+        // user's language. Until 2026-08-10 every one of these sentences was built from the SQL
+        // keyword lower-cased - so a Russian interface said "Удалить table «Customers»?" and
+        // "Удалено (table): Logs". A term the engine owns is not a noun in someone's sentence, and
+        // the localisation lint cannot see it because there is no literal: the word arrives at run
+        // time. Found by running the application, which is the only place it was ever visible.
+        var nodeType = SelectedNode.NodeType;
+
         // WS-20. Until 2026-08-10 this method went straight to ExecuteNonQueryAsync: one click in the
         // tree and the table was gone, while the settings page showed a ticked "ask before dropping an
         // object". The question is asked through the confirmation service so that the SETTING is
         // consulted in one place rather than here - a caller that decides for itself is a caller that
         // can forget, which is how all four of these questions came to be missing at once.
-        var consequences = await DropConsequencesAsync(session, SelectedNode.NodeType, objectName);
+        var consequences = await DropConsequencesAsync(session, nodeType, objectName);
 
         var proceed = await ApplicationVm.Confirmations.AskAboutDestructiveActionAsync(
             new DestructiveAction(
                 ConfirmationKind.DroppingObject,
-                Localization.Format("Confirm.Drop.Headline", objectType.ToLower(), objectName),
+                Localization.Format(SentenceKey("Confirm.Drop.Headline", nodeType), objectName),
                 sql,
                 consequences));
 
@@ -274,16 +282,62 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
             await RefreshAsync(session);
 
-            ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Dropped", objectType.ToLower(), objectName);
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format(SentenceKey("Explorer.Dropped", nodeType), objectName);
             Logger.LogInformation("Dropped {ObjectType}: {ObjectName} in {Connection}",
                 objectType, objectName, session.DisplayName);
         }
         catch (Exception ex)
         {
-            ErrorMessage = Localization.Format("Explorer.DropFailed", objectType.ToLower(), ex.Message);
+            ErrorMessage = Localization.Format(SentenceKey("Explorer.DropFailed", nodeType), ex.Message);
             Logger.LogError(ex, "Failed to drop {ObjectType}: {ObjectName}", objectType, objectName);
         }
     }
+
+    /// <summary>
+    /// The catalogue key naming this kind of object, per sentence family.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Written as a switch over WHOLE keys rather than as <c>$"{family}.{nodeType}"</c>, for two
+    /// reasons that both came from running into them.
+    /// </para>
+    /// <para>
+    /// First, the localisation lint reads an interpolated string assigned to <c>StatusText</c> as a
+    /// sentence built in code - which is exactly what it exists to catch, and it cannot tell a
+    /// composed KEY from a composed SENTENCE. It flagged the interpolated version and it was right to.
+    /// </para>
+    /// <para>
+    /// Second, a key that exists only at run time is invisible to a grep and to any check that every
+    /// key is present in both languages. Spelled out, each one is findable from the catalogue and back.
+    /// </para>
+    /// <para>
+    /// Russian is why these are whole sentences per type rather than a noun slotted into one template:
+    /// "удалить ТАБЛИЦУ" and "ТАБЛИЦА удалена" need different cases, and a template with a noun hole
+    /// gets one of them wrong.
+    /// </para>
+    /// </remarks>
+    private static string SentenceKey(string family, DatabaseNodeType nodeType) => (family, nodeType) switch
+    {
+        ("Confirm.Drop.Headline", DatabaseNodeType.Table) => "Confirm.Drop.Headline.Table",
+        ("Confirm.Drop.Headline", DatabaseNodeType.View) => "Confirm.Drop.Headline.View",
+        ("Confirm.Drop.Headline", DatabaseNodeType.Index) => "Confirm.Drop.Headline.Index",
+        ("Confirm.Drop.Headline", DatabaseNodeType.Trigger) => "Confirm.Drop.Headline.Trigger",
+        ("Confirm.Drop.Headline", DatabaseNodeType.Sequence) => "Confirm.Drop.Headline.Sequence",
+
+        ("Explorer.Dropped", DatabaseNodeType.Table) => "Explorer.Dropped.Table",
+        ("Explorer.Dropped", DatabaseNodeType.View) => "Explorer.Dropped.View",
+        ("Explorer.Dropped", DatabaseNodeType.Index) => "Explorer.Dropped.Index",
+        ("Explorer.Dropped", DatabaseNodeType.Trigger) => "Explorer.Dropped.Trigger",
+        ("Explorer.Dropped", DatabaseNodeType.Sequence) => "Explorer.Dropped.Sequence",
+
+        ("Explorer.DropFailed", DatabaseNodeType.Table) => "Explorer.DropFailed.Table",
+        ("Explorer.DropFailed", DatabaseNodeType.View) => "Explorer.DropFailed.View",
+        ("Explorer.DropFailed", DatabaseNodeType.Index) => "Explorer.DropFailed.Index",
+        ("Explorer.DropFailed", DatabaseNodeType.Trigger) => "Explorer.DropFailed.Trigger",
+        ("Explorer.DropFailed", DatabaseNodeType.Sequence) => "Explorer.DropFailed.Sequence",
+
+        _ => family + ".Table"
+    };
 
     /// <summary>
     /// What breaks if this object goes, in the user's language (WS-20).
