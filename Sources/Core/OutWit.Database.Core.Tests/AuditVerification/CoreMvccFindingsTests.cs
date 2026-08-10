@@ -194,13 +194,15 @@ public class CoreMvccFindingsTests
 
     #endregion
 
-    #region Commit scans the entire store
+    #region Commit no longer scans the entire store
+
+    // FIXED by phase 11 (12.0.0/12.1.0): the commit works from a per-transaction write set instead of
+    // scanning for its own versions - batches of 1,000 through a database went 50.8 s to 7.2 s on one
+    // machine. Marker lifted by the 2026-08-10 ledger census, which ran it rather than reading it.
+    // NOTE the neighbour it does NOT cover: the commit still rewrites each version a second time, which
+    // is the open MVCC double write pinned by CommitWriteCountTests (101 store writes for 50 rows).
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27, and counted rather than timed: committing ONE row over a 500-row store "
-            + "enumerated 502 entries across 7 scans. The cost of a commit follows the size of the "
-            + "database, so bulk SaveChanges is quadratic. "
-            + "core-mvcc, Core/Stores/MvccKeyValueStore.cs:400")]
     public void CommitDoesNotScanTheWholeStoreTest()
     {
         // Finding: MvccKeyValueStore.cs:400 - CommitTransaction scans every record in the store to

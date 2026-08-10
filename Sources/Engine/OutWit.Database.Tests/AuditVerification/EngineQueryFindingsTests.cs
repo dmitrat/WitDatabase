@@ -220,13 +220,10 @@ public sealed class EngineQueryFindingsTests : WitSqlEngineTestsBase
 
     #region NULL propagation in scalar functions
 
-    // CONFIRMED 2026-07-27, and characterised: 9 of the 11 probed expressions swallow the NULL and
-    // return a zero-value instead. ABS(NULL) and `NULL || 'x'` are correct, so the finding's "most
-    // scalar functions" is accurate but not universal. engine-query,
-    // Expressions/ExpressionEvaluator.Functions.cs:58
-    private const string NullPropagationIgnore =
-        "CONFIRMED 2026-07-27: returns a zero-value instead of NULL. " +
-        "engine-query, Expressions/ExpressionEvaluator.Functions.cs:58";
+    // FIXED: all eleven propagate NULL. The suppression reason that used to live here was a FOSSIL -
+    // the [TestCase]s stopped naming it when they were un-ignored, so the constant sat unreferenced
+    // while its text still read "CONFIRMED 2026-07-27: returns a zero-value instead of NULL". Found by
+    // the 2026-08-10 ledger census.
 
     [TestCase("LENGTH(NULL)")]
     [TestCase("UPPER(NULL)")]

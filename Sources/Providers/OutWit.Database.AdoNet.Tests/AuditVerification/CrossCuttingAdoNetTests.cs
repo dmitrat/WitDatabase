@@ -13,13 +13,10 @@ public class CrossCuttingAdoNetTests
 {
     #region The engine never surfaces a DbException
 
-    private const string DbExceptionIgnore =
-        "CONFIRMED 2026-07-27: a missing table raises InvalidOperationException(\"Table 'NoSuchTable' " +
-        "not found\") and bad SQL raises WitSqlParsingException - neither derives from DbException. " +
-        "WitDbException does derive from it and has a FromException factory, but nothing calls it and " +
-        "WitDbCommand contains no catch at all. Every framework that handles database failures " +
-        "generically - EF Core execution strategies, Polly, ASP.NET diagnostics - keys off " +
-        "DbException and will not see these. cross-cutting, AdoNet/WitDbException.cs:119";
+    // FIXED 2026-07-31 (phase 6): every path out of the engine arrives as a WitDbException, which IS a
+    // DbException. The suppression reason that used to live here was a FOSSIL - the [TestCase]s stopped
+    // naming it when they were un-ignored, so the constant sat unreferenced while its text still read
+    // "CONFIRMED 2026-07-27 ... neither derives from DbException". Found by the 2026-08-10 ledger census.
 
     [TestCase("SELECT * FROM NoSuchTable", TestName = "MissingTable")]
     [TestCase("THIS IS NOT SQL", TestName = "SyntaxError")]

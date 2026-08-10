@@ -16,10 +16,21 @@ public sealed class ParserFindingsEngineTests : WitSqlEngineTestsBase
     #region SIGNAL in a trigger body
 
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: raises NotSupportedException \"Statement serialization not " +
-            "supported: WitSqlStatementSignal\". Note where it fails - SIGNAL parses fine, and the " +
-            "break is in statement *serialization*, not execution. parser, " +
-            "Parser/Grammars/WitSqlParser.g4:80")]
+    [Ignore("LIVE, but NOT for the reason this marker used to give - re-measured 2026-08-10 by the "
+            + "ledger census, and the whole diagnosis had gone stale. The old text said the break was "
+            + "in statement SERIALIZATION (\"Statement serialization not supported: "
+            + "WitSqlStatementSignal\"); phase 8 stores schema as parse trees and phase 9d gave trigger "
+            + "bodies a rule, so what happens NOW is a deliberate refusal at CREATE TRIGGER: "
+            + "NotSupportedException \"A trigger body may contain only SELECT, INSERT, UPDATE, DELETE "
+            + "and MERGE. Trigger 'T_Guard' contains WitSqlStatementSignal, which cannot run inside a "
+            + "trigger.\" An accident became a decision and nobody re-read the marker. "
+            + "AND IT COLLIDES WITH THE REFERENCE: WitSQL.md section 2.8 says in as many words that "
+            + "SIGNAL works in a trigger, and section 2.8's own example is a BEFORE trigger whose body "
+            + "is a SIGNAL - which throws. The parser agrees with the document "
+            + "(TriggerBodyCanSignalParsesTest is green); only the executor does not. Rejecting a row "
+            + "is the entire purpose of a SIGNAL in a BEFORE trigger, so either the restriction earns "
+            + "an exception for SIGNAL or section 2.8 has to be withdrawn. That is a product decision "
+            + "and it is Dmitry's, which is why this stays suppressed rather than being inverted.")]
     public void SignalInATriggerBodyRejectsTheRowTest()
     {
         // Finding: WitSqlParser.g4:80 - the second half of the "documented trigger bodies are

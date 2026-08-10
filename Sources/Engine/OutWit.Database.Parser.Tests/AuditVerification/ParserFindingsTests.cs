@@ -21,21 +21,20 @@ public class ParserFindingsTests
     // list roughly twice that size, and the words below are in the documented list and absent from
     // the serializer's - which is exactly what "incomplete reserved-word list" means. `Order` and
     // `Group` are included as controls: they ARE in the serializer's set, so they must round-trip.
-    private const string ReservedIgnore =
-        "CONFIRMED 2026-07-27: the serializer emits this identifier unquoted and the result no " +
-        "longer parses. Its RESERVED_WORDS set holds 68 entries; WitSQL.md documents roughly twice " +
-        "that many. parser, Parser/Serializers/WitSqlExpressionSerializer.cs:441";
+    // FIXED: all seven suppressed words now round-trip. The seven markers were lifted by the 2026-08-10
+    // ledger census, which ran them rather than reading them - the whole set passed on the first run.
+    // `Order`, `Group` and `Year` stay as the controls they always were.
 
     [TestCase("Order")]
     [TestCase("Group")]
-    [TestCase("Using", Ignore = ReservedIgnore)]
-    [TestCase("With", Ignore = ReservedIgnore)]
-    [TestCase("Row", Ignore = ReservedIgnore)]
-    [TestCase("Column", Ignore = ReservedIgnore)]
-    [TestCase("Cross", Ignore = ReservedIgnore)]
+    [TestCase("Using")]
+    [TestCase("With")]
+    [TestCase("Row")]
+    [TestCase("Column")]
+    [TestCase("Cross")]
     [TestCase("Year")]
-    [TestCase("Interval", Ignore = ReservedIgnore)]
-    [TestCase("Partition", Ignore = ReservedIgnore)]
+    [TestCase("Interval")]
+    [TestCase("Partition")]
     public void SerialisedIdentifierReParsesTest(string identifier)
     {
         // Finding: WitSqlExpressionSerializer.cs:441 - identifiers are emitted unquoted unless they

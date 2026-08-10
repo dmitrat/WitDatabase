@@ -59,21 +59,34 @@ public class TestsAndGapsFindingsTests
 
     #region EF Core's provider specification suite
 
+    // BUILT: the conformance suite exists and runs ~3,150 cases on CI. The marker here said it was
+    // "absent" and called it "the highest-value entry in the whole backlog", and that had been false
+    // for months - the suite simply lives in its OWN project, OutWit.Database.EntityFramework.Specification.Tests,
+    // and this test was reading EntityFramework.Tests.csproj, where it was never going to appear.
+    //
+    // Lifted and re-pointed by the 2026-08-10 ledger census, and it was wrong TWICE over - which is
+    // why re-pointing it took a measurement rather than an edit. It read one hard-coded csproj, and it
+    // looked for "Microsoft.EntityFrameworkCore.Specification.Tests", a package a relational provider
+    // never references: the one EF Core ships is Microsoft.EntityFrameworkCore.RELATIONAL.Specification.Tests.
+    // So the assertion could not have passed even on the day the suite was added, and the marker would
+    // have gone on reporting "absent" over a suite running 3,150 cases. It now searches every project
+    // in the repository for the Specification.Tests family, and names the projects it found so a green
+    // run says WHERE the suite is rather than merely that it is somewhere.
+
     [Test]
-    [Ignore("CONFIRMED 2026-07-27: the csproj references Microsoft.EntityFrameworkCore.Sqlite (both TFMs) "
-            + "and NOT Specification.Tests - so the unused SQLite dependency that would make a "
-            + "differential oracle nearly free is already present, while the conformance suite that "
-            + "decides the drop-in claim is absent. This is the highest-value entry in the whole "
-            + "backlog. tests-and-gaps, EntityFramework.Tests.csproj:24")]
     public void EfCoreSpecificationSuiteIsReferencedTest()
     {
-        // Finding: the canonical proof of "drop-in" is absent. This dimension's most valuable entry:
-        // the audit expects it would surface more than the whole of workstream B.
-        var project = ReadRepositoryFile(
-            "Sources/Providers/OutWit.Database.EntityFramework.Tests/OutWit.Database.EntityFramework.Tests.csproj");
+        var projects = Directory
+            .EnumerateFiles(FindRepositoryRoot(), "*.csproj", SearchOption.AllDirectories)
+            .Where(path => File.ReadAllText(path).Contains("Specification.Tests"))
+            .Select(Path.GetFileNameWithoutExtension)
+            .ToList();
 
-        Assert.That(project, Does.Contain("Microsoft.EntityFrameworkCore.Specification.Tests"),
-            "EF Core ships the conformance suite that decides whether a provider is really drop-in");
+        Assert.That(projects, Is.Not.Empty,
+            "EF Core ships the conformance suite that decides whether a provider is really drop-in, "
+            + "and some project in this repository must reference it");
+
+        TestContext.Out.WriteLine("conformance suite referenced by: " + string.Join(", ", projects));
     }
 
     #endregion

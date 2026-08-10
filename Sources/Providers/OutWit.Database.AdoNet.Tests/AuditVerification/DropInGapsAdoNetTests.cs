@@ -183,22 +183,19 @@ public class DropInGapsAdoNetTests
     /// row. So the two levels have to DIFFER, and the strict one has to be the stable one - either
     /// outcome on its own could be an accident of the storage engine.
     /// </remarks>
-    private const string IsolationIgnore =
-        "CONFIRMED 2026-07-31 by execution, and it is an ENGINE defect rather than a contract one, which "
-        + "is why it is recorded here rather than fixed with the rest of phase 6. All three levels "
-        + "behave identically: a transaction opened at Serializable or RepeatableRead sees a row that "
-        + "another connection committed AFTER it began - before=1, after=2, counted by READING the rows "
-        + "rather than through COUNT(*), which this engine answers from a cached counter. So the level "
-        + "is reported by DbTransaction.IsolationLevel and applied by nothing; the provider does send "
-        + "SET TRANSACTION ISOLATION LEVEL, so the gap is below it. Fixing it means giving MVCC a read "
-        + "snapshot pinned at transaction start, which is the commit protocol this project has already "
-        + "found fragile once (PHASE5 8b.7) and is not a change to make in passing. ReadCommitted stays "
-        + "active as the control: it is allowed to see the row, and does.";
+    // FIXED 2026-08-10 by KnownIssues 21 (PR #177): the level lives on the database per connection
+    // instead of on the per-Execute context that BEGIN TRANSACTION discarded, and the provider sends it
+    // before BEGIN rather than after. Both markers lifted by the 2026-08-10 ledger census.
+    // ReadCommitted stays the control: it is ALLOWED to see the row, and does.
+    //
+    // What this pair does NOT certify, and the census measured it deliberately: a repeated read is
+    // stable, but SERIALIZABLE still permits WRITE SKEW - see SerializableRejectsWriteSkewTest in
+    // Core.Tests, still suppressed. What the engine provides is snapshot isolation under three names.
 
     [Test]
     [TestCase(IsolationLevel.ReadCommitted)]
-    [TestCase(IsolationLevel.RepeatableRead, Ignore = IsolationIgnore)]
-    [TestCase(IsolationLevel.Serializable, Ignore = IsolationIgnore)]
+    [TestCase(IsolationLevel.RepeatableRead)]
+    [TestCase(IsolationLevel.Serializable)]
     public void RequestedIsolationLevelIsAppliedNotJustReportedTest(IsolationLevel level)
     {
         using var setup = OpenSharedConnection();

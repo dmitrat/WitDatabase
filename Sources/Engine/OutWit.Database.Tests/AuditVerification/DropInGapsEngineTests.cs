@@ -77,36 +77,26 @@ public sealed class DropInGapsEngineTests : WitSqlEngineTestsBase
         m_engine.Execute("ROLLBACK");
     }
 
-    [Test]
-    [Ignore("CONFIRMED 2026-07-27 at the executor level: within one ContextExecution the level left "
-            + "pending by the first transaction IS consumed by the second. But it does not reach a "
-            + "provider consumer - WitSqlEngine.Execute builds a fresh ContextExecution per call, so "
-            + "through ADO.NET the level is silently DROPPED rather than leaked. The finding's "
-            + "\"leaks onto the next transaction\" wording holds only for a shared context.")]
-    public void UnappliedIsolationLevelIsPickedUpByTheNextTransactionTest()
-    {
-        // The "leaks onto the next transaction" half of the finding, isolated. Within a single
-        // execution context it is exactly true: the level left pending by the first transaction is
-        // consumed by the second, which therefore runs at a level nobody asked it to run at.
-        //
-        // It does not reach a provider consumer, though, and this test is what pins that down. See
-        // the fixture note and the plan: WitSqlEngine.Execute builds a *fresh* ContextExecution per
-        // call, so a level left pending by one Execute is discarded rather than carried into the
-        // next. Through ADO.NET the requested level is silently dropped, not leaked.
-        var context = new ContextExecution { Database = m_engine };
-        var executor = new StatementExecutor(context);
-
-        executor.Execute(WitSql.Parse("BEGIN TRANSACTION")[0]);
-        executor.Execute(WitSql.Parse("SET TRANSACTION ISOLATION LEVEL SERIALIZABLE")[0]);
-        executor.Execute(WitSql.Parse("ROLLBACK")[0]);
-
-        executor.Execute(WitSql.Parse("BEGIN TRANSACTION")[0]);
-        var leaked = context.PendingIsolationLevel is null;
-        executor.Execute(WitSql.Parse("ROLLBACK")[0]);
-
-        Assert.That(leaked, Is.False,
-            "a level requested for an earlier transaction must not be applied to a later one");
-    }
+    // DELETED 2026-08-10 by the ledger census: UnappliedIsolationLevelIsPickedUpByTheNextTransactionTest.
+    //
+    // It was suppressed on 2026-07-27 and it had become unfailable AND wrong, in two independent ways.
+    //
+    // 1. It read `context.PendingIsolationLevel` - the field on ContextExecution. Since KnownIssues 21
+    //    (PR #177) the level lives on the DATABASE, and StatementExecutor reads and writes
+    //    `m_context.Database.PendingIsolationLevel`. Nothing in the product touches the ContextExecution
+    //    field any more, so it is permanently null and the test failed identically whether isolation
+    //    worked perfectly or not at all. A test asking a question of a field the product abandoned.
+    //
+    // 2. Its assertion - "a level requested for an earlier transaction must not be applied to a later
+    //    one" - is the OPPOSITE of the rule this engine deliberately adopted, which
+    //    SetAfterBeginAppliesToTheNextTransactionNotTheRunningOneTest asserts green two methods above.
+    //    SET is session-scoped here, as in SQL Server. Keeping it would have meant one fixture holding
+    //    a suppressed certificate against its own documented decision.
+    //
+    // HANDED FORWARD, not fixed here because it is a public-surface change: ContextExecution.PendingIsolationLevel
+    // is now dead, and its own doc comment still says "Set by SET TRANSACTION ISOLATION LEVEL and
+    // consumed by BEGIN TRANSACTION", which is false. Removing a public member is a breaking change and
+    // is Dmitry's call.
 
     #endregion
 
@@ -148,17 +138,21 @@ public sealed class DropInGapsEngineTests : WitSqlEngineTestsBase
     /// Kept as executable specifications so each turns green the day it is built.
     /// </para>
     /// </remarks>
-    private const string TableSourceIgnore =
-        "UNBUILT CAPABILITY, re-scoped 2026-07-28. Not justified by 'EF Core emits it' - measured, " +
-        "and it mostly does not - but by the actual target: PostgreSQL and SQL Server both support " +
-        "these, and WitSQL is not meant to be a SQLite clone. APPLY needs lateral execution (engine " +
-        "work, not grammar); the derived column list AS V(Id) is standard SQL that only SQLite " +
-        "lacks; TOP duplicates LIMIT and is source-compatibility surface. None is phase-3 scope.";
+    // BUILT by phase 9 (10.0.0): APPLY/LATERAL, TOP n, VALUES as a query term and the derived column
+    // list all landed together. THREE of the four suppressed shapes were lifted by the 2026-08-10
+    // ledger census and passed on the first run; the FOURTH still fails, and the census is what
+    // separated them - as one marker they read as one gap, and they are not one gap.
+    private const string UnaliasedValuesIgnore =
+        "LIVE, re-measured 2026-08-10 by the ledger census. `SELECT * FROM (VALUES (1), (2))` - a VALUES "
+        + "table source with NO alias - is refused with \"Line 1:31 - mismatched input '<EOF>' expecting "
+        + "AS\", while the same shape WITH a derived column list parses. So the alias is mandatory here "
+        + "and optional on both target engines. Much narrower than the marker this was split out of, "
+        + "which claimed all four shapes were unbuilt; the other three have worked since 10.0.0.";
 
-    [TestCase("SELECT * FROM A CROSS APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = TableSourceIgnore)]
-    [TestCase("SELECT * FROM A OUTER APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x", Ignore = TableSourceIgnore)]
-    [TestCase("SELECT * FROM (VALUES (1), (2)) AS V(Id)", Ignore = TableSourceIgnore)]
-    [TestCase("SELECT * FROM (VALUES (1), (2))", Ignore = TableSourceIgnore)]
+    [TestCase("SELECT * FROM A CROSS APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x")]
+    [TestCase("SELECT * FROM A OUTER APPLY (SELECT TOP 1 * FROM B WHERE B.AId = A.Id) x")]
+    [TestCase("SELECT * FROM (VALUES (1), (2)) AS V(Id)")]
+    [TestCase("SELECT * FROM (VALUES (1), (2))", Ignore = UnaliasedValuesIgnore)]
     public void LargeEngineTableSourceParsesTest(string sql)
     {
         Assert.That(() => WitSql.Parse(sql), Throws.Nothing,
@@ -169,36 +163,32 @@ public sealed class DropInGapsEngineTests : WitSqlEngineTestsBase
 
     #region User-defined functions and stored procedures
 
+    // BUILT by phase 9d, released as 11.0.0 - a function catalog, evaluator integration and
+    // persistence, exactly the subsystem the old marker said was missing.
+    //
+    // BOTH MARKERS WERE PINNING A SYNTAX MISTAKE, NOT A MISSING CAPABILITY, and the 2026-08-10 ledger
+    // census is what established it: the suppressed SQL omits the `AS` the grammar requires, so the
+    // tests failed with `mismatched input 'BEGIN' expecting {AS, LANGUAGE}` - a parse error naming the
+    // token it wanted. The procedure's `IN x INT` is the second half: this grammar takes a bare
+    // parameter list, with no mode keyword. A marker that reads "does not parse" is a description of an
+    // OUTCOME, and the outcome had two causes, neither of them the one the text names.
+
     [Test]
-    [Ignore("UNBUILT CAPABILITY, restated 2026-07-29. CREATE FUNCTION does not parse, and WitSQL.md "
-            + "section 22 documents it in full - now annotated there as not implemented. It is WANTED: "
-            + "PostgreSQL and SQL Server both have user-defined functions, and application code "
-            + "written against them would notice the absence, which is the bar. It is out of the "
-            + "grammar phase because it is a subsystem - a function catalog, evaluator integration and "
-            + "persistence - not a grammar rule. dropin-gaps")]
     public void CreateFunctionIsSupportedTest()
     {
-        // Finding: WitSqlParser.g4:35 - WitSQL.md documents user-defined functions in section 22
-        // and stored procedures in section 23, complete with syntax, while neither exists anywhere
-        // in the stack. Dmitry names both as the remaining gaps to true drop-in status.
         Assert.That(
             () => m_engine.Execute(
-                "CREATE FUNCTION Doubled(x INT) RETURNS INT BEGIN RETURN x * 2; END"),
+                "CREATE FUNCTION Doubled(x INT) RETURNS INT AS BEGIN RETURN x * 2; END"),
             Throws.Nothing,
             "WitSQL.md section 22 documents CREATE FUNCTION as a feature");
     }
 
     [Test]
-    [Ignore("UNBUILT CAPABILITY, restated 2026-07-29. CREATE PROCEDURE does not parse, and WitSQL.md "
-            + "section 23 documents it in full - now annotated there as not implemented. Wanted for the "
-            + "same reason as CreateFunctionIsSupportedTest, and out of the grammar phase for a bigger "
-            + "one: it needs a procedural interpreter with variables, control flow and CALL. "
-            + "dropin-gaps")]
     public void CreateProcedureIsSupportedTest()
     {
         Assert.That(
             () => m_engine.Execute(
-                "CREATE PROCEDURE AddOne(IN x INT) BEGIN SELECT x + 1; END"),
+                "CREATE PROCEDURE AddOne(x INT) AS BEGIN SELECT x + 1; END"),
             Throws.Nothing,
             "WitSQL.md section 23 documents CREATE PROCEDURE as a feature");
     }
