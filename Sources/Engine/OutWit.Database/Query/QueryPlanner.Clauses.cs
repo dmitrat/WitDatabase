@@ -657,6 +657,8 @@ public sealed partial class QueryPlanner
         if (IsSelectStar(selectList))
             return new IteratorExcludeInternal(iterator);
 
+        // Any `*` beside another item has already become the columns it stands for by now - see
+        // PlanNonAggregateQuery, where the same expanded list serves the ordering. KnownIssues 17.
         return new IteratorProject(iterator, selectList, m_context);
     }
 

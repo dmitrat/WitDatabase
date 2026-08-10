@@ -218,23 +218,31 @@ public class OrderByOrdinalTests
     }
 
     /// <summary>
-    /// A star sharing its select list with other items has no column for a position to name, because
-    /// this engine does not expand a star there at all - <c>Docs/KnownIssues.md</c> 17, where SQLite
-    /// answers <c>SELECT *, Amount * 2 FROM T ORDER BY 4</c> correctly. The refusal names the reason
-    /// rather than sorting by the NULL the star becomes.
+    /// A star sharing its select list with other items. This case PINNED a refusal for one commit -
+    /// the star was not expanded, so there was no column for a position to name - and its own text
+    /// said it would go red when <c>Docs/KnownIssues.md</c> 17 was fixed and should then assert the
+    /// sorted answer. It did, and it does.
     /// </summary>
     /// <remarks>
-    /// <b>This case goes red when 17 is fixed</b>, and should then assert the sorted answer.
+    /// The two positions are asserted together on purpose: the star occupies THREE of the four, so
+    /// position 4 is the expression beside it, and a resolution that counted select ITEMS rather
+    /// than output columns would put the two answers the other way round.
     /// </remarks>
     [Test]
-    public void APositionOnAStarSharingItsSelectListIsRefusedTest()
+    public void APositionOverAnExpandedStarCountsTheColumnsItStandsForTest()
     {
-        Assert.That(() => m_engine.Query("SELECT *, Amount * 2 FROM T ORDER BY 1"),
-            Throws.InvalidOperationException.With.Message.Contains("does not expand a star"));
-
-        // And the position that IS resolvable in that list still resolves.
+        // Id, Kind, Amount, Amount * 2 - position 2 is Kind, position 4 the computed one.
         Assert.That(Answer("SELECT *, Amount * 2 FROM T ORDER BY 2"),
-            Is.EqualTo("NULL,Integer:20|NULL,Integer:40|NULL,Integer:60|NULL,Integer:80"));
+            Is.EqualTo("Integer:2,Text:a,Integer:10,Integer:20"
+                       + "|Integer:3,Text:b,Integer:20,Integer:40"
+                       + "|Integer:1,Text:c,Integer:30,Integer:60"
+                       + "|Integer:4,Text:d,Integer:40,Integer:80"));
+
+        Assert.That(Answer("SELECT *, Amount * 2 FROM T ORDER BY 4 DESC"),
+            Is.EqualTo("Integer:4,Text:d,Integer:40,Integer:80"
+                       + "|Integer:1,Text:c,Integer:30,Integer:60"
+                       + "|Integer:3,Text:b,Integer:20,Integer:40"
+                       + "|Integer:2,Text:a,Integer:10,Integer:20"));
     }
 
     #endregion

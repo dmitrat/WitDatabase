@@ -528,8 +528,31 @@ The grouping expressions ride along for the clause's benefit and are removed bef
 returned, so `LIMIT` and `DISTINCT` see exactly the columns the query asked for. A query that has
 neither clause carries nothing extra.
 
-A column that is **neither grouped by nor aggregated** remains unavailable to both clauses, which is
-what the reference databases do with it: there is no one value of it per group to answer with.
+#### What a grouped query may name at all
+
+**Every column must either appear in the `GROUP BY` clause or be used inside an aggregate** — in the
+select list, in `ORDER BY` and in `HAVING` alike. This is PostgreSQL's and SQL Server's rule, and a
+query that breaks it is refused by name:
+
+```sql
+SELECT Kind, Amount FROM Orders GROUP BY Kind;
+-- Column 'Amount' must appear in the GROUP BY clause or be used in an aggregate function.
+
+SELECT Kind, COUNT(*) FROM Orders;      -- the same refusal: one aggregate row cannot carry a Kind
+SELECT * FROM Orders GROUP BY Kind;     -- and the same, naming the first column it cannot answer for
+```
+
+Use an aggregate (`MAX(Amount)`), add the column to `GROUP BY`, or drop it. Two things are **not**
+source columns and stay available: an output **alias**, which `ORDER BY` and `HAVING` may name, and a
+grouping **expression**, which covers everything inside it.
+
+The strict reading is used: grouping by a table's `PRIMARY KEY` does **not** make its other columns
+available. PostgreSQL allows that by functional dependency; SQL Server does not, and neither does
+this engine.
+
+A `*` stands for the columns it names — so `SELECT *, Amount * 2 FROM Orders` returns every column
+and the computed one, and `SELECT * FROM Orders GROUP BY Id, Status, Amount` returns the grouped rows
+in full.
 
 #### `ORDER BY <position>`
 
@@ -548,15 +571,12 @@ while `ORDER BY -1` is a position and is refused. A position outside the select 
 the range in the message; a grouping key carried for `ORDER BY`'s or `HAVING`'s benefit is **not**
 reachable by position, because it is not a column the query returns.
 
-#### Two limits in this area
+#### One limit in this area
 
-- **`SELECT *` is expanded only when it is the ONLY select item.** `SELECT *, Amount * 2 FROM T`
-  answers two columns with the first NULL, and `SELECT * FROM T GROUP BY Kind` answers one NULL
-  column per group. Name the columns you want. Tracked as `Docs/KnownIssues.md` 17.
 - **`ORDER BY`, `LIMIT` and `DISTINCT` over a `UNION` apply to the first arm only**, not to the
   combined result — so a sorted union is sorted per arm, and `LIMIT 1` over one still returns
   everything the second arm has. Wrap the union in a derived table if you need it ordered as a
-  whole. Tracked as `Docs/KnownIssues.md` 18.
+  whole; that form is correct and is covered by a test. Tracked as `Docs/KnownIssues.md` 18.
 
 ### 3.2 INSERT
 

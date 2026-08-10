@@ -2,6 +2,41 @@
 
 ## Unreleased
 
+**A grouped query no longer answers with columns no group can answer for.** Four shapes returned a
+value taken from an arbitrary row, or no value at all, with the row and group counts right — which is
+what made the answers look like data:
+
+```sql
+SELECT Kind, Amount FROM T GROUP BY Kind  -- Amount came from an arbitrary row of each group
+SELECT Kind, COUNT(*) FROM T              -- one row, with Kind from the first row of the table
+SELECT * FROM T GROUP BY Kind             -- one row per group, ONE column, always NULL
+SELECT *, Amount * 2 FROM T               -- two columns, the first NULL on every row
+```
+
+`Docs/KnownIssues.md` 17, which had recorded only the star — measuring it found the star was the
+least likely way into a much larger hole.
+
+### Changed
+
+- **Every column must appear in `GROUP BY` or be used inside an aggregate**, in the select list, in
+  `ORDER BY` and in `HAVING` alike, and is refused by name otherwise. This is PostgreSQL's and SQL
+  Server's rule; the **strict** form of it, so grouping by a `PRIMARY KEY` does not make a table's
+  other columns available (PostgreSQL allows that, SQL Server does not).
+
+  **This is a new refusal, and the cost was measured before it was adopted**: it turns exactly one
+  test red across the engine, ADO.NET, EF, Studio and the 8,145-case EF specification suite, and that
+  one was the test recording the defect. An output alias and a grouping expression are still
+  nameable, and a qualified column matches its unqualified grouping key.
+
+### Fixed
+
+- **A `*` is expanded into the columns it stands for**, so `SELECT *, Amount * 2` returns every
+  column plus the computed one and `SELECT * FROM T GROUP BY Id, Kind, Amount` returns the grouped
+  rows in full. The lone `SELECT *` of an ordinary query is untouched and keeps its plan. This had
+  nothing to decide — all three reference databases do it — and it had to land with the refusal
+  above, which would otherwise have let a legal-but-unexpanded star through to the same NULLs.
+
+
 **A column the query GROUPS BY is reachable from `ORDER BY` and `HAVING` whether or not it is also
 in the SELECT list.** Both shapes are ordinary SQL and PostgreSQL, SQL Server and SQLite all accept
 them; here a grouped row was built out of the SELECT list and nothing else, so either clause naming
