@@ -250,7 +250,21 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
             var baseTypeName = GetBaseTypeName(storeTypeName);
             if (m_storeTypeMappings.TryGetValue(baseTypeName, out var storeMapping))
             {
-                return storeMapping;
+                // A NAME that carries its size must answer with that size, not with the unsized
+                // mapping the base name happens to share.
+                //
+                // `VARCHAR(100)` used to resolve here to the plain TEXT mapping, because the size was
+                // cut off to look the name up and then thrown away - so the same column described two
+                // ways answered two different store types: `HasMaxLength(100)` gave VARCHAR(100) and
+                // `HasColumnType("VARCHAR(100)")` gave TEXT. A model snapshot writes BOTH, and EF's
+                // differ compares the resolved types, so every sized column looked altered on the
+                // next `migrations add` - one spurious AlterColumn per column, in both directions,
+                // and the Down() half narrowed the column to TEXT. Reported from WitAnalytics
+                // against 12.3.0, reproduced on 12.5.0 by generating two migrations.
+                //
+                // DECIMAL(p,s) and VARBINARY(n) had the identical fault; the report named only
+                // VARCHAR.
+                return FindMappingForStoreTypeName(storeTypeName, baseTypeName) ?? storeMapping;
             }
         }
 
@@ -328,6 +342,70 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
         }
 
         return null;
+    }
+
+    /// <summary>
+    /// The mapping for a store type NAME that carries its own facets - <c>VARCHAR(100)</c>,
+    /// <c>VARBINARY(16)</c>, <c>DECIMAL(18,2)</c> - built the same way the CLR path builds it, so
+    /// that a column described by its length and the same column described by its type name resolve
+    /// to one mapping rather than two.
+    /// </summary>
+    /// <remarks>
+    /// Returns null when the name carries no facets, or carries ones this type has no use for, which
+    /// leaves the plain mapping in charge - the ordinary case.
+    /// </remarks>
+    private RelationalTypeMapping? FindMappingForStoreTypeName(string storeTypeName, string baseTypeName)
+    {
+        var facets = GetFacets(storeTypeName);
+
+        if (facets.Length == 0)
+            return null;
+
+        return baseTypeName.ToUpperInvariant() switch
+        {
+            "VARCHAR" or "NVARCHAR" or "CHAR" or "NCHAR" =>
+                new StringTypeMapping(storeTypeName, DbType.String, unicode: false, size: facets[0]),
+
+            "VARBINARY" or "BINARY" =>
+                new ByteArrayTypeMapping(storeTypeName, DbType.Binary, size: facets[0]),
+
+            TYPE_DECIMAL or "NUMERIC" or "MONEY" =>
+                new DecimalTypeMapping(
+                    storeTypeName, DbType.Decimal, facets[0], facets.Length > 1 ? facets[1] : null),
+
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// The numbers inside a store type name's parentheses, or an empty array when there are none or
+    /// any of them is not a number.
+    /// </summary>
+    private static int[] GetFacets(string storeTypeName)
+    {
+        var open = storeTypeName.IndexOf('(');
+        var close = storeTypeName.LastIndexOf(')');
+
+        if (open < 0 || close < open)
+            return [];
+
+        var parts = storeTypeName[(open + 1)..close].Split(',');
+        var facets = new int[parts.Length];
+
+        for (var i = 0; i < parts.Length; i++)
+        {
+            // A name this method cannot read - MAX, a blank, anything else - is not a failure: the
+            // caller falls back to the plain mapping, which is what happened before this existed.
+            if (!int.TryParse(parts[i].Trim(), NumberStyles.Integer, CultureInfo.InvariantCulture, out var facet)
+                || facet <= 0)
+            {
+                return [];
+            }
+
+            facets[i] = facet;
+        }
+
+        return facets;
     }
 
     private static string GetBaseTypeName(string storeTypeName)

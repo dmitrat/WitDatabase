@@ -1286,6 +1286,61 @@ position, which is out of range for one arm as well.
 
 ---
 
+## 19. Every second migration altered every sized column, both ways
+
+> **FIXED, 2026-08-10.** Reported from WitAnalytics against 12.3.0 and **reproduced on
+> 12.5.0**, so it had not been fixed in between. Pinned by
+> `Storage/StoreTypeNameFacetsTests` in the EF provider's suite; evidence, including
+> the generated migrations, in `@Evidence/differ`.
+
+Generate a migration, add one property, generate a second: the second carried one
+spurious `AlterColumn` **per sized column**, in both directions, and EF printed
+*"An operation was scaffolded that may result in the loss of data"*.
+
+```csharp
+migrationBuilder.AlterColumn<string>(name: "Name", table: "Products",
+    type: "VARCHAR(100)", maxLength: 100, nullable: false,
+    oldClrType: typeof(string), oldType: "TEXT", oldMaxLength: 100);
+```
+
+**The `Down()` half is the dangerous one**: it narrowed each column back to `TEXT`.
+
+### The cause
+
+A model snapshot writes **both** `HasMaxLength(100)` and `HasColumnType("VARCHAR(100)")`.
+The two resolved to different store types:
+
+| how the column is described | resolved to |
+|---|---|
+| `HasMaxLength(100)` - the live model | `VARCHAR(100)` |
+| `HasColumnType("VARCHAR(100)")` - the snapshot | **`TEXT`** |
+
+`WitTypeMappingSource.FindMapping` cut the size off the name to look it up
+(`GetBaseTypeName`) and then returned the shared unsized mapping, throwing the size
+away. EF's differ compares the resolved types, so every sized column looked altered.
+
+A store type name that carries facets now resolves to a mapping carrying those facets,
+built the same way the CLR path builds it - so the two spellings of one column are one
+mapping. A name whose facets cannot be read (`VARCHAR(MAX)`) or that has no use for
+them (`INT(11)`) falls back to the plain mapping, as before.
+
+### What the report did not say
+
+**`DECIMAL(p,s)` and `VARBINARY(n)` had the identical fault** - `oldType: "DECIMAL"`
+against `DECIMAL(18,2)` is in the same generated migration. The report named `VARCHAR`
+because that is what the reporter's model had.
+
+### The instrument that could not reach it
+
+An in-process differ over two models built in one process reported **no operations at
+all**, before and after the fix: both sides collapsed to the same answer, so the
+comparison was quiet whether the defect was present or not. The reproduction that works
+is the reported one - a scratch project referencing the provider, `dotnet ef migrations
+add` twice, and read the file. The shipped regression test therefore pins the
+**mechanism** at the mapping layer, where it is exact, and says why.
+
+---
+
 ## Verifying a fix
 
 WitAnalytics is a ready-made regression harness: its stats test fixture runs the
