@@ -124,13 +124,11 @@ public class SettingsAreActedOnTests
         //       truncating a result already fetched, with "no limit" an explicit choice. The setting
         //       is only the value a new tab starts at. That is a feature, not a wire.
         //
-        //   C, the three Restore* - the feature DOES NOT EXIST. Studio has no session restore across
-        //       restarts at all (only "reopen closed tab" inside one run), so these offer something
-        //       that was never built. Build it or withdraw them: Dmitry's decision, outstanding.
+        // The three Restore* settings are GONE - see SessionRestoreIsNotOfferedTest below for the
+        // decision and its reasons.
         var knownUnwired = new[]
         {
-            "KeywordCase", "DefaultRowLimit",
-            "RestoreConnections", "RestoreTabs", "RestoreUnsavedTabs"
+            "KeywordCase", "DefaultRowLimit"
         };
 
         Assert.That(unread, Is.EquivalentTo(knownUnwired),
@@ -182,6 +180,57 @@ public class SettingsAreActedOnTests
         Assert.That(neverAsked, Is.EquivalentTo(known),
             "the catalogue promises a question that nothing asks, or a listed remainder has been "
             + "built and not struck off: " + string.Join(", ", neverAsked));
+    }
+
+    /// <summary>
+    /// Studio does not offer to restore the last session, and that is a DECISION rather than an
+    /// omission.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Dmitry's decision, 2026-08-10.</b> The three settings - <c>RestoreConnections</c>,
+    /// <c>RestoreTabs</c>, <c>RestoreUnsavedTabs</c> - were offered with no feature behind them at
+    /// all: session restore across restarts has never existed, only "reopen closed tab" inside one
+    /// run. They are withdrawn rather than implemented, and the reason that settled it is the
+    /// PASSWORD.
+    /// </para>
+    /// <para>
+    /// <b>Why not build it.</b> Reopening an encrypted database needs its password, and there is no
+    /// credential store - <c>ConnectionProfile</c> has no field for one by design, and
+    /// <c>PasswordIsStored</c> is never set by anything. The alternative is a modal asking for a
+    /// password before the shell is usable. Building it for unencrypted databases only would leave a
+    /// setting that works SOMETIMES, which is the third way for a setting to lie and the exact class
+    /// this phase exists to remove.
+    /// </para>
+    /// <para>
+    /// <b>And the reason that is specific to this engine:</b> a database is opened under an EXCLUSIVE
+    /// file lock. Restoring connections at startup means Studio silently taking locks on several
+    /// files before anyone has asked it to, which is a product consequence of the exclusivity
+    /// decision rather than a convenience.
+    /// </para>
+    /// <para>
+    /// <b>What it deviates from, said out loud:</b> section 9's settings mock-up shows "поведение при
+    /// запуске" under General. No numbered decision (<c>WS-*</c>) requires it. If it returns it should
+    /// return WITH the credential store, as one piece - and the shape to prefer is a COMMAND ("reopen
+    /// the last workspace") rather than automatic behaviour, because a lock taken because a person
+    /// asked is a different thing from a lock taken at startup.
+    /// </para>
+    /// <para>
+    /// This case exists so the settings cannot come back dead: adding the property without the
+    /// feature fails here, and adding the feature means deleting this case deliberately.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void SessionRestoreIsNotOfferedTest()
+    {
+        var properties = SettingsProperties();
+
+        var withdrawn = new[] { "RestoreConnections", "RestoreTabs", "RestoreUnsavedTabs" };
+
+        Assert.That(properties.Intersect(withdrawn), Is.Empty,
+            "session restore was withdrawn on 2026-08-10 because an encrypted database cannot be "
+            + "reopened without a credential store, and because restoring connections takes exclusive "
+            + "file locks nobody asked for. A setting is back without the feature behind it.");
     }
 
     /// <summary>
