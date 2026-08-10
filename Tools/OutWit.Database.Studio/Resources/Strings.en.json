@@ -1075,5 +1075,20 @@
   "Confirm.Drop.Indexes": "{0} index(es) go with it",
   "Confirm.Drop.Triggers": "{0} trigger(s) go with it",
   "Confirm.Drop.Rows": "{0} row(s) will be deleted",
-  "Confirm.Drop.ConsequencesUnknown": "What depends on it could not be worked out: {0}"
+  "Confirm.Drop.ConsequencesUnknown": "What depends on it could not be worked out: {0}",
+  "Confirm.Drop.Headline.Table": "Delete table «{0}»? This cannot be undone.",
+  "Explorer.Dropped.Table": "Table deleted: {0}",
+  "Explorer.DropFailed.Table": "Could not delete the table: {0}",
+  "Confirm.Drop.Headline.View": "Delete view «{0}»? This cannot be undone.",
+  "Explorer.Dropped.View": "View deleted: {0}",
+  "Explorer.DropFailed.View": "Could not delete the view: {0}",
+  "Confirm.Drop.Headline.Index": "Delete index «{0}»? This cannot be undone.",
+  "Explorer.Dropped.Index": "Index deleted: {0}",
+  "Explorer.DropFailed.Index": "Could not delete the index: {0}",
+  "Confirm.Drop.Headline.Trigger": "Delete trigger «{0}»? This cannot be undone.",
+  "Explorer.Dropped.Trigger": "Trigger deleted: {0}",
+  "Explorer.DropFailed.Trigger": "Could not delete the trigger: {0}",
+  "Confirm.Drop.Headline.Sequence": "Delete sequence «{0}»? This cannot be undone.",
+  "Explorer.Dropped.Sequence": "Sequence deleted: {0}",
+  "Explorer.DropFailed.Sequence": "Could not delete the sequence: {0}"
 }
