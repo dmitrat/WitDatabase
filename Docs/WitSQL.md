@@ -508,6 +508,38 @@ SELECT * FROM Users
 WHERE Id IN (SELECT UserId FROM Orders WHERE TotalAmount > 1000);
 ```
 
+#### What `ORDER BY` and `HAVING` can name over a grouped query
+
+A grouped row is made of the SELECT list plus the query's own grouping expressions, so **either
+clause may name a grouping expression whether or not it is selected** — as PostgreSQL, SQL Server and
+SQLite all allow:
+
+```sql
+-- Both of these work; Status does not have to be in the select list
+SELECT COUNT(*) FROM Orders GROUP BY Status ORDER BY Status;
+SELECT COUNT(*) FROM Orders GROUP BY Status HAVING Status <> 'Draft';
+
+-- An expression OVER a grouping column, and a grouping expression itself
+SELECT COUNT(*) FROM Orders GROUP BY Status ORDER BY UPPER(Status);
+SELECT COUNT(*) FROM Orders GROUP BY UPPER(Status) HAVING UPPER(Status) > 'A';
+```
+
+The grouping expressions ride along for the clause's benefit and are removed before the result is
+returned, so `LIMIT` and `DISTINCT` see exactly the columns the query asked for. A query that has
+neither clause carries nothing extra.
+
+A column that is **neither grouped by nor aggregated** remains unavailable to both clauses, which is
+what the reference databases do with it: there is no one value of it per group to answer with.
+
+#### Two limits in this area
+
+- **`ORDER BY <position>` is not implemented.** An integer in `ORDER BY` is read as an ordinary
+  constant rather than as an output column position, so `ORDER BY 1` is accepted and changes nothing
+  — including the direction, so `ORDER BY 2 DESC` is not a descending sort either. Name the column,
+  the alias or the expression instead. Tracked as `Docs/KnownIssues.md` 16.
+- **`SELECT * … GROUP BY` does not expand the star.** It answers one row per group with a single
+  NULL column. Name the columns you want. Tracked as `Docs/KnownIssues.md` 17.
+
 ### 3.2 INSERT
 
 ```sql

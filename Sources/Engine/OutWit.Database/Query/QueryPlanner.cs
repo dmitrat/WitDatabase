@@ -501,20 +501,44 @@ public sealed partial class QueryPlanner
         {
             // Use streaming aggregation - O(1) memory
             iterator = new IteratorStreamingAggregate(iterator, select.SelectList, m_context);
+
+            // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
+            iterator = ApplyOrderByClauseForAggregate(iterator, select.OrderByClause, select.SelectList);
         }
         else
         {
+            // A grouped row is built out of the SELECT list, so a clause naming a column the query
+            // GROUPS BY without selecting it was evaluated against a row that does not have it -
+            // KnownIssues 15. The grouping expressions ride along on the grouped row instead, both
+            // clauses resolve against that wider list, and the extra columns are dropped again as
+            // soon as the sort has used them. Nothing is carried when the query has neither clause
+            // to serve, so the commonest grouped query keeps exactly the plan it had.
+            var groupedSelectList = select.OrderByClause is { Count: > 0 } || select.HavingClause != null
+                ? BuildGroupedSelectList(select.SelectList, select.GroupByClause)
+                : select.SelectList;
+
+            var carriesGroupingKeys = groupedSelectList.Count > select.SelectList.Count;
+
+            var having = carriesGroupingKeys && select.HavingClause != null
+                ? ResolveCarriedGroupingKeys(select.HavingClause, groupedSelectList, select.SelectList.Count)
+                : select.HavingClause;
+
             // Use full GROUP BY aggregation - stores all rows
             iterator = new IteratorGroupBy(
-                iterator, 
-                select.GroupByClause, 
-                select.SelectList, 
+                iterator,
+                select.GroupByClause,
+                groupedSelectList,
                 m_context,
-                select.HavingClause);
-        }
+                having);
 
-        // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
-        iterator = ApplyOrderByClauseForAggregate(iterator, select.OrderByClause, select.SelectList);
+            // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
+            iterator = ApplyOrderByClauseForAggregate(iterator, select.OrderByClause, groupedSelectList);
+
+            // The carried keys are the planner's business, not the caller's: they are dropped before
+            // LIMIT and DISTINCT, so both count and compare the columns the query asked for.
+            if (carriesGroupingKeys)
+                iterator = new IteratorHideGroupingKeys(iterator, select.SelectList.Count);
+        }
 
         // LIMIT/OFFSET
         iterator = ApplyLimitClause(iterator, select.LimitCount, select.LimitOffset);

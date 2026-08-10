@@ -1018,11 +1018,13 @@ nothing names that file any more - the database reopens.
 
 ## 15. A column the query GROUPS BY cannot be reached from `ORDER BY` or `HAVING`
 
-> **OPEN.** Pinned by `Engine/Query/GroupingKeyReachabilityTests` - five `ORDER BY`
-> shapes, one `HAVING`, and two controls. The pins invert when it is fixed.
+> **FIXED, 2026-08-10.** `Engine/Query/GroupingKeyReachabilityTests` is the fix's
+> fixture - the pins are inverted, not deleted - and the older pin in
+> `GroupedOrderByExpressionTests` went red on the first run exactly as its own text
+> said it would, and now asserts the order.
 
-A grouped row is built out of the SELECT list and nothing else, so a clause naming
-anything else is evaluated against a row that does not have it:
+A grouped row was built out of the SELECT list and nothing else, so a clause naming
+anything else was evaluated against a row that does not have it:
 
 ```sql
 SELECT COUNT(*) FROM T GROUP BY Kind ORDER BY Kind     -- Column 'Kind' not found
@@ -1042,18 +1044,120 @@ Adding `Kind` to the select list makes each work, which is the control.
   hole**, which matters more: filtering groups by the column you grouped by is an
   everyday shape, while ordering by it is often a convenience.
 
-### What a fix has to change
+### The fix: the grouped row carries its keys, and drops them again
 
-`IteratorGroupBy.BuildResultRow` builds exactly `m_selectList`, and the planner's
-`ResolveAggregateExpression` can only rewrite an `ORDER BY` item to a **column index
-in that list**. So the grouped row has to be able to answer for its grouping
-expressions as well - either by carrying them and trimming them off after the sort,
-or by evaluating those clauses against the group's own key rather than against the
-projected row.
+`IteratorGroupBy.BuildResultRow` builds exactly the select list it is given, and the
+planner's `ResolveAggregateExpression` can only rewrite an `ORDER BY` item to a
+**column index in that list**. `PassesHavingFilter` evaluates against the same
+projected row, so one mechanism serves both clauses:
 
-`HAVING` takes the same path (`PassesHavingFilter` evaluates against the result row),
-so one mechanism serves both. `ORDER BY 1`, `ORDER BY <alias>` and `ORDER BY
-<aggregate>` already work and must keep working - they are the controls.
+- `QueryPlanner.BuildGroupedSelectList` appends every `GROUP BY` expression that is
+  not selected already, so the grouped row can answer for it;
+- the carried columns keep their **natural names**, which is what lets an expression
+  *over* a grouping column - `ORDER BY UPPER(Kind)` - resolve by ordinary evaluation
+  rather than by the planner recursing into every node type;
+- `ResolveCarriedGroupingKeys` rewrites a carried expression appearing in `HAVING` to
+  a reference to the column it is carried in. This is needed only when the KEY is an
+  expression (`GROUP BY UPPER(Kind) HAVING UPPER(Kind) > 'A'`); a plain grouping
+  column is served by the carried name alone. Measured: with the rewrite removed,
+  exactly that one case goes red;
+- `IteratorHideGroupingKeys` drops the carried columns after the sort and **before**
+  `LIMIT` and `DISTINCT`, so both count and compare the columns the query asked for.
+  With the trim removed, four cases go red, `DISTINCT` among them.
+
+**Nothing is carried when the query has neither clause to serve**, so the commonest
+grouped query keeps exactly the plan it had; the case that asserts this is the
+control on the fix's cost, and it is the only one that goes red if the carrying is
+made unconditional. When keys *are* carried the plan shows `HIDE GROUPING KEYS`.
+
+Only expressions the serializer can identify are carried: it renders any subquery as
+the literal `SELECT ...`, so two different ones cannot be told apart, and a key
+carried under the wrong identity would order by the wrong column. Those keep the old
+behaviour rather than gain a wrong answer.
+
+### What did not change, deliberately
+
+A column that is neither grouped by nor aggregated is still unreachable from both
+clauses, which is what all three target databases do with it. That is asserted as a
+control: without it, "the grouping column is reachable" would be equally true of a
+planner that answers with an arbitrary row's value.
+
+The refusal is still the sort's own `Failed to compare two elements in the array`,
+which says nothing useful. It is now reached only by a query that all three target
+databases also refuse, so it is a poor message rather than a wrong answer.
+
+### Both directions measured
+
+With the carrying removed altogether, 15 of the fixture's 18 cases go red and the
+three controls stay green. Census: engine 2442, Core 2323, ADO.NET 1025, EF 568,
+Parser 808, IndexedDb 153, Studio 818 - all green; the EF specification suite's 1198
+local failures were compared **by test name** before and after and the two sets are
+identical.
+
+---
+
+## 16. `ORDER BY <position>` is accepted and does nothing
+
+> **OPEN.** Pinned by `Engine/Query/OrderByOrdinalTests` - five shapes plus the
+> out-of-range case, with a control that the same queries sort when the column is
+> named. Measured 2026-08-10 while fixing 15.
+
+```sql
+SELECT Kind FROM T ORDER BY 1          -- rows come back in insertion order
+SELECT Kind, Amount FROM T ORDER BY 2 DESC  -- likewise; the DESC is ignored too
+SELECT Kind FROM T ORDER BY 99         -- accepted, not refused
+```
+
+The parser makes the integer an ordinary literal, nothing turns it into a position,
+and `IteratorSort` evaluates it once per row: every row answers the same number,
+every comparison is equal, and the sort is a no-op. **The answer is exactly what the
+same query without any `ORDER BY` answers**, which is what the pins assert - "not
+sorted" would also be satisfied by a sort that is merely wrong.
+
+PostgreSQL, SQL Server and SQLite all implement the positional form, so a query
+written for any of them is quietly answered in the wrong order here. **That is worse
+in kind than 15 was**, which at least failed loudly.
+
+It affects every query, not only grouped ones. The record of issue 15 named
+`ORDER BY 1` as one of the shapes that "already works and must keep working"; it does
+not work and never did.
+
+### What a fix has to decide
+
+An unadorned integer in `ORDER BY` means an output column position; `ORDER BY 1+1`
+does not (PostgreSQL refuses it as a non-integer constant). So the rewrite is for a
+top-level integer literal only. The position has to resolve to the **N-th select
+item**, not to the N-th column of the row being sorted: in the non-aggregate path
+`ORDER BY` runs *before* projection, so the row at sort time is the source row and
+those two are not the same thing. `SELECT *` is the case that needs its own answer,
+because there is no select item to substitute.
+
+---
+
+## 17. `SELECT * … GROUP BY` answers with NULLs
+
+> **OPEN.** Pinned by `Engine/Query/SelectStarOverAGroupedQueryTests`. Measured
+> 2026-08-10 alongside 15.
+
+```sql
+SELECT * FROM T GROUP BY Kind   -- three groups, one column each, every value NULL
+```
+
+A grouped row is built out of the SELECT list, and a star is not an expression, so
+the group iterator writes one NULL for it. **The group count is right**, which is
+what makes the answer look like data.
+
+This engine matches nobody: PostgreSQL and SQL Server **refuse** the query, naming
+the first column that is neither grouped by nor aggregated; SQLite **accepts** it and
+answers with the columns of an arbitrary row from each group. Either would be
+defensible.
+
+### What a fix has to decide
+
+Which of the two to become. Refusing is the safer reading and turns a silent answer
+into a loud one; answering the way SQLite does keeps a shape existing callers may
+already have written. It is a decision about other people's data rather than a
+mechanical repair, which is why it is recorded rather than chosen here.
 
 ---
 

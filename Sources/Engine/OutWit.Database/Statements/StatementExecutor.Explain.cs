@@ -99,6 +99,7 @@ public sealed partial class StatementExecutor
             "IteratorLimit" => "LIMIT",
             "IteratorDistinct" => "DISTINCT",
             "IteratorGroupBy" => "AGGREGATE",
+            "IteratorHideGroupingKeys" => "HIDE GROUPING KEYS",
             "IteratorWindow" => "WINDOW",
             "IteratorJoin" => $"NESTED LOOP {GetJoinType(iterator)} JOIN",
             "IteratorNestedLoopJoin" => $"NESTED LOOP {GetJoinType(iterator)} JOIN",
