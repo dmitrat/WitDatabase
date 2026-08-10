@@ -71,12 +71,25 @@ public sealed partial class QueryPlanner
 
     #region ORDER BY Clause
 
-    private IResultIterator ApplyOrderByClause(IResultIterator iterator, IReadOnlyList<ClauseOrderByItem>? orderByClause)
+    /// <summary>
+    /// Applies ORDER BY over rows that have NOT been projected yet, which is where this clause runs
+    /// for an ordinary query - the row is still the source's, under the source's column names.
+    /// </summary>
+    private IResultIterator ApplyOrderByClause(
+        IResultIterator iterator,
+        IReadOnlyList<ClauseOrderByItem>? orderByClause,
+        IReadOnlyList<ClauseSelectItem>? selectList = null)
     {
         if (orderByClause == null || orderByClause.Count == 0)
             return iterator;
 
-        return new IteratorSort(iterator, orderByClause, m_context);
+        var resolved = selectList == null
+            ? ResolveOrdinalPositions(orderByClause, position =>
+                ResolveAgainstProjectedRow(position, iterator.Schema.Count))
+            : ResolveOrdinalPositions(orderByClause, position =>
+                ResolveAgainstSelectList(position, selectList, iterator.Schema));
+
+        return new IteratorSort(iterator, resolved, m_context);
     }
 
     /// <summary>
@@ -84,22 +97,174 @@ public sealed partial class QueryPlanner
     /// </summary>
     /// <param name="iterator">The source iterator (after GROUP BY).</param>
     /// <param name="orderByClause">The ORDER BY clause.</param>
-    /// <param name="selectList">The SELECT list (contains computed aggregate columns).</param>
+    /// <param name="selectList">The list the grouped row is built from - the query's own, plus any
+    /// grouping keys carried for this clause's benefit.</param>
+    /// <param name="visibleColumnCount">How many of those columns the query actually returns, which
+    /// is what an <c>ORDER BY &lt;position&gt;</c> counts.</param>
     /// <returns>Iterator with ORDER BY applied.</returns>
     private IResultIterator ApplyOrderByClauseForAggregate(
-        IResultIterator iterator, 
+        IResultIterator iterator,
         IReadOnlyList<ClauseOrderByItem>? orderByClause,
-        IReadOnlyList<ClauseSelectItem> selectList)
+        IReadOnlyList<ClauseSelectItem> selectList,
+        int visibleColumnCount)
     {
         if (orderByClause == null || orderByClause.Count == 0)
             return iterator;
 
+        // A grouped row IS the projection, so a position is simply a column of it. Done first, so
+        // that what the resolution below sees is the same shape whether the user wrote the position
+        // or the expression.
+        var positioned = ResolveOrdinalPositions(orderByClause, position =>
+            ResolveAgainstProjectedRow(position, visibleColumnCount));
+
         // Transform ORDER BY expressions: replace aggregate functions with column references
         // to the result columns from GROUP BY
-        var resolvedOrderBy = ResolveAggregateOrderBy(orderByClause, selectList);
-        
+        var resolvedOrderBy = ResolveAggregateOrderBy(positioned, selectList);
+
         return new IteratorSort(iterator, resolvedOrderBy, m_context);
     }
+
+    #endregion
+
+    #region ORDER BY &lt;position&gt;
+
+    /// <summary>
+    /// Rewrites every bare integer in an <c>ORDER BY</c> - a 1-based OUTPUT COLUMN POSITION - into
+    /// something that names the column it stands for.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b><c>Docs/KnownIssues.md</c> 16.</b> The parser makes the integer an ordinary literal and
+    /// nothing turned it into a position, so <see cref="IteratorSort"/> evaluated it once per row:
+    /// every row answered the same number, every comparison was equal, and the sort was a no-op.
+    /// <c>ORDER BY 1</c> answered exactly what the query without any <c>ORDER BY</c> answers, and
+    /// <c>ORDER BY 2 DESC</c> was not a descending sort either. PostgreSQL, SQL Server and SQLite all
+    /// implement the form, so a query written for any of them was quietly answered in the wrong
+    /// order. Measured 2026-08-10.
+    /// </para>
+    /// <para>
+    /// <b>There are two resolutions because the clause runs in two different places.</b> Over a
+    /// grouped, windowed or <c>VALUES</c> result the row already IS the output, so a position is a
+    /// column of it. For an ordinary query the sort runs BEFORE the projection - deliberately, so it
+    /// can reach the source's own column names - and there a position has to become the N-th select
+    /// item's own expression instead.
+    /// </para>
+    /// </remarks>
+    private static IReadOnlyList<ClauseOrderByItem> ResolveOrdinalPositions(
+        IReadOnlyList<ClauseOrderByItem> orderByClause,
+        Func<long, WitSqlExpression> resolve)
+    {
+        List<ClauseOrderByItem>? rewritten = null;
+
+        for (var i = 0; i < orderByClause.Count; i++)
+        {
+            if (ReadOrdinalPosition(orderByClause[i].Expression) is not { } position)
+                continue;
+
+            rewritten ??= [.. orderByClause];
+            rewritten[i] = new ClauseOrderByItem
+            {
+                Expression = resolve(position),
+                Descending = orderByClause[i].Descending,
+                NullsOrder = orderByClause[i].NullsOrder
+            };
+        }
+
+        return rewritten ?? orderByClause;
+    }
+
+    /// <summary>
+    /// The position an <c>ORDER BY</c> item names, or null when it names something else.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Only a BARE integer literal is a position, and a leading sign belongs to it. <c>ORDER BY 1 +
+    /// 1</c> is an expression and <c>ORDER BY '1'</c> is a string constant; both keep the behaviour
+    /// they had, which is a constant that sorts nothing. <b>Measured against SQLite</b> rather than
+    /// assumed: it answers those two in insertion order and refuses <c>-1</c>, <c>0</c> and <c>99</c>
+    /// with "1st ORDER BY term out of range".
+    /// </para>
+    /// <para>
+    /// Which is why the sign is read here at all: the parser gives <c>-1</c> as a unary negation over
+    /// a literal, so without this it would fall through as an expression and be the same silent
+    /// no-op this issue is about. A zero or a negative IS a position, and is refused as one.
+    /// </para>
+    /// </remarks>
+    private static long? ReadOrdinalPosition(WitSqlExpression? expression)
+    {
+        var sign = 1;
+
+        if (expression is WitSqlExpressionUnary { Operator: UnaryOperatorType.Negate or UnaryOperatorType.Plus } unary)
+        {
+            sign = unary.Operator == UnaryOperatorType.Negate ? -1 : 1;
+            expression = unary.Operand;
+        }
+
+        if (expression is not WitSqlExpressionLiteral { Type: LiteralType.Integer } literal)
+            return null;
+
+        return literal.Value switch
+        {
+            long value => sign * value,
+            int value => sign * value,
+            _ => null
+        };
+    }
+
+    /// <summary>
+    /// A position over a row that is already the query's output.
+    /// </summary>
+    private static WitSqlExpression ResolveAgainstProjectedRow(long position, int columnCount)
+    {
+        if (position < 1 || position > columnCount)
+            throw PositionIsNotInTheSelectList(position, columnCount);
+
+        return new WitSqlExpressionOrderByColumnIndex { ColumnIndex = (int)(position - 1) };
+    }
+
+    /// <summary>
+    /// A position over a row that has not been projected yet: it becomes the N-th select item's own
+    /// expression, which is what the user would have had to write instead.
+    /// </summary>
+    private static WitSqlExpression ResolveAgainstSelectList(
+        long position,
+        IReadOnlyList<ClauseSelectItem> selectList,
+        IReadOnlyList<WitSqlColumnInfo> sourceSchema)
+    {
+        // SELECT * is the one shape whose output columns are not its select list: they are the
+        // source's own, minus the internal ones. The sort has the source row in front of it here, so
+        // naming that column is enough.
+        if (IsSelectStar(selectList))
+        {
+            var visible = sourceSchema
+                .Where(column => !IteratorExcludeInternal.IsInternalColumn(column.Name))
+                .ToArray();
+
+            if (position < 1 || position > visible.Length)
+                throw PositionIsNotInTheSelectList(position, visible.Length);
+
+            return new WitSqlExpressionColumnRef { ColumnName = visible[(int)(position - 1)].Name };
+        }
+
+        if (position < 1 || position > selectList.Count)
+            throw PositionIsNotInTheSelectList(position, selectList.Count);
+
+        var item = selectList[(int)(position - 1)];
+
+        if (item.Expression != null)
+            return item.Expression;
+
+        // A star sharing its select list with other items. The engine does not expand one there at
+        // all - it writes a single NULL for it, `Docs/KnownIssues.md` 17 - so there is no column for
+        // the position to name, and saying so is better than sorting by the NULL.
+        throw new InvalidOperationException(
+            $"ORDER BY position {position} refers to a `*` in a select list that has other items "
+            + "beside it, and this engine does not expand a star there. Name the column instead.");
+    }
+
+    private static InvalidOperationException PositionIsNotInTheSelectList(long position, int columnCount) =>
+        new($"ORDER BY position {position} is not in the select list - the query returns "
+            + $"{columnCount} column(s).");
 
     /// <summary>
     /// Resolves aggregate expressions in ORDER BY to column references from the SELECT list.
