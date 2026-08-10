@@ -4,14 +4,15 @@ using OutWit.Database.Engine;
 namespace OutWit.Database.Tests.Query;
 
 /// <summary>
-/// <b>PINS A DEFECT, NOT CORRECT BEHAVIOUR.</b> <c>SELECT * … GROUP BY</c> is neither refused nor
-/// answered: it returns one group per row of output, each a single column holding NULL.
+/// <b>PINS A DEFECT, NOT CORRECT BEHAVIOUR.</b> A <c>*</c> is expanded only when it is the ONLY
+/// select item. Anywhere else it becomes a single column holding NULL.
 /// </summary>
 /// <remarks>
 /// <para>
-/// Measured 2026-08-10 alongside <c>Docs/KnownIssues.md</c> 15; recorded there as 17. A grouped row
-/// is built out of the SELECT list, and a star is not an expression - so the group iterator writes
-/// one NULL for it and names the column after its position.
+/// Measured 2026-08-10 alongside <c>Docs/KnownIssues.md</c> 15 and 16; recorded there as 17. A star
+/// is a select item with no expression, and both the projection and the group iterator write one
+/// NULL for such an item - so <c>SELECT * … GROUP BY</c> is the whole result, and
+/// <c>SELECT *, Amount * 2</c> loses its first column.
 /// </para>
 /// <para>
 /// <b>This engine matches nobody.</b> PostgreSQL and SQL Server REFUSE the query, naming the first
@@ -99,6 +100,29 @@ public class SelectStarOverAGroupedQueryTests
         Assert.That(result.Select(row => row[0].IsNull), Is.All.True,
             "PINS A DEFECT: and the one column carries no value at all - invert this case when the "
             + "query is either refused or answered");
+    }
+
+    /// <summary>
+    /// PINS A DEFECT, and this is the half with no decision attached: a star sharing its select list
+    /// with other items should expand, as it does in SQLite, and instead becomes one NULL column.
+    /// Found 2026-08-10 while measuring <c>Docs/KnownIssues.md</c> 16 - it is what makes
+    /// <c>ORDER BY 4</c> unresolvable over such a list.
+    /// </summary>
+    [Test]
+    public void AStarSharingItsSelectListIsNotExpandedTest()
+    {
+        var result = m_engine.Query("SELECT *, Amount * 2 FROM T");
+
+        Assert.That(result.Count, Is.EqualTo(4));
+
+        Assert.That(result.Select(row => row.ColumnCount), Is.All.EqualTo(2),
+            "PINS A DEFECT: the star is one column here, where it should be three - invert to 4");
+
+        Assert.That(result.Select(row => row[0].IsNull), Is.All.True,
+            "PINS A DEFECT: and that column is NULL on every row");
+
+        Assert.That(result.Select(row => row[1].AsInt64()), Is.EquivalentTo(new long[] { 60, 20, 40, 62 }),
+            "the item BESIDE the star is computed correctly, which is what makes the loss silent");
     }
 
     #endregion

@@ -503,7 +503,8 @@ public sealed partial class QueryPlanner
             iterator = new IteratorStreamingAggregate(iterator, select.SelectList, m_context);
 
             // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
-            iterator = ApplyOrderByClauseForAggregate(iterator, select.OrderByClause, select.SelectList);
+            iterator = ApplyOrderByClauseForAggregate(
+                iterator, select.OrderByClause, select.SelectList, select.SelectList.Count);
         }
         else
         {
@@ -532,7 +533,8 @@ public sealed partial class QueryPlanner
                 having);
 
             // ORDER BY (after aggregation) - resolve aggregate expressions to result columns
-            iterator = ApplyOrderByClauseForAggregate(iterator, select.OrderByClause, groupedSelectList);
+            iterator = ApplyOrderByClauseForAggregate(
+                iterator, select.OrderByClause, groupedSelectList, select.SelectList.Count);
 
             // The carried keys are the planner's business, not the caller's: they are dropped before
             // LIMIT and DISTINCT, so both count and compare the columns the query asked for.
@@ -563,7 +565,9 @@ public sealed partial class QueryPlanner
             // Window function iterator processes all rows and computes window values
             iterator = new IteratorWindow(iterator, select.SelectList, m_context);
             
-            // ORDER BY - apply after window functions for final ordering
+            // ORDER BY - apply after window functions for final ordering. IteratorWindow's schema is
+            // the select list, so the row here already IS the output and no select list is passed:
+            // an ORDER BY position counts columns of it.
             iterator = ApplyOrderByClause(iterator, select.OrderByClause);
 
             // DISTINCT - after window processing, and BEFORE the limit: SQL evaluates DISTINCT
@@ -578,8 +582,10 @@ public sealed partial class QueryPlanner
         else
         {
             // Original non-window path
-            // ORDER BY - before projection to access original column names
-            iterator = ApplyOrderByClause(iterator, select.OrderByClause);
+            // ORDER BY - before projection to access original column names, which is why the select
+            // list has to come with it: an ORDER BY position counts OUTPUT columns, and the row in
+            // front of the sort here is the source's.
+            iterator = ApplyOrderByClause(iterator, select.OrderByClause, select.SelectList);
 
             // Projection (SELECT columns)
             iterator = ApplyProjection(iterator, select.SelectList);
