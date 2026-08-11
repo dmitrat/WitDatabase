@@ -47,7 +47,7 @@
                         <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11"
                                    Text="{Binding Storage}"
                                    IsVisible="{Binding !IsMissing}"/>
-                        <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11" Foreground="#D9534F"
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11" Foreground="{DynamicResource Wit.Error.Text}"
                                    Text="{DynamicResource S.Dialog.Connections.Missing}"
                                    IsVisible="{Binding IsMissing}"/>
 
@@ -60,15 +60,15 @@
         </ListBox>
 
         <Border Grid.Row="2" Margin="14,8,14,0" Padding="10,8" CornerRadius="6"
-                Background="#22D9534F" BorderBrush="#55D9534F" BorderThickness="1"
+                Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
             <TextBlock AutomationProperties.AutomationId="ConnectionsError"
                        Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12"/>
         </Border>
 
         <Border Grid.Row="3" Padding="14,10" Margin="0,8,0,0"
-                Background="{DynamicResource SystemControlBackgroundListLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,1,0,0">
+                Background="{DynamicResource Wit.Surface.Sunken}"
+                BorderBrush="{DynamicResource Wit.Line.Inner}" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
                 <Button Grid.Column="0" Margin="0,0,7,0"
                         AutomationProperties.AutomationId="ConnectionsAdd"

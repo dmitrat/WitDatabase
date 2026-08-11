@@ -15,8 +15,8 @@
     <Grid RowDefinitions="Auto,*,Auto,Auto">
 
         <Border Grid.Row="0"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="16">
             <StackPanel Spacing="4">
@@ -80,7 +80,7 @@
 
                 <StackPanel Spacing="6">
                     <TextBlock Text="{DynamicResource S.Dialog.Trigger.Body}" FontWeight="SemiBold"/>
-                    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    <Border BorderBrush="{DynamicResource Wit.Line}"
                             BorderThickness="1" CornerRadius="4" MinHeight="140">
                         <TextBox AutomationProperties.AutomationId="TriggerBody"
                                  Text="{Binding Body}"
@@ -93,13 +93,13 @@
                 </StackPanel>
 
                 <!-- What is wrong with it, before the engine is asked -->
-                <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
+                <Border Background="{DynamicResource Wit.Warn.Surface}" BorderBrush="{DynamicResource Wit.Warn.Border}" BorderThickness="1"
                         CornerRadius="4" Padding="12"
                         IsVisible="{Binding HasProblems}">
                     <ItemsControl ItemsSource="{Binding Problems}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="#856404"/>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
@@ -107,7 +107,7 @@
 
                 <StackPanel Spacing="6">
                     <TextBlock Text="{DynamicResource S.Common.WhatWillRun}" FontWeight="SemiBold"/>
-                    <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                    <Border Background="{DynamicResource Wit.Surface.Panel}"
                             CornerRadius="4" Padding="8">
                         <TextBlock Text="{Binding GeneratedDdl}"
                                    FontFamily="Consolas,Courier New" FontSize="12"
@@ -118,15 +118,15 @@
             </StackPanel>
         </ScrollViewer>
 
-        <Border Grid.Row="2" Background="#FDECEA" BorderBrush="#E57373" BorderThickness="1"
+        <Border Grid.Row="2" Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                 Padding="12" Margin="16,0"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="#8B2E2E"/>
+            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Error.Text}"/>
         </Border>
 
         <Border Grid.Row="3"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,1,0,0"
                 Padding="16">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">

@@ -93,6 +93,13 @@
             <Color x:Key="Wit.Color.Label.Cyan">#35A7C4</Color>
             <Color x:Key="Wit.Color.Label.Off">#5D6879</Color>
 
+            <!-- The overlay that dims a window while work is happening. Section 8 does not name it,
+                 and the application has nine of them - the loading covers on seven dialogs, the
+                 structure view and the command palette. It is a token rather than a literal for the
+                 same reason as the rest, and it is the same value in both variants because a scrim
+                 dims: black is what neutral dimming is in either theme. -->
+            <Color x:Key="Wit.Color.Scrim">#80000000</Color>
+
             <SolidColorBrush x:Key="Wit.Surface.Base" Color="{StaticResource Wit.Color.Surface.Base}"/>
             <SolidColorBrush x:Key="Wit.Surface.Panel" Color="{StaticResource Wit.Color.Surface.Panel}"/>
             <SolidColorBrush x:Key="Wit.Surface.Bar" Color="{StaticResource Wit.Color.Surface.Bar}"/>
@@ -126,6 +133,7 @@
             <SolidColorBrush x:Key="Wit.Label.Violet" Color="{StaticResource Wit.Color.Label.Violet}"/>
             <SolidColorBrush x:Key="Wit.Label.Cyan" Color="{StaticResource Wit.Color.Label.Cyan}"/>
             <SolidColorBrush x:Key="Wit.Label.Off" Color="{StaticResource Wit.Color.Label.Off}"/>
+            <SolidColorBrush x:Key="Wit.Scrim" Color="{StaticResource Wit.Color.Scrim}"/>
 
         </ResourceDictionary>
 
@@ -181,6 +189,8 @@
             <Color x:Key="Wit.Color.Label.Cyan">#35A7C4</Color>
             <Color x:Key="Wit.Color.Label.Off">#5D6879</Color>
 
+            <Color x:Key="Wit.Color.Scrim">#80000000</Color>
+
             <SolidColorBrush x:Key="Wit.Surface.Base" Color="{StaticResource Wit.Color.Surface.Base}"/>
             <SolidColorBrush x:Key="Wit.Surface.Panel" Color="{StaticResource Wit.Color.Surface.Panel}"/>
             <SolidColorBrush x:Key="Wit.Surface.Bar" Color="{StaticResource Wit.Color.Surface.Bar}"/>
@@ -214,6 +224,7 @@
             <SolidColorBrush x:Key="Wit.Label.Violet" Color="{StaticResource Wit.Color.Label.Violet}"/>
             <SolidColorBrush x:Key="Wit.Label.Cyan" Color="{StaticResource Wit.Color.Label.Cyan}"/>
             <SolidColorBrush x:Key="Wit.Label.Off" Color="{StaticResource Wit.Color.Label.Off}"/>
+            <SolidColorBrush x:Key="Wit.Scrim" Color="{StaticResource Wit.Color.Scrim}"/>
 
         </ResourceDictionary>
 

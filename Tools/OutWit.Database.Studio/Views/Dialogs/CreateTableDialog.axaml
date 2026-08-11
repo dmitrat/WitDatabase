@@ -16,8 +16,8 @@
         
         <!-- Header -->
         <Border Grid.Row="0"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="16">
             <TextBlock Text="{DynamicResource S.Dialog.CreateTable.Heading}"
@@ -53,7 +53,7 @@
                                 Margin="8,0,0,0"/>
                     </DockPanel>
 
-                    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    <Border BorderBrush="{DynamicResource Wit.Line}"
                             BorderThickness="1"
                             CornerRadius="4">
                         <DataGrid ItemsSource="{Binding Columns}"
@@ -148,7 +148,7 @@
                                 Margin="8,0,0,0"/>
                     </DockPanel>
 
-                    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    <Border BorderBrush="{DynamicResource Wit.Line}"
                             BorderThickness="1"
                             CornerRadius="4"
                             Padding="8"
@@ -172,8 +172,8 @@
 
         <!-- Error Message -->
         <Border Grid.Row="2"
-                Background="#FFF3CD"
-                BorderBrush="#FFC107"
+                Background="{DynamicResource Wit.Warn.Surface}"
+                BorderBrush="{DynamicResource Wit.Warn.Border}"
                 BorderThickness="1"
                 Padding="12"
                 Margin="16,0"
@@ -181,17 +181,17 @@
             <StackPanel Spacing="4">
                 <TextBlock Text="{DynamicResource S.Common.ErrorHeading}"
                            FontWeight="Bold"
-                           Foreground="#856404"/>
+                           Foreground="{DynamicResource Wit.Warn.Text}"/>
                 <TextBlock Text="{Binding ErrorMessage}"
                            TextWrapping="Wrap"
-                           Foreground="#856404"/>
+                           Foreground="{DynamicResource Wit.Warn.Text}"/>
             </StackPanel>
         </Border>
 
         <!-- Buttons -->
         <Border Grid.Row="3"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,1,0,0"
                 Padding="16">
             <StackPanel Orientation="Horizontal"
@@ -214,7 +214,7 @@
 
         <!-- Loading Overlay -->
         <Border Grid.Row="0" Grid.RowSpan="4"
-                Background="#80000000"
+                Background="{DynamicResource Wit.Scrim}"
                 IsVisible="{Binding IsCreating}">
             <StackPanel HorizontalAlignment="Center"
                         VerticalAlignment="Center"

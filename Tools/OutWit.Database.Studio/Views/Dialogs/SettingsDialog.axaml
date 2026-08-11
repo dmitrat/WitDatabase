@@ -19,8 +19,8 @@
          bound straight to the live settings object, so a change is the change (WS-52). -->
     <Grid ColumnDefinitions="190,*">
 
-        <Border Grid.Column="0" Background="{DynamicResource SystemControlBackgroundListLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,0,1,0">
+        <Border Grid.Column="0" Background="{DynamicResource Wit.Surface.Sunken}"
+                BorderBrush="{DynamicResource Wit.Line.Inner}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8,10">
                 <StackPanel DockPanel.Dock="Bottom" Margin="8,10,8,4" Spacing="2">
                     <TextBlock FontFamily="Consolas" FontSize="10" Opacity="0.6">

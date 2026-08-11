@@ -7,6 +7,7 @@ using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Styling;
 using OutWit.Database.Studio;
+using OutWit.Database.Studio.Converters;
 using OutWit.Database.Studio.Tests.Themes;
 
 [assembly: AvaloniaTestApplication(typeof(TokenHost))]
@@ -82,6 +83,11 @@ public class DesignTokenTests
     /// itself a count of CSS variables in the canon's stylesheet rather than of anything Studio
     /// could hold. The list is what a reader can check against the document.
     /// </para>
+    /// <para>
+    /// <c>Scrim</c> is the one role section 8 does not name. It was added during the sweep because
+    /// the application has NINE overlays that dim a window while work happens, in two different
+    /// weights, and a colour with nine sites and no name is exactly what this phase is removing.
+    /// </para>
     /// </summary>
     private static readonly string[] COLOUR_TOKENS =
     [
@@ -93,6 +99,7 @@ public class DesignTokenTests
         "Label.Cyan", "Label.Off", "Label.Violet",
         "Line", "Line.Inner",
         "Ok", "Ok.Border", "Ok.Surface", "Ok.Text",
+        "Scrim",
         "Surface.Bar", "Surface.Base", "Surface.Panel", "Surface.Sunken",
         "Warn", "Warn.Border", "Warn.Surface", "Warn.Text",
     ];
@@ -296,6 +303,48 @@ public class DesignTokenTests
         });
     }
 
+    /// <summary>
+    /// The swatch row in the Open dialog draws the SAME six colours, in the same order, as
+    /// <see cref="ConnectionColors.Palette"/>.
+    ///
+    /// <para>
+    /// <b>This was found by the sweep and it is a real one.</b> <c>ConnectionColors</c> opens by
+    /// saying it is "one palette, in one place, used by three things that must agree: the swatch row
+    /// in the Open dialog where the colour is chosen, the stripe down the side of a tab where it is
+    /// read, and the connection chip in the toolbar" - and the swatch row was a <b>fourth,
+    /// hand-written copy</b>, six hexes typed into the markup. It agreed by luck. Nothing would have
+    /// said so if it stopped agreeing, and the symptom would be a person picking violet and getting
+    /// a cyan stripe on the tab their query is about to go to.
+    /// </para>
+    /// <para>
+    /// Tokenising the swatches did not fix that - it moved the copy from six literals to six token
+    /// names. This case is what closes it: the markup is read, in order, and each token is resolved
+    /// and compared to the palette entry at the same index. It is red if either side changes alone,
+    /// which is the only failure worth guarding.
+    /// </para>
+    /// </summary>
+    [AvaloniaTest]
+    public void TheSwatchRowDrawsTheConnectionPaletteInOrderTest()
+    {
+        var dialog = MarkupFiles().Single(f => f.EndsWith("OpenDatabaseDialog.axaml"));
+
+        var swatches = Regex.Matches(File.ReadAllText(dialog),
+                @"S\.Color\.[A-Za-z]+}""><Border[^>]*Background=""\{DynamicResource (Wit\.[A-Za-z.]+)\}""")
+            .Select(m => m.Groups[1].Value)
+            .ToArray();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(swatches, Has.Length.EqualTo(ConnectionColors.Palette.Count),
+                "the row offers a different number of colours than the palette holds");
+
+            for (var index = 0; index < swatches.Length; index++)
+                Assert.That((Resolve(swatches[index], ThemeVariant.Dark) as ISolidColorBrush)?.Color,
+                    Is.EqualTo(ConnectionColors.Palette[index]),
+                    $"swatch {index} draws {swatches[index]}");
+        });
+    }
+
     #endregion
 
     #region The census - what stage V1 has to strike off
@@ -335,11 +384,32 @@ public class DesignTokenTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(hex, Is.EqualTo(125), "hex colours written into a view");
+            // ONE, and it is named: the pointer-over tint on the tab close button. A hover state is
+            // a control style's business and belongs to stage V2, not to the palette - putting it on
+            // a severity or an accent token would be a colour chosen to satisfy a rule.
+            Assert.That(hex, Is.EqualTo(1), "hex colours written into a view");
+            Assert.That(HexSites(), Is.EqualTo(new[] { "WorkspaceTabStrip.axaml:#22000000" }));
+
             Assert.That(fontSize, Is.EqualTo(283), "font sizes written by hand");
             Assert.That(height, Is.EqualTo(173), "heights written by hand");
         });
     }
+
+    /// <summary>
+    /// The remainder itself, by file and value rather than as a number.
+    ///
+    /// <para>
+    /// A count of one is satisfied by any one hex anywhere. Naming it means a new literal appearing
+    /// while an old one is removed cannot pass, which is the direction a bare count is blind in.
+    /// </para>
+    /// </summary>
+    private static string[] HexSites() =>
+        MarkupFiles()
+            .Where(f => f.Contains("Views"))
+            .SelectMany(f => Regex.Matches(File.ReadAllText(f), @"#[0-9A-Fa-f]{3,8}\b")
+                .Select(m => $"{Path.GetFileName(f)}:{m.Value}"))
+            .OrderBy(s => s)
+            .ToArray();
 
     #endregion
 

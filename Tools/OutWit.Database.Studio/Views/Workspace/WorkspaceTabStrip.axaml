@@ -11,8 +11,8 @@
              x:DataType="vm:WorkspaceTabsViewModel"
              x:Name="Root">
     
-    <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-            BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+    <Border Background="{DynamicResource Wit.Surface.Panel}"
+            BorderBrush="{DynamicResource Wit.Line}"
             BorderThickness="0,0,0,1">
 		
         <!-- Tab Headers with scroll arrows and + button -->
@@ -34,7 +34,7 @@
                           Width="8" Height="8"/>
                 <Button.Styles>
                     <Style Selector="Button:pointerover /template/ ContentPresenter">
-                        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+                        <Setter Property="Background" Value="{DynamicResource Wit.Surface.Sunken}"/>
                     </Style>
                 </Button.Styles>
             </Button>
@@ -59,19 +59,19 @@
                                 <Setter Property="Background" Value="Transparent"/>
                             </Style>
                             <Style Selector="ListBoxItem:pointerover /template/ ContentPresenter">
-                                <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+                                <Setter Property="Background" Value="{DynamicResource Wit.Surface.Sunken}"/>
                             </Style>
                             <Style Selector="ListBoxItem:selected /template/ ContentPresenter">
-                                <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+                                <Setter Property="Background" Value="{DynamicResource Wit.Surface.Sunken}"/>
                             </Style>
                             <!-- Selected tab underline -->
                             <Style Selector="ListBoxItem:selected Border.tab-header">
                                 <Setter Property="BorderThickness" Value="0,0,0,2"/>
-                                <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+                                <Setter Property="BorderBrush" Value="{DynamicResource Wit.Accent}"/>
                             </Style>
                             <!-- Pinned tab styling -->
                             <Style Selector="Border.tab-header-pinned">
-                                <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundBaseLowBrush}"/>
+                                <Setter Property="Background" Value="{DynamicResource Wit.Surface.Sunken}"/>
                             </Style>
                         </ListBox.Styles>
                         
@@ -85,7 +85,7 @@
                             <DataTemplate DataType="tabs:WorkspaceTabViewModel">
                                 <Border Classes="tab-header"
                                         Classes.tab-header-pinned="{Binding IsPinned}"
-                                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                        BorderBrush="{DynamicResource Wit.Line}"
                                         BorderThickness="0,0,1,0" 
                                         Padding="8,6" 
                                         Cursor="Hand"
@@ -177,12 +177,12 @@
                                         <PathIcon Data="{x:Static ui:StudioIcons.TAB_QUERY}"
                                                   Width="14" Height="14"
                                                   VerticalAlignment="Center"
-                                                  Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                                  Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                                         
                                         <!-- Pin indicator -->
                                         <PathIcon Data="{x:Static ui:StudioIcons.TAB_PIN}"
                                                   Width="10" Height="10"
-                                                  Foreground="{DynamicResource SystemAccentColor}"
+                                                  Foreground="{DynamicResource Wit.Accent.Text}"
                                                   IsVisible="{Binding IsPinned}"
                                                   VerticalAlignment="Center"/>
                                         
@@ -192,7 +192,7 @@
                                              It has no letters, so no lint could have seen it. -->
                                         <TextBlock Text="●"
                                                    FontSize="8"
-                                                   Foreground="{DynamicResource SystemAccentColor}"
+                                                   Foreground="{DynamicResource Wit.Accent.Text}"
                                                    IsVisible="{Binding IsModified}"
                                                    VerticalAlignment="Center"/>
                                             
@@ -244,7 +244,7 @@
                                   Width="12" Height="12"/>
                         <Button.Styles>
                             <Style Selector="Button:pointerover /template/ ContentPresenter">
-                                <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+                                <Setter Property="Background" Value="{DynamicResource Wit.Surface.Sunken}"/>
                             </Style>
                         </Button.Styles>
                     </Button>
@@ -268,7 +268,7 @@
                           Width="8" Height="8"/>
                 <Button.Styles>
                     <Style Selector="Button:pointerover /template/ ContentPresenter">
-                        <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+                        <Setter Property="Background" Value="{DynamicResource Wit.Surface.Sunken}"/>
                     </Style>
                 </Button.Styles>
             </Button>

@@ -11,8 +11,8 @@
 	<Grid RowDefinitions="Auto,*">
 		<!-- Header: what this is, and which connection it is in -->
 		<Border Grid.Row="0"
-		        Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-		        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+		        Background="{DynamicResource Wit.Surface.Panel}"
+		        BorderBrush="{DynamicResource Wit.Line}"
 		        BorderThickness="0,0,0,1"
 		        Padding="10,8">
 			<StackPanel Spacing="2">
@@ -61,7 +61,7 @@
 					<TextBlock Text="{DynamicResource S.Inspector.DataAccess}" FontSize="10" Opacity="0.5"/>
 
 					<Border AutomationProperties.AutomationId="InspectorKeyWarning"
-					        Background="#33FFC107"
+					        Background="{DynamicResource Wit.Warn.Surface}"
 					        CornerRadius="5"
 					        Padding="8,6"
 					        IsVisible="{Binding UnindexedKeyWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
@@ -117,7 +117,7 @@
 				<!-- The definition as the catalogue holds it, not a reconstruction -->
 				<StackPanel Spacing="4" IsVisible="{Binding Definition, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
 					<TextBlock Text="{DynamicResource S.Inspector.Definition}" FontSize="10" Opacity="0.5"/>
-					<Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+					<Border Background="{DynamicResource Wit.Surface.Sunken}"
 					        CornerRadius="5"
 					        Padding="8">
 						<TextBlock AutomationProperties.AutomationId="InspectorDefinition"

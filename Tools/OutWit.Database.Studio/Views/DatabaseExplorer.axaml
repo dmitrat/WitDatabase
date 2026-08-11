@@ -17,8 +17,8 @@
     <Grid RowDefinitions="Auto,Auto,*">
         <!-- Header -->
         <Border Grid.Row="0" 
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}" 
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}" 
                 BorderThickness="0,0,0,1" 
                 Padding="8">
             <Grid ColumnDefinitions="*,Auto">
@@ -47,7 +47,7 @@
         <Border Grid.Row="1"
                 Padding="8,6"
                 IsVisible="{Binding MainWindowVm.IsConnected}"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+                Background="{DynamicResource Wit.Surface.Panel}">
             <Grid ColumnDefinitions="*,Auto">
                 <TextBox AutomationProperties.AutomationId="ExplorerFilter"
                          AutomationProperties.Name="{DynamicResource S.Explorer.Filter}"
@@ -96,7 +96,7 @@
         <!-- TreeView -->
         <Border Grid.Row="2"
                 IsVisible="{Binding !DatabaseExplorerVm.IsFiltering}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0">
             <ScrollViewer HorizontalScrollBarVisibility="Auto"
                           VerticalScrollBarVisibility="Auto">
@@ -269,7 +269,7 @@
 
         <!-- Loading overlay -->
         <Border Grid.Row="2"
-                Background="#80000000"
+                Background="{DynamicResource Wit.Scrim}"
                 IsVisible="{Binding DatabaseExplorerVm.IsLoading}">
             <StackPanel HorizontalAlignment="Center"
                         VerticalAlignment="Center"
@@ -291,8 +291,8 @@
 
         <!-- Error message -->
         <Border Grid.Row="2"
-                Background="#FFF3CD"
-                BorderBrush="#FFC107"
+                Background="{DynamicResource Wit.Warn.Surface}"
+                BorderBrush="{DynamicResource Wit.Warn.Border}"
                 BorderThickness="1"
                 Padding="8"
                 Margin="8"
@@ -301,10 +301,10 @@
             <StackPanel Spacing="4">
                 <TextBlock Text="{DynamicResource S.Common.ErrorHeading}"
                            FontWeight="Bold"
-                           Foreground="#856404"/>
+                           Foreground="{DynamicResource Wit.Warn.Text}"/>
                 <TextBlock Text="{Binding DatabaseExplorerVm.ErrorMessage}"
                            TextWrapping="Wrap"
-                           Foreground="#856404"/>
+                           Foreground="{DynamicResource Wit.Warn.Text}"/>
             </StackPanel>
         </Border>
 
@@ -315,7 +315,7 @@
                         VerticalAlignment="Center"
                         Spacing="8">
                 <Border Width="48" Height="48"
-                        Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                        Background="{DynamicResource Wit.Surface.Panel}"
                         CornerRadius="24"
                         HorizontalAlignment="Center">
                     <PathIcon Data="{x:Static ui:StudioIcons.DB_DATABASE}"
