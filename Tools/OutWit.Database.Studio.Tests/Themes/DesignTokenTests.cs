@@ -310,7 +310,13 @@ public class DesignTokenTests
             // The control. It is zero at V0 by construction - the dictionaries exist and nothing
             // consumes them yet - so the assertion is on the FILES, which is what tells a rule
             // reading the right folder from one reading none.
-            Assert.That(MarkupFiles(), Has.Length.EqualTo(33), "the markup files the rule reads");
+            //
+            // 33 until 2026-08-11, when Themes/SqlEditorColors.axaml was deleted: it was merged into
+            // the application and defined SqlEditorBackgroundColor / ForegroundColor /
+            // LineNumbersColor, while SqlEditorTheme.cs has always read SqlEditorBg / Fg /
+            // LineNumbers. Three colours nothing could ask for. This assertion is what noticed the
+            // file count move, which is exactly what it is here to do.
+            Assert.That(MarkupFiles(), Has.Length.EqualTo(32), "the markup files the rule reads");
         });
     }
 

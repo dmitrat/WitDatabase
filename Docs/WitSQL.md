@@ -1332,32 +1332,49 @@ FOR UPDATE SKIP LOCKED;
 alternative for one shape of workload, and the boundary is narrow enough that it has to be stated
 precisely rather than as "LSM is write-optimised".
 
-Measured on a Ryzen 9 5950X, .NET 10, 500,000 rows written in batches of 1,000, three rounds each,
-microseconds per row:
+**Start with the property that decides it, because it is not the store.** Measured 2026-08-11 on a
+Ryzen 9 5950X, 100,000 rows written in batches of 1,000 through SQL, two rounds, microseconds per
+row:
+
+| | B+Tree | LSM |
+|---|---|---|
+| **MVCC on** - what `Data Source=...;Store=lsm` gives you | 36.8 | **771.9** |
+| `MVCC=false` | 15.1-27.4 | 16.7 |
+
+**`MVCC` defaults to true**, so a connection string that names the store and nothing else gets the
+first row. With MVCC off the two stores write at the same speed; with MVCC on the B+Tree pays roughly
+1.5-2x and the LSM pays about **50x**. It is a per-row cost, not a per-transaction one - ten times
+fewer commits over the same rows made it worse, not better - so no batch size amortises it.
+`SyncWrites` is *not* the expensive property: turning it off moves the LSM from 16.7 to 12.3.
+
+**With `MVCC=false`, the comparison is the one this section used to describe.** 200,000 rows in
+batches of 1,000, microseconds per row:
 
 | | B+Tree | LSM | |
 |---|---|---|---|
-| Sustained ingest, **no secondary indexes** | 15.10 | 15.36 | parity |
-| Sustained ingest, **3 secondary indexes** | 23.16 | **36.86** | **LSM 1.6x slower** |
+| Sustained ingest, **no secondary indexes** | 13.6-17.2 | 11.0-18.3 | parity |
+| Sustained ingest, **3 secondary indexes** | 22.9-23.2 | **33.6-38.6** | **LSM ~1.6x slower** |
 
-Driven at the storage layer, without the SQL engine in the way, LSM is **10-13% faster** at 500,000
-and 1,000,000 rows - so the structure does deliver its advantage, and secondary indexes are what
-take it away. Each index gets its own LSM store today, with its own write-ahead log and its own
-compaction, so the cost of maintaining one is 7.2 µs per row against the B+Tree's 2.7.
+Each secondary index gets its own LSM store today, with its own write-ahead log and its own
+compaction schedule - `6 sst` against the B+Tree's single file - which is what removes the advantage
+the structure should have.
 
 **Choose `Store=lsm` when all of these hold:**
 
+- the connection also sets **`MVCC=false`**, and the application can live without snapshot isolation;
 - writes dominate reads, and they arrive as a sustained stream rather than in occasional small
   transactions;
 - the table is large - the advantage appears above roughly half a million rows, because below that
   the in-memory table never fills and the structure never does the sequential work it exists for;
 - the table carries **few or no secondary indexes**.
 
-**Keep the default otherwise** - for read-heavy work, for small transactions, for autocommit (where
-LSM is still several times behind), and for any table with several indexes.
+**Keep the default otherwise** - for read-heavy work, for small transactions, for autocommit, for any
+table with several indexes, and for anything that needs MVCC.
 
 Both engines are durable and both honour `SyncWrites`, `MemTableSize` and the rest of the
-connection-string settings; the choice is about the shape of the workload, not about safety.
+connection-string settings. What used to be written here - that the choice is about the shape of the
+workload and not about safety - was measured and is wrong: with the default isolation model the
+choice costs about 20x, so it is about the isolation model first and the workload second.
 
 ## 14.10 Configuration: which combinations are supported
 

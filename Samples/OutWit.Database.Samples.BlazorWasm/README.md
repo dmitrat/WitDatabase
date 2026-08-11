@@ -53,25 +53,25 @@ Then open https://localhost:5001 in your browser.
 ## Architecture
 
 ```
-???????????????????????????????????????????????????
-?                   UI Layer                      ?
-?  (Razor Pages with MudBlazor Components)        ?
-???????????????????????????????????????????????????
-?               ViewModel Layer                    ?
-?  (CommunityToolkit.Mvvm - Observable Objects)   ?
-???????????????????????????????????????????????????
-?              Repository Layer                    ?
-?  (ContactRepository, NoteRepository)            ?
-???????????????????????????????????????????????????
-?              Service Layer                       ?
-?  (DatabaseService - Generic CRUD)               ?
-???????????????????????????????????????????????????
-?              WitDatabase Core                    ?
-?  (Key-Value Store with Async API)               ?
-???????????????????????????????????????????????????
-?              IndexedDB Storage                   ?
-?  (Browser Persistence via JS Interop)           ?
-???????????????????????????????????????????????????
++-------------------------------------------------+
+|                   UI Layer                      |
+|     (Razor Pages with MudBlazor Components)     |
++-------------------------------------------------+
+|                ViewModel Layer                  |
+|   (CommunityToolkit.Mvvm - Observable Objects)  |
++-------------------------------------------------+
+|                Repository Layer                 |
+|      (ContactRepository, NoteRepository)        |
++-------------------------------------------------+
+|                 Service Layer                   |
+|        (DatabaseService - Generic CRUD)         |
++-------------------------------------------------+
+|                WitDatabase Core                 |
+|        (Key-Value Store with Async API)         |
++-------------------------------------------------+
+|                IndexedDB Storage                |
+|      (Browser Persistence via JS Interop)       |
++-------------------------------------------------+
 ```
 
 ## Key Code Examples
@@ -171,27 +171,27 @@ public partial class ContactsViewModel : ObservableObject
 
 ```
 OutWit.Database.Samples.BlazorWasm/
-??? Data/
-?   ??? DatabaseService.cs      # Generic DB operations
-?   ??? ContactRepository.cs    # Contact-specific operations
-?   ??? NoteRepository.cs       # Note-specific operations
-??? Models/
-?   ??? Contact.cs              # Contact entity
-?   ??? Note.cs                 # Note entity with colors
-??? ViewModels/
-?   ??? DashboardViewModel.cs   # Dashboard logic
-?   ??? ContactsViewModel.cs    # Contacts page logic
-?   ??? NotesViewModel.cs       # Notes page logic
-??? Pages/
-?   ??? Index.razor             # Dashboard page
-?   ??? Contacts.razor          # Contacts page
-?   ??? Notes.razor             # Notes page
-?   ??? About.razor             # About page
-??? App.razor                   # App root with theme
-??? MainLayout.razor            # Layout with navigation
-??? Program.cs                  # DI configuration
-??? wwwroot/
-    ??? index.html              # HTML entry point
++-- Data/
+|   +-- DatabaseService.cs      # Generic DB operations
+|   +-- ContactRepository.cs    # Contact-specific operations
+|   +-- NoteRepository.cs       # Note-specific operations
++-- Models/
+|   +-- Contact.cs              # Contact entity
+|   +-- Note.cs                 # Note entity with colors
++-- ViewModels/
+|   +-- DashboardViewModel.cs   # Dashboard logic
+|   +-- ContactsViewModel.cs    # Contacts page logic
+|   +-- NotesViewModel.cs       # Notes page logic
++-- Pages/
+|   +-- Index.razor             # Dashboard page
+|   +-- Contacts.razor          # Contacts page
+|   +-- Notes.razor             # Notes page
+|   +-- About.razor             # About page
++-- App.razor                   # App root with theme
++-- MainLayout.razor            # Layout with navigation
++-- Program.cs                  # DI configuration
++-- wwwroot/
+    +-- index.html              # HTML entry point
 ```
 
 ## Browser Support
@@ -207,10 +207,10 @@ OutWit.Database.Samples.BlazorWasm/
 
 - **.NET 10.0** - Target framework
 - **Blazor WebAssembly** - Client-side web UI
-- **MudBlazor 8.x** - Material Design components
+- **MudBlazor 9.8** - Material Design components
 - **CommunityToolkit.Mvvm** - MVVM pattern support
 - **WitDatabase.Core.IndexedDb** - Database with browser storage
 
 ## License
 
-MIT License - See LICENSE file for details.
+Licensed under the Apache License, Version 2.0, like the rest of the repository. See `LICENSE`.

@@ -4,12 +4,18 @@ IndexedDB storage provider for WitDatabase - enables **Blazor WebAssembly** supp
 
 This package allows WitDatabase to run entirely in the browser with data persisted to IndexedDB.
 
+> **Use 12.8.0 or later.** Everything below is written around the asynchronous API, because in a
+> browser there is no other kind - and from 12.0.0 to 12.7.0 that API did not reach storage.
+> `BTreeConcurrentStore`, which wraps every B+Tree store, implemented each async method by calling
+> the synchronous one, so a database built on this provider could be created and never written to.
+> Fixed in 12.8.0 with a lock that survives a continuation resuming on another thread.
+
 ---
 
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="11.0.0" />
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="12.8.0" />
 ```
 
 Add the JavaScript files to your `index.html`:

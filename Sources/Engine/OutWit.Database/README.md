@@ -28,7 +28,7 @@ OutWit.Database is the SQL execution engine built on top of OutWit.Database.Core
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database" Version="11.0.0" />
+<PackageReference Include="OutWit.Database" Version="12.8.0" />
 ```
 
 ---
@@ -578,7 +578,7 @@ You may not:
 
 WitDatabase does **not** automatically create indexes on PRIMARY KEY columns. This is by design to give you full control over your database schema.
 
-#### AUTOINCREMENT Primary Keys (Fast ?)
+#### AUTOINCREMENT primary keys - fast
 
 When using `AUTOINCREMENT`, uniqueness is guaranteed by the internal sequence generator, so no validation scan is needed:
 
@@ -592,9 +592,9 @@ CREATE TABLE Users (
 INSERT INTO Users (Name) VALUES ('Alice');
 ```
 
-#### Explicit Primary Keys (Slow Without Index ??)
+#### Explicit primary keys - slow without an index
 
-When you explicitly provide PK values, the engine must validate uniqueness. **Without an index**, this requires a full table scan per insert (O(n) per insert = O(n�) total for batch inserts):
+When you explicitly provide PK values, the engine must validate uniqueness. **Without an index**, this requires a full table scan per insert (O(n) per insert = O(n^2) total for batch inserts):
 
 ```sql
 CREATE TABLE Items (
@@ -606,7 +606,7 @@ CREATE TABLE Items (
 INSERT INTO Items (Id, Name) VALUES (1, 'Item1');
 ```
 
-#### Solution: Create Explicit Index (Fast ?)
+#### Solution: create an explicit index - fast again
 
 For explicit PK values, create a UNIQUE index to enable O(log n) validation:
 
@@ -627,7 +627,7 @@ INSERT INTO Items (Id, Name) VALUES (1, 'Item1');
 
 | Scenario | Without Index | With Index | Speedup |
 |----------|---------------|------------|---------|
-| INSERT with AUTOINCREMENT | 0.02 ms/row | N/A | ? Already fast |
+| INSERT with AUTOINCREMENT | 0.02 ms/row | N/A | already fast |
 | INSERT with explicit PK (500 rows) | ~175 ms | ~35 ms | **5x faster** |
 | INSERT with explicit PK (10000 rows) | ~70 sec | ~1.4 sec | **50x faster** |
 

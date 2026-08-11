@@ -1,176 +1,121 @@
 # WitDatabase Studio
 
-Cross-platform desktop application for managing WitDatabase databases.
+Cross-platform desktop client for WitDatabase, built with Avalonia. Windows, macOS and Linux from one
+build.
 
-## Overview
+**Not released.** The version is `3.0.0-dev` and Studio is deliberately excluded from the package
+release: the seven library packages ship on their own cadence, and this tool is tagged `-dev` until
+its own design work closes.
 
-WitDatabase Studio is a graphical management tool for WitDatabase, similar to MySQL Workbench or DB Browser for SQLite. Built with Avalonia UI, it runs on Windows, macOS, and Linux.
+## What it does
 
-## Features
+- **Several databases at once.** One tree, one root per open connection, and a colour per connection
+  carried on its tabs. An action on a node goes to the connection that node came from - never to
+  whichever connection happens to be active - and closing one leaves the others alone.
+- **Query tabs.** WitSQL syntax highlighting, completion, error underlining in the text, an execution
+  plan, messages, and per-tab history. A tab runs in the connection it was opened against, and keeps
+  running there however the tree selection moves.
+- **Result grid and table editor.** Read results, or edit a table's rows in place with commit and
+  rollback. A table with no primary key cannot be edited, and says so rather than failing on save.
+- **Schema work.** Create and drop tables, views, indexes and triggers; rename; truncate; a structure
+  tab per object. Every destructive action asks a question that states its consequences - the foreign
+  keys that will dangle, the indexes that go with it, the rows that will be lost.
+- **Import and export.** Export to CSV, JSON or SQL; import from CSV or JSON, with a preview of
+  what will be read before anything is written.
+- **Maintenance.** Read check, rebuild, copy, change the password.
+- **Object inspector.** What an object is, what it costs to read, which indexes it has, what
+  references it and what it references, and its `CREATE` statement.
+- **Two languages** (English, Russian) and **two themes**, dark by default.
 
-### ? Phase 1 Complete: Foundation
-
-- **Project Structure**: .NET 10.0 Avalonia MVVM application
-- **Architecture**: MVVM pattern using OutWit.Common.MVVM.Avalonia
-- **Models**: ConnectionInfo, Settings, DatabaseNode, TableInfo, ColumnInfo, QueryResult
-- **Services**: ConnectionManager (the open connections) over DatabaseSession (one ADO.NET connection
-  each), SettingsService (JSON persistence)
-- **ViewModels**: ApplicationViewModel (Singleton), MainWindowViewModel, ConnectionViewModel, DatabaseExplorerViewModel, QueryEditorViewModel, TableStructureViewModel
-- **Menu Commands**: New Database, Open Database, Close Database, Exit, Refresh
-- **Connection Dialog**: Full-featured connection dialog with encryption support
-- **Unit Tests**: 59 NUnit 4 tests (all passing ?)
-
-### ? Phase 2 Complete: Database Explorer
-
-- **TreeView Component**: Database schema tree with icons
-- **Schema Loading**: Tables, views, indexes, triggers, sequences
-- **Table Structure Panel**: Column details with types, nullable, primary keys
-- **Context Menus**: Browse Data, View Definition, Drop, Refresh
-- **UI Layout**: Resizable splitter, status bar with connection info
-- **Converters**: Node type to icon converter
-
-### ?? Phase 3 Planned: Query Editor
-
-- Query Editor with WitSQL syntax highlighting
-- Result Grid with pagination
-- Execute/Cancel commands
-- Query history
-
-## Development Status
-
-Current Phase: **Phase 2 Complete** ?
-
-| Phase | Status | Tasks |
-|-------|--------|-------|
-| Foundation | ? Complete | Project setup, Models, Services, ViewModels, Menu Commands, Connection Dialog, Tests |
-| Database Explorer | ? Complete | TreeView ?, Schema loading ?, Table Structure ?, Context menus ? |
-| Query Editor | ?? Planned | SQL Editor, Execute queries, Syntax highlighting |
-| Result Grid | ?? Planned | DataGrid, Pagination, Export |
-| Table Editor | ?? Planned | Edit cells, Add/Delete rows, Commit/Rollback |
-| Export/Import | ?? Planned | CSV/JSON/SQL export, Import |
-| Polish | ?? Planned | Themes, Error handling, Testing |
-
-## Usage
-
-### Opening a Database
-
-1. Click **File ? Open Database...** or press `Ctrl+O`
-2. Enter database file path (e.g., `C:\Data\myapp.witdb`)
-3. If encrypted, check "Database is encrypted" and enter password
-4. Select storage engine (btree or lsm)
-5. Click **Connect**
-
-### Creating a New Database
-
-1. Click **File ? New Database...**
-2. Enter new database file path
-3. Configure encryption (optional)
-4. Select storage engine
-5. Click **Connect**
-
-### Browsing Data
-
-1. Expand database tree in Database Explorer
-2. Click on a table to view its structure
-3. Right-click on table ? **Browse Data** to view records
-4. Use context menu for additional actions (View Definition, Drop, etc.)
-
-## Architecture
-
-### ViewModels Hierarchy
-
-```
-ApplicationViewModel (Singleton)
-??? MainWindowViewModel
-??? ConnectionViewModel
-??? DatabaseExplorerViewModel
-??? QueryEditorViewModel
-??? TableStructureViewModel
-```
-
-All ViewModels inherit from `ViewModelBase<ApplicationViewModel>` and can communicate through the parent `ApplicationViewModel`.
-
-### Code Style
-
-- Follows `CODE_STYLE_GUIDE.md`
-- Uses `NotifyAttribute` from OutWit.Common.Aspects for property change notifications
-- Uses `DelegateCommand<object>` from OutWit.Common.MVVM for commands
-- Models inherit from `ModelBase` with `Is()` and `Clone()` methods
-- All code and documentation in English only
-- Minimal code-behind (only constructors)
-
-### Test Style
-
-- NUnit 4 framework
-- Test class names end with `Tests` (plural)
-- Test method names end with `Test` (singular)
-- PascalCase, no underscores
-- 59 tests currently (all passing)
-
-## Technology Stack
-
-- **.NET 10.0**
-- **Avalonia UI 11.3.10** - Cross-platform UI framework
-- **OutWit.Common.MVVM.Avalonia 2.0.2** - MVVM framework
-- **OutWit.Common.Aspects** - Property change aspects
-- **OutWit.Database.AdoNet** - Database access
-- **Microsoft.Extensions.DependencyInjection** - DI container
-- **Microsoft.Extensions.Logging** - Logging
-- **NUnit 4** - Unit testing
-
-## Building
-
-```bash
-dotnet build Tools/OutWit.Database.Studio/OutWit.Database.Studio.csproj
-```
-
-## Running Tests
-
-```bash
-dotnet test Tools/OutWit.Database.Studio.Tests/OutWit.Database.Studio.Tests.csproj
-```
-
-## Running the Application
+## Running it
 
 ```bash
 dotnet run --project Tools/OutWit.Database.Studio/OutWit.Database.Studio.csproj
 ```
 
-## Project Structure
+Open a database with `Ctrl+O`, create one with `Ctrl+N`, or pick one from the recent list on the
+welcome screen. `Ctrl+K` opens the command palette, which reaches every command and every object by
+name.
+
+## Keyboard
+
+The full map lives in `Services/KeyboardMap.cs` and is what the Keys window shows. It is checked
+against the application in both directions by `KeyboardMapTests`: every gesture listed has to be
+bound somewhere that really handles it, and every binding declared in the markup has to be listed. A
+help window that quietly disagrees with the keys is worse than no help window.
+
+| | |
+|---|---|
+| `Ctrl+K` | command palette |
+| `Ctrl+N` / `Ctrl+O` / `Ctrl+R` | new database, open database, refresh |
+| `Ctrl+T` / `Ctrl+Shift+T` / `Ctrl+W` | new query tab, reopen the last closed, close |
+| `Ctrl+S` / `Ctrl+Shift+S` | save the query, save as |
+| `F5` / `Ctrl+Shift+F5` / `Ctrl+Enter` | run the statement, the script, the selection |
+| `Escape` | stop a running query, or close the find band |
+| `Ctrl+F` / `Ctrl+H` / `F3` / `Shift+F3` | find, replace, next, previous |
+| `Ctrl+B` | hide or show the object tree |
+| `F2` / `F4` / `Delete` | in the tree: rename, structure, drop |
+| `Ctrl+?` | the keyboard reference itself |
+
+In the tree, a **double click** opens a table's data, a **middle click** opens it in a tab that does
+not come to the front, and **typing letters** walks the selection to the first matching node.
+
+## Layout of the project
 
 ```
 Tools/OutWit.Database.Studio/
-??? Models/              # Data models
-??? ViewModels/          # MVVM ViewModels
-??? Views/               # Avalonia views (.axaml)
-?   ??? MainWindow.axaml
-?   ??? ConnectionDialog.axaml
-?   ??? DatabaseExplorer.axaml
-?   ??? TableStructure.axaml
-??? Services/            # Business logic services
-??? Converters/          # Value converters
-??? Controls/            # Custom controls (planned)
-??? Themes/              # Light/Dark themes (planned)
-??? Assets/              # Icons, fonts
++-- Models/          # Connection info, settings, tree nodes, schema descriptions
++-- ViewModels/      # One per surface; Tabs/ holds the query, structure and table-edit tabs
++-- Views/           # MainWindow, DatabaseExplorer, ObjectInspector
+|   +-- Dialogs/     # 18 task and service dialogs
+|   +-- Query/       # The SQL editor surface
+|   +-- Workspace/   # Tab strip, database view, structure view, table editor
++-- Controls/        # SqlEditor (AvaloniaEdit), the data grids, error underlining
++-- Services/        # Connections, sessions, settings, export, import, history, localisation
++-- Themes/          # Design tokens, type scale, metrics, control styles (see Themes/README.md)
++-- Ui/Icons/        # 76 outline icons as path data
++-- Converters/      # Value converters
++-- Resources/       # Strings.en.json, Strings.ru.json
 
 Tools/OutWit.Database.Studio.Tests/
-??? Models/              # Model tests
-??? ViewModels/          # ViewModel tests
-??? Converters/          # Converter tests
 ```
 
-## Keyboard Shortcuts
+## Architecture
 
-| Shortcut | Action |
-|----------|--------|
-| `Ctrl+O` | Open Database |
-| `Ctrl+N` | New Database |
-| `F5` | Refresh Schema |
-| `Ctrl+W` | Close Database |
+`ApplicationViewModel` is the single root: every other ViewModel hangs off it and reaches its
+siblings through it. Views own the code-behind that genuinely belongs to a view - focus, key
+handling, layout the markup cannot express - and nothing else.
 
-## Next Steps
+The one rule worth stating for anyone reading the tests: **an interaction that a test can drive
+through a ViewModel belongs in the ViewModel.** Type-ahead in the tree is the shape - the buffer and
+the timeout are in the view, the search is in `DatabaseExplorerViewModel.JumpTo`, and only the search
+carries the behaviour.
 
-See `WITDATABASE_STUDIO_PLAN.md` for the complete implementation plan.
+## Tests
+
+```bash
+dotnet test Tools/OutWit.Database.Studio.Tests/OutWit.Database.Studio.Tests.csproj
+```
+
+**853 tests**, and their honest limit is written into them: nearly all drive ViewModels over a real
+database through the real `ConnectionManager`, `DatabaseSession` and `SettingsService`. Only two
+things are stood in for, and both are people rather than services - the answer to a confirmation
+dialog and the file picker.
+
+What that cannot cover is what a window does when it is built, and this project has the scars: a
+`Ctrl+?` gesture that `KeyGesture.Parse` refuses stopped Studio starting while 769 tests were green,
+and a `{StaticResource}` in a control style would have done the same. Both are now guarded by
+headless Avalonia tests (`Themes/DesignTokenTests`, `Services/KeyboardMapTests`) that ask Avalonia's
+own parser and resource system the questions the window will ask.
+
+## Technology
+
+- .NET 10, Avalonia 12.1.1, Fluent theme
+- AvaloniaEdit 12.0.0 for the SQL editor, Avalonia DataGrid 12.1.2 for results
+- OutWit.Common.MVVM.Avalonia 3.0.0, OutWit.Common.Aspects for property notification
+- OutWit.Database.AdoNet for everything that reaches a database
+- Microsoft.Extensions DependencyInjection and Logging
+- NUnit 4, Avalonia.Headless.NUnit for the tests that need a real visual tree
 
 ## License
 
