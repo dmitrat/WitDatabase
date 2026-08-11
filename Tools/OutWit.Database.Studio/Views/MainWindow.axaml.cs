@@ -23,6 +23,21 @@ public partial class MainWindow : Window
     /// </summary>
     private bool m_closeConfirmed;
 
+    /// <summary>The width the contextual toolbar wanted while it still had its captions.</summary>
+    private double m_toolbarFullWidth;
+
+    #endregion
+
+    #region Constants
+
+    private const string TOOLBAR_COMPACT = "compact";
+
+    /// <summary>
+    /// The room to spare before the captions come back. Dragging a window edge past the exact width
+    /// would otherwise flicker the row on and off, one state per pixel.
+    /// </summary>
+    private const double TOOLBAR_HYSTERESIS = 24;
+
     #endregion
 
     #region Constructors
@@ -47,6 +62,9 @@ public partial class MainWindow : Window
         // first thing typed goes nowhere.
         ApplicationViewModel.Instance.PaletteVm.PropertyChanged += OnPaletteChanged;
         ThemeToggleButton.Click += OnThemeToggleClick;
+
+        // The toolbar decides whether it can afford its captions, every time it is laid out.
+        ToolbarActions.LayoutUpdated += OnToolbarLayoutUpdated;
         
         if (Application.Current != null)
         {
@@ -95,6 +113,81 @@ public partial class MainWindow : Window
     /// Escape has to mean two different things depending on what is happening. Handled here, before
     /// the focused control sees them.
     /// </summary>
+    /// <summary>
+    /// The contextual toolbar drops its captions when the row will not fit, and takes them back when
+    /// it will (WS-8).
+    ///
+    /// <para>
+    /// <b>Measured rather than thresholded.</b> A width in pixels would be wrong in the other
+    /// language on the first day - the Russian captions are longer than the English ones - and wrong
+    /// again at another font size, which is a setting a person can change. What is compared is what
+    /// the panel WANTS against what the row can give it.
+    /// </para>
+    /// <para>
+    /// <b>The hysteresis is not decoration: without it this oscillates.</b> Dropping the captions
+    /// makes the panel narrower, which makes it fit, which puts the captions back, which makes it too
+    /// wide - once per layout pass, for ever. So the width the panel wanted while it still had its
+    /// captions is remembered, and they only come back when there is room for THAT.
+    /// </para>
+    /// </summary>
+    private void OnToolbarLayoutUpdated(object? sender, EventArgs e)
+    {
+        var available = ToolbarActions.Bounds.Width;
+
+        if (available <= 0)
+            return;
+
+        var wanted = WantedWidth(ToolbarActions);
+        var compact = ToolbarActions.Classes.Contains(TOOLBAR_COMPACT);
+
+        if (!compact)
+        {
+            m_toolbarFullWidth = Math.Max(m_toolbarFullWidth, wanted);
+
+            if (wanted > available)
+                ToolbarActions.Classes.Add(TOOLBAR_COMPACT);
+
+            return;
+        }
+
+        // Back to captions only when the width they needed is there, with a little to spare so that
+        // dragging a window edge does not flicker the row.
+        if (m_toolbarFullWidth > 0 && available > m_toolbarFullWidth + TOOLBAR_HYSTERESIS)
+            ToolbarActions.Classes.Remove(TOOLBAR_COMPACT);
+    }
+
+    /// <summary>
+    /// What the row would like to be, added up from its children.
+    ///
+    /// <para>
+    /// <b><c>DesiredSize</c> cannot answer this and that is not obvious.</b> Avalonia CLAMPS a
+    /// control's desired size to the space it was measured in, and this panel sits in a star column -
+    /// so its desired width is always exactly the width it was given, the comparison is always
+    /// "equal", and the first version of this method never went compact once. Found by shrinking the
+    /// window and watching three buttons get clipped instead.
+    /// </para>
+    /// <para>
+    /// A horizontal <c>StackPanel</c> measures its children with unbounded width, so THEIR desired
+    /// sizes are natural. Adding them up is the honest question.
+    /// </para>
+    /// </summary>
+    private static double WantedWidth(StackPanel panel)
+    {
+        var total = 0.0;
+        var counted = 0;
+
+        foreach (var child in panel.Children)
+        {
+            if (!child.IsVisible)
+                continue;
+
+            total += child.DesiredSize.Width;
+            counted++;
+        }
+
+        return total + panel.Spacing * Math.Max(0, counted - 1);
+    }
+
     private void OnWindowKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
     {
         var app = ApplicationViewModel.Instance;

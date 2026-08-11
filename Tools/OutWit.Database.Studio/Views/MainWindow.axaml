@@ -327,20 +327,18 @@
 		        Padding="8,0">
 			<Grid ColumnDefinitions="*,Auto">
 				<!--
-				    THE ACTIONS SCROLL, THE CHIP DOES NOT. A `StackPanel` in a star column does not
-				    clip: with icons beside the captions the query band grew past the window and
-				    "Откатить" ran underneath the connection chip - which is the one thing on this row
-				    that must never be covered, because it answers "where is this DELETE going" (WS-3).
-				    The scroll viewer bounds the actions; the chip keeps its Auto column.
+				    WHEN THE ROW DOES NOT FIT, THE WORDS GO AND THE GLYPHS STAY - see the `compact`
+				    style and `OnToolbarLayoutUpdated` in the code-behind, which measures rather than
+				    guesses at a width.
 
-				    WS-8 says a toolbar holds no more than seven buttons and the query band holds
-				    twelve. Cutting it to seven is a product decision, not a layout fix, so it is not
-				    made here - but the overflow it causes no longer eats the chip.
+				    A scroll bar was tried first and was wrong twice: it covered the bottom of every
+				    button, and scrolling is not what a person expects a toolbar to do when it runs
+				    out of room. Before that there was nothing at all, and "Откатить" ran underneath
+				    the connection chip - the one thing on this row that must never be covered,
+				    because it answers "where is this DELETE going" (WS-3).
 				-->
-				<ScrollViewer Grid.Column="0"
-				              HorizontalScrollBarVisibility="Auto"
-				              VerticalScrollBarVisibility="Disabled">
-				<StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
+				<StackPanel Grid.Column="0" x:Name="ToolbarActions" ClipToBounds="True"
+				            Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
 					<!-- Query tab -->
 					<StackPanel Orientation="Horizontal" Spacing="4"
 					            IsVisible="{Binding WorkspaceTabsVm.IsQueryTabSelected}">
@@ -437,7 +435,8 @@
 						     (WS-26). Autocommit until somebody presses Begin. -->
 						<Rectangle Classes="toolbar-separator"/>
 
-						<ComboBox AutomationProperties.AutomationId="ToolbarIsolation"
+						<ComboBox Classes="toolbar"
+						          AutomationProperties.AutomationId="ToolbarIsolation"
 						          AutomationProperties.Name="{DynamicResource S.Toolbar.Isolation}"
 						          ItemsSource="{Binding WorkspaceTabsVm.SelectedQueryTab.Isolations}"
 						          SelectedItem="{Binding WorkspaceTabsVm.SelectedQueryTab.Isolation, Mode=TwoWay}"
@@ -495,7 +494,6 @@
 						<TextBlock Text="{DynamicResource S.Tab.Database}" FontSize="{DynamicResource Wit.Font.Body}" VerticalAlignment="Center" Opacity="0.6"/>
 					</StackPanel>
 				</StackPanel>
-				</ScrollViewer>
 
 				<!-- The connection chip of the ACTIVE TAB -->
 				<Border Grid.Column="1"

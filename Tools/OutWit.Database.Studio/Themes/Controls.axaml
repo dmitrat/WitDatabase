@@ -82,6 +82,32 @@
         </Setter>
     </Style>
 
+    <!--
+        FLUENT DRAWS ITS OWN GLYPHS WITH `PathIcon` TOO, and the selector above reaches every one of
+        them: a combo box's drop-down chevron, a menu item's submenu arrow, a spinner's caret. Those
+        are SOLID shapes - a chevron whose fill is removed is a hairline outline of a chevron, which
+        is to say almost nothing - so the combo boxes lost their arrows the moment the outline
+        template landed, and nobody looking at the icons would have noticed.
+
+        They are given a filled template back. This is the cost of styling a framework type by its
+        NAME rather than by a class: the rule cannot tell the icons this application places from the
+        ones the theme places inside its own templates, so the exceptions have to be listed.
+    -->
+    <Style Selector="ComboBox /template/ PathIcon,
+                     MenuItem /template/ PathIcon,
+                     ScrollBar /template/ PathIcon,
+                     NumericUpDown /template/ PathIcon,
+                     CalendarDatePicker /template/ PathIcon,
+                     AutoCompleteBox /template/ PathIcon">
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Viewbox Stretch="Uniform">
+                    <Path Data="{TemplateBinding Data}" Fill="{TemplateBinding Foreground}"/>
+                </Viewbox>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
     <!-- ============================ Text entry ============================ -->
 
     <!--
@@ -102,10 +128,44 @@
         <Setter Property="MinHeight" Value="0"/>
     </Style>
 
+    <!--
+        The border was too loud and the cause was the palette: Fluent draws a field's edge from
+        `BaseMediumLow`, which section 8 uses for MUTED TEXT (#66738A) - far brighter than a line
+        should be. A field is bounded by `Line`, like everything else that is bounded.
+    -->
+    <Style Selector="TextBox">
+        <Setter Property="BorderBrush" Value="{DynamicResource Wit.Line}"/>
+    </Style>
+
     <Style Selector="ComboBox">
         <Setter Property="MinHeight" Value="{DynamicResource Wit.Height.Field}"/>
         <Setter Property="CornerRadius" Value="{DynamicResource Wit.Radius.Field}"/>
         <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Wit.Line}"/>
+        <Setter Property="Background" Value="{DynamicResource Wit.Surface.Sunken}"/>
+    </Style>
+
+    <!--
+        A combo box ON THE TOOLBAR is one of the actions, not a form field: it sits on the bar with no
+        fill and no edge, exactly like the buttons beside it, and the caret is what says it opens.
+        Boxing it was what made the isolation selector the loudest thing in a row of twelve controls.
+    -->
+    <Style Selector="ComboBox.toolbar">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Height" Value="{DynamicResource Wit.Height.Button}"/>
+        <Setter Property="MinHeight" Value="{DynamicResource Wit.Height.Button}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Wit.Ink.Secondary}"/>
+    </Style>
+
+    <Style Selector="ComboBox.toolbar /template/ Border#Background">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+
+    <Style Selector="ComboBox.toolbar:pointerover /template/ Border#Background">
+        <Setter Property="Background" Value="{DynamicResource Wit.Accent.Dim}"/>
+        <Setter Property="BorderThickness" Value="0"/>
     </Style>
 
     <Style Selector="ComboBoxItem">
@@ -182,6 +242,29 @@
          apart from its six neighbours. -->
     <Style Selector="Button.toolbar.danger">
         <Setter Property="Foreground" Value="{DynamicResource Wit.Danger.Text}"/>
+    </Style>
+
+    <!--
+        WHEN THE ROW DOES NOT FIT, THE WORDS GO AND THE GLYPHS STAY.
+
+        A scroll bar was tried first and it was wrong twice over: it covered the bottom of every
+        button, and scrolling is not what a toolbar does when it runs out of room - a person expects
+        the actions to still be there, not to be somewhere to the right.
+
+        The measurement is what decides the rule rather than a threshold: the query band with captions
+        wants about 1900 px, so on any ordinary window it does not fit and this is the NORMAL state,
+        not an edge case. Which is also the canon telling us something - WS-8 says seven buttons and
+        this band has twelve. Reducing it is a product decision and is not made here; making the
+        overflow behave is not.
+
+        The tooltip carries the caption, so nothing is lost that a hover does not return.
+    -->
+    <Style Selector="StackPanel.compact Button.toolbar TextBlock">
+        <Setter Property="IsVisible" Value="False"/>
+    </Style>
+
+    <Style Selector="StackPanel.compact Button.toolbar">
+        <Setter Property="Padding" Value="7,0"/>
     </Style>
 
     <!-- A separator between groups of actions, not a border on each. -->
