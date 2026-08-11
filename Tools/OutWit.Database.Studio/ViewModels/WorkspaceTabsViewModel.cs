@@ -119,7 +119,14 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         Logger.LogInformation("Created new query tab: {Title}", tab.Title);
     }
 
-    public QueryTabViewModel OpenQueryTab(string sql, string? title = null, IDatabaseSession? session = null)
+    /// <param name="activate">
+    /// Whether the new tab is brought to the front. <b>False is the middle click</b> (section 2.7):
+    /// "open the data in a new tab WITHOUT activating it" is what makes the gesture worth having -
+    /// a person can fire it at four tables in four seconds and then read them, instead of being
+    /// dragged into each one as it opens.
+    /// </param>
+    public QueryTabViewModel OpenQueryTab(string sql, string? title = null, IDatabaseSession? session = null,
+        bool activate = true)
     {
         var tab = new QueryTabViewModel(ApplicationVm, session ?? Connections.Active)
         {
@@ -130,7 +137,9 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         tab.PropertyChanged += OnTabPropertyChanged;
 
         AddTab(tab);
-        SelectedTab = tab;
+
+        if (activate)
+            SelectedTab = tab;
 
         return tab;
     }

@@ -36,6 +36,9 @@ public partial class MainWindow : Window
     /// </summary>
     private readonly double[] m_toolbarWanted = new double[TOOLBAR_STATES];
 
+    /// <summary>The width the object tree goes back to after Ctrl+B, in case it was dragged.</summary>
+    private double m_explorerWidth = EXPLORER_WIDTH;
+
     #endregion
 
     #region Constants
@@ -50,6 +53,13 @@ public partial class MainWindow : Window
     /// would otherwise flicker the row on and off, one state per pixel.
     /// </summary>
     private const double TOOLBAR_HYSTERESIS = 24;
+
+    /// <summary>The object tree's declared width, which is what Ctrl+B restores if it was never dragged.</summary>
+    private const double EXPLORER_WIDTH = 250;
+
+    /// <summary>The tree's column in <c>MainSplit</c>, and the splitter beside it.</summary>
+    private const int EXPLORER_COLUMN = 0;
+    private const int EXPLORER_SPLITTER_COLUMN = 1;
 
     #endregion
 
@@ -212,6 +222,37 @@ public partial class MainWindow : Window
         return total + panel.Spacing * Math.Max(0, counted - 1);
     }
 
+    /// <summary>
+    /// Collapses the object tree, or puts it back at the width it had.
+    /// </summary>
+    /// <remarks>
+    /// <b>A hidden control does not collapse its column</b> - the same thing the inspector's converter
+    /// exists for, and the reason this moves the COLUMN rather than the panel's visibility. The
+    /// splitter goes with it: four pixels of drag handle against the left edge of the editor, resizing
+    /// a panel that is not there, is worse than the panel.
+    /// </remarks>
+    private void ToggleExplorerPanel()
+    {
+        var panel = MainSplit.ColumnDefinitions[EXPLORER_COLUMN];
+        var splitter = MainSplit.ColumnDefinitions[EXPLORER_SPLITTER_COLUMN];
+
+        if (panel.Width.Value > 0)
+        {
+            // What it was DRAGGED to, not what it was declared as: a person who made the tree wide
+            // once should not have to do it again after every glance at the editor.
+            m_explorerWidth = panel.ActualWidth > 0
+                ? panel.ActualWidth
+                : m_explorerWidth;
+
+            panel.Width = new GridLength(0);
+            splitter.Width = new GridLength(0);
+            return;
+        }
+
+        panel.Width = new GridLength(m_explorerWidth);
+        splitter.Width = GridLength.Auto;
+    }
+
     private void OnWindowKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
     {
         var app = ApplicationViewModel.Instance;
@@ -223,6 +264,17 @@ public partial class MainWindow : Window
         if (e.Key == Avalonia.Input.Key.K && e.KeyModifiers == Avalonia.Input.KeyModifiers.Control)
         {
             app.PaletteVm.OpenCommand.Execute(null);
+            e.Handled = true;
+            return;
+        }
+
+        // Ctrl+B puts the object tree away and brings it back (2.7). It is at the window because that
+        // is where a person expects it to answer from - the panel being hidden is precisely when the
+        // focus is somewhere else, and a key that only works while the thing it hides has the focus
+        // can never bring it back.
+        if (e.Key == Avalonia.Input.Key.B && e.KeyModifiers == Avalonia.Input.KeyModifiers.Control)
+        {
+            ToggleExplorerPanel();
             e.Handled = true;
             return;
         }

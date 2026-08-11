@@ -67,7 +67,13 @@ public class KeyboardMapTests
     public void EveryListedGestureIsActuallyBoundTest()
     {
         var markup = Declared();
-        var code = File.ReadAllText(Path.Combine(StudioFolder(), "Views", "MainWindow.axaml.cs"));
+
+        // TWO FILES, because a KeyBinding on the window needs the event to bubble from a FOCUSED
+        // element - so the keys that belong to the tree are handled on the tree. The rule read only
+        // the shell and would have called F2 and Delete unbound while they worked.
+        var code = string.Join("\n",
+            File.ReadAllText(Path.Combine(StudioFolder(), "Views", "MainWindow.axaml.cs")),
+            File.ReadAllText(Path.Combine(StudioFolder(), "Views", "DatabaseExplorer.axaml.cs")));
 
         var unbound = new List<string>();
 
@@ -78,17 +84,31 @@ public class KeyboardMapTests
 
             // The handler names them as Key.F / Key.Escape with modifiers alongside; a gesture is
             // "handled in code" when its final key appears in that file.
-            var key = shortcut.Gesture.Split('+')[^1];
+            var parts = shortcut.Gesture.Split('+');
+            var key = parts[^1];
 
             // A few keys are written for a PERSON one way and named by the Key enum another. "?" is
             // the one that matters here: it is what a person presses and OemQuestion is what arrives.
+            // "Enter" is the other: a person presses Enter and the enum calls it Return.
             key = key switch
             {
                 "?" => "OemQuestion",
+                "Enter" => "Return",
                 _ => key
             };
 
-            if (Regex.IsMatch(code, $@"Key\.{Regex.Escape(key)}\b"))
+            // THE MODIFIER HAS TO BE THERE TOO, and it is not pedantry: `Alt+Enter` passed this rule
+            // the moment it was added, because some other handler in the file already tested
+            // `Key.Enter`. A gesture that "passes" on a branch belonging to a different gesture is
+            // exactly the false green this whole file exists to prevent.
+            var modifiers = parts[..^1]
+                .Select(m => m == "Ctrl" ? "Control" : m)
+                .ToArray();
+
+            var bound = Regex.IsMatch(code, $@"Key\.{Regex.Escape(key)}\b")
+                        && modifiers.All(m => Regex.IsMatch(code, $@"KeyModifiers\.{Regex.Escape(m)}\b"));
+
+            if (bound)
                 continue;
 
             unbound.Add($"{shortcut.ActionKey} = {shortcut.Gesture}");
