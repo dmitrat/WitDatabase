@@ -3,77 +3,185 @@ using Avalonia.Media;
 namespace OutWit.Database.Studio.Ui.Icons;
 
 /// <summary>
-/// Central storage for SVG path icons used in XAML.
-/// Uses lazy initialization to avoid Avalonia runtime dependency issues in tests.
+/// One icon style for the whole product: OUTLINE, <c>viewBox 24x24</c>, stroke 1.7, round caps, and
+/// <b>no fills</b> (section 8.3).
+///
+/// <para>
+/// <b>Why every path in this file was redrawn rather than restyled.</b> The set that shipped was
+/// Material's FILLED geometry - a table drawn as a rectangle with rectangular holes punched in it, a
+/// database as three stacked solid discs. Stroking the outline of a filled shape does not produce the
+/// outline drawing of the same thing; it produces the boundary of the ink, which for a punched
+/// rectangle is six loops. So the style could not be changed without changing the geometry, and this
+/// file is the geometry.
+/// </para>
+/// <para>
+/// <b>Colour is inherited from the text and that is the point of the style.</b> An outline glyph with
+/// no fill takes the row's foreground, so it is automatically right in the dark theme, in the light
+/// theme and in the disabled state - which is three problems a filled glyph with an explicit brush
+/// has to solve one at a time. Section 8.3 allows exactly three exceptions and they are stated where
+/// they are used: a primary key is the accent, a warning is amber, an error is red.
+/// </para>
+/// <para>
+/// <b>The canon names 24 icons and this application uses fifty.</b> Twenty-two of the canon's have a
+/// consumer here; the rest of the file is the other twenty-eight, drawn to the same rules, because a
+/// half-converted set is worse than a consistent wrong one. Where the canon has a drawing, the
+/// canon's drawing is used verbatim.
+/// </para>
+/// <para>
+/// <b>Circles, rectangles and ellipses are path data here.</b> The canon draws them as SVG shapes;
+/// Avalonia parses one path string per icon, so each becomes arcs and lines - a circle at
+/// <c>(cx,cy,r)</c> is <c>M{cx-r},{cy} A{r},{r} 0 1,0 {cx+r},{cy} A{r},{r} 0 1,0 {cx-r},{cy}</c>. The
+/// conversion is mechanical and the shapes are unchanged.
+/// </para>
 /// </summary>
 public static class StudioIcons
 {
     #region Path Data Constants
 
-    // Store path data as strings for use in converters and tests
-    public const string PATH_MENU_NEW_DATABASE = "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z";
-    public const string PATH_MENU_OPEN_DATABASE = "M19,20H4C2.89,20 2,19.1 2,18V6C2,4.89 2.89,4 4,4H10L12,6H19A2,2 0 0,1 21,8H21L4,8V18L6.14,10H23.21L20.93,18.5C20.7,19.37 19.92,20 19,20Z";
-    public const string PATH_MENU_CLOSE_DATABASE = "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z";
-    public const string PATH_MENU_RECENT_FILES = "M13.5,8H12V13L16.28,15.54L17,14.33L13.5,12.25V8M13,3A9,9 0 0,0 4,12H1L4.96,16.03L9,12H6A7,7 0 0,1 13,5A7,7 0 0,1 20,12A7,7 0 0,1 13,19C11.07,19 9.32,18.21 8.06,16.94L6.64,18.36C8.27,20 10.5,21 13,21A9,9 0 0,0 22,12A9,9 0 0,0 13,3";
-    public const string PATH_MENU_EXIT = "M16,17V14H9V10H16V7L21,12L16,17M14,2A2,2 0 0,1 16,4V6H14V4H5V20H14V18H16V20A2,2 0 0,1 14,22H5A2,2 0 0,1 3,20V4A2,2 0 0,1 5,2H14Z";
-    public const string PATH_MENU_COPY = "M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z";
-    public const string PATH_MENU_PASTE = "M19,20H5V4H7V7H17V4H19M12,2A1,1 0 0,1 13,3A1,1 0 0,1 12,4A1,1 0 0,1 11,3A1,1 0 0,1 12,2M19,2H14.82C14.4,0.84 13.3,0 12,0C10.7,0 9.6,0.84 9.18,2H5A2,2 0 0,0 3,4V20A2,2 0 0,0 5,22H19A2,2 0 0,0 21,20V4A2,2 0 0,0 19,2Z";
-    public const string PATH_MENU_REFRESH = "M17.65,6.35C16.2,4.9 14.21,4 12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20C15.73,20 18.84,17.45 19.73,14H17.65C16.83,16.33 14.61,18 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6C13.66,6 15.14,6.69 16.22,7.78L13,11H20V4L17.65,6.35Z";
-    public const string PATH_MENU_EXPORT = "M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M13.5,16V19L10.5,16H13.5M6,20V4H13V9H18V20H6Z";
-    public const string PATH_MENU_IMPORT = "M14,2H6A2,2 0 0,0 4,4V20A2,2 0 0,0 6,22H18A2,2 0 0,0 20,20V8L14,2M13.5,16L10.5,13H13.5V10H13.5V13L16.5,16H13.5M6,20V4H13V9H18V20H6Z";
-    public const string PATH_MENU_ABOUT = "M11,9H13V7H11M12,20C7.59,20 4,16.41 4,12C4,7.59 7.59,4 12,4C16.41,4 20,7.59 20,12C20,16.41 16.41,20 12,20M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M11,17H13V11H11V17Z";
-    public const string PATH_COMMON_BULLET = "M12,2A10,10 0 1,0 22,12A10,10 0 0,0 12,2Z";
-    public const string PATH_COMMON_SEARCH = "M9.5,3A6.5,6.5 0 0,1 16,9.5C16,11.11 15.41,12.59 14.44,13.73L14.71,14H15.5L20.5,19L19,20.5L14,15.5V14.71L13.73,14.44C12.59,15.41 11.11,16 9.5,16A6.5,6.5 0 0,1 3,9.5A6.5,6.5 0 0,1 9.5,3M9.5,5C7,5 5,7 5,9.5C5,12 7,14 9.5,14C12,14 14,12 14,9.5C14,7 12,5 9.5,5Z";
-    public const string PATH_COMMON_BELL = "M21,19V20H3V19L5,17V11C5,7.9 7.03,5.17 10,4.29C10,4.19 10,4.1 10,4A2,2 0 0,1 12,2A2,2 0 0,1 14,4C14,4.1 14,4.19 14,4.29C16.97,5.17 19,7.9 19,11V17L21,19M14,21A2,2 0 0,1 12,23A2,2 0 0,1 10,21";
-    public const string PATH_COMMON_WARNING = "M1,21H23L12,2L1,21M12,16A1,1 0 0,0 13,15A1,1 0 0,0 12,14A1,1 0 0,0 11,15A1,1 0 0,0 12,16M11,10V13H13V10H11Z";
-    public const string PATH_COMMON_FOLDER = "M10,4H4C2.89,4 2,4.89 2,6V18A2,2 0 0,0 4,20H20A2,2 0 0,0 22,18V8C22,6.89 21.1,6 20,6H12L10,4Z";
-    public const string PATH_COMMON_DELETE = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z";
-    public const string PATH_QUERY_EXECUTE = "M8,5.14V19.14L19,12.14L8,5.14Z";
-    public const string PATH_QUERY_STOP = "M6,6H18V18H6V6Z";
-    public const string PATH_QUERY_SAVE = "M15,9H5V5H15M12,19A3,3 0 0,1 9,16A3,3 0 0,1 12,13A3,3 0 0,1 15,16A3,3 0 0,1 12,19M17,3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V7L17,3Z";
-    public const string PATH_QUERY_CLEAR = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z";
-    public const string PATH_TAB_CLOSE = "M19,6.41L17.59,5L12,10.59L6.41,5L5,6.41L10.59,12L5,17.59L6.41,19L12,13.41L17.59,19L19,17.59L13.41,12L19,6.41Z";
-    public const string PATH_TAB_NEW = "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z";
-    public const string PATH_TAB_MODIFIED = "M12,2A10,10 0 0,0 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
-    public const string PATH_PAGE_FIRST = "M18.41,16.59L13.82,12L18.41,7.41L17,6L11,12L17,18L18.41,16.59M6,6H8V18H6V6Z";
-    public const string PATH_PAGE_PREVIOUS = "M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z";
-    public const string PATH_PAGE_NEXT = "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z";
-    public const string PATH_PAGE_LAST = "M5.59,7.41L10.18,12L5.59,16.59L7,18L13,12L7,6L5.59,7.41M16,6H18V18H16V6Z";
-    public const string PATH_ARROW_UP = "M7.41,15.41L12,10.83L16.59,15.41L18,14L12,8L6,14L7.41,15.41Z";
-    public const string PATH_ARROW_DOWN = "M7.41,8.58L12,13.17L16.59,8.58L18,10L12,16L6,10L7.41,8.58Z";
-    public const string PATH_ARROW_LEFT = "M15.41,16.58L10.83,12L15.41,7.41L14,6L8,12L14,18L15.41,16.58Z";
-    public const string PATH_ARROW_RIGHT = "M8.59,16.58L13.17,12L8.59,7.41L10,6L16,12L10,18L8.59,16.58Z";
-    public const string PATH_DB_DATABASE = "M12,3C7.58,3 4,4.79 4,7C4,9.21 7.58,11 12,11C16.42,11 20,9.21 20,7C20,4.79 16.42,3 12,3M4,9V12C4,14.21 7.58,16 12,16C16.42,16 20,14.21 20,12V9C20,11.21 16.42,13 12,13C7.58,13 4,11.21 4,9M4,14V17C4,19.21 7.58,21 12,21C16.42,21 20,19.21 20,17V14C20,16.21 16.42,18 12,18C7.58,18 4,16.21 4,14Z";
-    public const string PATH_DB_TABLE = "M5,4H19A2,2 0 0,1 21,6V18A2,2 0 0,1 19,20H5A2,2 0 0,1 3,18V6A2,2 0 0,1 5,4M5,8V12H11V8H5M13,8V12H19V8H13M5,14V18H11V14H5M13,14V18H19V14H13Z";
-    public const string PATH_DB_VIEW = "M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17M12,4.5C7,4.5 2.73,7.61 1,12C2.73,16.39 7,19.5 12,19.5C17,19.5 21.27,16.39 23,12C21.27,7.61 17,4.5 12,4.5Z";
-    public const string PATH_DB_INDEX = "M7,2V13H10V22L17,10H13L17,2H7Z";
-    public const string PATH_DB_TRIGGER = "M11,15H13V17H11V15M11,7H13V13H11V7M12,2C6.47,2 2,6.5 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2M12,20A8,8 0 0,1 4,12A8,8 0 0,1 12,4A8,8 0 0,1 20,12A8,8 0 0,1 12,20Z";
-    public const string PATH_DB_SEQUENCE = "M4,4H7V14H9V16H4V14H6V6H4V4M13,4H16V6H11V8H14A2,2 0 0,1 16,10V11A2,2 0 0,1 14,13H10V11H14V10H11A2,2 0 0,1 9,8V7A2,2 0 0,1 11,5H13V4M4,18H7V20H4V18M13,18H16V20H13V18M8.5,18H11.5V20H8.5V18Z";
-    public const string PATH_COPY = "M19,21H8V7H19M19,5H8A2,2 0 0,0 6,7V21A2,2 0 0,0 8,23H19A2,2 0 0,0 21,21V7A2,2 0 0,0 19,5M16,1H4A2,2 0 0,0 2,3V17H4V3H16V1Z";
-    public const string PATH_EXPORT = "M5,20H19V18H5M19,9H15V3H9V9H5L12,16L19,9Z";
-    public const string PATH_COPY_AS_INSERT = "M17,9H7V7H17M17,13H7V11H17M14,17H7V15H14M12,3A9,9 0 0,1 21,12A9,9 0 0,1 12,21A9,9 0 0,1 3,12A9,9 0 0,1 12,3Z";
+    // ---------------------------------------------------------------- primitives, shared by name
 
-    // Table Editor icons
-    public const string PATH_TABLE_EDITOR_ADD_ROW = "M19,13H13V19H11V13H5V11H11V5H13V11H19V13Z";
-    public const string PATH_TABLE_EDITOR_DELETE_ROW = "M19,4H15.5L14.5,3H9.5L8.5,4H5V6H19M6,19A2,2 0 0,0 8,21H16A2,2 0 0,0 18,19V7H6V19Z";
-    public const string PATH_TABLE_EDITOR_COMMIT = "M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z";
-    public const string PATH_TABLE_EDITOR_ROLLBACK = "M12.5,8C9.85,8 7.45,9 5.6,10.6L2,7V16H11L7.38,12.38C8.77,11.22 10.54,10.5 12.5,10.5C16.04,10.5 19.05,12.81 20.1,16L22.47,15.22C21.08,11.03 17.15,8 12.5,8Z";
+    /// <summary>A plus. Adding a row, a tab and a database are the same gesture.</summary>
+    public const string PATH_PLUS = "M12 5v14M5 12h14";
 
-    // Workspace Tab icons
-    public const string PATH_TAB_QUERY = "M8,5.14V19.14L19,12.14L8,5.14Z";  // Same as execute
-    public const string PATH_TAB_TABLE_EDIT = "M21.7,13.35L20.7,14.35L18.65,12.3L19.65,11.3C19.86,11.08 20.21,11.08 20.42,11.3L21.7,12.58C21.92,12.79 21.92,13.14 21.7,13.35M12,18.94L18.07,12.88L20.12,14.93L14.06,21H12V18.94M4,2H18A2,2 0 0,1 20,4V8.17L16.17,12H12V16.17L10.17,18H4A2,2 0 0,1 2,16V4A2,2 0 0,1 4,2M4,6V10H10V6H4M12,6V10H18V6H12M4,12V16H10V12H4Z";
-    public const string PATH_TAB_STRUCTURE = "M12,3C7.58,3 4,4.79 4,7V17C4,19.21 7.59,21 12,21C16.42,21 20,19.21 20,17V7C20,4.79 16.42,3 12,3M12,5C15.87,5 18,6.5 18,7C18,7.5 15.87,9 12,9C8.13,9 6,7.5 6,7C6,6.5 8.13,5 12,5M18,17C18,17.5 15.87,19 12,19C8.13,19 6,17.5 6,17V14.77C7.61,15.55 9.72,16 12,16C14.28,16 16.39,15.55 18,14.77V17M18,12.45C16.7,13.4 14.42,14 12,14C9.58,14 7.3,13.4 6,12.45V9.64C7.47,10.47 9.61,11 12,11C14.39,11 16.53,10.47 18,9.64V12.45Z";
-    public const string PATH_TAB_PIN = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12Z";
-    public const string PATH_TAB_UNPIN = "M16,12V4H17V2H7V4H8V12L6,14V16H11.2V22H12.8V16H18V14L16,12M8.8,14L10,12.8V4H14V12.8L15.2,14H8.8Z";
+    /// <summary>A cross. Closing a tab, a database and a dialog.</summary>
+    public const string PATH_CLOSE = "M6 6l12 12M18 6L6 18";
 
-    // Theme icons
-    public const string PATH_THEME_DARK = "M17.75,4.09L15.22,6.03L16.13,9.09L13.5,7.28L10.87,9.09L11.78,6.03L9.25,4.09L12.44,4L13.5,1L14.56,4L17.75,4.09M21.25,11L19.61,12.25L20.2,14.23L18.5,13.06L16.8,14.23L17.39,12.25L15.75,11L17.81,10.95L18.5,9L19.19,10.95L21.25,11M18.97,15.95C19.8,15.87 20.69,17.05 20.16,17.8C19.84,18.25 19.5,18.67 19.08,19.07C15.17,23 8.84,23 4.94,19.07C1.03,15.17 1.03,8.83 4.94,4.93C5.34,4.53 5.76,4.17 6.21,3.85C6.96,3.32 8.14,4.21 8.06,5.04C7.79,7.9 8.75,10.87 10.95,13.06C13.14,15.26 16.1,16.22 18.97,15.95Z";
-    public const string PATH_THEME_LIGHT = "M12,7A5,5 0 0,1 17,12A5,5 0 0,1 12,17A5,5 0 0,1 7,12A5,5 0 0,1 12,7M12,9A3,3 0 0,0 9,12A3,3 0 0,0 12,15A3,3 0 0,0 15,12A3,3 0 0,0 12,9M12,2L14.39,5.42C13.65,5.15 12.84,5 12,5C11.16,5 10.35,5.15 9.61,5.42L12,2M3.34,7L7.5,6.65C6.9,7.16 6.36,7.78 5.94,8.5C5.5,9.24 5.25,10 5.11,10.79L3.34,7M3.36,17L5.12,13.23C5.26,14 5.53,14.78 5.95,15.5C6.37,16.24 6.91,16.86 7.5,17.37L3.36,17M20.65,7L18.88,10.79C18.74,10 18.47,9.23 18.05,8.5C17.63,7.78 17.1,7.15 16.5,6.64L20.65,7M20.64,17L16.5,17.36C17.09,16.85 17.62,16.22 18.04,15.5C18.46,14.77 18.73,14 18.87,13.21L20.64,17M12,22L9.59,18.56C10.33,18.83 11.14,19 12,19C12.82,19 13.63,18.83 14.37,18.56L12,22Z";
+    /// <summary>The canon's trash: a lid, a handle and a tapering body.</summary>
+    public const string PATH_TRASH = "M4 7h16M9 7V4h6v3M6 7l1 13h10l1-13";
 
-    // About dialog icons
-    public const string PATH_LINK_WEB = "M16.36,14C16.44,13.34 16.5,12.68 16.5,12C16.5,11.32 16.44,10.66 16.36,10H19.74C19.9,10.64 20,11.31 20,12C20,12.69 19.9,13.36 19.74,14M14.59,19.56C15.19,18.45 15.65,17.25 15.97,16H18.92C17.96,17.65 16.43,18.93 14.59,19.56M14.34,14H9.66C9.56,13.34 9.5,12.68 9.5,12C9.5,11.32 9.56,10.65 9.66,10H14.34C14.43,10.65 14.5,11.32 14.5,12C14.5,12.68 14.43,13.34 14.34,14M12,19.96C11.17,18.76 10.5,17.43 10.09,16H13.91C13.5,17.43 12.83,18.76 12,19.96M8,8H5.08C6.03,6.34 7.57,5.06 9.4,4.44C8.8,5.55 8.35,6.75 8,8M5.08,16H8C8.35,17.25 8.8,18.45 9.4,19.56C7.57,18.93 6.03,17.65 5.08,16M4.26,14C4.1,13.36 4,12.69 4,12C4,11.31 4.1,10.64 4.26,10H7.64C7.56,10.66 7.5,11.32 7.5,12C7.5,12.68 7.56,13.34 7.64,14M12,4.03C12.83,5.23 13.5,6.57 13.91,8H10.09C10.5,6.57 11.17,5.23 12,4.03M18.92,8H15.97C15.65,6.75 15.19,5.55 14.59,4.44C16.43,5.07 17.96,6.34 18.92,8M12,2C6.47,2 2,6.5 2,12A10,10 0 0,0 12,22A10,10 0 0,0 22,12A10,10 0 0,0 12,2Z";
-    public const string PATH_LINK_GITHUB = "M12,2A10,10 0 0,0 2,12C2,16.42 4.87,20.17 8.84,21.5C9.34,21.58 9.5,21.27 9.5,21C9.5,20.77 9.5,20.14 9.5,19.31C6.73,19.91 6.14,17.97 6.14,17.97C5.68,16.81 5.03,16.5 5.03,16.5C4.12,15.88 5.1,15.9 5.1,15.9C6.1,15.97 6.63,16.93 6.63,16.93C7.5,18.45 8.97,18 9.54,17.76C9.63,17.11 9.89,16.67 10.17,16.42C7.95,16.17 5.62,15.31 5.62,11.5C5.62,10.39 6,9.5 6.65,8.79C6.55,8.54 6.2,7.5 6.75,6.15C6.75,6.15 7.59,5.88 9.5,7.17C10.29,6.95 11.15,6.84 12,6.84C12.85,6.84 13.71,6.95 14.5,7.17C16.41,5.88 17.25,6.15 17.25,6.15C17.8,7.5 17.45,8.54 17.35,8.79C18,9.5 18.38,10.39 18.38,11.5C18.38,15.32 16.04,16.16 13.81,16.41C14.17,16.72 14.5,17.33 14.5,18.26C14.5,19.6 14.5,20.68 14.5,21C14.5,21.27 14.66,21.59 15.17,21.5C19.14,20.16 22,16.42 22,12A10,10 0 0,0 12,2Z";
-    public const string PATH_LINK_PERSON = "M12,4A4,4 0 0,1 16,8A4,4 0 0,1 12,12A4,4 0 0,1 8,8A4,4 0 0,1 12,4M12,14C16.42,14 20,15.79 20,18V20H4V18C4,15.79 7.58,14 12,14Z";
+    /// <summary>The canon's check.</summary>
+    public const string PATH_CHECK = "M4 12l5 5L20 6";
+
+    /// <summary>The canon's undo.</summary>
+    public const string PATH_UNDO = "M4 9h11a5 5 0 0 1 0 10h-6M8 5L4 9l4 4";
+
+    /// <summary>The canon's refresh - an open ring, so the gap reads as motion.</summary>
+    public const string PATH_REFRESH = "M20 12a8 8 0 1 1-2.4-5.7M20 4v5h-5";
+
+    /// <summary>The canon's folder is not in section 8.3; the tree has six of them.</summary>
+    public const string PATH_FOLDER = "M3 7a2 2 0 0 1 2-2h4l2 2h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2z";
+
+    // ---------------------------------------------------------------- menu
+
+    public const string PATH_MENU_NEW_DATABASE = PATH_PLUS;
+    public const string PATH_MENU_OPEN_DATABASE = PATH_FOLDER;
+    public const string PATH_MENU_CLOSE_DATABASE = PATH_CLOSE;
+    public const string PATH_MENU_RECENT_FILES = "M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0M12 7v5l3.5 2";
+    public const string PATH_MENU_EXIT = "M14 4h4a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-4M9 16l-4-4 4-4M5 12h10";
+    public const string PATH_MENU_COPY = "M9 9h10a1 1 0 0 1 1 1v10a1 1 0 0 1-1 1H9a1 1 0 0 1-1-1V10a1 1 0 0 1 1-1zM5 15H4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1h10a1 1 0 0 1 1 1v1";
+    public const string PATH_MENU_PASTE = "M9 4h6v3H9zM8 5H6a1 1 0 0 0-1 1v13a1 1 0 0 0 1 1h12a1 1 0 0 0 1-1V6a1 1 0 0 0-1-1h-2";
+    public const string PATH_MENU_REFRESH = PATH_REFRESH;
+    public const string PATH_MENU_EXPORT = "M12 15V4M8 8l4-4 4 4M5 14v5h14v-5";
+    public const string PATH_MENU_IMPORT = "M12 4v11M8 11l4 4 4-4M5 14v5h14v-5";
+    public const string PATH_MENU_ABOUT = "M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0M12 11v6M12 7.5h.01";
+
+    // ---------------------------------------------------------------- common
+
+    /// <summary>A dot. The one glyph that is a FILL by nature - a marker, not a drawing.</summary>
+    public const string PATH_COMMON_BULLET = "M12 9a3 3 0 1 0 0 6 3 3 0 1 0 0-6z";
+
+    public const string PATH_COMMON_SEARCH = "M5 11a6 6 0 1 0 12 0 6 6 0 1 0-12 0M20 20l-4.5-4.5";
+    public const string PATH_COMMON_BELL = "M18 16v-5a6 6 0 0 0-12 0v5l-2 2h16zM10 20.5a2 2 0 0 0 4 0";
+    public const string PATH_COMMON_WARNING = "M12 4l9 16H3zM12 10v4M12 17h.01";
+    public const string PATH_COMMON_ERROR = "M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0M15 9l-6 6M9 9l6 6";
+    public const string PATH_COMMON_FOLDER = PATH_FOLDER;
+    public const string PATH_COMMON_DELETE = PATH_TRASH;
+    public const string PATH_COMMON_FILTER = "M3 5h18l-7 8v6l-4-2v-4z";
+    public const string PATH_COMMON_COLUMNS = "M3 5h18v14H3zM9 5v14M15 5v14";
+    public const string PATH_COMMON_GEAR = "M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0M12 3v3M12 18v3M3 12h3M18 12h3M5.6 5.6l2.1 2.1M16.3 16.3l2.1 2.1M18.4 5.6l-2.1 2.1M7.7 16.3l-2.1 2.1";
+    public const string PATH_COMMON_LOCK = "M7 10h10a2 2 0 0 1 2 2v6a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2v-6a2 2 0 0 1 2-2zM8 10V7a4 4 0 0 1 8 0v3";
+
+    // ---------------------------------------------------------------- query
+
+    public const string PATH_QUERY_EXECUTE = "M7 4l12 8-12 8z";
+    public const string PATH_QUERY_STOP = "M8 6h8a2 2 0 0 1 2 2v8a2 2 0 0 1-2 2H8a2 2 0 0 1-2-2V8a2 2 0 0 1 2-2z";
+    public const string PATH_QUERY_SAVE = "M5 4h11l3 3v13a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V5a1 1 0 0 1 1-1zM8 4v5h7V4M8 20v-6h8v6";
+    public const string PATH_QUERY_CLEAR = PATH_TRASH;
+    public const string PATH_QUERY_FORMAT = "M4 5h16M4 10h10M4 15h16M4 20h8";
+
+    /// <summary>
+    /// The whole script: the same triangle, with the lines it is about beside it. Running one
+    /// statement and running the file are different actions and the toolbar has both, so they cannot
+    /// share a glyph - the icon is the only thing telling them apart at a glance.
+    /// </summary>
+    public const string PATH_QUERY_EXECUTE_SCRIPT = "M4 6h7M4 11h5M4 16h7M14 8l6 4-6 4z";
+
+    /// <summary>The selection: the triangle inside crop marks.</summary>
+    public const string PATH_QUERY_EXECUTE_SELECTION = "M4 8V5h3M17 5h3v3M20 16v3h-3M7 19H4v-3M10 9l5 3-5 3z";
+
+    /// <summary>The canon's plan: three boxes and the lines that join them.</summary>
+    public const string PATH_QUERY_PLAN = "M10 3h4a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1V4a1 1 0 0 1 1-1zM4 17h4a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1zM16 17h4a1 1 0 0 1 1 1v2a1 1 0 0 1-1 1h-4a1 1 0 0 1-1-1v-2a1 1 0 0 1 1-1zM12 7v5M6 17v-3h12v3";
+
+    /// <summary>The canon's transaction: two arrows, one each way.</summary>
+    public const string PATH_QUERY_TRANSACTION = "M4 8h13l-3-3M20 16H7l3 3";
+
+    // ---------------------------------------------------------------- tabs
+
+    public const string PATH_TAB_CLOSE = PATH_CLOSE;
+    public const string PATH_TAB_NEW = PATH_PLUS;
+    public const string PATH_TAB_MODIFIED = PATH_COMMON_BULLET;
+    public const string PATH_TAB_PIN = "M10 4h4l-.5 7H16a2 2 0 0 1 2 2v1H6v-1a2 2 0 0 1 2-2h2.5zM12 15v5";
+    public const string PATH_TAB_UNPIN = "M10 4h4l-.5 7H16a2 2 0 0 1 2 2v1H6v-1a2 2 0 0 1 2-2h2.5zM12 15v5M4 3l16 18";
+
+    // ---------------------------------------------------------------- pagination and direction
+
+    public const string PATH_PAGE_FIRST = "M18 6l-6 6 6 6M7 5v14";
+    public const string PATH_PAGE_PREVIOUS = "M15 6l-6 6 6 6";
+    public const string PATH_PAGE_NEXT = "M9 6l6 6-6 6";
+    public const string PATH_PAGE_LAST = "M6 6l6 6-6 6M17 5v14";
+
+    public const string PATH_ARROW_UP = "M12 19V5M6 11l6-6 6 6";
+    public const string PATH_ARROW_DOWN = "M12 5v14M6 13l6 6 6-6";
+    public const string PATH_ARROW_LEFT = "M19 12H5M11 6l-6 6 6 6";
+    public const string PATH_ARROW_RIGHT = "M5 12h14M13 6l6 6-6 6";
+
+    // ---------------------------------------------------------------- database objects
+
+    /// <summary>The canon's database: an ellipse for the top and two skirts.</summary>
+    public const string PATH_DB_DATABASE = "M4 6a8 3 0 1 0 16 0 8 3 0 1 0-16 0M4 6v12c0 1.7 3.6 3 8 3s8-1.3 8-3V6M4 12c0 1.7 3.6 3 8 3s8-1.3 8-3";
+
+    /// <summary>The canon's table: a rounded frame, a header rule and one column rule.</summary>
+    public const string PATH_DB_TABLE = "M5 4h14a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2V6a2 2 0 0 1 2-2zM3 10h18M9 10v10";
+
+    /// <summary>The canon's view: an eye, because a view is a way of looking at a table.</summary>
+    public const string PATH_DB_VIEW = "M2 12s3.6-6 10-6 10 6 10 6-3.6 6-10 6-10-6-10-6zM9.5 12a2.5 2.5 0 1 0 5 0 2.5 2.5 0 1 0-5 0";
+
+    public const string PATH_DB_INDEX = "M4 6h16M4 12h10M4 18h7";
+    public const string PATH_DB_TRIGGER = "M13 3L5 13h5l-1 8 8-11h-5z";
+    public const string PATH_DB_SEQUENCE = "M4 7h4l2 10h4M14 7h6M17 4l3 3-3 3";
+    public const string PATH_DB_ROUTINE = "M6 20V8a3 3 0 0 1 3-3h1M5 12h7M14 10l6 8M20 10l-6 8";
+
+    /// <summary>Primary key. One of the three glyphs section 8.3 lets carry a colour.</summary>
+    public const string PATH_DB_KEY = "M4 12a4 4 0 1 0 8 0 4 4 0 1 0-8 0M12 12h9M18 12v4";
+
+    public const string PATH_DB_FOREIGN_KEY = "M10 13a4 4 0 0 0 6 .5l2-2a4 4 0 0 0-6-6l-1 1M14 11a4 4 0 0 0-6-.5l-2 2a4 4 0 0 0 6 6l1-1";
+    public const string PATH_DB_LAYERS = "M12 3l9 5-9 5-9-5zM3 13l9 5 9-5";
+
+    // ---------------------------------------------------------------- data
+
+    public const string PATH_COPY = PATH_MENU_COPY;
+    public const string PATH_EXPORT = PATH_MENU_EXPORT;
+    public const string PATH_COPY_AS_INSERT = "M4 6h11M4 11h11M4 16h6M17 13v8M13 17h8";
+
+    public const string PATH_TABLE_EDITOR_ADD_ROW = PATH_PLUS;
+    public const string PATH_TABLE_EDITOR_DELETE_ROW = PATH_TRASH;
+    public const string PATH_TABLE_EDITOR_COMMIT = PATH_CHECK;
+    public const string PATH_TABLE_EDITOR_ROLLBACK = PATH_UNDO;
+
+    // ---------------------------------------------------------------- workspace tabs
+
+    public const string PATH_TAB_QUERY = PATH_QUERY_EXECUTE;
+    public const string PATH_TAB_TABLE_EDIT = PATH_DB_TABLE;
+    public const string PATH_TAB_STRUCTURE = PATH_DB_LAYERS;
+
+    // ---------------------------------------------------------------- theme and links
+
+    public const string PATH_THEME_DARK = "M20.5 14.3A8.5 8.5 0 1 1 9.7 3.5a6.6 6.6 0 0 0 10.8 10.8z";
+    public const string PATH_THEME_LIGHT = "M9 12a3 3 0 1 0 6 0 3 3 0 1 0-6 0M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.6 5.6l1.8 1.8M16.6 16.6l1.8 1.8M18.4 5.6l-1.8 1.8M7.4 16.6l-1.8 1.8";
+
+    public const string PATH_LINK_WEB = "M3 12a9 9 0 1 0 18 0 9 9 0 1 0-18 0M3.5 9h17M3.5 15h17M12 3c-2.5 2.4-3.8 5.4-3.8 9s1.3 6.6 3.8 9c2.5-2.4 3.8-5.4 3.8-9S14.5 5.4 12 3z";
+    public const string PATH_LINK_GITHUB = "M9 19c-4 1.4-4-2.5-6-3m12 5v-3.6c0-1 .1-1.4-.5-2 2.8-.3 5.5-1.4 5.5-6a4.7 4.7 0 0 0-1.3-3.2 4.3 4.3 0 0 0-.1-3.2S17.5 2.7 15 4.3a11.5 11.5 0 0 0-6 0C6.5 2.7 5.4 3 5.4 3a4.3 4.3 0 0 0-.1 3.2A4.7 4.7 0 0 0 4 9.4c0 4.6 2.7 5.7 5.5 6-.6.6-.6 1.2-.5 2V21";
+    public const string PATH_LINK_PERSON = "M8 8a4 4 0 1 0 8 0 4 4 0 1 0-8 0M4 20a8 8 0 0 1 16 0";
 
     #endregion
 
@@ -99,8 +207,13 @@ public static class StudioIcons
     public static StreamGeometry COMMON_SEARCH => StreamGeometry.Parse(PATH_COMMON_SEARCH);
     public static StreamGeometry COMMON_BELL => StreamGeometry.Parse(PATH_COMMON_BELL);
     public static StreamGeometry COMMON_WARNING => StreamGeometry.Parse(PATH_COMMON_WARNING);
+    public static StreamGeometry COMMON_ERROR => StreamGeometry.Parse(PATH_COMMON_ERROR);
     public static StreamGeometry COMMON_FOLDER => StreamGeometry.Parse(PATH_COMMON_FOLDER);
     public static StreamGeometry COMMON_DELETE => StreamGeometry.Parse(PATH_COMMON_DELETE);
+    public static StreamGeometry COMMON_FILTER => StreamGeometry.Parse(PATH_COMMON_FILTER);
+    public static StreamGeometry COMMON_COLUMNS => StreamGeometry.Parse(PATH_COMMON_COLUMNS);
+    public static StreamGeometry COMMON_GEAR => StreamGeometry.Parse(PATH_COMMON_GEAR);
+    public static StreamGeometry COMMON_LOCK => StreamGeometry.Parse(PATH_COMMON_LOCK);
 
     #endregion
 
@@ -110,6 +223,11 @@ public static class StudioIcons
     public static StreamGeometry QUERY_STOP => StreamGeometry.Parse(PATH_QUERY_STOP);
     public static StreamGeometry QUERY_SAVE => StreamGeometry.Parse(PATH_QUERY_SAVE);
     public static StreamGeometry QUERY_CLEAR => StreamGeometry.Parse(PATH_QUERY_CLEAR);
+    public static StreamGeometry QUERY_FORMAT => StreamGeometry.Parse(PATH_QUERY_FORMAT);
+    public static StreamGeometry QUERY_EXECUTE_SCRIPT => StreamGeometry.Parse(PATH_QUERY_EXECUTE_SCRIPT);
+    public static StreamGeometry QUERY_EXECUTE_SELECTION => StreamGeometry.Parse(PATH_QUERY_EXECUTE_SELECTION);
+    public static StreamGeometry QUERY_PLAN => StreamGeometry.Parse(PATH_QUERY_PLAN);
+    public static StreamGeometry QUERY_TRANSACTION => StreamGeometry.Parse(PATH_QUERY_TRANSACTION);
     public static StreamGeometry TAB_CLOSE => StreamGeometry.Parse(PATH_TAB_CLOSE);
     public static StreamGeometry TAB_NEW => StreamGeometry.Parse(PATH_TAB_NEW);
     public static StreamGeometry TAB_MODIFIED => StreamGeometry.Parse(PATH_TAB_MODIFIED);
@@ -131,8 +249,8 @@ public static class StudioIcons
     public static StreamGeometry ARROW_DOWN => StreamGeometry.Parse(PATH_ARROW_DOWN);
     public static StreamGeometry ARROW_LEFT => StreamGeometry.Parse(PATH_ARROW_LEFT);
     public static StreamGeometry ARROW_RIGHT => StreamGeometry.Parse(PATH_ARROW_RIGHT);
-    public static StreamGeometry CHEVRON_RIGHT => ARROW_RIGHT;
-    public static StreamGeometry CHEVRON_LEFT => ARROW_LEFT;
+    public static StreamGeometry CHEVRON_RIGHT => StreamGeometry.Parse(PATH_PAGE_NEXT);
+    public static StreamGeometry CHEVRON_LEFT => StreamGeometry.Parse(PATH_PAGE_PREVIOUS);
 
     #endregion
 
@@ -144,6 +262,10 @@ public static class StudioIcons
     public static StreamGeometry DB_INDEX => StreamGeometry.Parse(PATH_DB_INDEX);
     public static StreamGeometry DB_TRIGGER => StreamGeometry.Parse(PATH_DB_TRIGGER);
     public static StreamGeometry DB_SEQUENCE => StreamGeometry.Parse(PATH_DB_SEQUENCE);
+    public static StreamGeometry DB_ROUTINE => StreamGeometry.Parse(PATH_DB_ROUTINE);
+    public static StreamGeometry DB_KEY => StreamGeometry.Parse(PATH_DB_KEY);
+    public static StreamGeometry DB_FOREIGN_KEY => StreamGeometry.Parse(PATH_DB_FOREIGN_KEY);
+    public static StreamGeometry DB_LAYERS => StreamGeometry.Parse(PATH_DB_LAYERS);
 
     #endregion
 

@@ -21,6 +21,67 @@
         is the only version of that sweep worth doing.
     -->
 
+    <!-- ============================ Icons ============================ -->
+
+    <!--
+        ONE STYLE FOR THE WHOLE PRODUCT (section 8.3): outline, stroke 1.7 on a 24-unit drawing, round
+        caps and joins, NO FILL.
+
+        `PathIcon` fills its geometry - that is what it is for - so the drawing is taken out of the
+        fill and put into the stroke here. The `Path` inside the template lives in a `Viewbox`, so a
+        stroke expressed in the drawing's own units scales with the icon exactly as it does in the
+        canon's SVG: 1.7 at 24 units renders as about 1 px at the normal 14 px size.
+
+        THE STROKE IS BOUND TO THE ICON'S OWN FOREGROUND, which is what makes an outline icon
+        automatically right in both themes and in the disabled state. Section 8.3 allows a colour in
+        exactly three places - a primary key, a warning, an error - and those set `Foreground` at the
+        site, so they come through this binding without an exception being written for them.
+    -->
+    <!--
+        THE TEMPLATE IS REPLACED, NOT RESTYLED, AND THAT IS NOT A PREFERENCE. Fluent's `PathIcon`
+        template writes `Fill="{TemplateBinding Foreground}"` directly onto its `Path`, which is a
+        LOCAL VALUE on that child - and in Avalonia a local value beats a style setter. A
+        `PathIcon /template/ Path { Fill = null }` style therefore does exactly nothing: it was
+        written, it compiled, it ran, and every icon stayed filled. Measured by looking at the window.
+
+        Replacing the template is also what keeps the change to one place: fifty icons are used at
+        about sixty sites in the markup and not one of them has to be touched.
+
+        The stroke is inside the `Viewbox`, so it is expressed in the DRAWING's units and scales with
+        the icon exactly as the canon's SVG does - 1.7 on a 24-unit drawing renders as about 1 px at
+        the normal 14 px size, and stays proportional at 12, 16 and 20.
+    -->
+    <Style Selector="PathIcon">
+        <Setter Property="Width" Value="{DynamicResource Wit.Icon.Normal}"/>
+        <Setter Property="Height" Value="{DynamicResource Wit.Icon.Normal}"/>
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Viewbox Stretch="Uniform">
+                    <Path Data="{TemplateBinding Data}"
+                          Fill="{x:Null}"
+                          Stroke="{TemplateBinding Foreground}"
+                          StrokeThickness="{DynamicResource Wit.Icon.Stroke}"
+                          StrokeLineCap="Round"
+                          StrokeJoin="Round"/>
+                </Viewbox>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
+    <!--
+        The glyphs that are MARKERS rather than drawings. A dot with no fill is a ring, and a ring
+        beside a modified tab reads as a different state from the one meant.
+    -->
+    <Style Selector="PathIcon.dot">
+        <Setter Property="Template">
+            <ControlTemplate>
+                <Viewbox Stretch="Uniform">
+                    <Path Data="{TemplateBinding Data}" Fill="{TemplateBinding Foreground}"/>
+                </Viewbox>
+            </ControlTemplate>
+        </Setter>
+    </Style>
+
     <!-- ============================ Text entry ============================ -->
 
     <!--
@@ -61,9 +122,75 @@
         Only the radius and the type are global. See the note at the top: a height here reaches
         controls that are deliberately smaller.
     -->
+    <!--
+        `VerticalContentAlignment` is not decoration and it is why the toolbar looked wrong: Fluent
+        leaves it at `Stretch`, so on a button given an explicit `Height` the content presenter
+        stretches to the full height and the text sits against the TOP edge. Every caption in the
+        contextual toolbar was doing that.
+    -->
     <Style Selector="Button">
         <Setter Property="CornerRadius" Value="{DynamicResource Wit.Radius.Button}"/>
         <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    </Style>
+
+    <Style Selector="ToggleButton">
+        <Setter Property="CornerRadius" Value="{DynamicResource Wit.Radius.Button}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+        <Setter Property="VerticalContentAlignment" Value="Center"/>
+        <Setter Property="HorizontalContentAlignment" Value="Center"/>
+    </Style>
+
+    <!--
+        THE TOOLBAR BUTTON (section 1, WS-8). It is an icon and a word on the bar itself - no fill, no
+        border - so that seven of them read as a row of actions rather than as seven boxes. Fluent's
+        default button is a filled rectangle, which is what made the toolbar look like a form.
+    -->
+    <Style Selector="Button.toolbar">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+        <Setter Property="Height" Value="{DynamicResource Wit.Height.Button}"/>
+        <Setter Property="Padding" Value="9,0"/>
+        <Setter Property="Foreground" Value="{DynamicResource Wit.Ink.Secondary}"/>
+    </Style>
+
+    <Style Selector="Button.toolbar /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="BorderThickness" Value="0"/>
+    </Style>
+
+    <Style Selector="Button.toolbar:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Wit.Accent.Dim}"/>
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Wit.Ink}"/>
+    </Style>
+
+    <Style Selector="Button.toolbar:pressed /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Wit.Accent.Dim}"/>
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Wit.Ink}"/>
+    </Style>
+
+    <!-- A disabled action stays legible and stops being a target: the canon's "no fake" applies to
+         state as much as to numbers. -->
+    <Style Selector="Button.toolbar:disabled /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="Transparent"/>
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Wit.Ink.Muted}"/>
+        <Setter Property="Opacity" Value="0.55"/>
+    </Style>
+
+    <!-- The destructive one keeps its colour on the bar, because that is the only thing telling it
+         apart from its six neighbours. -->
+    <Style Selector="Button.toolbar.danger">
+        <Setter Property="Foreground" Value="{DynamicResource Wit.Danger.Text}"/>
+    </Style>
+
+    <!-- A separator between groups of actions, not a border on each. -->
+    <Style Selector="Rectangle.toolbar-separator">
+        <Setter Property="Width" Value="1"/>
+        <Setter Property="Height" Value="18"/>
+        <Setter Property="Margin" Value="5,0"/>
+        <Setter Property="Fill" Value="{DynamicResource Wit.Line}"/>
+        <Setter Property="VerticalAlignment" Value="Center"/>
     </Style>
 
     <!--

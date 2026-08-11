@@ -455,10 +455,10 @@ public class DesignTokenTests
             // measures ROWS and CONTROLS - a titlebar, a tab, a tree row, a field - and every one
             // of those is on a token. Asserting zero here would mean inventing metrics the canon
             // does not have, which is the failure mode a lint invites.
-            Assert.That(height, Is.EqualTo(68), "heights written by hand");
+            Assert.That(height, Is.EqualTo(67), "heights written by hand");
             Assert.That(HeightSiteKinds(), Is.EqualTo(new[]
             {
-                "Border:23", "Button:1", "DataGrid:2", "Ellipse:1", "Grid:2", "GridSplitter:1",
+                "Border:23", "Button:1", "DataGrid:2", "Ellipse:1", "Grid:1", "GridSplitter:1",
                 "ListBox:1", "PathIcon:2", "ProgressBar:4", "ScrollViewer:3", "TextBox:1",
                 "Window:27",
             }));

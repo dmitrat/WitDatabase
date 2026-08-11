@@ -15,7 +15,9 @@
         Width="1200"
         Height="800"
         MinWidth="900"
-        MinHeight="560">
+        MinHeight="560"
+
+        Background="{DynamicResource Wit.Surface.Base}">
 
 	<!-- Keyboard (1.7). Ctrl+N used to open a query TAB, which no other application means by it;
 	     it now creates a database and the tab is Ctrl+T. F5 no longer means two things at once -
@@ -39,9 +41,26 @@
 	<!-- Five zones (1.1): title bar, contextual toolbar, connections + workspace, status bar.
 	     The palette and the notification list sit on top of all of it. -->
 	<Grid RowDefinitions="Auto,Auto,*,Auto">
-		<!-- A. Title bar (1.2): menu, command palette, notifications, theme, 38 px -->
-		<Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto" Height="38"
-		      Background="{DynamicResource Wit.Surface.Panel}">
+		<!--
+		    A. The title bar (1.2): menu, command palette, notifications, theme. 38 px, and on
+		    `Surface.Bar` - section 8.1 puts the title bar, the menus and the popovers on the same
+		    surface, one step above the panels.
+
+		    WS-2 ASKS FOR THIS ROW TO BE THE WINDOW'S CAPTION and it is not, deliberately. Extending
+		    the client area was tried here and MEASURED: `ExtendClientAreaToDecorationsHint="True"`
+		    with `PreferSystemChrome` at a 38 px hint, and again at the system hint (-1), changes
+		    nothing on this Avalonia 12.1.1 / Windows 11 build - the system caption stays, the row
+		    stays below it, and the window looks pixel for pixel as it did. `MainWindow` is a plain
+		    `Window` with nothing overriding the properties, so there is no local cause to remove.
+
+		    Phase 14 recorded this as "not verifiable on this machine". It is verifiable now, and what
+		    the verification says is that the hints do not apply - which is a different and more useful
+		    fact. It is not worth hand-drawing minimise, maximise and close (and with them snap
+		    layouts, double-click maximise and the system menu) to chase it.
+		-->
+		<Grid Grid.Row="0" ColumnDefinitions="Auto,*,Auto"
+		      Height="{DynamicResource Wit.Height.TitleBar}"
+		      Background="{DynamicResource Wit.Surface.Bar}">
 			<!-- Menu -->
 			<Menu Grid.Column="0" VerticalAlignment="Center">
 				<MenuItem AutomationProperties.AutomationId="MainWindowFile" Header="{DynamicResource S.Menu.File}">
@@ -307,52 +326,116 @@
 		        BorderThickness="0,1,0,1"
 		        Padding="8,0">
 			<Grid ColumnDefinitions="*,Auto">
-				<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center">
+				<!--
+				    THE ACTIONS SCROLL, THE CHIP DOES NOT. A `StackPanel` in a star column does not
+				    clip: with icons beside the captions the query band grew past the window and
+				    "Откатить" ran underneath the connection chip - which is the one thing on this row
+				    that must never be covered, because it answers "where is this DELETE going" (WS-3).
+				    The scroll viewer bounds the actions; the chip keeps its Auto column.
+
+				    WS-8 says a toolbar holds no more than seven buttons and the query band holds
+				    twelve. Cutting it to seven is a product decision, not a layout fix, so it is not
+				    made here - but the overflow it causes no longer eats the chip.
+				-->
+				<ScrollViewer Grid.Column="0"
+				              HorizontalScrollBarVisibility="Auto"
+				              VerticalScrollBarVisibility="Disabled">
+				<StackPanel Orientation="Horizontal" Spacing="1" VerticalAlignment="Center">
 					<!-- Query tab -->
 					<StackPanel Orientation="Horizontal" Spacing="4"
 					            IsVisible="{Binding WorkspaceTabsVm.IsQueryTabSelected}">
-						<Button AutomationProperties.AutomationId="ToolbarExecute" AutomationProperties.Name="{DynamicResource S.Toolbar.Execute}"
+						<!--
+						    AN ICON AND A WORD, ON THE BAR ITSELF. Seven filled rectangles read as a
+						    form; seven glyphs with captions read as a row of actions, which is what
+						    WS-8 asks the toolbar to be. The icon is not decoration here either -
+						    "Выполнить" and "Скрипт" are one statement and the whole file, and at a
+						    glance the glyph is the only thing that tells them apart.
+						-->
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarExecute" AutomationProperties.Name="{DynamicResource S.Toolbar.Execute}"
 						        Command="{Binding WorkspaceTabsVm.ExecuteCurrentStatementCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Execute.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Execute}"/>
-						<Button AutomationProperties.AutomationId="ToolbarExecuteScript" AutomationProperties.Name="{DynamicResource S.Toolbar.Script.Name}"
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Execute.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Execute}"/>
+							</StackPanel>
+						</Button>
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarExecuteScript" AutomationProperties.Name="{DynamicResource S.Toolbar.Script.Name}"
 						        Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Script.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Script}"/>
-						<Button AutomationProperties.AutomationId="ToolbarExecuteSelection" AutomationProperties.Name="{DynamicResource S.Toolbar.Selection.Name}"
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Script.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE_SCRIPT}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Script}"/>
+							</StackPanel>
+						</Button>
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarExecuteSelection" AutomationProperties.Name="{DynamicResource S.Toolbar.Selection.Name}"
 						        Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Selection.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Selection}"/>
-						<Button AutomationProperties.AutomationId="ToolbarStop" AutomationProperties.Name="{DynamicResource S.Toolbar.Stop}"
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Selection.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE_SELECTION}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Selection}"/>
+							</StackPanel>
+						</Button>
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarStop" AutomationProperties.Name="{DynamicResource S.Toolbar.Stop}"
 						        Command="{Binding WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.IsExecuting}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Stop.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Stop}"/>
-						<Button AutomationProperties.AutomationId="ToolbarClearResults" AutomationProperties.Name="{DynamicResource S.Toolbar.Clear.Name}"
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Stop.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_STOP}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Stop}"/>
+							</StackPanel>
+						</Button>
+
+						<Rectangle Classes="toolbar-separator"/>
+
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarClearResults" AutomationProperties.Name="{DynamicResource S.Toolbar.Clear.Name}"
 						        Command="{Binding WorkspaceTabsVm.ClearResultsCommand}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Clear.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Clear}"/>
-						<Button AutomationProperties.AutomationId="ToolbarFormat" AutomationProperties.Name="{DynamicResource S.Toolbar.Format}"
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Clear.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_CLEAR}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Clear}"/>
+							</StackPanel>
+						</Button>
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarFormat" AutomationProperties.Name="{DynamicResource S.Toolbar.Format}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.FormatCommand}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Format.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Format}"/>
-						<Button AutomationProperties.AutomationId="ToolbarExplain" AutomationProperties.Name="{DynamicResource S.Query.Explain}"
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Format.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_FORMAT}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Format}"/>
+							</StackPanel>
+						</Button>
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarExplain" AutomationProperties.Name="{DynamicResource S.Query.Explain}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.ShowPlanCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Plan.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Plan}"/>
-						<Button AutomationProperties.AutomationId="ToolbarSaveQuery" AutomationProperties.Name="{DynamicResource S.Toolbar.Save.Name}"
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Plan.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_PLAN}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Plan}"/>
+							</StackPanel>
+						</Button>
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarSaveQuery" AutomationProperties.Name="{DynamicResource S.Toolbar.Save.Name}"
 						        Command="{Binding WorkspaceTabsVm.SaveTabCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanSaveTab}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Save.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Save}"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Save.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_SAVE}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Save}"/>
+							</StackPanel>
+						</Button>
 
 						<!-- The transaction is the connection's, and the toolbar is where it is decided
 						     (WS-26). Autocommit until somebody presses Begin. -->
-						<Border Width="1" Margin="4,4" Background="{DynamicResource Wit.Line}"/>
+						<Rectangle Classes="toolbar-separator"/>
 
 						<ComboBox AutomationProperties.AutomationId="ToolbarIsolation"
 						          AutomationProperties.Name="{DynamicResource S.Toolbar.Isolation}"
@@ -361,21 +444,36 @@
 						          IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
 						          ToolTip.Tip="{DynamicResource S.Toolbar.Isolation.Tip}"
 						          Height="{DynamicResource Wit.Height.Field}" MinWidth="130"/>
-						<Button AutomationProperties.AutomationId="ToolbarBeginTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Begin.Name}"
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarBeginTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Begin.Name}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.BeginTransactionCommand}"
 						        IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Begin.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Begin}"/>
-						<Button AutomationProperties.AutomationId="ToolbarCommitTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Commit.Name}"
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Begin.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_TRANSACTION}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Begin}"/>
+							</StackPanel>
+						</Button>
+						<Button Classes="toolbar"
+						        AutomationProperties.AutomationId="ToolbarCommitTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Commit.Name}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.CommitTransactionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Commit.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Commit}"/>
-						<Button AutomationProperties.AutomationId="ToolbarRollbackTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Rollback.Name}"
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Commit.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_COMMIT}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Commit}"/>
+							</StackPanel>
+						</Button>
+						<Button Classes="toolbar danger"
+						        AutomationProperties.AutomationId="ToolbarRollbackTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Rollback.Name}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.RollbackTransactionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
-						        ToolTip.Tip="{DynamicResource S.Toolbar.Rollback.Tip}"
-						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Rollback}"/>
+						        ToolTip.Tip="{DynamicResource S.Toolbar.Rollback.Tip}">
+							<StackPanel Orientation="Horizontal" Spacing="7">
+								<PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_ROLLBACK}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
+								<TextBlock Text="{DynamicResource S.Toolbar.Rollback}"/>
+							</StackPanel>
+						</Button>
 					</StackPanel>
 
 					<!-- Data tab -->
@@ -397,6 +495,7 @@
 						<TextBlock Text="{DynamicResource S.Tab.Database}" FontSize="{DynamicResource Wit.Font.Body}" VerticalAlignment="Center" Opacity="0.6"/>
 					</StackPanel>
 				</StackPanel>
+				</ScrollViewer>
 
 				<!-- The connection chip of the ACTIVE TAB -->
 				<Border Grid.Column="1"
@@ -583,9 +682,13 @@
 				<!-- Where we are -->
 				<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
 				            IsVisible="{Binding MainWindowVm.IsConnected}">
-					<PathIcon Data="{x:Static ui:StudioIcons.COMMON_BULLET}"
+					<!-- A MARKER, not a drawing: `dot` fills it. Without the class an outline dot is a
+					     RING, which reads as a different state from "connected". And the colour is the
+					     accent rather than `LimeGreen` - the last named colour left in this file. -->
+					<PathIcon Classes="dot"
+					          Data="{x:Static ui:StudioIcons.COMMON_BULLET}"
 					          Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"
-					          Foreground="LimeGreen"
+					          Foreground="{DynamicResource Wit.Accent}"
 					          VerticalAlignment="Center"/>
 					<TextBlock AutomationProperties.AutomationId="StatusConnection"
 					           Text="{Binding MainWindowVm.ConnectionSummary}"
