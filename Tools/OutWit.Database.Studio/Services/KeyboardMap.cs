@@ -15,7 +15,10 @@ public enum KeyboardScope
     Query,
 
     /// <summary>Only while the focus is in a result grid.</summary>
-    Grid
+    Grid,
+
+    /// <summary>Only while the focus is in the object tree.</summary>
+    Explorer
 }
 
 /// <summary>One row of the keyboard map (9.6).</summary>
@@ -72,7 +75,17 @@ public static class KeyboardMap
         new("Keys.FindNext", "F3", KeyboardScope.Query),
         new("Keys.FindPrevious", "Shift+F3", KeyboardScope.Query),
 
-        new("Keys.CopyRows", "Ctrl+C", KeyboardScope.Grid)
+        new("Keys.CopyRows", "Ctrl+C", KeyboardScope.Grid),
+
+        // The tree's own keys (2.7). They were never listed here, which is why the map could say
+        // nothing about the structure gesture while a code comment claimed it was on Ctrl+Enter.
+        new("Keys.Rename", "F2", KeyboardScope.Explorer),
+        new("Keys.Structure", "F4", KeyboardScope.Explorer),
+        new("Keys.Drop", "Delete", KeyboardScope.Explorer),
+
+        // Window scope, not Explorer: the panel being away is exactly when the focus is elsewhere,
+        // and a key scoped to the tree could hide it and never bring it back.
+        new("Keys.TogglePanel", "Ctrl+B", KeyboardScope.Window)
     ];
 
     #endregion

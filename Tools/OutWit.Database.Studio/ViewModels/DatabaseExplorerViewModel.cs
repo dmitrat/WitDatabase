@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
@@ -119,7 +119,89 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         SelectTopRows(1000);
     }
 
-    private void SelectTopRows(int limit)
+    /// <summary>
+    /// The middle click (section 2.7): the data of the selected object, in a tab that does NOT come
+    /// to the front.
+    ///
+    /// <para>
+    /// It is the same query the menu's first «Данные» item runs. The limit is 100 rather than the
+    /// setting, because <c>DefaultRowLimit</c> is still unwired - phase 15 named it as a dead
+    /// setting and <c>WS-23</c> wants it on a selector ON THE TAB rather than baked into the menu.
+    /// Reading it here would half-build that, which is the shape phase 15 exists to remove.
+    /// </para>
+    /// </summary>
+    public void BrowseDataInBackground()
+    {
+        SelectTopRows(100, activate: false);
+    }
+
+    /// <summary>
+    /// Typing letters moves the selection to the first VISIBLE node whose name starts with what has
+    /// been typed (section 2.7). Returns whether anything matched.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Visible means what is on the screen, not what is in the tree.</b> A jump into a collapsed
+    /// branch would select a node nobody can see - the selection would move, the inspector would
+    /// change, and the tree would look untouched.
+    /// </para>
+    /// <para>
+    /// <b>Where the search starts is the whole behaviour.</b> A single letter starts AFTER the
+    /// selection, so pressing it again walks the objects beginning with that letter instead of sitting
+    /// on the first one forever. A longer prefix starts AT the selection, so growing "a" into "ab"
+    /// leaves a selection that still matches where it is rather than hunting for another one.
+    /// </para>
+    /// </remarks>
+    public bool JumpTo(string prefix)
+    {
+        if (string.IsNullOrEmpty(prefix))
+            return false;
+
+        var visible = VisibleNodes().ToList();
+
+        if (visible.Count == 0)
+            return false;
+
+        var selected = SelectedNode == null ? -1 : visible.IndexOf(SelectedNode);
+        var start = selected < 0 ? 0 : selected + (prefix.Length == 1 ? 1 : 0);
+
+        for (var step = 0; step < visible.Count; step++)
+        {
+            var node = visible[(start + step) % visible.Count];
+
+            if (!node.Name.StartsWith(prefix, StringComparison.CurrentCultureIgnoreCase))
+                continue;
+
+            SelectedNode = node;
+            return true;
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// The nodes in the order the tree draws them: a node, then its children if it is open.
+    /// </summary>
+    public IEnumerable<DatabaseNode> VisibleNodes()
+    {
+        return Nodes == null ? [] : Walk(Nodes);
+
+        static IEnumerable<DatabaseNode> Walk(IEnumerable<DatabaseNode> nodes)
+        {
+            foreach (var node in nodes)
+            {
+                yield return node;
+
+                if (!node.IsExpanded)
+                    continue;
+
+                foreach (var child in Walk(node.Children))
+                    yield return child;
+            }
+        }
+    }
+
+    private void SelectTopRows(int limit, bool activate = true)
     {
         var session = SelectedSession;
 
@@ -131,9 +213,15 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         // The tab is opened in the connection the node came from and stays there, so executing it
         // cannot land in another database however the selection moves afterwards.
-        var tab = ApplicationVm.WorkspaceTabsVm.OpenQueryTab(sql, $"{tableName} - Top {limit}", session);
+        var tab = ApplicationVm.WorkspaceTabsVm.OpenQueryTab(sql, $"{tableName} - Top {limit}", session, activate);
 
-        ApplicationVm.WorkspaceTabsVm.ExecuteQueryCommand.Execute(null);
+        // A tab that was not brought to the front is not the SELECTED tab, and the shell's execute
+        // command runs the selected one - so a background tab has to be told to run itself. Without
+        // this the middle click opens a tab holding SQL and no rows, which is not "open the data".
+        if (activate)
+            ApplicationVm.WorkspaceTabsVm.ExecuteQueryCommand.Execute(null);
+        else
+            tab.ExecuteQueryCommand.Execute(null);
 
         Logger.LogInformation("Select top {Limit} from {ObjectName} in {Connection}",
             limit, tab.Title, session.DisplayName);
@@ -855,6 +943,8 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         var text = (Filter ?? string.Empty).Trim();
 
+        IsFiltering = text.Length > 0;
+
         if (text.Length == 0)
         {
             FilterSummary = null;
@@ -1085,7 +1175,23 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public string? FilterSummary { get; private set; }
 
-    public bool IsFiltering => !string.IsNullOrWhiteSpace(Filter);
+    /// <summary>
+    /// Whether the filter is narrowing anything. Three things in the panel are bound to it: the tree
+    /// hides, the list of matches appears, and the Esc button that clears it.
+    /// </summary>
+    /// <remarks>
+    /// <b>It used to be a computed property, and WS-17 did not work because of it.</b>
+    /// <c>=> !string.IsNullOrWhiteSpace(Filter)</c> is correct every time it is READ and notifies
+    /// nobody, so a binding asked once at load time and never again: typing in the box filled
+    /// <see cref="FilterMatches"/> with the right answer and left the panel showing the whole tree,
+    /// with no Esc button to say anything had happened. Measured in the running application on
+    /// 2026-08-11 - «aspnet» typed into the box, fifteen tables still listed.
+    /// <para>
+    /// Set from <c>ApplyFilter</c> now, which is the one place that knows.
+    /// </para>
+    /// </remarks>
+    [Notify]
+    public bool IsFiltering { get; private set; }
 
     /// <summary>
     /// How long a row count is allowed to take before it is given up on (WS-16). Two seconds is the

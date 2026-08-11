@@ -79,6 +79,15 @@ public class SettingsAreActedOnTests
             "the rule found almost no settings to examine, which means it is reading the wrong file "
             + "rather than that everything is in order");
 
+        // PROSE IS NOT A READER, and this rule counted it as one until phase 17 tripped over it.
+        // Explaining in a comment why `DefaultRowLimit` is deliberately NOT read here made the rule
+        // decide it now was, and the remainder assertion failed in the direction that says "a listed
+        // item has been wired" - about a sentence saying the opposite.
+        //
+        // That is the same shape as the look-behind below, one class along: the first version of this
+        // lint was wrong about what a reader looks like, and this version was wrong about what a
+        // FILE looks like. A rule that searches source text has to be told that source text contains
+        // things that are not code.
         var sources = ConsumerSources().ToList();
 
         Assert.That(sources, Has.Count.GreaterThanOrEqualTo(40),
@@ -100,7 +109,7 @@ public class SettingsAreActedOnTests
             // working against the live GitHub API. The instrument was wrong before its subject.
             var pattern = new Regex(@"(?<![\w])" + Regex.Escape(property) + @"(?![\w])");
 
-            if (!sources.Any(source => pattern.IsMatch(File.ReadAllText(source))))
+            if (!sources.Any(source => pattern.IsMatch(WithoutComments(File.ReadAllText(source)))))
                 unread.Add(property);
         }
 
@@ -261,6 +270,21 @@ public class SettingsAreActedOnTests
             .Distinct()
             .ToList();
     }
+
+    /// <summary>
+    /// The file with its comments taken out, so that a sentence ABOUT a setting is not mistaken for
+    /// code that reads it.
+    ///
+    /// <para>
+    /// Crude on purpose - block comments, line comments, and a `//` inside a string literal will be
+    /// cut with them. That is acceptable here because the question is only "does this name appear in
+    /// code", and a URL in a string is not a setting name. A C# parser would be the correct
+    /// instrument and is far more than this rule is worth.
+    /// </para>
+    /// </summary>
+    private static string WithoutComments(string source) =>
+        Regex.Replace(Regex.Replace(source, @"/\*.*?\*/", " ", RegexOptions.Singleline),
+            @"//[^\r\n]*", " ");
 
     private static IEnumerable<string> ConsumerSources()
     {

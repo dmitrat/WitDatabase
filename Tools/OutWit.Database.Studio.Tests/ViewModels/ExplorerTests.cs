@@ -298,6 +298,56 @@ public class ExplorerTests
     }
 
     /// <summary>
+    /// The panel is TOLD that the filter is on, which is the half the two cases either side of this
+    /// one cannot see.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Phase 17's premise, in this file.</b> Every other case here reads <c>IsFiltering</c> and
+    /// finds it true - and it was true, and always had been, while nothing on the screen moved. It
+    /// was a computed property: <c>=> !string.IsNullOrWhiteSpace(Filter)</c> gives the right answer
+    /// to whoever asks and tells nobody, so the three bindings that DEPEND on it - the tree hiding,
+    /// the match list appearing, the Esc button - asked once when the window was built and never
+    /// again. Measured by typing «aspnet» into the box in the running application: fifteen tables
+    /// still listed, no Esc button, and the matches computed correctly out of sight.
+    /// </para>
+    /// <para>
+    /// So this asserts the NOTIFICATION and not the value. A test that reads the property cannot
+    /// fail on this defect, which is why one existed for five phases and did not.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task TurningTheFilterOnAndOffIsAnnouncedToThePanelTest()
+    {
+        await using var studio = await StudioFixture.CreateAsync();
+
+        await studio.Explorer.RefreshAsync(studio.Database);
+
+        var announced = new List<string>();
+
+        studio.Explorer.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
+
+        studio.Explorer.Filter = "Orders";
+
+        Assert.That(announced, Does.Contain(nameof(studio.Explorer.IsFiltering)),
+            "the matches are found and the panel is never told to show them");
+
+        announced.Clear();
+
+        studio.Explorer.ClearFilterCommand.Execute(null);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(announced, Does.Contain(nameof(studio.Explorer.IsFiltering)),
+                "and the tree never comes back");
+
+            // CONTROL: a ViewModel that announced EVERYTHING on every change would pass both halves
+            // above without meaning anything.
+            Assert.That(announced, Does.Not.Contain(nameof(studio.Explorer.CountTimeout)));
+        });
+    }
+
+    /// <summary>
     /// The filter holds its result until it is cleared - that is what makes it different from the
     /// palette, which is one jump and gone (WS-17).
     /// </summary>

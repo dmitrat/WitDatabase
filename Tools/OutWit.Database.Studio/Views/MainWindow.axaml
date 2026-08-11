@@ -513,7 +513,12 @@
 		<!-- Основной контент с разделителем -->
 		<!-- The last two columns take no width while the inspector is hidden: a collapsed control does
 		     not collapse its column, and 324 reserved pixels read as the window being off-centre. -->
-		<Grid Grid.Row="2">
+		<!-- Named for Ctrl+B, which collapses the first two columns and puts them back. The name is on
+		     the GRID and not on the columns because x:Name on a ColumnDefinition compiles and generates
+		     no field - measured, seven errors. The width is set from code rather than bound: a
+		     GridSplitter writes the width it dragged straight onto the column, which would tear a
+		     binding off and leave the key doing nothing from the first drag onwards. -->
+		<Grid Grid.Row="2" x:Name="MainSplit">
 			<Grid.ColumnDefinitions>
 				<ColumnDefinition Width="250"/>
 				<ColumnDefinition Width="Auto"/>
