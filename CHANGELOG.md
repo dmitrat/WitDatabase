@@ -1,5 +1,42 @@
 ﻿# Changelog
 
+## 12.8.0
+
+**The asynchronous path under the B+Tree store was real, and unreachable.** `StoreBTree` has been
+fully asynchronous for a long time - the tree, the page manager and both caches - and none of it ran.
+`BTreeConcurrentStore`, which since 12.0.0 wraps **every** B+Tree store, made each of its async
+methods call the synchronous one and threw the whole path away.
+
+That was 6.0.0's correct fix for a real defect: the wrapper held a `ReaderWriterLockSlim`, which is
+thread-affine, so a lock taken before an `await` and released after it could be stranded for ever.
+Making the async methods synchronous removed the hazard. What nobody re-measured is what it cost once
+the wrapper became mandatory - and the cost was that `OutWit.Database.Core.IndexedDb`, which exists so
+a database can live in a browser, could build a database and never write to it.
+
+**`AsyncReaderWriterLock` is the replacement**: semaphore-based rather than thread-affine, so a hold
+survives a continuation resuming on another thread; writer-preferring through a turnstile, so a stream
+of readers cannot starve a writer; not reentrant, and it says so. Six methods on
+`BTreeConcurrentStore` now await the store's own asynchronous path.
+
+Measured rather than asserted: 400 asynchronous puts at page cache 4 produce 52 pages and 65
+asynchronous writes with **zero** synchronous calls. The test carries its own control - the same
+thread-crossing shape against `ReaderWriterLockSlim` is asserted to throw, because without it "the
+hold survived a thread change" would not distinguish a working lock from a scenario that never crossed
+a thread.
+
+**Nothing is newly refused and no answer changes.** An application that used the asynchronous API got
+synchronous work on the calling thread and now gets asynchronous work; the results are the same.
+
+### The suppressed-test ledger was read by running it
+
+Forty-four `[Ignore]` markers were removed and **run** rather than read. Twenty-two passed: half the
+suppressed suite was describing defects somebody else had fixed - size enforcement, seven reserved
+words, three table sources, the LSM writer's `Dispose`, the MVCC commit scan - and **not one of those
+fixes had a guard watching it**. They have one now. The ledger stands at 22.
+
+This changes no behaviour; it is here because the count of skipped tests in this repository moved from
+44 to 22 and that is worth being able to explain.
+
 ## 12.7.0
 
 **Two wrong answers made right, and nothing newly refused.** Unlike 12.5.0 and 12.6.0 this release
