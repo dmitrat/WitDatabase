@@ -17,11 +17,11 @@
 
         <Grid Grid.Row="0" ColumnDefinitions="*,110,110" Margin="14,10,14,6">
             <TextBlock Grid.Column="0" Text="{DynamicResource S.Dialog.Connections.NameAndPath}"
-                       FontSize="10" Opacity="0.55"/>
+                       FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55"/>
             <TextBlock Grid.Column="1" Text="{DynamicResource S.Dialog.Connections.Storage}"
-                       FontSize="10" Opacity="0.55"/>
+                       FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55"/>
             <TextBlock Grid.Column="2" Text="{DynamicResource S.Dialog.Connections.Mode}"
-                       FontSize="10" Opacity="0.55"/>
+                       FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55"/>
         </Grid>
 
         <ListBox Grid.Row="1" Margin="8,0"
@@ -38,20 +38,20 @@
 
                         <StackPanel Grid.Column="1" Spacing="1">
                             <TextBlock Text="{Binding Name}"/>
-                            <TextBlock Text="{Binding Path}" FontFamily="Consolas" FontSize="10.5" Opacity="0.55"
+                            <TextBlock Text="{Binding Path}" FontFamily="Consolas" FontSize="{DynamicResource Wit.Font.Mono.Label}" Opacity="0.55"
                                        TextTrimming="CharacterEllipsis"/>
                         </StackPanel>
 
                         <!-- A missing database is MARKED and kept: the disk may not be mounted, and a
                              row that vanished on its own reads as lost settings (WS-68). -->
-                        <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11"
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="{DynamicResource Wit.Font.Control}"
                                    Text="{Binding Storage}"
                                    IsVisible="{Binding !IsMissing}"/>
-                        <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="11" Foreground="#D9534F"
+                        <TextBlock Grid.Column="2" VerticalAlignment="Center" FontSize="{DynamicResource Wit.Font.Control}" Foreground="{DynamicResource Wit.Error.Text}"
                                    Text="{DynamicResource S.Dialog.Connections.Missing}"
                                    IsVisible="{Binding IsMissing}"/>
 
-                        <TextBlock Grid.Column="3" VerticalAlignment="Center" FontSize="11" Opacity="0.75"
+                        <TextBlock Grid.Column="3" VerticalAlignment="Center" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.75"
                                    Text="{DynamicResource S.Dialog.Connections.ReadOnly}"
                                    IsVisible="{Binding IsReadOnly}"/>
                     </Grid>
@@ -60,15 +60,15 @@
         </ListBox>
 
         <Border Grid.Row="2" Margin="14,8,14,0" Padding="10,8" CornerRadius="6"
-                Background="#22D9534F" BorderBrush="#55D9534F" BorderThickness="1"
+                Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
             <TextBlock AutomationProperties.AutomationId="ConnectionsError"
-                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12"/>
+                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Body}"/>
         </Border>
 
         <Border Grid.Row="3" Padding="14,10" Margin="0,8,0,0"
-                Background="{DynamicResource SystemControlBackgroundListLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,1,0,0">
+                Background="{DynamicResource Wit.Surface.Sunken}"
+                BorderBrush="{DynamicResource Wit.Line.Inner}" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,Auto,Auto,*,Auto">
                 <Button Grid.Column="0" Margin="0,0,7,0"
                         AutomationProperties.AutomationId="ConnectionsAdd"

@@ -17,7 +17,7 @@
         <TextBlock Grid.Row="0"
                    Name="HeaderText"
                    FontWeight="SemiBold"
-                   FontSize="14"
+                   FontSize="{DynamicResource Wit.Font.SectionTitle}"
                    TextWrapping="Wrap"/>
 
         <TextBlock Grid.Row="1"

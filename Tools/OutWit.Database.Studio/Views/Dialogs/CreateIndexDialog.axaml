@@ -18,14 +18,14 @@
     <Grid RowDefinitions="Auto,*,Auto,Auto">
 
         <Border Grid.Row="0"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="16">
             <StackPanel Orientation="Horizontal" Spacing="12">
-                <PathIcon Data="{x:Static ui:StudioIcons.DB_INDEX}" Width="20" Height="20"/>
-                <TextBlock Text="{DynamicResource S.Dialog.CreateIndex.Title}" FontSize="18" FontWeight="SemiBold" VerticalAlignment="Center"/>
-                <TextBlock Text="{Binding TableName}" FontSize="14" Foreground="Gray" VerticalAlignment="Center"/>
+                <PathIcon Data="{x:Static ui:StudioIcons.DB_INDEX}" Width="{DynamicResource Wit.Icon.Large}" Height="{DynamicResource Wit.Icon.Large}"/>
+                <TextBlock Text="{DynamicResource S.Dialog.CreateIndex.Title}" FontSize="{DynamicResource Wit.Font.WindowTitle}" FontWeight="SemiBold" VerticalAlignment="Center"/>
+                <TextBlock Text="{Binding TableName}" FontSize="{DynamicResource Wit.Font.SectionTitle}" Foreground="Gray" VerticalAlignment="Center"/>
             </StackPanel>
         </Border>
 
@@ -34,12 +34,12 @@
 
                 <!-- The key note, in three states (WS-44) -->
                 <Border CornerRadius="4" Padding="10"
-                        Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
+                        Background="{DynamicResource Wit.Warn.Surface}" BorderBrush="{DynamicResource Wit.Warn.Border}" BorderThickness="1"
                         IsVisible="{Binding KeyNoteIsSevere}">
-                    <TextBlock Text="{Binding KeyNote}" TextWrapping="Wrap" Foreground="#856404"/>
+                    <TextBlock Text="{Binding KeyNote}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}"/>
                 </Border>
 
-                <TextBlock Text="{Binding KeyNote}" TextWrapping="Wrap" Foreground="Gray" FontSize="12"
+                <TextBlock Text="{Binding KeyNote}" TextWrapping="Wrap" Foreground="Gray" FontSize="{DynamicResource Wit.Font.Body}"
                            IsVisible="{Binding !KeyNoteIsSevere}"/>
 
                 <StackPanel Spacing="6">
@@ -77,7 +77,7 @@
 
                     <Grid ColumnDefinitions="*,Auto" Height="120">
                         <Border Grid.Column="0"
-                                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                BorderBrush="{DynamicResource Wit.Line}"
                                 BorderThickness="1" CornerRadius="4">
                             <ListBox Name="AvailableColumnsList"
                                      AutomationProperties.AutomationId="CreateIndexAvailableColumns"
@@ -102,14 +102,14 @@
                                 <Grid ColumnDefinitions="*,Auto,Auto" Margin="0,2">
                                     <TextBlock Grid.Column="0" Text="{Binding Expression}" VerticalAlignment="Center"/>
 
-                                    <Button Grid.Column="1" FontSize="11" Margin="0,0,4,0"
+                                    <Button Grid.Column="1" Margin="0,0,4,0"
                                             AutomationProperties.AutomationId="CreateIndexToggleDirection"
                                             AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.Direction}"
                                             Content="{Binding IsDescending, Converter={x:Static vm:DirectionConverter.Instance}}"
                                             Command="{Binding $parent[ItemsControl].((vm:CreateIndexViewModel)DataContext).ToggleDirectionCommand}"
                                             CommandParameter="{Binding}"/>
 
-                                    <Button Grid.Column="2" Content="✕" FontSize="11" Width="24"
+                                    <Button Grid.Column="2" Content="✕" Width="24"
                                             AutomationProperties.AutomationId="CreateIndexRemoveColumn"
                                             AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.RemoveColumn}"
                                             Command="{Binding $parent[ItemsControl].((vm:CreateIndexViewModel)DataContext).RemoveColumnCommand}"
@@ -134,7 +134,7 @@
                             <DataTemplate>
                                 <Grid ColumnDefinitions="*,Auto" Margin="0,2">
                                     <TextBlock Grid.Column="0" Text="{Binding}" VerticalAlignment="Center"/>
-                                    <Button Grid.Column="1" Content="✕" FontSize="11" Width="24"
+                                    <Button Grid.Column="1" Content="✕" Width="24"
                                             AutomationProperties.AutomationId="CreateIndexRemoveIncluded"
                                             AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.RemoveIncluded}"
                                             Command="{Binding $parent[ItemsControl].((vm:CreateIndexViewModel)DataContext).RemoveIncludedCommand}"
@@ -157,30 +157,30 @@
                 </StackPanel>
 
                 <!-- What the planner will and will not do with these choices -->
-                <TextBlock Text="{Binding PlannerNote}" TextWrapping="Wrap" FontSize="11" Foreground="#856404"
+                <TextBlock Text="{Binding PlannerNote}" TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Control}" Foreground="{DynamicResource Wit.Warn.Text}"
                            IsVisible="{Binding PlannerNote, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                 <StackPanel Spacing="6">
                     <TextBlock Text="{DynamicResource S.Common.WhatWillRun}" FontWeight="SemiBold"/>
-                    <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                    <Border Background="{DynamicResource Wit.Surface.Panel}"
                             CornerRadius="4" Padding="8" MinHeight="48">
                         <TextBlock Text="{Binding GeneratedDdl}"
-                                   FontFamily="Consolas,Courier New" FontSize="12" TextWrapping="Wrap"/>
+                                   FontFamily="Consolas,Courier New" FontSize="{DynamicResource Wit.Font.Mono.Data}" TextWrapping="Wrap"/>
                     </Border>
                 </StackPanel>
 
             </StackPanel>
         </ScrollViewer>
 
-        <Border Grid.Row="2" Background="#FDECEA" BorderBrush="#E57373" BorderThickness="1"
+        <Border Grid.Row="2" Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                 Padding="12" Margin="16,0"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="#8B2E2E"/>
+            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Error.Text}"/>
         </Border>
 
         <Border Grid.Row="3"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,1,0,0"
                 Padding="16">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
@@ -204,8 +204,8 @@
             </Grid>
         </Border>
 
-        <Border Grid.Row="0" Grid.RowSpan="4" Background="#80000000" IsVisible="{Binding IsCreating}">
-            <TextBlock Text="{DynamicResource S.Dialog.CreateIndex.Creating}" Foreground="White" FontSize="16"
+        <Border Grid.Row="0" Grid.RowSpan="4" Background="{DynamicResource Wit.Scrim}" IsVisible="{Binding IsCreating}">
+            <TextBlock Text="{DynamicResource S.Dialog.CreateIndex.Creating}" Foreground="White" FontSize="{DynamicResource Wit.Font.SectionTitle}"
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>
 

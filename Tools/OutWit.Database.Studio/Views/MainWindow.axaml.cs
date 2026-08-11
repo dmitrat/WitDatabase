@@ -23,6 +23,34 @@ public partial class MainWindow : Window
     /// </summary>
     private bool m_closeConfirmed;
 
+    /// <summary>
+    /// Which caption state the contextual toolbar is in: 0 every caption, 1 the four plus Save, 2 the
+    /// four, 3 glyphs.
+    /// </summary>
+    private int m_toolbarState;
+
+    /// <summary>
+    /// The width each state turned out to want, learned by having been in it. There is no way to ask
+    /// how wide a state would be without entering it, which is why the ladder is climbed one rung at
+    /// a time.
+    /// </summary>
+    private readonly double[] m_toolbarWanted = new double[TOOLBAR_STATES];
+
+    #endregion
+
+    #region Constants
+
+    private const string TOOLBAR_COMPACT = "compact";
+
+    /// <summary>Every caption, the four plus Save, the four, glyphs.</summary>
+    private const int TOOLBAR_STATES = 4;
+
+    /// <summary>
+    /// The room to spare before the captions come back. Dragging a window edge past the exact width
+    /// would otherwise flicker the row on and off, one state per pixel.
+    /// </summary>
+    private const double TOOLBAR_HYSTERESIS = 24;
+
     #endregion
 
     #region Constructors
@@ -47,6 +75,9 @@ public partial class MainWindow : Window
         // first thing typed goes nowhere.
         ApplicationViewModel.Instance.PaletteVm.PropertyChanged += OnPaletteChanged;
         ThemeToggleButton.Click += OnThemeToggleClick;
+
+        // The toolbar decides whether it can afford its captions, every time it is laid out.
+        ToolbarActions.LayoutUpdated += OnToolbarLayoutUpdated;
         
         if (Application.Current != null)
         {
@@ -95,6 +126,92 @@ public partial class MainWindow : Window
     /// Escape has to mean two different things depending on what is happening. Handled here, before
     /// the focused control sees them.
     /// </summary>
+    /// <summary>
+    /// The contextual toolbar gives its captions up IN ORDER OF IMPORTANCE as the row narrows, and
+    /// takes them back the same way (WS-8).
+    ///
+    /// <para>
+    /// Four states: every caption, then the four that run something plus Save, then the four alone,
+    /// then glyphs. The row settles on the first that fits. Which four is a decision about the work
+    /// rather than about layout - Выполнить, Скрипт, Выделенное and Стоп are what a person came to
+    /// the toolbar for, and the other six are on the menu and the keyboard as well.
+    /// </para>
+    /// <para>
+    /// <b>Measured rather than thresholded.</b> A width in pixels would be wrong in the other
+    /// language on the first day - the Russian captions are longer than the English ones - and wrong
+    /// again at another font size, which is a setting a person can change. What is compared is what
+    /// the panel WANTS against what the row can give it.
+    /// </para>
+    /// <para>
+    /// <b>One step per pass, and the hysteresis is not decoration.</b> A state is only ever entered
+    /// or left one at a time, so the width each state wants is learned by having been in it - there
+    /// is no way to ask "how wide would state 2 be" without being in state 2. And without the room to
+    /// spare on the way back this oscillates for ever: dropping a caption makes the row fit, which
+    /// puts it back, which makes it too wide.
+    /// </para>
+    /// </summary>
+    private void OnToolbarLayoutUpdated(object? sender, EventArgs e)
+    {
+        var available = ToolbarActions.Bounds.Width;
+
+        if (available <= 0)
+            return;
+
+        m_toolbarWanted[m_toolbarState] = Math.Max(m_toolbarWanted[m_toolbarState], WantedWidth(ToolbarActions));
+
+        var next = m_toolbarState;
+
+        if (m_toolbarWanted[m_toolbarState] > available && m_toolbarState < TOOLBAR_STATES - 1)
+            next = m_toolbarState + 1;
+        else if (m_toolbarState > 0 &&
+                 m_toolbarWanted[m_toolbarState - 1] > 0 &&
+                 available > m_toolbarWanted[m_toolbarState - 1] + TOOLBAR_HYSTERESIS)
+            next = m_toolbarState - 1;
+
+        if (next == m_toolbarState)
+            return;
+
+        if (m_toolbarState > 0)
+            ToolbarActions.Classes.Remove(TOOLBAR_COMPACT + m_toolbarState);
+
+        if (next > 0)
+            ToolbarActions.Classes.Add(TOOLBAR_COMPACT + next);
+
+        m_toolbarState = next;
+    }
+
+    /// <summary>
+    /// What the row would like to be, added up from its children.
+    ///
+    /// <para>
+    /// <b><c>DesiredSize</c> cannot answer this and that is not obvious.</b> Avalonia CLAMPS a
+    /// control's desired size to the space it was measured in, and this panel sits in a star column -
+    /// so its desired width is always exactly the width it was given, the comparison is always
+    /// "equal", and the first version of this method never went compact once. Found by shrinking the
+    /// window and watching three buttons get clipped instead.
+    /// </para>
+    /// <para>
+    /// A horizontal <c>StackPanel</c> measures its children with unbounded width, so THEIR desired
+    /// sizes are natural. Adding them up is the honest question.
+    /// </para>
+    /// </summary>
+    private static double WantedWidth(StackPanel panel)
+    {
+        var total = 0.0;
+        var counted = 0;
+
+        foreach (var child in panel.Children)
+        {
+            if (!child.IsVisible)
+                continue;
+
+            total += child.DesiredSize.Width;
+            counted++;
+        }
+
+        return total + panel.Spacing * Math.Max(0, counted - 1);
+    }
+
     private void OnWindowKeyDown(object? sender, Avalonia.Input.KeyEventArgs e)
     {
         var app = ApplicationViewModel.Instance;

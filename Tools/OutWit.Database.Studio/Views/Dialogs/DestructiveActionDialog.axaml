@@ -36,7 +36,7 @@
                 x:Name="SqlBlock"
                 Margin="0,14,0,0"
                 BorderThickness="1"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}"
+                BorderBrush="{DynamicResource Wit.Line.Inner}"
                 Padding="8">
             <ScrollViewer MaxHeight="180" HorizontalScrollBarVisibility="Auto">
                 <TextBox x:Name="SqlText"

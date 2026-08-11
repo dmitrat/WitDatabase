@@ -36,7 +36,7 @@
                                     Command="{Binding BrowseFolderCommand}"/>
                         </StackPanel>
                         <TextBlock Text="{DynamicResource S.Dialog.Open.PathHint}"
-                                   Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                                   Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
 
@@ -48,14 +48,14 @@
                      is one this application already has open. The second is a question Studio can
                      always answer, so it is not one of the readings the probe returns. -->
                 <Border Padding="10,8" CornerRadius="6"
-                        Background="{DynamicResource SystemControlBackgroundListLowBrush}"
+                        Background="{DynamicResource Wit.Surface.Sunken}"
                         IsVisible="{Binding HasProbeBanner}">
                     <StackPanel x:Name="ProbeBanner" Spacing="4">
                         <TextBlock AutomationProperties.AutomationId="OpenDatabaseProbe"
-                                   Text="{Binding ProbeMessage}" TextWrapping="Wrap" FontSize="12"
+                                   Text="{Binding ProbeMessage}" TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Body}"
                                    IsVisible="{Binding ProbeMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock AutomationProperties.AutomationId="OpenDatabaseAlreadyOpen"
-                                   Text="{Binding AlreadyOpenNote}" TextWrapping="Wrap" FontSize="12"
+                                   Text="{Binding AlreadyOpenNote}" TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Body}"
                                    IsVisible="{Binding AlreadyOpenNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </StackPanel>
                 </Border>
@@ -94,16 +94,16 @@
                                         <Setter Property="Padding" Value="2"/>
                                     </Style>
                                 </ListBox.Styles>
-                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Green}"><Border Width="18" Height="18" CornerRadius="5" Background="#4CC13C"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Amber}"><Border Width="18" Height="18" CornerRadius="5" Background="#D9A227"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Violet}"><Border Width="18" Height="18" CornerRadius="5" Background="#8A7BE8"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Cyan}"><Border Width="18" Height="18" CornerRadius="5" Background="#35A7C4"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Red}"><Border Width="18" Height="18" CornerRadius="5" Background="#D9534F"/></ListBoxItem>
-                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Grey}"><Border Width="18" Height="18" CornerRadius="5" Background="#5D6879"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Green}"><Border Width="18" Height="18" CornerRadius="5" Background="{DynamicResource Wit.Accent}"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Amber}"><Border Width="18" Height="18" CornerRadius="5" Background="{DynamicResource Wit.Warn}"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Violet}"><Border Width="18" Height="18" CornerRadius="5" Background="{DynamicResource Wit.Label.Violet}"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Cyan}"><Border Width="18" Height="18" CornerRadius="5" Background="{DynamicResource Wit.Label.Cyan}"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Red}"><Border Width="18" Height="18" CornerRadius="5" Background="{DynamicResource Wit.Error}"/></ListBoxItem>
+                                <ListBoxItem AutomationProperties.Name="{DynamicResource S.Color.Grey}"><Border Width="18" Height="18" CornerRadius="5" Background="{DynamicResource Wit.Label.Off}"/></ListBoxItem>
                             </ListBox>
                         </StackPanel>
                         <TextBlock Text="{DynamicResource S.Dialog.Open.ColourHint}"
-                                   Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                                   Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
 
@@ -114,10 +114,10 @@
                      dozen and a half properties this window deliberately does not ask about; not
                      asking is a choice, hiding them is not. -->
                 <StackPanel Spacing="6" IsVisible="{Binding IsConnectionStringVisible}">
-                    <TextBlock Text="{DynamicResource S.Common.ConnectionString}" FontSize="11" Opacity="0.6"/>
+                    <TextBlock Text="{DynamicResource S.Common.ConnectionString}" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.6"/>
                     <TextBox AutomationProperties.AutomationId="OpenDatabaseConnectionStringBox"
                              Text="{Binding ConnectionString, Mode=TwoWay}"
-                             FontFamily="Consolas" FontSize="11"
+                             FontFamily="Consolas" FontSize="{DynamicResource Wit.Font.Mono.Data}"
                              TextWrapping="Wrap" AcceptsReturn="False"/>
                 </StackPanel>
 
@@ -126,15 +126,15 @@
 
         <!-- The error is a strip above the buttons, and the last one is gone when the window reopens. -->
         <Border Grid.Row="1" Margin="18,0,18,10" Padding="10,8" CornerRadius="6"
-                Background="#22D9534F" BorderBrush="#55D9534F" BorderThickness="1"
+                Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
             <TextBlock AutomationProperties.AutomationId="OpenDatabaseError"
-                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12"/>
+                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Body}"/>
         </Border>
 
         <Border Grid.Row="2" Padding="14,10"
-                Background="{DynamicResource SystemControlBackgroundListLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,1,0,0">
+                Background="{DynamicResource Wit.Surface.Sunken}"
+                BorderBrush="{DynamicResource Wit.Line.Inner}" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                 <Button Grid.Column="0"
                         AutomationProperties.AutomationId="OpenDatabaseConnectionString"

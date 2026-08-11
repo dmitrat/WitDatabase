@@ -18,18 +18,18 @@
         <TextBlock Name="UpdateHeadline"
                    AutomationProperties.AutomationId="UpdateHeadline"
                    Text="{Binding Headline}"
-                   FontSize="14" FontWeight="SemiBold" TextWrapping="Wrap"/>
+                   FontSize="{DynamicResource Wit.Font.SectionTitle}" FontWeight="SemiBold" TextWrapping="Wrap"/>
 
         <!-- The publisher's own words, never translated (WS-64), and absent when there are none
              rather than filled with an apology. -->
         <Border IsVisible="{Binding HasNotes}"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
                 CornerRadius="3" Padding="10" MaxHeight="220">
             <ScrollViewer>
                 <SelectableTextBlock Name="UpdateNotes"
                                      AutomationProperties.AutomationId="UpdateNotes"
                                      Text="{Binding Notes}"
-                                     FontSize="12" TextWrapping="Wrap"/>
+                                     FontSize="{DynamicResource Wit.Font.Body}" TextWrapping="Wrap"/>
             </ScrollViewer>
         </Border>
 

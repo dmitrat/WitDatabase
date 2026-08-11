@@ -11,18 +11,18 @@
 	<Grid RowDefinitions="Auto,*">
 		<!-- Header: what this is, and which connection it is in -->
 		<Border Grid.Row="0"
-		        Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-		        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+		        Background="{DynamicResource Wit.Surface.Panel}"
+		        BorderBrush="{DynamicResource Wit.Line}"
 		        BorderThickness="0,0,0,1"
 		        Padding="10,8">
 			<StackPanel Spacing="2">
 				<TextBlock AutomationProperties.AutomationId="InspectorTitle"
 				           Text="{Binding Title}"
 				           FontWeight="SemiBold"
-				           FontSize="13"/>
+				           FontSize="{DynamicResource Wit.Font.BlockTitle}"/>
 				<TextBlock AutomationProperties.AutomationId="InspectorSubtitle"
 				           Text="{Binding Subtitle}"
-				           FontSize="11"
+				           FontSize="{DynamicResource Wit.Font.Control}"
 				           Opacity="0.6"/>
 			</StackPanel>
 		</Border>
@@ -30,49 +30,49 @@
 		<ScrollViewer Grid.Row="1" Padding="10,8">
 			<StackPanel Spacing="12">
 				<TextBlock Text="{DynamicResource S.Inspector.Empty}"
-				           FontSize="12" Opacity="0.5" TextWrapping="Wrap"
+				           FontSize="{DynamicResource Wit.Font.Body}" Opacity="0.5" TextWrapping="Wrap"
 				           IsVisible="{Binding Title, Converter={x:Static StringConverters.IsNullOrEmpty}}"/>
 
 				<TextBlock AutomationProperties.AutomationId="InspectorSummary"
 				           Text="{Binding Summary}"
-				           FontSize="12" TextWrapping="Wrap" Opacity="0.75"
+				           FontSize="{DynamicResource Wit.Font.Body}" TextWrapping="Wrap" Opacity="0.75"
 				           IsVisible="{Binding Summary, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 
 				<!-- Overview -->
 				<StackPanel Spacing="3" IsVisible="{Binding ColumnCount}">
-					<TextBlock Text="{DynamicResource S.Inspector.Overview}" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.Overview}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.5"/>
 					<Grid ColumnDefinitions="110,*" RowDefinitions="Auto,Auto,Auto">
-						<TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource S.Inspector.Rows}" FontSize="12" Opacity="0.6"/>
-						<TextBlock Grid.Row="0" Grid.Column="1" FontSize="12"
+						<TextBlock Grid.Row="0" Grid.Column="0" Text="{DynamicResource S.Inspector.Rows}" FontSize="{DynamicResource Wit.Font.Body}" Opacity="0.6"/>
+						<TextBlock Grid.Row="0" Grid.Column="1" FontSize="{DynamicResource Wit.Font.Body}"
 						           AutomationProperties.AutomationId="InspectorRowCount"
 						           Text="{Binding RowCountText}"/>
 
-						<TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource S.Inspector.Columns}" FontSize="12" Opacity="0.6"/>
-						<TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ColumnCount}" FontSize="12"/>
+						<TextBlock Grid.Row="1" Grid.Column="0" Text="{DynamicResource S.Inspector.Columns}" FontSize="{DynamicResource Wit.Font.Body}" Opacity="0.6"/>
+						<TextBlock Grid.Row="1" Grid.Column="1" Text="{Binding ColumnCount}" FontSize="{DynamicResource Wit.Font.Body}"/>
 
-						<TextBlock Grid.Row="2" Grid.Column="0" Text="{DynamicResource S.Inspector.PrimaryKey}" FontSize="12" Opacity="0.6"/>
-						<TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PrimaryKey}" FontSize="12"
+						<TextBlock Grid.Row="2" Grid.Column="0" Text="{DynamicResource S.Inspector.PrimaryKey}" FontSize="{DynamicResource Wit.Font.Body}" Opacity="0.6"/>
+						<TextBlock Grid.Row="2" Grid.Column="1" Text="{Binding PrimaryKey}" FontSize="{DynamicResource Wit.Font.Body}"
 						           IsVisible="{Binding PrimaryKey, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
 					</Grid>
 				</StackPanel>
 
 				<!-- Data access: the part that knows the engine -->
 				<StackPanel Spacing="3" IsVisible="{Binding DataAccess.Count}">
-					<TextBlock Text="{DynamicResource S.Inspector.DataAccess}" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.DataAccess}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.5"/>
 
 					<Border AutomationProperties.AutomationId="InspectorKeyWarning"
-					        Background="#33FFC107"
+					        Background="{DynamicResource Wit.Warn.Surface}"
 					        CornerRadius="5"
 					        Padding="8,6"
 					        IsVisible="{Binding UnindexedKeyWarning, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-						<TextBlock Text="{Binding UnindexedKeyWarning}" FontSize="11" TextWrapping="Wrap"/>
+						<TextBlock Text="{Binding UnindexedKeyWarning}" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
 					</Border>
 
 					<ItemsControl AutomationProperties.AutomationId="InspectorDataAccess"
 					              ItemsSource="{Binding DataAccess}">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="models:DataAccessNote">
-								<TextBlock Text="{Binding}" FontSize="11" Margin="0,1"
+								<TextBlock Text="{Binding}" FontSize="{DynamicResource Wit.Font.Control}" Margin="0,1"
 								           Opacity="{Binding IsIndexed, Converter={x:Static BoolConverters.Not}}"/>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
@@ -81,11 +81,11 @@
 
 				<!-- Indexes -->
 				<StackPanel Spacing="3" IsVisible="{Binding Indexes.Count}">
-					<TextBlock Text="{DynamicResource S.Inspector.Indexes}" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.Indexes}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.5"/>
 					<ItemsControl AutomationProperties.AutomationId="InspectorIndexes" ItemsSource="{Binding Indexes}">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="models:IndexInfo">
-								<TextBlock Text="{Binding}" FontSize="11" Margin="0,1"/>
+								<TextBlock Text="{Binding}" FontSize="{DynamicResource Wit.Font.Control}" Margin="0,1"/>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
@@ -93,22 +93,22 @@
 
 				<!-- What it points at, and what points at it -->
 				<StackPanel Spacing="3" IsVisible="{Binding References.Count}">
-					<TextBlock Text="{DynamicResource S.Inspector.References}" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.References}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.5"/>
 					<ItemsControl AutomationProperties.AutomationId="InspectorReferences" ItemsSource="{Binding References}">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="models:ForeignKeyInfo">
-								<TextBlock Text="{Binding}" FontSize="11" Margin="0,1"/>
+								<TextBlock Text="{Binding}" FontSize="{DynamicResource Wit.Font.Control}" Margin="0,1"/>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
 				</StackPanel>
 
 				<StackPanel Spacing="3" IsVisible="{Binding ReferencedBy.Count}">
-					<TextBlock Text="{DynamicResource S.Inspector.ReferencedBy}" FontSize="10" Opacity="0.5"/>
+					<TextBlock Text="{DynamicResource S.Inspector.ReferencedBy}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.5"/>
 					<ItemsControl AutomationProperties.AutomationId="InspectorReferencedBy" ItemsSource="{Binding ReferencedBy}">
 						<ItemsControl.ItemTemplate>
 							<DataTemplate x:DataType="models:ForeignKeyInfo">
-								<TextBlock Text="{Binding}" FontSize="11" Margin="0,1"/>
+								<TextBlock Text="{Binding}" FontSize="{DynamicResource Wit.Font.Control}" Margin="0,1"/>
 							</DataTemplate>
 						</ItemsControl.ItemTemplate>
 					</ItemsControl>
@@ -116,24 +116,24 @@
 
 				<!-- The definition as the catalogue holds it, not a reconstruction -->
 				<StackPanel Spacing="4" IsVisible="{Binding Definition, Converter={x:Static StringConverters.IsNotNullOrEmpty}}">
-					<TextBlock Text="{DynamicResource S.Inspector.Definition}" FontSize="10" Opacity="0.5"/>
-					<Border Background="{DynamicResource SystemControlBackgroundBaseLowBrush}"
+					<TextBlock Text="{DynamicResource S.Inspector.Definition}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.5"/>
+					<Border Background="{DynamicResource Wit.Surface.Sunken}"
 					        CornerRadius="5"
 					        Padding="8">
 						<TextBlock AutomationProperties.AutomationId="InspectorDefinition"
 						           Text="{Binding Definition}"
 						           FontFamily="Consolas,Menlo,monospace"
-						           FontSize="11"
+						           FontSize="{DynamicResource Wit.Font.Mono.Data}"
 						           TextWrapping="Wrap"/>
 					</Border>
 					<StackPanel Orientation="Horizontal" Spacing="4">
 						<Button AutomationProperties.AutomationId="InspectorCopyDefinition"
 						        AutomationProperties.Name="{DynamicResource S.Inspector.CopyDefinition}"
-						        Content="{DynamicResource S.Common.Copy}" FontSize="11" Height="22" Padding="8,0"
+						        Content="{DynamicResource S.Common.Copy}" Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="8,0"
 						        Command="{Binding CopyDefinitionCommand}"/>
 						<Button AutomationProperties.AutomationId="InspectorDefinitionToEditor"
 						        AutomationProperties.Name="{DynamicResource S.Inspector.DefinitionToEditor}"
-						        Content="{DynamicResource S.Inspector.ToEditor}" FontSize="11" Height="22" Padding="8,0"
+						        Content="{DynamicResource S.Inspector.ToEditor}" Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="8,0"
 						        Command="{Binding OpenDefinitionInEditorCommand}"/>
 					</StackPanel>
 				</StackPanel>

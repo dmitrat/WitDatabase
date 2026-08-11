@@ -18,7 +18,7 @@
 
         <TextBlock Grid.Row="0"
                    Text="{DynamicResource S.Keys.Title}"
-                   FontSize="16" FontWeight="SemiBold" Margin="0,0,0,10"/>
+                   FontSize="{DynamicResource Wit.Font.SectionTitle}" FontWeight="SemiBold" Margin="0,0,0,10"/>
 
         <TextBox Grid.Row="1"
                  Name="KeyboardFilter"
@@ -29,16 +29,16 @@
                  Text="{Binding Filter, Mode=TwoWay}"/>
 
         <Border Grid.Row="2" BorderThickness="1" CornerRadius="3"
-                BorderBrush="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+                BorderBrush="{DynamicResource Wit.Line}">
             <Grid RowDefinitions="Auto,*">
 
                 <Grid Grid.Row="0" ColumnDefinitions="*,140,110" Margin="10,7">
                     <TextBlock Grid.Column="0" Text="{DynamicResource S.Keys.Head.Action}"
-                               FontSize="10" Opacity="0.6"/>
+                               FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.6"/>
                     <TextBlock Grid.Column="1" Text="{DynamicResource S.Keys.Head.Gesture}"
-                               FontSize="10" Opacity="0.6"/>
+                               FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.6"/>
                     <TextBlock Grid.Column="2" Text="{DynamicResource S.Keys.Head.Scope}"
-                               FontSize="10" Opacity="0.6"/>
+                               FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.6"/>
                 </Grid>
 
                 <ScrollViewer Grid.Row="1">
@@ -52,13 +52,13 @@
                                                TextWrapping="Wrap" VerticalAlignment="Center"/>
 
                                     <Border Grid.Column="1" HorizontalAlignment="Left"
-                                            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                                            Background="{DynamicResource Wit.Surface.Panel}"
                                             CornerRadius="3" Padding="6,2">
-                                        <TextBlock Text="{Binding Gesture}" FontFamily="Consolas" FontSize="11"/>
+                                        <TextBlock Text="{Binding Gesture}" FontFamily="Consolas" FontSize="{DynamicResource Wit.Font.Mono.Data}"/>
                                     </Border>
 
                                     <TextBlock Grid.Column="2" Text="{Binding Scope}"
-                                               FontSize="11" Opacity="0.7" VerticalAlignment="Center"/>
+                                               FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.7" VerticalAlignment="Center"/>
                                 </Grid>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
@@ -79,7 +79,7 @@
             <!-- Why the design's rebinding field is not here. A window that offered one and changed
                  nothing would be worse than this sentence. -->
             <TextBlock Text="{Binding RebindingNote}"
-                       TextWrapping="Wrap" FontSize="11" Opacity="0.65"/>
+                       TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.65"/>
 
             <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Right">
                 <Button Name="KeyboardCopy"

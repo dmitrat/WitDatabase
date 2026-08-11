@@ -84,8 +84,8 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="{DynamicResource S.Dialog.Import.EmptyIsNull}"/>
                     <TextBlock Text="{DynamicResource S.Dialog.Import.EmptyIsNull.Hint}"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                               FontSize="12"/>
+                               Foreground="{DynamicResource Wit.Ink.Secondary}"
+                               FontSize="{DynamicResource Wit.Font.Body}"/>
                 </StackPanel>
             </CheckBox>
         </StackPanel>
@@ -117,8 +117,8 @@
                           SelectedItem="{Binding KeyColumn}"
                           Width="180"
                           PlaceholderText="{DynamicResource S.Dialog.Import.KeyColumnHint}"/>
-                <TextBlock VerticalAlignment="Center" FontSize="12"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                <TextBlock VerticalAlignment="Center" FontSize="{DynamicResource Wit.Font.Body}"
+                           Foreground="{DynamicResource Wit.Ink.Secondary}"
                            Text="{DynamicResource S.Dialog.Import.MergeNote}"/>
             </StackPanel>
 
@@ -132,8 +132,8 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <TextBlock Text="{DynamicResource S.Dialog.Import.AllOrNothing}"/>
                     <TextBlock Text="{DynamicResource S.Dialog.Import.AllOrNothing.Hint}"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
-                               FontSize="12"/>
+                               Foreground="{DynamicResource Wit.Ink.Secondary}"
+                               FontSize="{DynamicResource Wit.Font.Body}"/>
                 </StackPanel>
             </CheckBox>
 
@@ -167,7 +167,7 @@
                 <TextBlock Grid.Row="0" Text="{DynamicResource S.Dialog.Import.Mapping}" FontWeight="SemiBold" Margin="0,0,0,8"/>
                 
                 <Border Grid.Row="1"
-                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        BorderBrush="{DynamicResource Wit.Line}"
                         BorderThickness="1"
                         CornerRadius="4">
                     <DataGrid ItemsSource="{Binding ColumnMappings}"
@@ -205,8 +205,8 @@
 
         <!-- Preview Info -->
         <Border Grid.Row="5"
-                Background="#E8F5E9"
-                BorderBrush="#4CAF50"
+                Background="{DynamicResource Wit.Ok.Surface}"
+                BorderBrush="{DynamicResource Wit.Ok.Border}"
                 BorderThickness="1"
                 CornerRadius="4"
                 Padding="12,8"
@@ -216,16 +216,16 @@
                  translated: another language moves the pieces, and the count is a plural. -->
             <StackPanel Orientation="Horizontal" Spacing="16">
                 <TextBlock AutomationProperties.AutomationId="ImportPreviewRows"
-                           Text="{Binding PreviewRowsSummary}" Foreground="#2E7D32"/>
+                           Text="{Binding PreviewRowsSummary}" Foreground="{DynamicResource Wit.Ok.Text}"/>
                 <TextBlock AutomationProperties.AutomationId="ImportPreviewColumns"
-                           Text="{Binding PreviewColumnsSummary}" Foreground="#2E7D32"/>
+                           Text="{Binding PreviewColumnsSummary}" Foreground="{DynamicResource Wit.Ok.Text}"/>
             </StackPanel>
         </Border>
 
         <!-- Error Message -->
         <Border Grid.Row="5"
-                Background="#FFEBEE"
-                BorderBrush="#F44336"
+                Background="{DynamicResource Wit.Error.Surface}"
+                BorderBrush="{DynamicResource Wit.Error.Border}"
                 BorderThickness="1"
                 CornerRadius="4"
                 Padding="12,8"
@@ -234,10 +234,10 @@
             <StackPanel Spacing="8">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                              Width="16" Height="16"
-                              Foreground="#C62828"/>
+                              Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"
+                              Foreground="{DynamicResource Wit.Error.Text}"/>
                     <TextBlock Text="{Binding ErrorMessage}"
-                               Foreground="#C62828"
+                               Foreground="{DynamicResource Wit.Error.Text}"
                                TextWrapping="Wrap"/>
                 </StackPanel>
                 
@@ -247,8 +247,8 @@
                     <ItemsControl.ItemTemplate>
                         <DataTemplate>
                             <TextBlock Text="{Binding}"
-                                       Foreground="#C62828"
-                                       FontSize="11"
+                                       Foreground="{DynamicResource Wit.Error.Text}"
+                                       FontSize="{DynamicResource Wit.Font.Control}"
                                        Margin="24,2,0,0"/>
                         </DataTemplate>
                     </ItemsControl.ItemTemplate>
@@ -305,7 +305,7 @@
         <!-- Loading Overlay with Progress -->
         <Border Grid.Row="0"
                 Grid.RowSpan="7"
-                Background="#E0000000"
+                Background="{DynamicResource Wit.Scrim}"
                 IsVisible="{Binding IsImporting}">
             <StackPanel HorizontalAlignment="Center"
                         VerticalAlignment="Center"
@@ -322,21 +322,21 @@
                            Text="{Binding ProgressText}"
                            Foreground="White"
                            HorizontalAlignment="Center"
-                           FontSize="16"/>
+                           FontSize="{DynamicResource Wit.Font.SectionTitle}"/>
 
                 <!-- Failed count (if any) -->
                 <TextBlock AutomationProperties.AutomationId="ImportFailedText"
                            Text="{Binding FailedText}"
-                           Foreground="#FF8A80"
+                           Foreground="{DynamicResource Wit.Error.Text}"
                            HorizontalAlignment="Center"
-                           FontSize="13"
+                           FontSize="{DynamicResource Wit.Font.BlockTitle}"
                            IsVisible="{Binding RowsFailed}"/>
 
                 <!-- Percentage -->
                 <TextBlock Text="{Binding ImportProgress, StringFormat='{}{0:F1} %'}"
                            Foreground="White"
                            HorizontalAlignment="Center"
-                           FontSize="14"
+                           FontSize="{DynamicResource Wit.Font.SectionTitle}"
                            Opacity="0.8"/>
                 
                 <!-- Cancel Button -->

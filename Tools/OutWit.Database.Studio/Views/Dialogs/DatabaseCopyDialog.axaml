@@ -15,16 +15,16 @@
     <Grid RowDefinitions="Auto,*,Auto">
 
         <Border Grid.Row="0"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="16">
             <StackPanel Spacing="4">
                 <TextBlock Name="CopyHeading"
                            AutomationProperties.AutomationId="CopyHeading"
-                           Text="{Binding Heading}" FontSize="18" FontWeight="SemiBold"/>
+                           Text="{Binding Heading}" FontSize="{DynamicResource Wit.Font.WindowTitle}" FontWeight="SemiBold"/>
                 <TextBlock Text="{DynamicResource S.Copy.NotADump}"
-                           FontSize="12" Opacity="0.75" TextWrapping="Wrap"/>
+                           FontSize="{DynamicResource Wit.Font.Body}" Opacity="0.75" TextWrapping="Wrap"/>
             </StackPanel>
         </Border>
 
@@ -35,7 +35,7 @@
                      thing the dialog exists to say ended up below the fold, and the copy looked as if
                      it had done nothing. -->
                 <Border IsVisible="{Binding Message, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
-                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        BorderBrush="{DynamicResource Wit.Line}"
                         BorderThickness="1" CornerRadius="4" Padding="12">
                     <TextBlock Name="CopyMessage"
                                AutomationProperties.AutomationId="CopyMessage"
@@ -45,9 +45,9 @@
                 <StackPanel Spacing="4">
                     <TextBlock Text="{DynamicResource S.Copy.Source}" FontWeight="SemiBold"/>
                     <TextBlock Text="{Binding Source}" TextWrapping="Wrap"/>
-                    <TextBlock Text="{Binding Parts}" FontSize="11" Opacity="0.7" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding Parts}" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.7" TextWrapping="Wrap"/>
                     <TextBlock Text="{DynamicResource S.Copy.PartsNote}"
-                               FontSize="11" Opacity="0.7" TextWrapping="Wrap"/>
+                               FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.7" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <StackPanel Spacing="4">
@@ -66,7 +66,7 @@
                 <!-- Said BEFORE anything happens: a paged database cannot be read while the engine
                      holds it, so taking the bytes means letting go of it first. -->
                 <Border IsVisible="{Binding WillCloseTheConnection}"
-                        Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                        Background="{DynamicResource Wit.Surface.Panel}"
                         Padding="12" CornerRadius="4">
                     <TextBlock Name="CopyWillClose"
                                AutomationProperties.AutomationId="CopyWillClose"
@@ -74,7 +74,7 @@
                 </Border>
 
                 <Border IsVisible="{Binding HasOpenTransaction}"
-                        Background="{DynamicResource SystemFillColorCautionBackgroundBrush}"
+                        Background="{DynamicResource Wit.Warn.Surface}"
                         Padding="12" CornerRadius="4">
                     <TextBlock Name="CopyTransactionWarning"
                                AutomationProperties.AutomationId="CopyTransactionWarning"
@@ -82,12 +82,12 @@
                 </Border>
 
                 <TextBlock Text="{DynamicResource S.Copy.NoRestore}"
-                           FontSize="11" Opacity="0.75" TextWrapping="Wrap"/>
+                           FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.75" TextWrapping="Wrap"/>
             </StackPanel>
         </ScrollViewer>
 
         <Border Grid.Row="2"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,1,0,0"
                 Padding="16,12">
             <Grid ColumnDefinitions="Auto,*,Auto">

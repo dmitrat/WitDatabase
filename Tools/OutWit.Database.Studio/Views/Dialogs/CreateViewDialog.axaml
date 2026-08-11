@@ -16,12 +16,12 @@
         
         <!-- Header -->
         <Border Grid.Row="0"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="16">
             <TextBlock Text="{DynamicResource S.Dialog.CreateView.Heading}"
-                       FontSize="18"
+                       FontSize="{DynamicResource Wit.Font.WindowTitle}"
                        FontWeight="SemiBold"/>
         </Border>
 
@@ -42,11 +42,11 @@
                 <StackPanel Spacing="8">
                     <TextBlock Text="{DynamicResource S.Dialog.CreateView.Select}" FontWeight="SemiBold"/>
                     <TextBlock Text="{DynamicResource S.Dialog.CreateView.SelectHint}"
-                               FontSize="12"
+                               FontSize="{DynamicResource Wit.Font.Body}"
                                Foreground="Gray"
                                Margin="0,-4,0,0"/>
                     
-                    <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                    <Border BorderBrush="{DynamicResource Wit.Line}"
                             BorderThickness="1"
                             CornerRadius="4"
                             MinHeight="250">
@@ -54,7 +54,7 @@
                                  TextWrapping="NoWrap"
                                  AcceptsReturn="True"
                                  FontFamily="Consolas,Courier New"
-                                 FontSize="13"
+                                 FontSize="{DynamicResource Wit.Font.Mono.Sql}"
                                  Padding="8"
                                  BorderThickness="0"
                                  Background="Transparent"
@@ -67,8 +67,8 @@
 
         <!-- Error Message -->
         <Border Grid.Row="2"
-                Background="#FFF3CD"
-                BorderBrush="#FFC107"
+                Background="{DynamicResource Wit.Warn.Surface}"
+                BorderBrush="{DynamicResource Wit.Warn.Border}"
                 BorderThickness="1"
                 Padding="12"
                 Margin="16,0"
@@ -76,17 +76,17 @@
             <StackPanel Spacing="4">
                 <TextBlock Text="{DynamicResource S.Common.ErrorHeading}"
                            FontWeight="Bold"
-                           Foreground="#856404"/>
+                           Foreground="{DynamicResource Wit.Warn.Text}"/>
                 <TextBlock Text="{Binding ErrorMessage}"
                            TextWrapping="Wrap"
-                           Foreground="#856404"/>
+                           Foreground="{DynamicResource Wit.Warn.Text}"/>
             </StackPanel>
         </Border>
 
         <!-- Buttons -->
         <Border Grid.Row="3"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,1,0,0"
                 Padding="16">
             <StackPanel Orientation="Horizontal"
@@ -109,7 +109,7 @@
 
         <!-- Loading Overlay -->
         <Border Grid.Row="0" Grid.RowSpan="4"
-                Background="#80000000"
+                Background="{DynamicResource Wit.Scrim}"
                 IsVisible="{Binding IsCreating}">
             <StackPanel HorizontalAlignment="Center"
                         VerticalAlignment="Center"
@@ -118,14 +118,14 @@
                         Background="White"
                         CornerRadius="24">
                     <TextBlock Text="..."
-                               FontSize="24"
+                               FontSize="{DynamicResource Wit.Font.WindowTitle}"
                                Foreground="Black"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
                 </Border>
                 <TextBlock Text="{DynamicResource S.Dialog.CreateView.Creating}"
                            Foreground="White"
-                           FontSize="16"
+                           FontSize="{DynamicResource Wit.Font.SectionTitle}"
                            HorizontalAlignment="Center"/>
             </StackPanel>
         </Border>

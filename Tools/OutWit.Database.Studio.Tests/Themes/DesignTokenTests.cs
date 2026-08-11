@@ -7,6 +7,7 @@ using Avalonia.Markup.Xaml.Styling;
 using Avalonia.Media;
 using Avalonia.Styling;
 using OutWit.Database.Studio;
+using OutWit.Database.Studio.Converters;
 using OutWit.Database.Studio.Tests.Themes;
 
 [assembly: AvaloniaTestApplication(typeof(TokenHost))]
@@ -62,6 +63,16 @@ public static class TokenHost
 /// other case stayed green.
 /// </para>
 /// <para>
+/// <b>It has already caught a defect the BUILD could not, and it is the phase-14 shape exactly.</b>
+/// Stage V2's control styles used <c>{StaticResource Wit.Height.Field}</c>; <c>Application.Styles</c>
+/// is populated <b>before</b> <c>Application.Resources</c>, so the lookup threw inside
+/// <c>App.Initialize()</c> and <b>Studio would not have started at all</b>. The build was clean and
+/// every one of the other 842 cases stayed green - they construct ViewModels, and none constructs an
+/// <c>Application</c>. This is `Ctrl+?` again, a one-line change that killed the executable while the
+/// suite said nothing, and this time a test caught it instead of a launch. A style setter must use
+/// <c>DynamicResource</c>, which resolves when the style is applied rather than when it is parsed.
+/// </para>
+/// <para>
 /// <b>What it does not prove, said out loud.</b> That a token is USED, that it is used in the right
 /// place, or that the result is legible. The first is the census below, the second and third are the
 /// running application in both themes, which is stage V4 and the only real control this phase has.
@@ -82,6 +93,11 @@ public class DesignTokenTests
     /// itself a count of CSS variables in the canon's stylesheet rather than of anything Studio
     /// could hold. The list is what a reader can check against the document.
     /// </para>
+    /// <para>
+    /// <c>Scrim</c> is the one role section 8 does not name. It was added during the sweep because
+    /// the application has NINE overlays that dim a window while work happens, in two different
+    /// weights, and a colour with nine sites and no name is exactly what this phase is removing.
+    /// </para>
     /// </summary>
     private static readonly string[] COLOUR_TOKENS =
     [
@@ -93,6 +109,7 @@ public class DesignTokenTests
         "Label.Cyan", "Label.Off", "Label.Violet",
         "Line", "Line.Inner",
         "Ok", "Ok.Border", "Ok.Surface", "Ok.Text",
+        "Scrim",
         "Surface.Bar", "Surface.Base", "Surface.Panel", "Surface.Sunken",
         "Warn", "Warn.Border", "Warn.Surface", "Warn.Text",
     ];
@@ -292,7 +309,94 @@ public class DesignTokenTests
             // The control. It is zero at V0 by construction - the dictionaries exist and nothing
             // consumes them yet - so the assertion is on the FILES, which is what tells a rule
             // reading the right folder from one reading none.
-            Assert.That(MarkupFiles(), Has.Length.EqualTo(32), "the markup files the rule reads");
+            Assert.That(MarkupFiles(), Has.Length.EqualTo(33), "the markup files the rule reads");
+        });
+    }
+
+    /// <summary>
+    /// The swatch row in the Open dialog draws the SAME six colours, in the same order, as
+    /// <see cref="ConnectionColors.Palette"/>.
+    ///
+    /// <para>
+    /// <b>This was found by the sweep and it is a real one.</b> <c>ConnectionColors</c> opens by
+    /// saying it is "one palette, in one place, used by three things that must agree: the swatch row
+    /// in the Open dialog where the colour is chosen, the stripe down the side of a tab where it is
+    /// read, and the connection chip in the toolbar" - and the swatch row was a <b>fourth,
+    /// hand-written copy</b>, six hexes typed into the markup. It agreed by luck. Nothing would have
+    /// said so if it stopped agreeing, and the symptom would be a person picking violet and getting
+    /// a cyan stripe on the tab their query is about to go to.
+    /// </para>
+    /// <para>
+    /// Tokenising the swatches did not fix that - it moved the copy from six literals to six token
+    /// names. This case is what closes it: the markup is read, in order, and each token is resolved
+    /// and compared to the palette entry at the same index. It is red if either side changes alone,
+    /// which is the only failure worth guarding.
+    /// </para>
+    /// </summary>
+    [AvaloniaTest]
+    public void TheSwatchRowDrawsTheConnectionPaletteInOrderTest()
+    {
+        var dialog = MarkupFiles().Single(f => f.EndsWith("OpenDatabaseDialog.axaml"));
+
+        var swatches = Regex.Matches(File.ReadAllText(dialog),
+                @"S\.Color\.[A-Za-z]+}""><Border[^>]*Background=""\{DynamicResource (Wit\.[A-Za-z.]+)\}""")
+            .Select(m => m.Groups[1].Value)
+            .ToArray();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(swatches, Has.Length.EqualTo(ConnectionColors.Palette.Count),
+                "the row offers a different number of colours than the palette holds");
+
+            for (var index = 0; index < swatches.Length; index++)
+                Assert.That((Resolve(swatches[index], ThemeVariant.Dark) as ISolidColorBrush)?.Color,
+                    Is.EqualTo(ConnectionColors.Palette[index]),
+                    $"swatch {index} draws {swatches[index]}");
+        });
+    }
+
+    /// <summary>
+    /// The palette handed to <c>FluentTheme</c> is the same palette as the tokens.
+    ///
+    /// <para>
+    /// <b>Why it is written twice at all.</b> A <c>ColorPaletteResources</c> is consumed while the
+    /// theme is being constructed, which is before <c>Application.Resources</c> exists - so a
+    /// <c>{StaticResource}</c> there is a load-order gamble, not a reference. The hexes are written
+    /// out, and that means the two sides CAN disagree, silently, in one theme.
+    /// </para>
+    /// <para>
+    /// This case is what makes the duplication safe. Each pair below is the Fluent slot and the token
+    /// it must equal; the slot is read back through the brush Fluent DERIVES from it, so what is
+    /// asserted is the value that actually reaches a control rather than the text in the file.
+    /// Duplication with an instrument on it is fine; duplication with a comment on it is what the
+    /// connection swatches were.
+    /// </para>
+    /// </summary>
+    [AvaloniaTest]
+    public void ThePaletteHandedToFluentIsTheCanonPaletteTest()
+    {
+        // Fluent's derived brush -> the token it has to agree with. These four are the ones a person
+        // sees: the window, the panel a control sits on, body text and the accent.
+        (string Fluent, string Token)[] agreements =
+        [
+            ("SystemAccentColor", "Wit.Color.Accent"),
+            ("SystemControlBackgroundChromeMediumLowBrush", "Wit.Color.Surface.Panel"),
+            ("SystemControlForegroundBaseHighBrush", "Wit.Color.Ink"),
+            ("SystemControlForegroundBaseMediumBrush", "Wit.Color.Ink.Secondary"),
+        ];
+
+        Assert.Multiple(() =>
+        {
+            foreach (var variant in new[] { ThemeVariant.Dark, ThemeVariant.Light })
+            foreach (var (fluent, token) in agreements)
+            {
+                var fromTheme = Resolve(fluent, variant);
+                var expected = (Color)Resolve(token, variant)!;
+
+                Assert.That(fromTheme, Is.Not.Null, $"{variant}: Fluent publishes no {fluent}");
+                Assert.That(fromTheme is Color colour ? colour : ((ISolidColorBrush)fromTheme!).Color,
+                    Is.EqualTo(expected), $"{variant}: {fluent} is not {token}");
+            }
         });
     }
 
@@ -335,11 +439,83 @@ public class DesignTokenTests
 
         Assert.Multiple(() =>
         {
-            Assert.That(hex, Is.EqualTo(125), "hex colours written into a view");
-            Assert.That(fontSize, Is.EqualTo(283), "font sizes written by hand");
-            Assert.That(height, Is.EqualTo(173), "heights written by hand");
+            // ONE, and it is named: the pointer-over tint on the tab close button. A hover state is
+            // a control style's business and belongs to stage V2, not to the palette - putting it on
+            // a severity or an accent token would be a colour chosen to satisfy a rule.
+            Assert.That(hex, Is.EqualTo(1), "hex colours written into a view");
+            Assert.That(HexSites(), Is.EqualTo(new[] { "WorkspaceTabStrip.axaml:#22000000" }));
+
+            // ZERO. Every size a view named is a step of the nine-step scale now, and 48 of them
+            // are gone rather than tokenised because the V2 control styles already provide them.
+            Assert.That(fontSize, Is.EqualTo(0), "font sizes written by hand");
+
+            // NOT zero, and it should not be. What is left is not on the canon's metric table:
+            // window sizes, the boxes of decorative blocks, a progress bar, a splitter, two
+            // empty-state glyphs drawn at 36 and 42 and a multi-line editing region. The table
+            // measures ROWS and CONTROLS - a titlebar, a tab, a tree row, a field - and every one
+            // of those is on a token. Asserting zero here would mean inventing metrics the canon
+            // does not have, which is the failure mode a lint invites.
+            Assert.That(height, Is.EqualTo(67), "heights written by hand");
+            Assert.That(HeightSiteKinds(), Is.EqualTo(new[]
+            {
+                "Border:23", "Button:1", "DataGrid:2", "Ellipse:1", "Grid:1", "GridSplitter:1",
+                "ListBox:1", "PathIcon:2", "ProgressBar:4", "ScrollViewer:3", "TextBox:1",
+                "Window:27",
+            }));
         });
     }
+
+    /// <summary>
+    /// The remainder itself, by file and value rather than as a number.
+    ///
+    /// <para>
+    /// A count of one is satisfied by any one hex anywhere. Naming it means a new literal appearing
+    /// while an old one is removed cannot pass, which is the direction a bare count is blind in.
+    /// </para>
+    /// </summary>
+    /// <summary>
+    /// The remaining heights by the ELEMENT that carries them, which is the only form in which the
+    /// remainder can be read as a decision rather than as a number.
+    ///
+    /// <para>
+    /// A count of 68 says nothing; "27 of them are windows and 23 are decorative blocks" says that
+    /// the metric table has been applied and that what is left is outside it. The direction this
+    /// catches is a <c>Button</c> or a <c>TabItem</c> reappearing in the list.
+    /// </para>
+    /// </summary>
+    private static string[] HeightSiteKinds()
+    {
+        var tag = new Regex(@"<([A-Za-z][\w.:]*)", RegexOptions.Compiled);
+        var kinds = new List<string>();
+
+        foreach (var file in MarkupFiles().Where(f => f.Contains("Views")))
+        {
+            var text = File.ReadAllText(file);
+
+            foreach (Match match in Regex.Matches(text, @"\b(?:Min|Max)?Height=""[0-9.]+"""))
+            {
+                // walk back to the opening tag this attribute belongs to
+                var start = text.LastIndexOf('<', match.Index);
+                while (start >= 0 && !tag.Match(text, start).Success)
+                    start = text.LastIndexOf('<', start - 1);
+
+                kinds.Add(start < 0 ? "?" : tag.Match(text, start).Groups[1].Value);
+            }
+        }
+
+        return kinds.GroupBy(k => k)
+            .Select(g => $"{g.Key}:{g.Count()}")
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToArray();
+    }
+
+    private static string[] HexSites() =>
+        MarkupFiles()
+            .Where(f => f.Contains("Views"))
+            .SelectMany(f => Regex.Matches(File.ReadAllText(f), @"#[0-9A-Fa-f]{3,8}\b")
+                .Select(m => $"{Path.GetFileName(f)}:{m.Value}"))
+            .OrderBy(s => s)
+            .ToArray();
 
     #endregion
 
