@@ -209,15 +209,15 @@ engine.Execute("COMMIT");
 
 ```
 OutWit.Database.Samples.ConsoleApp/
-??? Program.cs                      # Main entry point with menu
-??? Examples/
-?   ??? BasicCrudExample.cs         # CRUD operations demo
-?   ??? TransactionExample.cs       # Transaction & savepoint demo
-?   ??? EncryptionExample.cs        # Encryption demo
-?   ??? LsmTreeExample.cs           # LSM-Tree storage demo
-?   ??? BulkOperationsExample.cs    # Bulk operations demo
-??? README.md
-??? OutWit.Database.Samples.ConsoleApp.csproj
++-- Program.cs                      # Main entry point with menu
++-- Examples/
+|   +-- BasicCrudExample.cs         # CRUD operations demo
+|   +-- TransactionExample.cs       # Transaction & savepoint demo
+|   +-- EncryptionExample.cs        # Encryption demo
+|   +-- LsmTreeExample.cs           # LSM-Tree storage demo
+|   +-- BulkOperationsExample.cs    # Bulk operations demo
++-- README.md
++-- OutWit.Database.Samples.ConsoleApp.csproj
 ```
 
 ## Troubleshooting

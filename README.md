@@ -33,7 +33,7 @@ A high-performance embedded key-value database for .NET with support for multipl
   - Entity Framework Core provider
   - Window functions, CTEs, subqueries
   - `LATERAL` / `CROSS APPLY` / `OUTER APPLY`, `VALUES` as a table source, `TOP n`
-  - 60+ built-in functions
+  - 90+ built-in functions, plus window functions - `Docs/WitSQL.md` § 5 and § 7
 
 - **User-Defined Functions and Stored Procedures**
   - `CREATE FUNCTION` — a scalar expression over its parameters, callable anywhere an expression
@@ -240,74 +240,86 @@ await ((StorageIndexedDb)db.Store).InitializeAsync();
 ## Performance
 
 Measured with `Benchmarks/OutWit.Database.Benchmarks` (BenchmarkDotNet, ShortRun, in-process) on a
-Ryzen 9 5950X under .NET 10, against SQLite (`Microsoft.Data.Sqlite`) and LiteDB. **Every figure is
-the median of at least two full passes**, and anything that moved more than 10% between identical
-passes is excluded rather than quoted. **Default configuration** means a bare `Data Source=…`
-connection string - MVCC on, durable commit, B+Tree - which is what an ADO.NET or EF Core consumer
-gets.
+Ryzen 9 5950X under .NET 10, against SQLite (`Microsoft.Data.Sqlite`) and LiteDB. Re-measured
+**2026-08-11**. Every figure is the mean of two identical passes taken on an otherwise idle machine,
+and **anything whose two passes disagreed by more than 10% is left out rather than quoted** - three
+write rows fell out that way. **Default configuration** means a bare `Data Source=...` connection
+string - MVCC on, durable commit, B+Tree - which is what an ADO.NET or EF Core consumer gets.
 
 ### Reads and lookups, default configuration
 
 | Operation | WitDatabase | LiteDB | SQLite |
 |---|---|---|---|
-| Point query by primary key, x100 | **0.24 ms** | 1.23 ms | 4.83 ms |
-| Seek on a UNIQUE index, x100 | **0.50 ms** | 2.00 ms | 5.01 ms |
-| Sequential reads, x100 | **0.31 ms** | 8.77 ms | 5.18 ms |
-| Index range scan (`BETWEEN`) | **0.83 ms** | 4.63 ms | 0.20 ms |
-| `SELECT … LIMIT 100` | **0.08 ms** | 0.15 ms | 0.07 ms |
-| Full scan, 1,000 rows | 0.77 ms | 1.34 ms | **0.17 ms** |
-| `ORDER BY`, 1,000 rows | 1.62 ms | 1.78 ms | **0.23 ms** |
+| Point query by primary key, x100 | **0.26 ms** | 1.27 ms | 4.86 ms |
+| Seek on a UNIQUE index, x100 (5,000 rows) | **0.52 ms** | 1.95 ms | 5.09 ms |
+| Sequential reads, x100 | **0.35 ms** | 7.59 ms | 5.02 ms |
+| Index range scan (`BETWEEN`), 5,000 rows | **0.93 ms** | 4.58 ms | 0.20 ms |
+| `SELECT ... LIMIT 100` | **0.12 ms** | 0.15 ms | 0.07 ms |
+| Full scan, 1,000 rows | 0.80 ms | 1.40 ms | **0.18 ms** |
+| `GROUP BY`, 1,000 rows | 1.01 ms | 1.50 ms | **0.22 ms** |
+| `ORDER BY`, 1,000 rows | 1.66 ms | 1.78 ms | **0.23 ms** |
+| `INNER JOIN` over 4 tables | 0.48 ms | **0.18 ms** | 0.09 ms |
 
 ### Writes, default configuration
 
 | Operation | WitDatabase | LiteDB | SQLite |
 |---|---|---|---|
-| 100 inserts in one transaction | 2.99 ms | **1.17 ms** | 7.38 ms |
-| Transaction rollback | **0.46 ms** | 7.15 ms | 1.36 ms |
-| Bulk `UPDATE` | **3.10 ms** | 9.62 ms | 7.19 ms |
-| 100 inserts **without** a transaction | 203 ms | **9.5 ms** | 688 ms |
+| Mixed transaction (insert/update/select) | **4.85 ms** | 7.33 ms | 6.96 ms |
+| 100 inserts in one transaction | 5.07 ms | **1.00 ms** | 6.82 ms |
+| `UPDATE` by key, in a transaction | 5.16 ms | **1.74 ms** | 6.88 ms |
+| 100 inserts **without** a transaction | 301 ms | **10.7 ms** | 925-1233 ms |
 
-### Sustained ingest, 500,000 rows in batches of 1,000
+### Sustained ingest, 200,000 rows in batches of 1,000
 
-| | B+Tree | LSM |
+| microseconds per row | B+Tree | LSM |
 |---|---|---|
-| No secondary indexes | 15.10 µs/row | 15.36 µs/row |
-| Three secondary indexes | **23.16 µs/row** | 36.86 µs/row |
+| **MVCC on** - what a plain connection string gives | 36.8 | **772** |
+| `MVCC=false`, no secondary indexes | 13.6-17.2 | 11.0-18.3 |
+| `MVCC=false`, three secondary indexes | 22.9-23.2 | 33.6-38.6 |
 
 Read all of it honestly:
 
-- **Lookups and indexed access are the strong side** - several times faster than LiteDB and, on
-  small operations, than SQLite. Part of the SQLite margin is the P/Invoke crossing its managed
+- **Lookups and indexed access are the strong side** - 3-20x faster than LiteDB and, on small
+  operations, faster than SQLite too. Part of the SQLite margin is the P/Invoke crossing its managed
   wrapper pays per call; that is not an engine result, but it *is* what a .NET consumer experiences,
   because there is no other way to reach SQLite from managed code.
-- **Scans and sorts are the weak side** - SQLite is 4-8x faster there, and the gap is allocation: a
-  scan costs roughly 2.4 KB per row returned. LiteDB, also managed, pays about the same, so this
-  does not move the comparison against it.
+- **Scans, sorts and joins are the weak side** - SQLite is 4-13x faster there, and the gap is
+  allocation: a scan costs roughly 2.4 KB per row returned. LiteDB, also managed, pays about the
+  same, so this does not move the comparison against it.
 - **Autocommit is expensive by choice.** Every statement outside a transaction is durable, which is
-  what makes 203 ms against LiteDB's 9.5 - and 3.3x *faster* than SQLite doing the same thing.
+  what makes 301 ms against LiteDB's 10.7 - and 3-4x *faster* than SQLite doing the same thing.
   Batch writes in a transaction when throughput matters.
-- **`Store=lsm` is not simply "write-optimised".** It reaches parity at high volume without
-  secondary indexes and is 1.6x slower with three of them. See `Docs/WitSQL.md` § 14.9 before
-  choosing it.
+- **`Store=lsm` is not simply "write-optimised", and with the default settings it is much worse.**
+  With `MVCC=false` it matches the B+Tree on indexless ingest and is ~1.6x behind with three
+  secondary indexes. With MVCC on - the default - it costs **20x the B+Tree per row**, and no batch
+  size amortises it. See `Docs/WitSQL.md` § 14.9 before choosing it.
+- **`COUNT(*)` is deliberately not in the tables above.** WitDatabase answers it from a cached
+  per-table counter in ~1 microsecond while the other two count rows; that is a real property worth
+  knowing and it is not a speed comparison.
 
 Reproduce with:
 
 ```bash
-dotnet run -c Release --project Benchmarks/OutWit.Database.Benchmarks -- --filter "*"
 dotnet run -c Release --project Benchmarks/OutWit.Database.Benchmarks -- verify
+dotnet run -c Release --project Benchmarks/OutWit.Database.Benchmarks -- --filter "*"
 ```
 
-The second command is the equivalence check: it runs every benchmark body once and compares what
+The first command is the equivalence check: it runs every benchmark body once and compares what
 WitDatabase, SQLite and LiteDB actually return. A timing comparison between engines that do not
 compute the same thing is not a measurement, so that check is meant to be green before any figure
 above is believed.
 
-> **Earlier figures withdrawn twice, and the second time is worth recording.** Releases before
-> 11.1.0 advertised transaction ratios measured on the least discriminating workload in the suite,
-> and before that "4-20x faster" numbers from a benchmark project no longer in the repository. The
-> tables above replace both. What changed in between: the benchmark suite had no assertion of any
-> kind in 113 methods, so nothing had ever checked that the three engines compute the same answer,
-> and several published claims turned out to describe an engine that no longer existed.
+> **Earlier figures withdrawn twice, and both times are worth recording.** Releases before 11.1.0
+> advertised transaction ratios measured on the least discriminating workload in the suite, and
+> before that "4-20x faster" numbers from a benchmark project no longer in the repository. What
+> changed in between: the benchmark suite had no assertion of any kind in 113 methods, so nothing had
+> ever checked that the three engines compute the same answer, and several published claims turned
+> out to describe an engine that no longer existed.
+>
+> The 2026-08-11 re-measurement found the write paths **1.5-1.7x slower than the 2026-08-02
+> baseline** on the same benchmark and the same machine, while SQLite's and LiteDB's numbers on those
+> same rows were unchanged and every read was unchanged. That is recorded rather than explained: it
+> is a real difference between 11.1.0 and 12.8.0 and it has not yet been diagnosed.
 
 ## Requirements
 

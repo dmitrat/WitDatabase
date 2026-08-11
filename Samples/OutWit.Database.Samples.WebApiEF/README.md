@@ -281,22 +281,22 @@ Data Source=myapp.witdb;Mode=ReadOnly
 
 ```
 OutWit.Database.Samples.WebApiEF/
-??? Program.cs                      # Application entry point
-??? Controllers/
-?   ??? UsersController.cs          # User API endpoints
-?   ??? ProductsController.cs       # Product API endpoints
-?   ??? OrdersController.cs         # Order API endpoints
-??? Data/
-?   ??? AppDbContext.cs             # DbContext and entities
-??? Services/
-?   ??? UserService.cs              # User business logic
-?   ??? OrderService.cs             # Order business logic
-??? appsettings.json                # Configuration
-??? appsettings.Development.json    # Development configuration
-??? Properties/
-?   ??? launchSettings.json         # Launch profiles
-??? README.md
-??? OutWit.Database.Samples.WebApiEF.csproj
++-- Program.cs                      # Application entry point
++-- Controllers/
+|   +-- UsersController.cs          # User API endpoints
+|   +-- ProductsController.cs       # Product API endpoints
+|   +-- OrdersController.cs         # Order API endpoints
++-- Data/
+|   +-- AppDbContext.cs             # DbContext and entities
++-- Services/
+|   +-- UserService.cs              # User business logic
+|   +-- OrderService.cs             # Order business logic
++-- appsettings.json                # Configuration
++-- appsettings.Development.json    # Development configuration
++-- Properties/
+|   +-- launchSettings.json         # Launch profiles
++-- README.md
++-- OutWit.Database.Samples.WebApiEF.csproj
 ```
 
 ## Troubleshooting

@@ -304,23 +304,23 @@ Data Source=app.witdb;Store=btree;Password=secret;Transactions=true;Parallel Mod
 
 ```
 OutWit.Database.Samples.WebApi/
-??? Program.cs                      # Application entry point & ConnectionFactory
-??? Controllers/
-?   ??? UsersController.cs          # User API endpoints
-?   ??? ProductsController.cs       # Product API endpoints
-??? Models/
-?   ??? User.cs                     # User entity and DTOs
-?   ??? Product.cs                  # Product entity and DTOs
-??? Services/
-?   ??? DatabaseInitializer.cs      # Schema creation and seeding
-?   ??? UserService.cs              # User data access
-?   ??? ProductService.cs           # Product data access
-??? Properties/
-?   ??? launchSettings.json         # Launch profiles
-??? appsettings.json                # Configuration
-??? appsettings.Development.json    # Development configuration
-??? README.md
-??? OutWit.Database.Samples.WebApi.csproj
++-- Program.cs                      # Application entry point & ConnectionFactory
++-- Controllers/
+|   +-- UsersController.cs          # User API endpoints
+|   +-- ProductsController.cs       # Product API endpoints
++-- Models/
+|   +-- User.cs                     # User entity and DTOs
+|   +-- Product.cs                  # Product entity and DTOs
++-- Services/
+|   +-- DatabaseInitializer.cs      # Schema creation and seeding
+|   +-- UserService.cs              # User data access
+|   +-- ProductService.cs           # Product data access
++-- Properties/
+|   +-- launchSettings.json         # Launch profiles
++-- appsettings.json                # Configuration
++-- appsettings.Development.json    # Development configuration
++-- README.md
++-- OutWit.Database.Samples.WebApi.csproj
 ```
 
 ## Key Differences from EF Core Sample

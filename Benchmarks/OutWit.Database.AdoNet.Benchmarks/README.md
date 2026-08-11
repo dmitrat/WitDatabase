@@ -1,81 +1,58 @@
 # OutWit.Database.AdoNet.Benchmarks
 
-ADO.NET provider benchmarks comparing WitDbConnection/Command/DataReader performance against SQLite and LiteDB.
+The ADO.NET layer itself - `WitDbConnection`, `WitDbCommand`, `WitDbDataReader` - against
+`Microsoft.Data.Sqlite` and LiteDB.
 
-## Overview
+Where [OutWit.Database.Benchmarks](../OutWit.Database.Benchmarks) measures what the engine does with
+a query, this measures what the provider costs on the way there: opening a connection, creating and
+reusing a command, walking a reader.
 
-This benchmark project measures the ADO.NET layer performance:
+## The classes
 
-- **Connection lifecycle** - Open/Close overhead
-- **Command execution** - ExecuteNonQuery, ExecuteScalar, ExecuteReader
-- **DataReader** - Row iteration, typed getters, field access patterns
-- **Prepared statements** - Command reuse vs new command
+| class | what it measures |
+|---|---|
+| `ConnectionBenchmarks` | open and close once, 100 times, open + query + close, one connection reused for 100 queries |
+| `CommandBenchmarks` | `ExecuteNonQuery`, `ExecuteScalar`, `ExecuteReader`, parameterised update |
+| `DataReaderBenchmarks` | row iteration and typed getters at 100 / 1,000 / 5,000 rows |
+| `PreparedStatementBenchmarks` | a prepared command reused against a fresh command per call, at 100 and 500 operations |
 
-## Providers Compared
+Every class takes the provider as a parameter (`WitDb`, `SQLite`, `LiteDB`), so each row of a report
+is the same operation on the three of them.
 
-| Provider | Type | Notes |
-|----------|------|-------|
-| **WitDb** | Pure managed .NET | Target database |
-| **SQLite** | Native C + .NET bindings | Baseline for speed |
-| **LiteDB** | Pure managed .NET (NoSQL) | Baseline for managed memory |
+## Running
 
-## Benchmark Categories
-
-| Benchmark Class | Description | Operations Tested |
-|-----------------|-------------|-------------------|
-| `ConnectionBenchmarks` | Connection lifecycle | Open/Close, single/multiple, with query |
-| `CommandBenchmarks` | Command execution | Update, Count, FindById, ReadAll |
-| `DataReaderBenchmarks` | DataReader performance | Row iteration, typed getters, filtered query |
-| `PreparedStatementBenchmarks` | Statement reuse | Prepared vs non-prepared, batch operations |
-
-## Running Benchmarks
-
-### All Benchmarks
 ```bash
 cd Benchmarks/OutWit.Database.AdoNet.Benchmarks
 dotnet run -c Release
-```
 
-### Specific Benchmark Class
-```bash
 dotnet run -c Release -- --filter "*ConnectionBenchmarks*"
-dotnet run -c Release -- --filter "*CommandBenchmarks*"
-dotnet run -c Release -- --filter "*DataReaderBenchmarks*"
+dotnet run -c Release -- --job short --inProcess
 ```
 
-### Specific Provider
-```bash
-dotnet run -c Release -- --filter "*WitDb*"
-dotnet run -c Release -- --filter "*LiteDB*"
-```
+Reports land in `BenchmarkDotNet.Artifacts/results/`.
 
-### Quick Run
-```bash
-dotnet run -c Release -- --job short
-```
+## Two things to know before quoting a number from here
 
-## Expected Results
+**There is no equivalence check in this project.** Its sibling has one - `dotnet run -- verify`, which
+runs every benchmark body once and compares what the three engines return - and this one does not.
+Nothing here asserts that the LiteDB row and the WitDatabase row did the same work, or any work: a
+reader benchmark that iterates zero rows benchmarks as very fast. That gap is exactly what the sibling
+suite was found to have in phase 10, where a LiteDB benchmark had been throwing and reporting `NA` for
+months without anyone noticing. **Treat these figures as unverified until that control exists here
+too.**
 
-Results are saved to:
-```
-BenchmarkDotNet.Artifacts/results/
-```
+**One timing run lies.** Take every sweep at least twice and report the spread rather than an average;
+in the phase-10 record a single pass reported a 4.13x regression that a second pass put at 0.83x.
 
-## Key Metrics
+## Reading a cross-engine number honestly
 
-- **Time per operation** - Lower is better
-- **Memory allocation** - Compare WitDb vs LiteDB (both managed .NET)
-- **GC collections** - Fewer is better
-
-## Why LiteDB?
-
-SQLite is a native C library, so memory allocation comparison isn't fair.
-LiteDB is also a pure managed .NET embedded database (NoSQL), making it
-a better baseline for comparing managed memory behavior.
+- **SQLite is native C behind a managed wrapper**, so it pays a P/Invoke crossing per call. On this
+  layer specifically - open, prepare, step - that crossing is most of what is being measured, which
+  cuts in WitDatabase's favour and is not an engine result.
+- **LiteDB is the memory baseline**, being managed too - but it has no SQL to parse and no ADO.NET
+  layer of its own, so "the same operation" is an approximation on every row.
 
 ## Dependencies
 
-- BenchmarkDotNet 0.15.8
-- Microsoft.Data.Sqlite 9.0.6
-- LiteDB 5.0.21
-- OutWit.Database.AdoNet
+BenchmarkDotNet 0.15.8, Microsoft.Data.Sqlite 10.0.10, LiteDB 5.0.21, and
+`OutWit.Database.AdoNet` by project reference.

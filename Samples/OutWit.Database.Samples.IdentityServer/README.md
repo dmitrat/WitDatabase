@@ -46,26 +46,26 @@ The application will start at `https://localhost:7200` (or `http://localhost:520
 
 ```
 OutWit.Database.Samples.IdentityServer/
-??? Controllers/
-?   ??? AccountController.cs    # Login/Logout handling
-?   ??? HomeController.cs       # Home pages
-?   ??? UsersController.cs      # User management
-??? Data/
-?   ??? ApplicationDbContext.cs # EF Core DbContext
-??? Models/
-?   ??? ApplicationUser.cs      # Custom Identity user
-?   ??? ApplicationRole.cs      # Custom Identity role
-?   ??? LoginViewModel.cs       # Login form model
-?   ??? UserViewModel.cs        # User list model
-??? Services/
-?   ??? DatabaseInitializerService.cs  # DB migration & seeding
-?   ??? UserService.cs          # User operations
-??? Views/
-?   ??? Account/                # Login views
-?   ??? Home/                   # Home views
-?   ??? Shared/                 # Layout
-?   ??? Users/                  # User management views
-??? Program.cs                  # Application entry point
++-- Controllers/
+|   +-- AccountController.cs    # Login/Logout handling
+|   +-- HomeController.cs       # Home pages
+|   +-- UsersController.cs      # User management
++-- Data/
+|   +-- ApplicationDbContext.cs # EF Core DbContext
++-- Models/
+|   +-- ApplicationUser.cs      # Custom Identity user
+|   +-- ApplicationRole.cs      # Custom Identity role
+|   +-- LoginViewModel.cs       # Login form model
+|   +-- UserViewModel.cs        # User list model
++-- Services/
+|   +-- DatabaseInitializerService.cs  # DB migration & seeding
+|   +-- UserService.cs          # User operations
++-- Views/
+|   +-- Account/                # Login views
+|   +-- Home/                   # Home views
+|   +-- Shared/                 # Layout
+|   +-- Users/                  # User management views
++-- Program.cs                  # Application entry point
 ```
 
 ## Technology Stack

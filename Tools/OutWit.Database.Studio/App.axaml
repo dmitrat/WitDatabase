@@ -107,10 +107,13 @@
                 <ResourceInclude Source="/Themes/Tokens.axaml" />
                 <ResourceInclude Source="/Themes/Typography.axaml" />
                 <ResourceInclude Source="/Themes/Metrics.axaml" />
-                <ResourceInclude Source="/Themes/SqlEditorColors.axaml" />
             </ResourceDictionary.MergedDictionaries>
-            
-            <!-- Theme-variant aware colors for SQL Editor -->
+
+            <!-- The SQL editor's own colours, per variant. They are here rather than in a file of
+                 their own because there WAS a file of their own - Themes/SqlEditorColors.axaml -
+                 and it defined SqlEditorBackgroundColor / ForegroundColor / LineNumbersColor while
+                 SqlEditorTheme.cs has always read SqlEditorBg / Fg / LineNumbers. Three colours
+                 merged into the application that nothing could ever ask for. -->
             <ResourceDictionary.ThemeDictionaries>
                 <ResourceDictionary x:Key="Light">
                     <Color x:Key="SqlEditorBg">#FFFFFF</Color>
