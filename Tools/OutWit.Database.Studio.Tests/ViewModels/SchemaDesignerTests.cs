@@ -1,4 +1,4 @@
-using OutWit.Database.Studio.Models;
+﻿using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
 using OutWit.Database.Studio.Tests.Helpers;
 using OutWit.Database.Studio.ViewModels.Tabs;
@@ -35,6 +35,97 @@ public class SchemaDesignerTests
 
     private Task<StructureTabViewModel> OpenAsync(string table = "Orders") =>
         m_fixture.Workspace.OpenStructureTabAsync(m_fixture.Database, table, DatabaseNodeType.Table);
+
+    #region The DDL section
+
+    /// <summary>
+    /// A table's DDL section shows the table's DDL, and says nothing about views.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Both halves were wrong, and both were found by opening the section.</b> Driven on
+    /// 2026-08-11: the DDL tab of <c>AspNetRoles</c> was <b>empty</b>, and under the empty space sat
+    /// a paragraph explaining that «Каталог не может показать тело этого представления — для UNION и
+    /// для подзапроса оно возвращается пустым» - on a table.
+    /// </para>
+    /// <para>
+    /// The first is the silent-computed-property shape this phase has now met three times:
+    /// <c>FullDdl</c> is computed from <c>TableDdl</c> and <c>PendingSql</c>, the markup binds to it,
+    /// and <c>TableDdl</c> is assigned after an <c>await</c> - so the section was bound to a value
+    /// that arrived later and nothing said it had. The second is a missing guard: the note was shown
+    /// on <c>!CanEditView</c>, which is false for every table that ever existed.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task ATablesDdlSectionShowsItsDdlAndSaysNothingAboutViewsAsync()
+    {
+        var tab = await OpenAsync();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(tab.TableDdl, Is.Not.Empty,
+                "CONTROL: the catalogue gave the tab a definition, so the next assertion is about "
+                + "what the section READS rather than about the load");
+
+            Assert.That(tab.FullDdl, Does.Contain("CREATE TABLE").And.Contain("Orders"),
+                "the DDL section is bound to FullDdl and it computes the wrong thing");
+
+            Assert.That(tab.ShowsViewNote, Is.False,
+                "a table carries the note about a view whose body the catalogue could not return");
+        });
+
+        // The value being right is not the point and asserting it would have passed with the defect:
+        // FullDdl computes correctly whenever it is ASKED, and the section is bound rather than asked.
+        // What was missing is the announcement, so that is what this asserts - the same shape as the
+        // error underline earlier in this phase.
+        var announced = new List<string>();
+        tab.PropertyChanged += (_, e) => announced.Add(e.PropertyName ?? string.Empty);
+
+        await StudioFixture.PressAsync(tab.RefreshCommand);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(announced, Does.Contain(nameof(tab.TableDdl)),
+                "CONTROL: the reload has to move the definition, or the next assertion is vacuous");
+
+            Assert.That(announced, Does.Contain(nameof(tab.FullDdl)),
+                "the DDL arrives and the section bound to FullDdl is never told");
+        });
+
+        // And the markup has to READ that property. Asserting the ViewModel alone would have passed
+        // with the defect in place - the note was bound to !CanEditView, which is false for every
+        // table, and no property of the tab would have been wrong. Sabotage caught this: putting the
+        // old binding back left the case above green.
+        var markup = File.ReadAllText(Path.Combine(StudioFolder(), "Views", "Workspace", "StructureView.axaml"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(markup, Does.Contain("IsVisible=\"{Binding ShowsViewNote}\""),
+                "the view note is not bound to the property that knows whether it applies");
+
+            Assert.That(markup, Does.Not.Contain("IsVisible=\"{Binding !CanEditView}\""),
+                "the note is back on a negation that is true for every table");
+        });
+    }
+
+    private static string StudioFolder()
+    {
+        var directory = new DirectoryInfo(AppContext.BaseDirectory);
+
+        while (directory != null)
+        {
+            var candidate = Path.Combine(directory.FullName, "Tools", "OutWit.Database.Studio");
+
+            if (Directory.Exists(Path.Combine(candidate, "Views")))
+                return candidate;
+
+            directory = directory.Parent;
+        }
+
+        throw new DirectoryNotFoundException("the Studio project was not found from " + AppContext.BaseDirectory);
+    }
+
+    #endregion
 
     #region The trigger editor is reachable
 

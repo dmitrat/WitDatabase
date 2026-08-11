@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Data;
 using System.Windows.Input;
@@ -376,6 +376,11 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         // a subquery. Editing means DROP and CREATE, and creating from a body Studio does not have
         // would destroy the view. So it is shown as unreadable rather than as empty.
         CanEditView = !string.IsNullOrWhiteSpace(ViewDefinition);
+
+        // The note beneath the DDL is about a VIEW whose body the catalogue could not return. It used
+        // to be shown on the negation of CanEditView alone, which is false for every table - so every
+        // table's DDL section carried a paragraph about UNION and subqueries. Measured on AspNetRoles.
+        ShowsViewNote = !CanEditView;
 
         SelectedSection = StructureSection.Ddl;
 
@@ -907,6 +912,26 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         // for a table: the DDL panel must not be behind the text box.
         if (e.IsProperty((StructureTabViewModel vm) => vm.ViewDefinition))
             Recompute();
+
+        // FullDdl is computed from these two and announces nothing of its own, so the DDL section was
+        // bound to a value that arrives AFTER it - measured 2026-08-11 on a table, where the section
+        // was simply empty. Both inputs are [Notify]; this is what carries their movement to the one
+        // property the markup reads.
+        if (e.IsProperty((StructureTabViewModel vm) => vm.TableDdl) ||
+            e.IsProperty((StructureTabViewModel vm) => vm.PendingSql))
+            OnPropertyChanged(nameof(FullDdl));
+
+        // FullDdl is computed from these two and announces nothing of its own, so the DDL section was
+        // bound to a value that arrives AFTER it - measured 2026-08-11 on a table, where the section
+        // was simply empty. Both inputs are [Notify]; this is what carries their movement to the one
+        // property the markup reads.
+
+
+        // FullDdl is computed from these two and announces nothing of its own, so the DDL section was
+        // bound to a value that arrives AFTER it - measured 2026-08-11 on a table, where the section
+        // was simply empty. Both inputs are [Notify]; this is what carries their movement to the one
+        // property the markup reads.
+
     }
 
     private void OnDraftChanged(object? sender, PropertyChangedEventArgs e)
@@ -1066,6 +1091,13 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     /// </summary>
     [Notify]
     public bool CanEditView { get; private set; }
+
+    /// <summary>
+    /// Whether to explain that a view's body could not be read. Only a VIEW can be in that state, and
+    /// only a view ever sets this.
+    /// </summary>
+    [Notify]
+    public bool ShowsViewNote { get; private set; }
 
     public bool HasViewDefinition => !string.IsNullOrWhiteSpace(ViewDefinition);
 
