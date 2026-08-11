@@ -17,8 +17,8 @@
 
         <!-- Header -->
         <Border Grid.Row="0"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="16">
             <StackPanel Spacing="4">
@@ -34,7 +34,7 @@
                 <!-- The report, once it has run. FIRST, not last: found in the running application,
                      where the summary appeared below the fold and the one thing the dialog exists to
                      say was the one thing off screen. -->
-                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                <Border BorderBrush="{DynamicResource Wit.Line}"
                         BorderThickness="1" CornerRadius="4" Padding="12"
                         IsVisible="{Binding HasRun}">
                     <StackPanel Spacing="6">
@@ -55,16 +55,16 @@
                 </Border>
 
                 <!-- Values that will not survive the conversion -->
-                <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
+                <Border Background="{DynamicResource Wit.Warn.Surface}" BorderBrush="{DynamicResource Wit.Warn.Border}" BorderThickness="1"
                         CornerRadius="4" Padding="12"
                         IsVisible="{Binding HasCasualties}">
                     <StackPanel Spacing="6">
                         <TextBlock Text="{DynamicResource S.Dialog.Rebuild.Casualties}"
-                                   FontWeight="SemiBold" Foreground="#856404"/>
+                                   FontWeight="SemiBold" Foreground="{DynamicResource Wit.Warn.Text}"/>
                         <ItemsControl ItemsSource="{Binding Casualties}">
                             <ItemsControl.ItemTemplate>
                                 <DataTemplate>
-                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="#856404"/>
+                                    <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}"/>
                                 </DataTemplate>
                             </ItemsControl.ItemTemplate>
                         </ItemsControl>
@@ -75,7 +75,7 @@
                 <ItemsControl ItemsSource="{Binding Steps}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="vm:RebuildStepViewModel">
-                            <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                            <Border BorderBrush="{DynamicResource Wit.Line}"
                                     BorderThickness="0,0,0,1" Padding="0,8">
                                 <Grid ColumnDefinitions="28,*,Auto">
                                     <TextBlock Grid.Column="0" Text="{Binding Number}"
@@ -121,33 +121,33 @@
                 </StackPanel>
 
                 <!-- Make a copy first -->
-                <Border Background="#FDECEA" BorderBrush="#E57373" BorderThickness="1"
+                <Border Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                         CornerRadius="4" Padding="12">
-                    <TextBlock Text="{Binding BackupWarning}" TextWrapping="Wrap" Foreground="#8B2E2E"/>
+                    <TextBlock Text="{Binding BackupWarning}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Error.Text}"/>
                 </Border>
 
                 <!-- Why the button is grey. A disabled control with no explanation is exactly what
                      this section is against. -->
-                <Border Background="#FDECEA" BorderBrush="#E57373" BorderThickness="1"
+                <Border Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                         CornerRadius="4" Padding="12"
                         IsVisible="{Binding !IsArmed}">
-                    <TextBlock Text="{Binding NotArmedReason}" TextWrapping="Wrap" Foreground="#8B2E2E"/>
+                    <TextBlock Text="{Binding NotArmedReason}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Error.Text}"/>
                 </Border>
 
             </StackPanel>
         </ScrollViewer>
 
         <!-- Error -->
-        <Border Grid.Row="2" Background="#FDECEA" BorderBrush="#E57373" BorderThickness="1"
+        <Border Grid.Row="2" Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                 Padding="12" Margin="16,0"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
-            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="#8B2E2E"/>
+            <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Error.Text}"/>
         </Border>
 
         <!-- Buttons -->
         <Border Grid.Row="3"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,1,0,0"
                 Padding="16">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">

@@ -29,11 +29,11 @@
         </Style>
 
         <Style Selector="RadioButton.tab:checked /template/ Border#PART_Border">
-            <Setter Property="BorderBrush" Value="{DynamicResource SystemAccentColor}"/>
+            <Setter Property="BorderBrush" Value="{DynamicResource Wit.Accent}"/>
         </Style>
 
         <Style Selector="RadioButton.tab:pointerover /template/ Border#PART_Border">
-            <Setter Property="Background" Value="{DynamicResource SystemControlBackgroundListLowBrush}"/>
+            <Setter Property="Background" Value="{DynamicResource Wit.Surface.Sunken}"/>
         </Style>
     </UserControl.Styles>
 
@@ -43,8 +43,8 @@
 
         <!-- Header: what this is, and what is pending on it -->
         <Border Grid.Row="0"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="12,8">
             <!-- Auto for the title and star for the buttons, which is the way round it has to be.
@@ -66,12 +66,12 @@
                                Margin="0,0,8,0" VerticalAlignment="Center"
                                TextTrimming="CharacterEllipsis" MaxWidth="260"
                                ToolTip.Tip="{Binding ObjectName}"/>
-                    <Border Grid.Column="2" Background="#FFF3CD" CornerRadius="3" Padding="6,1"
+                    <Border Grid.Column="2" Background="{DynamicResource Wit.Warn.Surface}" CornerRadius="3" Padding="6,1"
                             VerticalAlignment="Center"
                             IsVisible="{Binding HasPending}">
                         <!-- A count needs a plural rule, not a template, so the LANGUAGE is an input
                              here: it is what makes the badge change when the catalogue is swapped. -->
-                        <TextBlock FontSize="11" Foreground="#856404">
+                        <TextBlock FontSize="11" Foreground="{DynamicResource Wit.Warn.Text}">
                             <TextBlock.Text>
                                 <MultiBinding Converter="{x:Static conv:LocalizedText.Plural}"
                                               ConverterParameter="Count.Pending">
@@ -127,7 +127,7 @@
 
         <!-- The section strip -->
         <Border Grid.Row="1"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="12,4">
             <StackPanel Orientation="Horizontal" Spacing="4">
@@ -187,8 +187,8 @@
             <Grid RowDefinitions="Auto,*"
                   IsVisible="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Columns}">
                 <Border Grid.Row="0"
-                        Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        Background="{DynamicResource Wit.Surface.Panel}"
+                        BorderBrush="{DynamicResource Wit.Line}"
                         BorderThickness="0,0,0,1" Padding="12,6">
                     <!-- Every heading TRIMS and keeps a gap. Without it a heading longer than its
                          column runs into the next one and the two read as one word - "ОГРАНИЧЕНИЯ"
@@ -208,7 +208,7 @@
                     <ItemsControl ItemsSource="{Binding Columns}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:ColumnDraft">
-                                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                <Border BorderBrush="{DynamicResource Wit.Line}"
                                         BorderThickness="0,0,0,1" Padding="12,4">
                                     <Grid ColumnDefinitions="1.3*,130,70,130,1.7*,96,34">
                                         <TextBox Grid.Column="0" Text="{Binding Name}"
@@ -244,17 +244,17 @@
                                                        IsVisible="{Binding ReferencesTable, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                                             <TextBlock Text="{DynamicResource S.Structure.Computed}" FontSize="11" Foreground="Gray"
                                                        IsVisible="{Binding IsComputed}"/>
-                                            <TextBlock Text="{DynamicResource S.Structure.ToBeDropped}" FontSize="11" Foreground="#B71C1C"
+                                            <TextBlock Text="{DynamicResource S.Structure.ToBeDropped}" FontSize="11" Foreground="{DynamicResource Wit.Error.Text}"
                                                        IsVisible="{Binding IsDeleted}"/>
                                         </StackPanel>
 
                                         <!-- WS-39: the category, in the row, as soon as the edit is made -->
-                                        <Border Grid.Column="5" Background="#FFF3CD" CornerRadius="3"
+                                        <Border Grid.Column="5" Background="{DynamicResource Wit.Warn.Surface}" CornerRadius="3"
                                                 Padding="6,1" HorizontalAlignment="Left"
                                                 VerticalAlignment="Center"
                                                 IsVisible="{Binding HasMarker}"
                                                 ToolTip.Tip="{Binding MarkerReason}">
-                                            <TextBlock Text="{Binding Marker}" FontSize="11" Foreground="#856404"/>
+                                            <TextBlock Text="{Binding Marker}" FontSize="11" Foreground="{DynamicResource Wit.Warn.Text}"/>
                                         </Border>
 
                                         <Button Grid.Column="6" Width="24" Height="24" Padding="0"
@@ -276,10 +276,10 @@
             <!-- Keys and constraints -->
             <ScrollViewer IsVisible="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Keys}">
                 <StackPanel Spacing="8" Margin="12">
-                    <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
+                    <Border Background="{DynamicResource Wit.Warn.Surface}" BorderBrush="{DynamicResource Wit.Warn.Border}" BorderThickness="1"
                             CornerRadius="4" Padding="10"
                             IsVisible="{Binding KeyWarningIsSevere}">
-                        <TextBlock Text="{Binding KeyWarning}" TextWrapping="Wrap" Foreground="#856404"/>
+                        <TextBlock Text="{Binding KeyWarning}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}"/>
                     </Border>
 
                     <TextBlock Text="{Binding KeyWarning}" TextWrapping="Wrap" Foreground="Gray"
@@ -288,7 +288,7 @@
                     <ItemsControl ItemsSource="{Binding Constraints}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="tabs:ConstraintRow">
-                                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                <Border BorderBrush="{DynamicResource Wit.Line}"
                                         BorderThickness="0,0,0,1" Padding="0,6">
                                     <Grid ColumnDefinitions="*,140,*">
                                         <TextBlock Grid.Column="0" Text="{Binding Name}"/>
@@ -309,7 +309,7 @@
             <Grid RowDefinitions="Auto,*"
                   IsVisible="{Binding SelectedSection, Converter={x:Static tabs:StructureSectionConverter.Instance}, ConverterParameter=Indexes}">
                 <Border Grid.Row="0" Padding="12,6"
-                        BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                        BorderBrush="{DynamicResource Wit.Line}"
                         BorderThickness="0,0,0,1">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button AutomationProperties.AutomationId="StructureCreateIndex"
@@ -321,7 +321,7 @@
                     <ItemsControl ItemsSource="{Binding Indexes}" Margin="12,0">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:IndexInfo">
-                                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                <Border BorderBrush="{DynamicResource Wit.Line}"
                                         BorderThickness="0,0,0,1" Padding="0,8">
                                     <Grid ColumnDefinitions="*,*,Auto,Auto">
                                         <TextBlock Grid.Column="0" Text="{Binding Name}" VerticalAlignment="Center"/>
@@ -366,7 +366,7 @@
                     <ItemsControl ItemsSource="{Binding Triggers}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate x:DataType="models:TriggerInfo">
-                                <Border BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                <Border BorderBrush="{DynamicResource Wit.Line}"
                                         BorderThickness="0,0,0,1" Padding="0,8">
                                     <Grid ColumnDefinitions="*,Auto">
                                         <StackPanel Grid.Column="0" Spacing="2">
@@ -440,10 +440,10 @@
                                    IsVisible="{Binding CanEditView}"/>
                     </StackPanel>
 
-                    <Border Background="#FFF3CD" BorderBrush="#FFC107" BorderThickness="1"
+                    <Border Background="{DynamicResource Wit.Warn.Surface}" BorderBrush="{DynamicResource Wit.Warn.Border}" BorderThickness="1"
                             CornerRadius="4" Padding="10"
                             IsVisible="{Binding !CanEditView}">
-                        <TextBlock TextWrapping="Wrap" Foreground="#856404"
+                        <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}"
                                    Text="{DynamicResource S.Structure.ViewNote}"/>
                     </Border>
                 </StackPanel>
@@ -452,8 +452,8 @@
 
         <!-- The DDL panel: what Apply will run, always visible while it is being decided (WS-38) -->
         <Border Grid.Row="3"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,1,0,0"
                 Padding="12,8"
                 MinHeight="90"
@@ -473,20 +473,20 @@
                     <ItemsControl ItemsSource="{Binding Refusals}">
                         <ItemsControl.ItemTemplate>
                             <DataTemplate>
-                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="#856404" FontSize="11"/>
+                                <TextBlock Text="{Binding}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}" FontSize="11"/>
                             </DataTemplate>
                         </ItemsControl.ItemTemplate>
                     </ItemsControl>
 
                     <TextBlock Text="{Binding ErrorMessage}" TextWrapping="Wrap"
-                               Foreground="#B71C1C" FontSize="11"
+                               Foreground="{DynamicResource Wit.Error.Text}" FontSize="11"
                                IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                 </StackPanel>
             </Grid>
         </Border>
 
         <!-- Loading overlay: on the content row only, never over the strip or the panel -->
-        <Border Grid.Row="2" Background="#80000000" IsVisible="{Binding IsLoading}">
+        <Border Grid.Row="2" Background="{DynamicResource Wit.Scrim}" IsVisible="{Binding IsLoading}">
             <TextBlock Text="{DynamicResource S.Structure.Loading}" Foreground="White"
                        HorizontalAlignment="Center" VerticalAlignment="Center"/>
         </Border>

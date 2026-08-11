@@ -75,7 +75,7 @@
 
                 <!-- The honest warning rather than a lost database. -->
                 <Border Padding="10,8" CornerRadius="6" IsVisible="{Binding IsInMemory}"
-                        Background="#22D9A227" BorderBrush="#55D9A227" BorderThickness="1">
+                        Background="{DynamicResource Wit.Warn.Surface}" BorderBrush="{DynamicResource Wit.Warn.Border}" BorderThickness="1">
                     <TextBlock Text="{DynamicResource S.Dialog.Create.InMemoryWarning}"
                                TextWrapping="Wrap" FontSize="12"/>
                 </Border>
@@ -129,15 +129,15 @@
         </ScrollViewer>
 
         <Border Grid.Row="1" Margin="18,0,18,10" Padding="10,8" CornerRadius="6"
-                Background="#22D9534F" BorderBrush="#55D9534F" BorderThickness="1"
+                Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
             <TextBlock AutomationProperties.AutomationId="CreateDatabaseError"
                        Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12"/>
         </Border>
 
         <Border Grid.Row="2" Padding="14,10"
-                Background="{DynamicResource SystemControlBackgroundListLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseLowBrush}" BorderThickness="0,1,0,0">
+                Background="{DynamicResource Wit.Surface.Sunken}"
+                BorderBrush="{DynamicResource Wit.Line.Inner}" BorderThickness="0,1,0,0">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">
                 <Button Grid.Column="0"
                         AutomationProperties.AutomationId="CreateDatabaseConnectionString"

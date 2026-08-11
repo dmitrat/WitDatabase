@@ -29,7 +29,7 @@
                  Text="{Binding Filter, Mode=TwoWay}"/>
 
         <Border Grid.Row="2" BorderThickness="1" CornerRadius="3"
-                BorderBrush="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+                BorderBrush="{DynamicResource Wit.Line}">
             <Grid RowDefinitions="Auto,*">
 
                 <Grid Grid.Row="0" ColumnDefinitions="*,140,110" Margin="10,7">
@@ -52,7 +52,7 @@
                                                TextWrapping="Wrap" VerticalAlignment="Center"/>
 
                                     <Border Grid.Column="1" HorizontalAlignment="Left"
-                                            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                                            Background="{DynamicResource Wit.Surface.Panel}"
                                             CornerRadius="3" Padding="6,2">
                                         <TextBlock Text="{Binding Gesture}" FontFamily="Consolas" FontSize="11"/>
                                     </Border>

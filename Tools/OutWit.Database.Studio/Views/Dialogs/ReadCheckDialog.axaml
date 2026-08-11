@@ -15,8 +15,8 @@
     <Grid RowDefinitions="Auto,*,Auto,Auto">
 
         <Border Grid.Row="0"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="16">
             <StackPanel Spacing="4">
@@ -59,7 +59,7 @@
         <!-- What it does NOT find, and it is on the screen rather than in a document: a full SELECT
              coming back green says nothing about the parts of the file nobody is reading. -->
         <Border Grid.Row="2" Padding="16,8"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+                Background="{DynamicResource Wit.Surface.Panel}">
             <TextBlock Name="ReadCheckLimits"
                        AutomationProperties.AutomationId="ReadCheckLimits"
                        Text="{DynamicResource S.ReadCheck.Limits}"
@@ -67,7 +67,7 @@
         </Border>
 
         <Border Grid.Row="3"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,1,0,0"
                 Padding="16,12">
             <Grid ColumnDefinitions="Auto,*,Auto,Auto">

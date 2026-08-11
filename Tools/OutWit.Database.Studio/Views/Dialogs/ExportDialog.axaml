@@ -50,8 +50,8 @@
                 <TextBlock Text="{DynamicResource S.Dialog.Export.Source}" FontWeight="SemiBold"/>
                 
                 <!-- Query Result indicator -->
-                <Border Background="#E3F2FD"
-                        BorderBrush="#2196F3"
+                <Border Background="{DynamicResource Wit.Accent.Dim}"
+                        BorderBrush="{DynamicResource Wit.Accent}"
                         BorderThickness="1"
                         CornerRadius="4"
                         Padding="12,8"
@@ -59,12 +59,12 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}"
                                   Width="16" Height="16"
-                                  Foreground="#1976D2"/>
+                                  Foreground="{DynamicResource Wit.Accent.Text}"/>
                         <!-- One string, not five Runs. A sentence assembled out of fragments cannot
                              be translated: the word order of another language moves the pieces. -->
                         <TextBlock AutomationProperties.AutomationId="ExportQuerySource"
                                    Text="{Binding QuerySourceSummary}"
-                                   Foreground="#1976D2"/>
+                                   Foreground="{DynamicResource Wit.Accent.Text}"/>
                     </StackPanel>
                 </Border>
                 
@@ -89,7 +89,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="CSV" FontWeight="SemiBold"/>
                             <TextBlock Text="{DynamicResource S.Dialog.Export.CsvHint}" 
-                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                       Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton AutomationProperties.AutomationId="ExportFormatJson"
@@ -100,7 +100,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="JSON" FontWeight="SemiBold"/>
                             <TextBlock Text="{DynamicResource S.Dialog.Export.JsonHint}" 
-                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                       Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                         </StackPanel>
                     </RadioButton>
                     <RadioButton AutomationProperties.AutomationId="ExportFormatSql"
@@ -111,7 +111,7 @@
                         <StackPanel Orientation="Horizontal" Spacing="8">
                             <TextBlock Text="SQL" FontWeight="SemiBold"/>
                             <TextBlock Text="{DynamicResource S.Dialog.Export.SqlHint}" 
-                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                       Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                         </StackPanel>
                     </RadioButton>
                 </StackPanel>
@@ -146,8 +146,8 @@
             </StackPanel>
 
             <!-- Error Message -->
-            <Border Background="#FFEBEE"
-                    BorderBrush="#F44336"
+            <Border Background="{DynamicResource Wit.Error.Surface}"
+                    BorderBrush="{DynamicResource Wit.Error.Border}"
                     BorderThickness="1"
                     CornerRadius="4"
                     Padding="12,8"
@@ -155,9 +155,9 @@
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
                               Width="16" Height="16"
-                              Foreground="#C62828"/>
+                              Foreground="{DynamicResource Wit.Error.Text}"/>
                     <TextBlock Text="{Binding ErrorMessage}"
-                               Foreground="#C62828"
+                               Foreground="{DynamicResource Wit.Error.Text}"
                                TextWrapping="Wrap"/>
                 </StackPanel>
             </Border>
@@ -184,7 +184,7 @@
         <!-- Loading Overlay with Progress -->
         <Border Grid.Row="0"
                 Grid.RowSpan="2"
-                Background="#E0000000"
+                Background="{DynamicResource Wit.Scrim}"
                 IsVisible="{Binding IsExporting}">
             <StackPanel HorizontalAlignment="Center"
                         VerticalAlignment="Center"

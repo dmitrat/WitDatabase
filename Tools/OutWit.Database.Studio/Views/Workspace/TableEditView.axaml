@@ -15,8 +15,8 @@
 
         <!-- Read-only banner: an explanation, not a row of mysteriously grey buttons (WS-35) -->
         <Border Grid.Row="0"
-                Background="#FFF3CD"
-                BorderBrush="#FFC107"
+                Background="{DynamicResource Wit.Warn.Surface}"
+                BorderBrush="{DynamicResource Wit.Warn.Border}"
                 BorderThickness="0,0,0,1"
                 Padding="10,6"
                 IsVisible="{Binding IsReadOnly}"
@@ -24,20 +24,20 @@
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
                           Width="14" Height="14"
-                          Foreground="#856404"
+                          Foreground="{DynamicResource Wit.Warn.Text}"
                           VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding ReadOnlyReason}"
                            FontSize="12"
                            TextWrapping="Wrap"
-                           Foreground="#856404"
+                           Foreground="{DynamicResource Wit.Warn.Text}"
                            VerticalAlignment="Center"/>
             </StackPanel>
         </Border>
 
         <!-- Toolbar -->
         <Border Grid.Row="1"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="8">
             <Grid ColumnDefinitions="*,Auto">
@@ -46,7 +46,7 @@
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
                                   Width="16" Height="16"
-                                  Foreground="{DynamicResource SystemAccentColor}"/>
+                                  Foreground="{DynamicResource Wit.Accent.Text}"/>
                         <TextBlock Text="{Binding TableName}"
                                    FontWeight="SemiBold"
                                    FontSize="14"
@@ -66,8 +66,8 @@
                     </TextBlock>
                     
                     <!-- Changes indicator -->
-                    <Border Background="#FFF3CD"
-                            BorderBrush="#FFC107"
+                    <Border Background="{DynamicResource Wit.Warn.Surface}"
+                            BorderBrush="{DynamicResource Wit.Warn.Border}"
                             BorderThickness="1"
                             CornerRadius="4"
                             Padding="8,4"
@@ -75,10 +75,10 @@
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
                                       Width="12" Height="12"
-                                      Foreground="#856404"/>
+                                      Foreground="{DynamicResource Wit.Warn.Text}"/>
                             <TextBlock Text="{DynamicResource S.Dialog.Unsaved.Title}"
                                        FontSize="12"
-                                       Foreground="#856404"/>
+                                       Foreground="{DynamicResource Wit.Warn.Text}"/>
                         </StackPanel>
                     </Border>
                 </StackPanel>
@@ -110,7 +110,7 @@
                             Content="&gt;"/>
 
                     <Rectangle Width="1"
-                               Fill="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                               Fill="{DynamicResource Wit.Line}"
                                Margin="4,4"/>
 
                     <Button AutomationProperties.AutomationId="TableEditRefreshData" AutomationProperties.Name="{DynamicResource S.Grid.Refresh}" Command="{Binding RefreshCommand}"
@@ -123,7 +123,7 @@
                     </Button>
 
                     <Rectangle Width="1"
-                               Fill="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                               Fill="{DynamicResource Wit.Line}"
                                Margin="4,4"/>
 
                     <Button AutomationProperties.AutomationId="TableEditAddNewRow" AutomationProperties.Name="{DynamicResource S.Grid.AddRow}" Command="{Binding AddRowCommand}"
@@ -145,7 +145,7 @@
                     </Button>
 
                     <Rectangle Width="1"
-                               Fill="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                               Fill="{DynamicResource Wit.Line}"
                                Margin="4,4"/>
 
                     <Button AutomationProperties.AutomationId="TableEditCommitChanges" AutomationProperties.Name="{DynamicResource S.Grid.Commit}" Command="{Binding CommitCommand}"
@@ -185,8 +185,8 @@
              does not publish its column widths, and a row that ALMOST lines up is worse than one that
              plainly does not. -->
         <Border Grid.Row="2"
-                Background="{DynamicResource SystemControlBackgroundAltHighBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Bar}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,0,0,1"
                 Padding="8,4">
             <Grid ColumnDefinitions="*,Auto,Auto">
@@ -203,7 +203,7 @@
                                     <TextBlock Text="{Binding Column}"
                                                FontSize="11"
                                                VerticalAlignment="Center"
-                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                               Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                                     <TextBox Text="{Binding Text, Mode=TwoWay}"
                                              Width="110" Height="24"
                                              FontSize="11"
@@ -231,15 +231,15 @@
 
         <!-- The conflict (WS-37): both values, and a choice - never "the transaction was rejected". -->
         <Border Grid.Row="3"
-                Background="#3A2A1D"
-                BorderBrush="#8A5A2D"
+                Background="{DynamicResource Wit.Warn.Surface}"
+                BorderBrush="{DynamicResource Wit.Warn.Border}"
                 BorderThickness="0,0,0,1"
                 Padding="10,6"
                 IsVisible="{Binding HasConflict}"
                 AutomationProperties.AutomationId="TableEditConflictBanner">
             <StackPanel Spacing="6">
                 <TextBlock Text="{Binding ConflictSummary}"
-                           FontSize="12" TextWrapping="Wrap" Foreground="#F0C078"/>
+                           FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}"/>
 
                 <ItemsControl ItemsSource="{Binding ConflictColumns}">
                     <ItemsControl.ItemTemplate>
@@ -298,11 +298,11 @@
                         IsVisible="{Binding IsEmptyByFilter}">
                 <TextBlock Text="{DynamicResource S.Grid.NoMatches}"
                            FontSize="15" HorizontalAlignment="Center"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                           Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                 <TextBlock Text="{Binding ViewDescription}"
                            FontSize="12" HorizontalAlignment="Center" TextAlignment="Center"
                            MaxWidth="420" TextWrapping="Wrap"
-                           Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+                           Foreground="{DynamicResource Wit.Ink.Muted}"/>
                 <Button AutomationProperties.AutomationId="TableEditClearFiltersEmpty"
                         AutomationProperties.Name="{DynamicResource S.Grid.ClearFilters}"
                         Content="{DynamicResource S.Grid.ClearFilter}" HorizontalAlignment="Center"
@@ -310,7 +310,7 @@
             </StackPanel>
 
             <!-- Loading Overlay -->
-            <Border Background="#80000000"
+            <Border Background="{DynamicResource Wit.Scrim}"
                     IsVisible="{Binding IsLoading}">
                 <StackPanel HorizontalAlignment="Center"
                             VerticalAlignment="Center"
@@ -320,7 +320,7 @@
                             CornerRadius="16">
                         <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
                                   Width="16" Height="16"
-                                  Foreground="{DynamicResource SystemAccentColor}"/>
+                                  Foreground="{DynamicResource Wit.Accent.Text}"/>
                     </Border>
                     <TextBlock Text="{DynamicResource S.Grid.Loading}"
                                Foreground="White"
@@ -332,8 +332,8 @@
         <!-- The footer (4.1): what the view is doing, how the page is being reached, the total on
              request, and the bridge to the editor (WS-32). -->
         <Border Grid.Row="5"
-                Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
-                BorderBrush="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                Background="{DynamicResource Wit.Surface.Panel}"
+                BorderBrush="{DynamicResource Wit.Line}"
                 BorderThickness="0,1,0,0"
                 Padding="8,4">
             <Grid ColumnDefinitions="Auto,Auto,*,Auto,Auto">
@@ -400,16 +400,16 @@
         <Panel Grid.Row="6">
             
             <!-- Success Status -->
-            <Border Background="#D4EDDA"
+            <Border Background="{DynamicResource Wit.Ok.Surface}"
                     Padding="8,4"
                     IsVisible="{Binding LastOperationSuccess}">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"
                                   Width="14" Height="14"
-                                  Foreground="#155724"/>
+                                  Foreground="{DynamicResource Wit.Ok.Text}"/>
                         <TextBlock Text="{Binding StatusMessage}"
-                                   Foreground="#155724"
+                                   Foreground="{DynamicResource Wit.Ok.Text}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                     
@@ -417,11 +417,11 @@
                                 Orientation="Horizontal"
                                 Spacing="16">
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Commit}"
-                                   Foreground="#155724"
+                                   Foreground="{DynamicResource Wit.Ok.Text}"
                                    FontSize="11"
                                    VerticalAlignment="Center"/>
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Delete}"
-                                   Foreground="#155724"
+                                   Foreground="{DynamicResource Wit.Ok.Text}"
                                    FontSize="11"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
@@ -429,16 +429,16 @@
             </Border>
             
             <!-- Error Status -->
-            <Border Background="#F8D7DA"
+            <Border Background="{DynamicResource Wit.Error.Surface}"
                     Padding="8,4"
                     IsVisible="{Binding HasError}">
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
                                   Width="14" Height="14"
-                                  Foreground="#721C24"/>
+                                  Foreground="{DynamicResource Wit.Error.Text}"/>
                         <TextBlock Text="{Binding ErrorMessage}"
-                                   Foreground="#721C24"
+                                   Foreground="{DynamicResource Wit.Error.Text}"
                                    TextTrimming="CharacterEllipsis"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
@@ -447,11 +447,11 @@
                                 Orientation="Horizontal"
                                 Spacing="16">
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Commit}"
-                                   Foreground="#721C24"
+                                   Foreground="{DynamicResource Wit.Error.Text}"
                                    FontSize="11"
                                    VerticalAlignment="Center"/>
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Delete}"
-                                   Foreground="#721C24"
+                                   Foreground="{DynamicResource Wit.Error.Text}"
                                    FontSize="11"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
@@ -459,7 +459,7 @@
             </Border>
             
             <!-- Default Status (no operation yet) -->
-            <Border Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+            <Border Background="{DynamicResource Wit.Surface.Panel}"
                     Padding="8,4"
                     IsVisible="{Binding IsDefaultState}">
                 <Grid ColumnDefinitions="*,Auto">

@@ -16,7 +16,7 @@
     <Grid RowDefinitions="45*,Auto,55*">
 
         <!-- SQL Editor. 45/55 by default: once the query is written, the result matters more (3.1) -->
-        <Border Grid.Row="0" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" Padding="8">
+        <Border Grid.Row="0" Background="{DynamicResource Wit.Surface.Bar}" Padding="8">
             <Grid RowDefinitions="Auto,*,Auto">
 
                 <!-- ============================ FIND AND REPLACE (9.7) ============================
@@ -25,7 +25,7 @@
                      never hides a match either. -->
                 <Border Grid.Row="0"
                         IsVisible="{Binding Search.IsOpen}"
-                        Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                        Background="{DynamicResource Wit.Surface.Panel}"
                         CornerRadius="3"
                         Padding="6,4"
                         Margin="0,0,0,6">
@@ -175,17 +175,17 @@
 
                 <!-- What is wrong with the text as it stands, before anything is sent (3.6) -->
                 <Border Grid.Row="2"
-                        Background="#3A1D1D"
+                        Background="{DynamicResource Wit.Error.Surface}"
                         CornerRadius="3"
                         Padding="8,4"
                         Margin="0,4,0,0"
                         IsVisible="{Binding SyntaxErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                                  Width="13" Height="13" Foreground="#E57373"/>
+                                  Width="13" Height="13" Foreground="{DynamicResource Wit.Error.Text}"/>
                         <!-- One catalogue entry, not three Runs. The message itself is the ENGINE's
                              and stays in its own words (WS-64); only the frame around it is Studio's. -->
-                        <TextBlock Foreground="#E57373" VerticalAlignment="Center">
+                        <TextBlock Foreground="{DynamicResource Wit.Error.Text}" VerticalAlignment="Center">
                             <TextBlock.Text>
                                 <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                     <DynamicResource ResourceKey="S.Query.SyntaxError"/>
@@ -202,11 +202,11 @@
         <GridSplitter Grid.Row="1"
                       Height="4"
                       HorizontalAlignment="Stretch"
-                      Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"/>
+                      Background="{DynamicResource Wit.Surface.Panel}"/>
 
         <!-- The four permanent tabs of the result panel (3.4) -->
         <TabControl Grid.Row="2"
-                    Background="{DynamicResource SystemControlBackgroundAltHighBrush}">
+                    Background="{DynamicResource Wit.Surface.Bar}">
 
             <!-- ================================ RESULT ================================ -->
             <TabItem Header="{DynamicResource S.Query.Tab.Result}">
@@ -270,7 +270,7 @@
                     </c:ResultDataGrid>
 
                     <Border Grid.Row="1"
-                            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                            Background="{DynamicResource Wit.Surface.Panel}"
                             Padding="8"
                             IsVisible="{Binding HasResults}">
                         <StackPanel Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
@@ -322,15 +322,15 @@
                                 IsVisible="{Binding !HasResults}">
                         <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
                                   Width="42" Height="42"
-                                  Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+                                  Foreground="{DynamicResource Wit.Ink.Muted}"/>
                         <TextBlock Text="{DynamicResource S.Query.NoRows}"
                                    FontSize="15"
                                    HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                   Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                         <TextBlock Text="{DynamicResource S.Query.NoRows.Hint}"
                                    FontSize="12"
                                    HorizontalAlignment="Center"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+                                   Foreground="{DynamicResource Wit.Ink.Muted}"/>
                     </StackPanel>
                 </Grid>
             </TabItem>
@@ -349,12 +349,12 @@
                                                    Margin="0,0,8,0"
                                                    FontFamily="Consolas,monospace"
                                                    Text="{Binding Number, StringFormat='[{0}]'}"
-                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"/>
+                                                   Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                                         <TextBlock Grid.Column="1"
                                                    Text="{Binding Summary}"
                                                    TextTrimming="CharacterEllipsis"/>
                                         <TextBlock Grid.Column="2" Margin="8,0,0,0"
-                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
+                                                   Foreground="{DynamicResource Wit.Ink.Secondary}">
                                             <TextBlock.Text>
                                                 <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                                     <DynamicResource ResourceKey="S.Query.StatementDetail"/>
@@ -369,8 +369,8 @@
                         </ItemsControl>
 
                         <!-- The failure, with the engine's full text where a person can go and read it (WS-11) -->
-                        <Border Background="#3A1D1D"
-                                BorderBrush="#5A2D2D"
+                        <Border Background="{DynamicResource Wit.Error.Surface}"
+                                BorderBrush="{DynamicResource Wit.Error.Border}"
                                 BorderThickness="1"
                                 CornerRadius="4"
                                 Padding="12"
@@ -378,17 +378,17 @@
                             <StackPanel Spacing="6">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                                              Width="15" Height="15" Foreground="#E57373"/>
+                                              Width="15" Height="15" Foreground="{DynamicResource Wit.Error.Text}"/>
                                     <TextBlock Text="{Binding ErrorMessage}"
                                                TextWrapping="Wrap"
                                                FontWeight="SemiBold"
-                                               Foreground="#E57373"/>
+                                               Foreground="{DynamicResource Wit.Error.Text}"/>
                                 </StackPanel>
 
                                 <!-- "Did you mean Orders?" - from the schema already loaded (3.6) -->
                                 <StackPanel Orientation="Horizontal" Spacing="8"
                                             IsVisible="{Binding ErrorSuggestion, Converter={x:Static ObjectConverters.IsNotNull}}">
-                                    <TextBlock VerticalAlignment="Center" Foreground="#E57373">
+                                    <TextBlock VerticalAlignment="Center" Foreground="{DynamicResource Wit.Error.Text}">
                                         <TextBlock.Text>
                                             <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                                 <DynamicResource ResourceKey="S.Query.DidYouMean"/>
@@ -415,7 +415,7 @@
 
                         <TextBlock Text="{DynamicResource S.Query.NothingRun}"
                                    FontStyle="Italic"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"
+                                   Foreground="{DynamicResource Wit.Ink.Muted}"
                                    IsVisible="{Binding !HasExecutionResult}"/>
                     </StackPanel>
                 </ScrollViewer>
@@ -426,7 +426,7 @@
                 <Grid RowDefinitions="Auto,*">
 
                     <Border Grid.Row="0"
-                            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}"
+                            Background="{DynamicResource Wit.Surface.Panel}"
                             Padding="10,6">
                         <Grid ColumnDefinitions="Auto,*,Auto">
                             <TextBlock Grid.Column="0" VerticalAlignment="Center" FontWeight="SemiBold"
@@ -438,7 +438,7 @@
                                        FontSize="11"
                                        TextTrimming="CharacterEllipsis"
                                        ToolTip.Tip="{DynamicResource S.Query.PlanNote}"
-                                       Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                       Foreground="{DynamicResource Wit.Ink.Secondary}"
                                        Text="{DynamicResource S.Query.PlanNote}"/>
 
                             <Button Grid.Column="2"
@@ -479,14 +479,14 @@
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis"
                                                    MaxWidth="420"
-                                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumLowBrush}"/>
+                                                   Foreground="{DynamicResource Wit.Ink.Muted}"/>
                                     </StackPanel>
                                     <TextBlock Text="{Binding Warning}"
                                                FontSize="11"
                                                TextWrapping="Wrap"
                                                MaxWidth="420"
                                                Margin="4,0,0,0"
-                                               Foreground="#D9A441"
+                                               Foreground="{DynamicResource Wit.Warn.Text}"
                                                IsVisible="{Binding Warning, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                                 </StackPanel>
                             </TreeDataTemplate>
@@ -496,7 +496,7 @@
                     <TextBlock Grid.Row="1"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Foreground="{DynamicResource Wit.Ink.Secondary}"
                                Text="{Binding PlanMessage}"
                                IsVisible="{Binding PlanMessage, Converter={x:Static ObjectConverters.IsNotNull}}"/>
                 </Grid>
@@ -537,7 +537,7 @@
                                                FontSize="12"
                                                TextTrimming="CharacterEllipsis"/>
                                     <TextBlock FontSize="11"
-                                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}">
+                                               Foreground="{DynamicResource Wit.Ink.Secondary}">
                                         <TextBlock.Text>
                                             <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                                 <DynamicResource ResourceKey="S.Query.HistoryDetail"/>
@@ -557,14 +557,14 @@
                     <TextBlock Grid.Row="1"
                                HorizontalAlignment="Center" VerticalAlignment="Center"
                                TextWrapping="Wrap" MaxWidth="420" TextAlignment="Center"
-                               Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                               Foreground="{DynamicResource Wit.Ink.Secondary}"
                                Text="{Binding HistoryMessage}"
                                IsVisible="{Binding HistoryMessage, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 
                     <Border Grid.Row="2" Padding="8,4"
-                            Background="{DynamicResource SystemControlBackgroundChromeMediumLowBrush}">
+                            Background="{DynamicResource Wit.Surface.Panel}">
                         <TextBlock FontSize="11"
-                                   Foreground="{DynamicResource SystemControlForegroundBaseMediumBrush}"
+                                   Foreground="{DynamicResource Wit.Ink.Secondary}"
                                    Text="{DynamicResource S.Query.History.Note}"/>
                     </Border>
                 </Grid>
