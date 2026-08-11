@@ -279,6 +279,18 @@
         The tooltip carries the caption, so nothing is lost that a hover does not return.
     -->
     <!--
+        THE CAPTIONS GO IN ORDER OF IMPORTANCE, NOT ALL AT ONCE. Four states, and the row settles on
+        the first one that fits:
+
+            (none)     every caption
+            compact1   the four that run something, and Save
+            compact2   the four that run something
+            compact3   glyphs
+
+        Dmitry's ordering, and it is the right one: Выполнить / Скрипт / Выделенное / Стоп are what a
+        person came to the toolbar for, Сохранить is next, and the other six are reachable from the
+        menu and the keyboard as well.
+
         THE CAPTION IS SELECTED BY ITS CLASS, NOT BY BEING A `TextBlock` INSIDE THE BUTTON, and the
         difference is a bug that shipped for one commit: a tool tip's content is ALSO a `TextBlock`,
         and a tool tip's logical parent is the control it belongs to - so
@@ -286,11 +298,17 @@
         of small empty rectangles on hover, which is worse than no tip at all, because the caption had
         just been taken away and the tip was the only place left to read it.
     -->
-    <Style Selector="StackPanel.compact Button.toolbar TextBlock.caption">
+    <Style Selector="StackPanel.compact1 Button.toolbar TextBlock.caption-secondary,
+                     StackPanel.compact2 Button.toolbar TextBlock.caption-secondary,
+                     StackPanel.compact3 Button.toolbar TextBlock.caption-secondary,
+                     StackPanel.compact2 Button.toolbar TextBlock.caption-save,
+                     StackPanel.compact3 Button.toolbar TextBlock.caption-save,
+                     StackPanel.compact3 Button.toolbar TextBlock.caption-key">
         <Setter Property="IsVisible" Value="False"/>
     </Style>
 
-    <Style Selector="StackPanel.compact Button.toolbar">
+    <!-- A button with no word left needs no room for one. -->
+    <Style Selector="StackPanel.compact3 Button.toolbar">
         <Setter Property="Padding" Value="7,0"/>
     </Style>
 
