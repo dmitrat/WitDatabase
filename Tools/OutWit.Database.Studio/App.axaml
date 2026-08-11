@@ -1,4 +1,4 @@
-<Application xmlns="https://github.com/avaloniaui"
+﻿<Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              x:Class="OutWit.Database.Studio.App"
              xmlns:local="using:OutWit.Database.Studio"
@@ -10,18 +10,91 @@
     </Application.DataTemplates>
   
     <Application.Styles>
-        <FluentTheme />
+        <!--
+            THE PALETTE GOES INTO THE THEME, not on top of it.
+
+            Sweeping the views reached every colour a view names and none of the colours a CONTROL
+            names: a TreeView's selected row, a TabItem's underline, an accent button's fill and every
+            focus ring live inside Fluent's own templates and are drawn from Fluent's own palette. That
+            is why the application still had a Material-blue selection after 284 sites had been moved
+            onto section 8.
+
+            `ColorPaletteResources` is the seam Fluent provides for exactly this, and it is why no
+            template is retemplated here. Fluent derives its whole brush set - `SystemControl*`,
+            `TextControl*`, the accent shades - from these thirty colours; replacing them replaces
+            every control at once and keeps the theme's own light/dark logic intact.
+
+            THE HEXES ARE WRITTEN OUT AND THAT IS DELIBERATE. A palette is consumed while the theme is
+            being constructed, which is before `Application.Resources` exists, so a `{StaticResource}`
+            here is a load-order gamble rather than a reference. Written out, the two sides can
+            DISAGREE - so `ThePaletteHandedToFluentIsTheCanonPaletteTest` asserts every one of them
+            against the token it duplicates. Duplication with an instrument on it is safe; duplication
+            with a comment on it is what the connection swatches were.
+        -->
+        <FluentTheme>
+            <FluentTheme.Palettes>
+
+                <ColorPaletteResources x:Key="Dark"
+                                       Accent="#4CC13C"
+                                       RegionColor="#111823"
+
+                                       AltHigh="#0D131C" AltLow="#330D131C" AltMedium="#990D131C"
+                                       AltMediumHigh="#CC0D131C" AltMediumLow="#660D131C"
+
+                                       BaseHigh="#E5EAF2" BaseMediumHigh="#C6CFDD"
+                                       BaseMedium="#95A3B8" BaseMediumLow="#66738A"
+                                       BaseLow="#26344A"
+
+                                       ChromeAltLow="#16202E" ChromeHigh="#26344A"
+                                       ChromeLow="#0D131C" ChromeMedium="#1B2636"
+                                       ChromeMediumLow="#16202E" ChromeWhite="#E5EAF2"
+                                       ChromeGray="#95A3B8"
+                                       ChromeDisabledHigh="#26344A" ChromeDisabledLow="#66738A"
+                                       ChromeBlackHigh="#0D131C" ChromeBlackLow="#330D131C"
+                                       ChromeBlackMedium="#990D131C" ChromeBlackMediumLow="#660D131C"
+
+                                       ListLow="#1F2B3D" ListMedium="#26344A"
+                                       ErrorText="#D9534F"/>
+
+                <ColorPaletteResources x:Key="Light"
+                                       Accent="#4CC13C"
+                                       RegionColor="#FFFFFF"
+
+                                       AltHigh="#FFFFFF" AltLow="#33FFFFFF" AltMedium="#99FFFFFF"
+                                       AltMediumHigh="#CCFFFFFF" AltMediumLow="#66FFFFFF"
+
+                                       BaseHigh="#1A2B4C" BaseMediumHigh="#1A2B4C"
+                                       BaseMedium="#5A6779" BaseMediumLow="#8A93A3"
+                                       BaseLow="#E2E6EC"
+
+                                       ChromeAltLow="#F7F8FA" ChromeHigh="#E2E6EC"
+                                       ChromeLow="#FBFBFC" ChromeMedium="#F1F3F6"
+                                       ChromeMediumLow="#F7F8FA" ChromeWhite="#FFFFFF"
+                                       ChromeGray="#8A93A3"
+                                       ChromeDisabledHigh="#E2E6EC" ChromeDisabledLow="#8A93A3"
+                                       ChromeBlackHigh="#1A2B4C" ChromeBlackLow="#331A2B4C"
+                                       ChromeBlackMedium="#991A2B4C" ChromeBlackMediumLow="#661A2B4C"
+
+                                       ListLow="#F1F3F6" ListMedium="#E2E6EC"
+                                       ErrorText="#A8322E"/>
+
+            </FluentTheme.Palettes>
+        </FluentTheme>
+
         <StyleInclude Source="avares://Avalonia.Controls.DataGrid/Themes/Fluent.xaml"/>
         <StyleInclude Source="avares://AvaloniaEdit/Themes/Fluent/AvaloniaEdit.xaml" />
-        
+
+        <!-- The metric table, applied to the controls the canon names. -->
+        <StyleInclude Source="/Themes/Controls.axaml" />
+
         <!-- DataGrid cell text color fix for dark theme -->
         <Style Selector="DataGridCell TextBlock">
             <Setter Property="Foreground" Value="{DynamicResource TextControlForeground}"/>
         </Style>
-        
+
         <!-- NULL indicator style -->
         <Style Selector="DataGridCell.null-value TextBlock">
-            <Setter Property="Foreground" Value="{DynamicResource TextControlPlaceholderForeground}"/>
+            <Setter Property="Foreground" Value="{DynamicResource Wit.Ink.Null}"/>
             <Setter Property="FontStyle" Value="Italic"/>
         </Style>
     </Application.Styles>

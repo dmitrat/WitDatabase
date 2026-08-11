@@ -1,0 +1,180 @@
+<Styles xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <!--
+        The metric table of section 8.2, applied where the canon names a control rather than a place.
+
+        WHAT IS HERE AND WHAT IS NOT. The colours are not here - they come from the palette handed to
+        FluentTheme in App.axaml, which reaches inside every template at once. What is left is
+        geometry: the height of a row, the radius of a thing you click versus a thing you type into,
+        and the size of the type on it.
+
+        HEIGHT IS SET AS MinHeight, NEVER AS Height, AND THAT IS THE WHOLE RISK OF THIS FILE. A
+        `Height` setter on `Button` would resize the 10 px close button on a tab and the 18 px colour
+        swatches in the Open dialog, because a style setter and a local value do not compete the way a
+        reader expects. `MinHeight` on a control that has an explicit smaller `Height` still wins, so
+        even that is applied only to the controls the canon actually measures - a toolbar button, a
+        field, a row - and never to `Button` as a class.
+
+        The remaining hand-written heights are stage V1's second half. This file exists first so that
+        a literal a style already provides can be DELETED there rather than turned into a token, which
+        is the only version of that sweep worth doing.
+    -->
+
+    <!-- ============================ Text entry ============================ -->
+
+    <!--
+        A field is 28 high with a radius of 6 - rounder than a button, because a control that accepts
+        typing should read as a well rather than as a target. The background is the sunken surface,
+        which in the light theme is nearly white and is told apart by its border instead: that is
+        section 8.4's rule, not an oversight.
+    -->
+    <Style Selector="TextBox">
+        <Setter Property="MinHeight" Value="{DynamicResource Wit.Height.Field}"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Wit.Radius.Field}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+        <Setter Property="Padding" Value="8,4"/>
+    </Style>
+
+    <Style Selector="TextBox[AcceptsReturn=True]">
+        <!-- A multi-line box is a region, not a field; the metric does not apply to it. -->
+        <Setter Property="MinHeight" Value="0"/>
+    </Style>
+
+    <Style Selector="ComboBox">
+        <Setter Property="MinHeight" Value="{DynamicResource Wit.Height.Field}"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Wit.Radius.Field}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+    </Style>
+
+    <Style Selector="ComboBoxItem">
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+    </Style>
+
+    <Style Selector="CheckBox">
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+    </Style>
+
+    <!-- ============================ Buttons ============================ -->
+
+    <!--
+        Only the radius and the type are global. See the note at the top: a height here reaches
+        controls that are deliberately smaller.
+    -->
+    <Style Selector="Button">
+        <Setter Property="CornerRadius" Value="{DynamicResource Wit.Radius.Button}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+    </Style>
+
+    <!--
+        The accent button is the one place where Fluent and the canon disagree about a FOREGROUND.
+        Fluent writes white on the accent; #4CC13C under white is about 2:1 and unreadable. Section
+        8.1 pairs the fill with #0D2410 and gives 7.05:1 - and says the pair is never used apart.
+    -->
+    <Style Selector="Button.accent">
+        <Setter Property="Foreground" Value="{DynamicResource Wit.Accent.Ink}"/>
+        <Setter Property="FontWeight" Value="SemiBold"/>
+    </Style>
+
+    <Style Selector="Button.accent /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Foreground" Value="{DynamicResource Wit.Accent.Ink}"/>
+    </Style>
+
+    <!-- A destructive button is not an error banner: it sits on a panel and carries its own text. -->
+    <Style Selector="Button.danger">
+        <Setter Property="Foreground" Value="{DynamicResource Wit.Danger.Text}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Wit.Error.Border}"/>
+    </Style>
+
+    <!-- ============================ Rows ============================ -->
+
+    <!--
+        A tree row is 25 and a grid row is 26. The one pixel is not a rounding error - a grid row
+        carries a cell border and a tree row does not, so they line up optically at different heights.
+    -->
+    <Style Selector="TreeViewItem">
+        <Setter Property="MinHeight" Value="{DynamicResource Wit.Height.TreeRow}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+    </Style>
+
+    <Style Selector="ListBoxItem">
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Control}"/>
+    </Style>
+
+    <!--
+        SELECTION IS ONE PAIR, and this was found by running the settings window next to the explorer.
+        Fluent draws a selected tree row on the accent itself and a selected list row on a DERIVED,
+        darker accent shade - so the tree read as dark text on lime and the settings section list as
+        light text on a green nobody chose, in the same window. Both are defensible on their own and
+        together they are two answers to one question.
+
+        Section 8.1 gives one: the accent is the fill, and `Accent.Ink` is what is written on it. The
+        pair is never used apart.
+    -->
+    <Style Selector="ListBoxItem:selected /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Wit.Accent}"/>
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Wit.Accent.Ink}"/>
+    </Style>
+
+    <Style Selector="ListBoxItem:selected:pointerover /template/ ContentPresenter#PART_ContentPresenter">
+        <Setter Property="Background" Value="{DynamicResource Wit.Accent}"/>
+        <Setter Property="TextElement.Foreground" Value="{DynamicResource Wit.Accent.Ink}"/>
+    </Style>
+
+    <Style Selector="DataGridRow">
+        <Setter Property="MinHeight" Value="{DynamicResource Wit.Height.GridRow}"/>
+    </Style>
+
+    <!--
+        A column heading is a LABEL, and section 8.2 sets labels in the monospaced family at 9.5 with
+        tracking. That is the mono rule doing work rather than decorating: a heading over a column of
+        values belongs to the column.
+    -->
+    <Style Selector="DataGridColumnHeader">
+        <Setter Property="FontFamily" Value="{DynamicResource Wit.FontFamily.Mono}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Mono.Label}"/>
+        <Setter Property="Foreground" Value="{DynamicResource Wit.Ink.Muted}"/>
+        <Setter Property="Background" Value="{DynamicResource Wit.Surface.Panel}"/>
+    </Style>
+
+    <!--
+        A value in a grid is monospaced, because a column of numbers that does not line up is a column
+        you cannot read down. This is the rule's most load-bearing application.
+    -->
+    <Style Selector="DataGridCell">
+        <Setter Property="FontFamily" Value="{DynamicResource Wit.FontFamily.Mono}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Mono.Data}"/>
+    </Style>
+
+    <!-- ============================ Tabs ============================ -->
+
+    <Style Selector="TabItem">
+        <Setter Property="MinHeight" Value="{DynamicResource Wit.Height.Tab}"/>
+        <Setter Property="Height" Value="{DynamicResource Wit.Height.Tab}"/>
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Body}"/>
+        <Setter Property="Padding" Value="12,0"/>
+    </Style>
+
+    <!-- ============================ Chrome ============================ -->
+
+    <!--
+        THE MENU GETS NO BACKGROUND AND NO HEIGHT, and both were tried and removed after seeing them.
+
+        A `Background` on `Menu` paints the menu's own box, not the row it sits in - and the menu is
+        `VerticalAlignment="Center"` inside a grid column, so the fill ended abruptly where the last
+        item ends and left a visible seam across the top of the window in both themes. A `MinHeight`
+        does the same thing one dimension along. The bar is a ZONE and the zone paints itself; a
+        control inside it must not.
+    -->
+    <Style Selector="MenuItem">
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Body}"/>
+    </Style>
+
+    <Style Selector="ToolTip">
+        <Setter Property="FontSize" Value="{DynamicResource Wit.Font.Caption}"/>
+        <Setter Property="Background" Value="{DynamicResource Wit.Surface.Bar}"/>
+        <Setter Property="BorderBrush" Value="{DynamicResource Wit.Line}"/>
+        <Setter Property="CornerRadius" Value="{DynamicResource Wit.Radius.Field}"/>
+    </Style>
+
+</Styles>

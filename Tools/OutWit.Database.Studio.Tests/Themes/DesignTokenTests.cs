@@ -63,6 +63,16 @@ public static class TokenHost
 /// other case stayed green.
 /// </para>
 /// <para>
+/// <b>It has already caught a defect the BUILD could not, and it is the phase-14 shape exactly.</b>
+/// Stage V2's control styles used <c>{StaticResource Wit.Height.Field}</c>; <c>Application.Styles</c>
+/// is populated <b>before</b> <c>Application.Resources</c>, so the lookup threw inside
+/// <c>App.Initialize()</c> and <b>Studio would not have started at all</b>. The build was clean and
+/// every one of the other 842 cases stayed green - they construct ViewModels, and none constructs an
+/// <c>Application</c>. This is `Ctrl+?` again, a one-line change that killed the executable while the
+/// suite said nothing, and this time a test caught it instead of a launch. A style setter must use
+/// <c>DynamicResource</c>, which resolves when the style is applied rather than when it is parsed.
+/// </para>
+/// <para>
 /// <b>What it does not prove, said out loud.</b> That a token is USED, that it is used in the right
 /// place, or that the result is legible. The first is the census below, the second and third are the
 /// running application in both themes, which is stage V4 and the only real control this phase has.
@@ -299,7 +309,7 @@ public class DesignTokenTests
             // The control. It is zero at V0 by construction - the dictionaries exist and nothing
             // consumes them yet - so the assertion is on the FILES, which is what tells a rule
             // reading the right folder from one reading none.
-            Assert.That(MarkupFiles(), Has.Length.EqualTo(32), "the markup files the rule reads");
+            Assert.That(MarkupFiles(), Has.Length.EqualTo(33), "the markup files the rule reads");
         });
     }
 
@@ -342,6 +352,51 @@ public class DesignTokenTests
                 Assert.That((Resolve(swatches[index], ThemeVariant.Dark) as ISolidColorBrush)?.Color,
                     Is.EqualTo(ConnectionColors.Palette[index]),
                     $"swatch {index} draws {swatches[index]}");
+        });
+    }
+
+    /// <summary>
+    /// The palette handed to <c>FluentTheme</c> is the same palette as the tokens.
+    ///
+    /// <para>
+    /// <b>Why it is written twice at all.</b> A <c>ColorPaletteResources</c> is consumed while the
+    /// theme is being constructed, which is before <c>Application.Resources</c> exists - so a
+    /// <c>{StaticResource}</c> there is a load-order gamble, not a reference. The hexes are written
+    /// out, and that means the two sides CAN disagree, silently, in one theme.
+    /// </para>
+    /// <para>
+    /// This case is what makes the duplication safe. Each pair below is the Fluent slot and the token
+    /// it must equal; the slot is read back through the brush Fluent DERIVES from it, so what is
+    /// asserted is the value that actually reaches a control rather than the text in the file.
+    /// Duplication with an instrument on it is fine; duplication with a comment on it is what the
+    /// connection swatches were.
+    /// </para>
+    /// </summary>
+    [AvaloniaTest]
+    public void ThePaletteHandedToFluentIsTheCanonPaletteTest()
+    {
+        // Fluent's derived brush -> the token it has to agree with. These four are the ones a person
+        // sees: the window, the panel a control sits on, body text and the accent.
+        (string Fluent, string Token)[] agreements =
+        [
+            ("SystemAccentColor", "Wit.Color.Accent"),
+            ("SystemControlBackgroundChromeMediumLowBrush", "Wit.Color.Surface.Panel"),
+            ("SystemControlForegroundBaseHighBrush", "Wit.Color.Ink"),
+            ("SystemControlForegroundBaseMediumBrush", "Wit.Color.Ink.Secondary"),
+        ];
+
+        Assert.Multiple(() =>
+        {
+            foreach (var variant in new[] { ThemeVariant.Dark, ThemeVariant.Light })
+            foreach (var (fluent, token) in agreements)
+            {
+                var fromTheme = Resolve(fluent, variant);
+                var expected = (Color)Resolve(token, variant)!;
+
+                Assert.That(fromTheme, Is.Not.Null, $"{variant}: Fluent publishes no {fluent}");
+                Assert.That(fromTheme is Color colour ? colour : ((ISolidColorBrush)fromTheme!).Color,
+                    Is.EqualTo(expected), $"{variant}: {fluent} is not {token}");
+            }
         });
     }
 
