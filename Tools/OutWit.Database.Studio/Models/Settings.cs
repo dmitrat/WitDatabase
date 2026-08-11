@@ -150,9 +150,14 @@ public sealed class Settings : ModelBase
     [Notify]
     public string Language { get; set; } = "en";
 
-    /// <summary>Light, Dark or System.</summary>
+    /// <summary>
+    /// Light, Dark or System. <b>Dark by default (WS-4)</b>, and the default is where the decision
+    /// actually lives: the toggle in the settings dialog has read "Dark" since it was written, while
+    /// this property said Light and Studio came up light. A requirement can be unmet in a default
+    /// value with every control around it looking correct.
+    /// </summary>
     [Notify]
-    public string Theme { get; set; } = "Light";
+    public string Theme { get; set; } = "Dark";
 
     /// <summary>
     /// Ask the release feed whether a newer Studio exists (WS-70). <b>Off by default</b>: a tool that

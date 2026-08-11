@@ -11,14 +11,24 @@ public class SettingsTests
 {
     #region Default Values Tests
 
+    /// <summary>
+    /// WS-4. This case asserted <c>Light</c> from Studio's first commit and was green throughout,
+    /// which is how a requirement stays unmet with a test watching it: the decision is in the
+    /// DEFAULT VALUE, and the settings dialog's own toggle read "Dark" the whole time.
+    ///
+    /// <para>
+    /// The application had to be run to see it. No ViewModel case can - they construct
+    /// <see cref="Settings"/> and read back what they wrote.
+    /// </para>
+    /// </summary>
     [Test]
-    public void DefaultThemeIsLightTest()
+    public void DefaultThemeIsDarkTest()
     {
         // Arrange & Act
         var settings = new Settings();
 
         // Assert
-        Assert.That(settings.Theme, Is.EqualTo("Light"));
+        Assert.That(settings.Theme, Is.EqualTo("Dark"));
     }
 
     [Test]

@@ -1,0 +1,54 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    The nine-step scale of section 8.2, and the two families.
+
+    None of this varies with the theme, so it sits outside ThemeDictionaries. What is set in the
+    monospaced family DOES vary with meaning, and that is why the mono steps are named after what
+    they are for rather than after their size:
+
+        Mono.Label   9.5   group and column headings, upper case
+        Mono.Data    11    values in a grid, column types, index names, paths, versions, counters
+        Mono.Sql     13    SQL - the editor, a DDL panel, a generated script
+
+    THE MONO RULE IS A BEHAVIOUR, NOT A FONT CHOICE (section 8.2). Monospaced is everything a person
+    can copy into a query or compare down a column; proportional is everything that explains, labels
+    or invites. Mixing the two inside one line is normal and correct - "Orders 31 204" is a caption
+    and a counter. The rule survives only if it is written into the names, because a reviewer reading
+    FontSize="11" cannot tell whether the author meant a size or meant data.
+
+    The families are lists, and the fallbacks matter: Cascadia Code ships with Windows Terminal and
+    with nothing else, so on a bare Linux box the first name that exists is what gets used. The
+    editor is deliberately NOT on this token - it reads EditorFontFamily from settings, which is a
+    class-B setting phase 15 wired and a person is entitled to change.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime"
+                    xmlns:media="clr-namespace:Avalonia.Media;assembly=Avalonia.Base">
+
+    <FontFamily x:Key="Wit.FontFamily.Ui">Segoe UI, Inter, Helvetica Neue, sans-serif</FontFamily>
+    <FontFamily x:Key="Wit.FontFamily.Mono">Cascadia Code, Consolas, DejaVu Sans Mono, Courier New, monospace</FontFamily>
+
+    <!-- The six proportional steps. -->
+    <sys:Double x:Key="Wit.Font.WindowTitle">18</sys:Double>
+    <sys:Double x:Key="Wit.Font.SectionTitle">14</sys:Double>
+    <sys:Double x:Key="Wit.Font.BlockTitle">12.5</sys:Double>
+    <sys:Double x:Key="Wit.Font.Body">12</sys:Double>
+    <sys:Double x:Key="Wit.Font.Control">11.5</sys:Double>
+    <sys:Double x:Key="Wit.Font.Caption">10.5</sys:Double>
+
+    <!-- The three monospaced steps. -->
+    <sys:Double x:Key="Wit.Font.Mono.Label">9.5</sys:Double>
+    <sys:Double x:Key="Wit.Font.Mono.Data">11</sys:Double>
+    <sys:Double x:Key="Wit.Font.Mono.Sql">13</sys:Double>
+
+    <!-- Three of the six steps are semibold and three are regular; the scale is size AND weight, so
+         a title set at 18/400 is off the scale even though 18 is on it. -->
+    <media:FontWeight x:Key="Wit.Weight.Title">SemiBold</media:FontWeight>
+    <media:FontWeight x:Key="Wit.Weight.Body">Normal</media:FontWeight>
+
+    <!-- Mono.Label is tracked out; it is the only step that is. -->
+    <sys:Double x:Key="Wit.Tracking.MonoLabel">0.9</sys:Double>
+
+</ResourceDictionary>

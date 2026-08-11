@@ -1,0 +1,70 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    The metric table of section 8.2. A 4 px grid, and every height on it.
+
+    WHY A HEIGHT IS A TOKEN AND NOT A NUMBER. The heights are not arbitrary and they are not
+    independent: a toolbar at 36 over tabs at 34 over a status bar at 25 is a rhythm, and one row
+    written as 32 because it looked right in one window breaks it everywhere that window is beside
+    another. There are 197 of them written by hand today, which is the same thing said with numbers.
+
+    Radii are named after what they go round rather than after their value, because 6 is a field and
+    5 is a button and the difference is deliberate - a control that accepts typing is rounder than
+    one that accepts a click.
+
+    Chip radius is 999: a pill, whatever its height. Avalonia clamps it, so this is not a magic
+    number, it is the idiom.
+
+    ICON SIZES ARE HERE AND NOT WITH THE ICONS, because the size is a property of the ROW an icon
+    sits in - 12 inside a line of text, 14 on its own, 16 in a heading, 20 in a wall - and the row is
+    a metric. The stroke is 1.7 on a 24-unit viewBox and scales with the icon, exactly as it does in
+    the canon's own drawing.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+                    xmlns:sys="clr-namespace:System;assembly=System.Runtime">
+
+    <!-- The grid step itself. Everything below is a multiple of it, or 25/31 where the canon puts a
+         row on an odd number deliberately so text centres on a pixel. -->
+    <sys:Double x:Key="Wit.Grid.Step">4</sys:Double>
+
+    <!-- Zones, top to bottom. -->
+    <sys:Double x:Key="Wit.Height.TitleBar">38</sys:Double>
+    <sys:Double x:Key="Wit.Height.Toolbar">36</sys:Double>
+    <sys:Double x:Key="Wit.Height.Tab">34</sys:Double>
+    <sys:Double x:Key="Wit.Height.StatusBar">25</sys:Double>
+
+    <!-- Rows. The tree and the grid differ by one pixel on purpose: a grid row carries a cell
+         border and a tree row does not. -->
+    <sys:Double x:Key="Wit.Height.TreeRow">25</sys:Double>
+    <sys:Double x:Key="Wit.Height.GridRow">26</sys:Double>
+    <sys:Double x:Key="Wit.Height.DesignerRow">31</sys:Double>
+
+    <!-- Controls. A button is 26 on its own and 24 in a row of them; a field is always 28. -->
+    <sys:Double x:Key="Wit.Height.Button">26</sys:Double>
+    <sys:Double x:Key="Wit.Height.ButtonCompact">24</sys:Double>
+    <sys:Double x:Key="Wit.Height.Field">28</sys:Double>
+    <sys:Double x:Key="Wit.Height.Chip">24</sys:Double>
+
+    <!-- Radii, by what they go round. -->
+    <CornerRadius x:Key="Wit.Radius.Check">3</CornerRadius>
+    <CornerRadius x:Key="Wit.Radius.Button">5</CornerRadius>
+    <CornerRadius x:Key="Wit.Radius.Field">6</CornerRadius>
+    <CornerRadius x:Key="Wit.Radius.Block">8</CornerRadius>
+    <CornerRadius x:Key="Wit.Radius.Window">9</CornerRadius>
+    <CornerRadius x:Key="Wit.Radius.Chip">999</CornerRadius>
+
+    <!-- Panels. The inspector is 310 in the canon and ships at 320; the four pixels are not a
+         rounding, they are a panel that was never measured against the document. -->
+    <sys:Double x:Key="Wit.Width.Connections">250</sys:Double>
+    <sys:Double x:Key="Wit.Width.Inspector">310</sys:Double>
+    <sys:Double x:Key="Wit.Width.SettingsNav">172</sys:Double>
+
+    <!-- Icons, by the row they sit in. -->
+    <sys:Double x:Key="Wit.Icon.InLine">12</sys:Double>
+    <sys:Double x:Key="Wit.Icon.Normal">14</sys:Double>
+    <sys:Double x:Key="Wit.Icon.Header">16</sys:Double>
+    <sys:Double x:Key="Wit.Icon.Large">20</sys:Double>
+    <sys:Double x:Key="Wit.Icon.Stroke">1.7</sys:Double>
+
+</ResourceDictionary>
