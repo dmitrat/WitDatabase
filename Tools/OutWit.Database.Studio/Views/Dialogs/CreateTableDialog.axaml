@@ -200,13 +200,13 @@
                 
                 <Button AutomationProperties.AutomationId="CreateTableCancel" Content="{DynamicResource S.Common.Cancel}"
                         Command="{Binding CancelCommand}"
-                        Width="100"
+                        MinWidth="100"
                         HorizontalContentAlignment="Center"/>
                 
                 <Button AutomationProperties.AutomationId="CreateTableCreateTable" Content="{DynamicResource S.Dialog.CreateTable.Create}"
                         Command="{Binding CreateTableCommand}"
                         IsEnabled="{Binding CanCreateTable}"
-                        Width="120"
+                        MinWidth="120"
                         HorizontalContentAlignment="Center"
                         Classes="accent"/>
             </StackPanel>

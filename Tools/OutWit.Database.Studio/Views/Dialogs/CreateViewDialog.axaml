@@ -95,13 +95,13 @@
                 
                 <Button AutomationProperties.AutomationId="CreateCancel" Content="{DynamicResource S.Common.Cancel}"
                         Command="{Binding CancelCommand}"
-                        Width="100"
+                        MinWidth="100"
                         HorizontalContentAlignment="Center"/>
                 
                 <Button AutomationProperties.AutomationId="CreateCreateView" Content="{DynamicResource S.Dialog.CreateView.Create}"
                         Command="{Binding CreateViewCommand}"
                         IsEnabled="{Binding CanCreateView}"
-                        Width="120"
+                        MinWidth="120"
                         HorizontalContentAlignment="Center"
                         Classes="accent"/>
             </StackPanel>

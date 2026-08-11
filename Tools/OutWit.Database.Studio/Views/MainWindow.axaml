@@ -576,7 +576,7 @@
 							<!-- Action Buttons -->
 							<StackPanel Spacing="12" Margin="0,16,0,0">
 								<Button AutomationProperties.AutomationId="WelcomeNewDatabase" AutomationProperties.Name="{DynamicResource S.Welcome.NewDatabase}" Command="{Binding MainWindowVm.NewDatabaseCommand}"
-								        Width="180"
+								        MinWidth="180"
 								        HorizontalContentAlignment="Left"
 								        Padding="16,10">
 									<StackPanel Orientation="Horizontal" Spacing="12">
@@ -587,7 +587,7 @@
 								</Button>
 								
 								<Button AutomationProperties.AutomationId="WelcomeOpenDatabase" AutomationProperties.Name="{DynamicResource S.Welcome.OpenDatabase}" Command="{Binding MainWindowVm.OpenDatabaseCommand}"
-								        Width="180"
+								        MinWidth="180"
 								        HorizontalContentAlignment="Left"
 								        Padding="16,10"
 								        Classes="accent">
