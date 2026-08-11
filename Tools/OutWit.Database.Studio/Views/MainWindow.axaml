@@ -356,7 +356,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Execute.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Execute}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Execute}"/>
 							</StackPanel>
 						</Button>
 						<Button Classes="toolbar"
@@ -366,7 +366,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Script.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE_SCRIPT}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Script}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Script}"/>
 							</StackPanel>
 						</Button>
 						<Button Classes="toolbar"
@@ -376,7 +376,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Selection.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE_SELECTION}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Selection}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Selection}"/>
 							</StackPanel>
 						</Button>
 						<Button Classes="toolbar"
@@ -386,7 +386,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Stop.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_STOP}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Stop}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Stop}"/>
 							</StackPanel>
 						</Button>
 
@@ -398,7 +398,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Clear.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_CLEAR}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Clear}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Clear}"/>
 							</StackPanel>
 						</Button>
 						<Button Classes="toolbar"
@@ -407,7 +407,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Format.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_FORMAT}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Format}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Format}"/>
 							</StackPanel>
 						</Button>
 						<Button Classes="toolbar"
@@ -417,7 +417,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Plan.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_PLAN}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Plan}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Plan}"/>
 							</StackPanel>
 						</Button>
 						<Button Classes="toolbar"
@@ -427,7 +427,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Save.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_SAVE}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Save}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Save}"/>
 							</StackPanel>
 						</Button>
 
@@ -450,7 +450,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Begin.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.QUERY_TRANSACTION}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Begin}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Begin}"/>
 							</StackPanel>
 						</Button>
 						<Button Classes="toolbar"
@@ -460,7 +460,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Commit.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_COMMIT}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Commit}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Commit}"/>
 							</StackPanel>
 						</Button>
 						<Button Classes="toolbar danger"
@@ -470,7 +470,7 @@
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Rollback.Tip}">
 							<StackPanel Orientation="Horizontal" Spacing="7">
 								<PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_ROLLBACK}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
-								<TextBlock Text="{DynamicResource S.Toolbar.Rollback}"/>
+								<TextBlock Classes="caption" Text="{DynamicResource S.Toolbar.Rollback}"/>
 							</StackPanel>
 						</Button>
 					</StackPanel>

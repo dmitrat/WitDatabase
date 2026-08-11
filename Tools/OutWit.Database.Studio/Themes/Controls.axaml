@@ -50,6 +50,18 @@
         The stroke is inside the `Viewbox`, so it is expressed in the DRAWING's units and scales with
         the icon exactly as the canon's SVG does - 1.7 on a 24-unit drawing renders as about 1 px at
         the normal 14 px size, and stays proportional at 12, 16 and 20.
+
+        THE 24x24 CANVAS IS WHAT MAKES A viewBox A viewBox, and without it the set does not hold
+        together. A `Viewbox` scales its child to the child's OWN extents, and a `Path` extends only
+        as far as its geometry: the index icon spans x 4..20 and the table icon spans 3..21, so each
+        was blown up to fill the same box by a different factor. The result is a set whose glyphs are
+        subtly different sizes and weights, sitting off-centre by their own asymmetry, which is what
+        "some of the big icons look cropped or off-centre" turned out to be.
+
+        A fixed-size `Canvas` gives every icon the same frame. The path draws inside it at the
+        coordinates it was written in, one scale for the whole set - and the stroke, which reaches
+        half its width past the geometry, has the frame's own margin to sit in instead of being
+        clipped at the edge.
     -->
     <Style Selector="PathIcon">
         <Setter Property="Width" Value="{DynamicResource Wit.Icon.Normal}"/>
@@ -57,12 +69,14 @@
         <Setter Property="Template">
             <ControlTemplate>
                 <Viewbox Stretch="Uniform">
-                    <Path Data="{TemplateBinding Data}"
-                          Fill="{x:Null}"
-                          Stroke="{TemplateBinding Foreground}"
-                          StrokeThickness="{DynamicResource Wit.Icon.Stroke}"
-                          StrokeLineCap="Round"
-                          StrokeJoin="Round"/>
+                    <Canvas Width="24" Height="24">
+                        <Path Data="{TemplateBinding Data}"
+                              Fill="{x:Null}"
+                              Stroke="{TemplateBinding Foreground}"
+                              StrokeThickness="{DynamicResource Wit.Icon.Stroke}"
+                              StrokeLineCap="Round"
+                              StrokeJoin="Round"/>
+                    </Canvas>
                 </Viewbox>
             </ControlTemplate>
         </Setter>
@@ -76,7 +90,9 @@
         <Setter Property="Template">
             <ControlTemplate>
                 <Viewbox Stretch="Uniform">
-                    <Path Data="{TemplateBinding Data}" Fill="{TemplateBinding Foreground}"/>
+                    <Canvas Width="24" Height="24">
+                        <Path Data="{TemplateBinding Data}" Fill="{TemplateBinding Foreground}"/>
+                    </Canvas>
                 </Viewbox>
             </ControlTemplate>
         </Setter>
@@ -101,6 +117,9 @@
                      AutoCompleteBox /template/ PathIcon">
         <Setter Property="Template">
             <ControlTemplate>
+                <!-- No 24-unit canvas here: the theme's own glyphs are not drawn on that grid, and
+                     framing them in it would shrink every chevron to a third of its size. They keep
+                     Fluent's behaviour, which is to fill the icon's box. -->
                 <Viewbox Stretch="Uniform">
                     <Path Data="{TemplateBinding Data}" Fill="{TemplateBinding Foreground}"/>
                 </Viewbox>
@@ -259,7 +278,15 @@
 
         The tooltip carries the caption, so nothing is lost that a hover does not return.
     -->
-    <Style Selector="StackPanel.compact Button.toolbar TextBlock">
+    <!--
+        THE CAPTION IS SELECTED BY ITS CLASS, NOT BY BEING A `TextBlock` INSIDE THE BUTTON, and the
+        difference is a bug that shipped for one commit: a tool tip's content is ALSO a `TextBlock`,
+        and a tool tip's logical parent is the control it belongs to - so
+        `Button.toolbar TextBlock { IsVisible=False }` hid the tip as well. Compact mode showed a row
+        of small empty rectangles on hover, which is worse than no tip at all, because the caption had
+        just been taken away and the tip was the only place left to read it.
+    -->
+    <Style Selector="StackPanel.compact Button.toolbar TextBlock.caption">
         <Setter Property="IsVisible" Value="False"/>
     </Style>
 
