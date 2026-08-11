@@ -1,3 +1,4 @@
+using System.Globalization;
 using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
@@ -516,6 +517,53 @@ public class DesignTokenTests
                 .Select(m => $"{Path.GetFileName(f)}:{m.Value}"))
             .OrderBy(s => s)
             .ToArray();
+
+    /// <summary>
+    /// No button wide enough to hold a word states its width as a NUMBER.
+    ///
+    /// <para>
+    /// <b>Found by driving the dialogs, and it is the whole reason the type scale is dangerous.</b>
+    /// The export dialog's primary action read «Экспортир» - the caption clipped inside a
+    /// <c>Width="120"</c> that had fitted it at 11 and did not at 11.5. Twenty-seven buttons across
+    /// eleven dialogs had a fixed width, so twenty-seven captions were one setting, one translation
+    /// or one step of the scale away from being cut in half. Nothing in the suite could see it: the
+    /// text is correct, the binding is correct, only the pixels are wrong.
+    /// </para>
+    /// <para>
+    /// They are minimums now, so a button is at least as wide as its neighbours and always as wide as
+    /// its word. <b>The rule is about width alone</b> - a fixed HEIGHT is fine and often right, and
+    /// the icon buttons keep their square 24, 28 and 32.
+    /// </para>
+    /// </summary>
+    [Test]
+    public void NoButtonWideEnoughForAWordFixesItsWidthTest()
+    {
+        var tag = new Regex(@"<([A-Za-z][\w.:]*)", RegexOptions.Compiled);
+        var fixedWidths = new List<string>();
+
+        foreach (var file in MarkupFiles().Where(f => f.Contains("Views")))
+        {
+            var text = File.ReadAllText(file);
+
+            foreach (Match match in Regex.Matches(text, @"\bWidth=""([0-9.]+)"""))
+            {
+                var start = text.LastIndexOf('<', match.Index);
+                while (start >= 0 && !tag.Match(text, start).Success)
+                    start = text.LastIndexOf('<', start - 1);
+
+                var element = start < 0 ? "?" : tag.Match(text, start).Groups[1].Value;
+
+                if (element is not ("Button" or "ToggleButton"))
+                    continue;
+
+                // Below this a button holds a glyph, not a word, and a square is the point of it.
+                if (double.Parse(match.Groups[1].Value, CultureInfo.InvariantCulture) >= 70)
+                    fixedWidths.Add($"{Path.GetFileName(file)}:{element} Width={match.Groups[1].Value}");
+            }
+        }
+
+        Assert.That(fixedWidths, Is.Empty, string.Join("\n", fixedWidths));
+    }
 
     #endregion
 

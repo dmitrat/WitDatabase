@@ -83,7 +83,7 @@
                         AutomationProperties.AutomationId="ConnectionsRemove"
                         Content="{DynamicResource S.Common.Remove}" Command="{Binding RemoveCommand}"/>
 
-                <Button Grid.Column="4" Width="130" Classes="accent"
+                <Button Grid.Column="4" MinWidth="130" Classes="accent"
                         AutomationProperties.AutomationId="ConnectionsConnect"
                         Content="{DynamicResource S.Dialog.Open.Connect}" Command="{Binding ConnectCommand}"/>
             </Grid>

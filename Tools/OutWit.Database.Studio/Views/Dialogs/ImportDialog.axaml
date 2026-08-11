@@ -274,21 +274,21 @@
             <Button AutomationProperties.AutomationId="ImportBack" Grid.Column="3"
                     Content="{DynamicResource S.Common.Back}"
                     Command="{Binding BackCommand}"
-                    Width="80"
+                    MinWidth="80"
                     Margin="0,0,8,0"
                     IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsNotFile}}"/>
 
             <Button AutomationProperties.AutomationId="ImportCancel" Grid.Column="4"
                     Content="{DynamicResource S.Common.Cancel}"
                     Command="{Binding CancelCommand}"
-                    Width="80"
+                    MinWidth="80"
                     Margin="0,0,8,0"
                     IsVisible="{Binding !IsImporting}"/>
 
             <Button AutomationProperties.AutomationId="ImportNext" Grid.Column="5"
                     Content="{DynamicResource S.Common.Next}"
                     Command="{Binding NextCommand}"
-                    Width="90"
+                    MinWidth="90"
                     Classes="accent"
                     IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsNotColumns}}"/>
 
@@ -297,7 +297,7 @@
                     Content="{DynamicResource S.Dialog.Import.Import}"
                     Command="{Binding ImportCommand}"
                     IsEnabled="{Binding CanImport}"
-                    Width="90"
+                    MinWidth="90"
                     Classes="accent"
                     IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsColumns}}"/>
         </Grid>
@@ -343,7 +343,7 @@
                 <Button AutomationProperties.AutomationId="ImportCancelImport" Content="{DynamicResource S.Dialog.Import.CancelImport}"
                         Command="{Binding CancelImportCommand}"
                         HorizontalAlignment="Center"
-                        Width="120"
+                        MinWidth="120"
                         Margin="0,8,0,0"/>
             </StackPanel>
         </Border>

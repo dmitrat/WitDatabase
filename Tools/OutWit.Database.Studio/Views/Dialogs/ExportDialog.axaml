@@ -169,14 +169,14 @@
             <Button AutomationProperties.AutomationId="ExportCancel" Grid.Column="1"
                     Content="{DynamicResource S.Common.Cancel}"
                     Command="{Binding CancelCommand}"
-                    Width="80"
+                    MinWidth="80"
                     Margin="0,0,8,0"
                     IsVisible="{Binding !IsExporting}"/>
             <Button AutomationProperties.AutomationId="ExportExport" Grid.Column="2"
                     Content="{DynamicResource S.Dialog.Export.Export}"
                     Command="{Binding ExportCommand}"
                     IsEnabled="{Binding CanExport}"
-                    Width="80"
+                    MinWidth="80"
                     Classes="accent"
                     IsVisible="{Binding !IsExporting}"/>
         </Grid>
@@ -214,7 +214,7 @@
                 <Button AutomationProperties.AutomationId="ExportCancelExport" Content="{DynamicResource S.Dialog.Export.CancelExport}"
                         Command="{Binding CancelExportCommand}"
                         HorizontalAlignment="Center"
-                        Width="120"
+                        MinWidth="120"
                         Margin="0,8,0,0"/>
             </StackPanel>
         </Border>

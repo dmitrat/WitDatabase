@@ -88,10 +88,10 @@
                         <StackPanel Grid.Column="1" Spacing="6" Margin="8,0,0,0" VerticalAlignment="Center">
                             <Button AutomationProperties.AutomationId="CreateIndexAddSelectedColumn"
                                     AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.AddColumn}"
-                                    Content="{DynamicResource S.Common.Add}" Width="90" Click="AddColumn_Click"/>
+                                    Content="{DynamicResource S.Common.Add}" MinWidth="90" Click="AddColumn_Click"/>
                             <Button AutomationProperties.AutomationId="CreateIndexAddIncluded"
                                     AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.AddIncluded}"
-                                    Content="INCLUDE" Width="90" Click="AddIncluded_Click"
+                                    Content="INCLUDE" MinWidth="90" Click="AddIncluded_Click"
                                     ToolTip.Tip="{DynamicResource S.Dialog.CreateIndex.Include.Tip}"/>
                         </StackPanel>
                     </Grid>
@@ -193,14 +193,14 @@
                         AutomationProperties.AutomationId="CreateIndexCancel"
                         AutomationProperties.Name="{DynamicResource S.Common.Cancel}"
                         Content="{DynamicResource S.Common.Cancel}" Command="{Binding CancelCommand}"
-                        Width="100" Margin="0,0,8,0" HorizontalContentAlignment="Center"/>
+                        MinWidth="100" Margin="0,0,8,0" HorizontalContentAlignment="Center"/>
 
                 <Button Grid.Column="3"
                         AutomationProperties.AutomationId="CreateIndexCreate"
                         AutomationProperties.Name="{DynamicResource S.Dialog.CreateIndex.CreateName}"
                         Content="{DynamicResource S.Common.Create}" Command="{Binding CreateIndexCommand}"
                         IsEnabled="{Binding CanCreateIndex}"
-                        Width="120" HorizontalContentAlignment="Center" Classes="accent"/>
+                        MinWidth="120" HorizontalContentAlignment="Center" Classes="accent"/>
             </Grid>
         </Border>
 
