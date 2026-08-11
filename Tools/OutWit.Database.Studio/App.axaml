@@ -3,7 +3,7 @@
              x:Class="OutWit.Database.Studio.App"
              xmlns:local="using:OutWit.Database.Studio"
              xmlns:controls="clr-namespace:OutWit.Database.Studio.Controls"
-             RequestedThemeVariant="Default">
+             RequestedThemeVariant="Dark">
 
     <Application.DataTemplates>
         <local:ViewLocator/>
@@ -29,6 +29,11 @@
     <Application.Resources>
         <ResourceDictionary>
             <ResourceDictionary.MergedDictionaries>
+                <!-- Section 8: the palette, the nine-step scale and the metric table. Tokens carries
+                     both variants; the other two do not vary with the theme. -->
+                <ResourceInclude Source="/Themes/Tokens.axaml" />
+                <ResourceInclude Source="/Themes/Typography.axaml" />
+                <ResourceInclude Source="/Themes/Metrics.axaml" />
                 <ResourceInclude Source="/Themes/SqlEditorColors.axaml" />
             </ResourceDictionary.MergedDictionaries>
             

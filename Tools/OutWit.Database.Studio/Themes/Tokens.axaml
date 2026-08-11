@@ -1,0 +1,221 @@
+<?xml version="1.0" encoding="utf-8"?>
+
+<!--
+    The palette of section 8.1, as the only place in Studio that is allowed to name a colour.
+
+    WHY THIS FILE EXISTS AT ALL. A hex literal written into a view is theme-blind by construction: it
+    is a colour chosen while looking at one of the two themes, and it stays that colour in the other
+    one. There is no way to write it correctly, which is why the sweep that follows this file is not
+    tidying. It is the same shape as the localisation finding one class along - a caption written in
+    English keeps the language it was typed in; a colour written as #2D2D30 keeps the theme it was
+    typed in.
+
+    EVERY KEY IS DEFINED IN BOTH VARIANTS, and that is what the instrument checks. A key present in
+    one dictionary and missing from the other does not fail, does not warn and does not draw: the
+    property keeps whatever it had, which in practice means black text on a black panel in exactly
+    one theme, seen by whoever happens to switch.
+
+    THE LIGHT THEME IS NOT AN INVERSION OF THE DARK ONE (section 8.4). On white the surfaces barely
+    differ, so panels are told apart by their borders rather than by their fill - which is why
+    Surface.Sunken is nearly white rather than dark, and why Line.Inner collapses onto Line here and
+    does not there.
+
+    THE ACCENT IS THE ONE TOKEN THAT MUST BE SPLIT IN TWO. #4CC13C on white is about 2:1 - enough
+    under dark text as a fill, not enough as text. So Accent stays the fill in both themes and
+    Accent.Text moves to #2E7D22 in the light one. Reaching for Accent where Accent.Text belongs is
+    the mistake this pair exists to make visible.
+
+    Accent and Accent.Ink are one pair and are never used apart: if the accent ever changes, the text
+    written on it has to change with it. The current pair gives 7.05:1.
+
+    Alpha comes first in Avalonia's hex (#AARRGGBB), so the canon's rgba(76,193,60,.14) is #244CC13C.
+-->
+<ResourceDictionary xmlns="https://github.com/avaloniaui"
+                    xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml">
+
+    <ResourceDictionary.ThemeDictionaries>
+
+        <!-- ============================ DARK - the default (WS-4) ============================ -->
+        <ResourceDictionary x:Key="Dark">
+
+            <!-- Surfaces. Navy is mixed into every one of them; none is a neutral grey. -->
+            <Color x:Key="Wit.Color.Surface.Base">#111823</Color>
+            <Color x:Key="Wit.Color.Surface.Panel">#16202E</Color>
+            <Color x:Key="Wit.Color.Surface.Bar">#1B2636</Color>
+            <Color x:Key="Wit.Color.Surface.Sunken">#0D131C</Color>
+
+            <!-- Lines. Two weights: what separates zones, and what rules a table. -->
+            <Color x:Key="Wit.Color.Line">#26344A</Color>
+            <Color x:Key="Wit.Color.Line.Inner">#1F2B3D</Color>
+
+            <!-- Ink. Data is set a shade below body text so a grid does not shout. -->
+            <Color x:Key="Wit.Color.Ink">#E5EAF2</Color>
+            <Color x:Key="Wit.Color.Ink.Secondary">#95A3B8</Color>
+            <Color x:Key="Wit.Color.Ink.Muted">#66738A</Color>
+            <Color x:Key="Wit.Color.Ink.Data">#C6CFDD</Color>
+            <Color x:Key="Wit.Color.Ink.Null">#5B6478</Color>
+
+            <!-- Accent. In the dark theme the fill and the text are the same colour. -->
+            <Color x:Key="Wit.Color.Accent">#4CC13C</Color>
+            <Color x:Key="Wit.Color.Accent.Ink">#0D2410</Color>
+            <Color x:Key="Wit.Color.Accent.Text">#4CC13C</Color>
+            <Color x:Key="Wit.Color.Accent.Dim">#244CC13C</Color>
+
+            <!-- Success is the accent, deliberately: in a database a success is an applied
+                 transaction, not a decorative tick, and two greens would be told apart by nobody. -->
+            <Color x:Key="Wit.Color.Ok">#4CC13C</Color>
+            <Color x:Key="Wit.Color.Ok.Surface">#1A4CC13C</Color>
+            <Color x:Key="Wit.Color.Ok.Border">#474CC13C</Color>
+            <Color x:Key="Wit.Color.Ok.Text">#A8E59C</Color>
+
+            <Color x:Key="Wit.Color.Warn">#D9A227</Color>
+            <Color x:Key="Wit.Color.Warn.Surface">#1AD9A227</Color>
+            <Color x:Key="Wit.Color.Warn.Border">#47D9A227</Color>
+            <Color x:Key="Wit.Color.Warn.Text">#E7C581</Color>
+
+            <Color x:Key="Wit.Color.Error">#D9534F</Color>
+            <Color x:Key="Wit.Color.Error.Surface">#1AD9534F</Color>
+            <Color x:Key="Wit.Color.Error.Border">#4CD9534F</Color>
+            <Color x:Key="Wit.Color.Error.Text">#E8A5A2</Color>
+
+            <!-- A destructive button is not an error banner: it sits on a panel, not on a tinted
+                 surface, so it carries its own text colour. -->
+            <Color x:Key="Wit.Color.Danger.Text">#E5928E</Color>
+
+            <!-- Brand. The neon is unusable as a fill - it burns a dark interface out and gives text
+                 no contrast - so it is the logo and the 7 px dots and nothing else. -->
+            <Color x:Key="Wit.Color.Brand.Navy">#1A2B4C</Color>
+            <Color x:Key="Wit.Color.Brand.Neon">#39FF14</Color>
+
+            <!-- Connection labels. Identity, not severity - a colour a person assigns to a database
+                 so two windows of the same schema can be told apart. -->
+            <Color x:Key="Wit.Color.Label.Violet">#8A7BE8</Color>
+            <Color x:Key="Wit.Color.Label.Cyan">#35A7C4</Color>
+            <Color x:Key="Wit.Color.Label.Off">#5D6879</Color>
+
+            <SolidColorBrush x:Key="Wit.Surface.Base" Color="{StaticResource Wit.Color.Surface.Base}"/>
+            <SolidColorBrush x:Key="Wit.Surface.Panel" Color="{StaticResource Wit.Color.Surface.Panel}"/>
+            <SolidColorBrush x:Key="Wit.Surface.Bar" Color="{StaticResource Wit.Color.Surface.Bar}"/>
+            <SolidColorBrush x:Key="Wit.Surface.Sunken" Color="{StaticResource Wit.Color.Surface.Sunken}"/>
+            <SolidColorBrush x:Key="Wit.Line" Color="{StaticResource Wit.Color.Line}"/>
+            <SolidColorBrush x:Key="Wit.Line.Inner" Color="{StaticResource Wit.Color.Line.Inner}"/>
+            <SolidColorBrush x:Key="Wit.Ink" Color="{StaticResource Wit.Color.Ink}"/>
+            <SolidColorBrush x:Key="Wit.Ink.Secondary" Color="{StaticResource Wit.Color.Ink.Secondary}"/>
+            <SolidColorBrush x:Key="Wit.Ink.Muted" Color="{StaticResource Wit.Color.Ink.Muted}"/>
+            <SolidColorBrush x:Key="Wit.Ink.Data" Color="{StaticResource Wit.Color.Ink.Data}"/>
+            <SolidColorBrush x:Key="Wit.Ink.Null" Color="{StaticResource Wit.Color.Ink.Null}"/>
+            <SolidColorBrush x:Key="Wit.Accent" Color="{StaticResource Wit.Color.Accent}"/>
+            <SolidColorBrush x:Key="Wit.Accent.Ink" Color="{StaticResource Wit.Color.Accent.Ink}"/>
+            <SolidColorBrush x:Key="Wit.Accent.Text" Color="{StaticResource Wit.Color.Accent.Text}"/>
+            <SolidColorBrush x:Key="Wit.Accent.Dim" Color="{StaticResource Wit.Color.Accent.Dim}"/>
+            <SolidColorBrush x:Key="Wit.Ok" Color="{StaticResource Wit.Color.Ok}"/>
+            <SolidColorBrush x:Key="Wit.Ok.Surface" Color="{StaticResource Wit.Color.Ok.Surface}"/>
+            <SolidColorBrush x:Key="Wit.Ok.Border" Color="{StaticResource Wit.Color.Ok.Border}"/>
+            <SolidColorBrush x:Key="Wit.Ok.Text" Color="{StaticResource Wit.Color.Ok.Text}"/>
+            <SolidColorBrush x:Key="Wit.Warn" Color="{StaticResource Wit.Color.Warn}"/>
+            <SolidColorBrush x:Key="Wit.Warn.Surface" Color="{StaticResource Wit.Color.Warn.Surface}"/>
+            <SolidColorBrush x:Key="Wit.Warn.Border" Color="{StaticResource Wit.Color.Warn.Border}"/>
+            <SolidColorBrush x:Key="Wit.Warn.Text" Color="{StaticResource Wit.Color.Warn.Text}"/>
+            <SolidColorBrush x:Key="Wit.Error" Color="{StaticResource Wit.Color.Error}"/>
+            <SolidColorBrush x:Key="Wit.Error.Surface" Color="{StaticResource Wit.Color.Error.Surface}"/>
+            <SolidColorBrush x:Key="Wit.Error.Border" Color="{StaticResource Wit.Color.Error.Border}"/>
+            <SolidColorBrush x:Key="Wit.Error.Text" Color="{StaticResource Wit.Color.Error.Text}"/>
+            <SolidColorBrush x:Key="Wit.Danger.Text" Color="{StaticResource Wit.Color.Danger.Text}"/>
+            <SolidColorBrush x:Key="Wit.Brand.Navy" Color="{StaticResource Wit.Color.Brand.Navy}"/>
+            <SolidColorBrush x:Key="Wit.Brand.Neon" Color="{StaticResource Wit.Color.Brand.Neon}"/>
+            <SolidColorBrush x:Key="Wit.Label.Violet" Color="{StaticResource Wit.Color.Label.Violet}"/>
+            <SolidColorBrush x:Key="Wit.Label.Cyan" Color="{StaticResource Wit.Color.Label.Cyan}"/>
+            <SolidColorBrush x:Key="Wit.Label.Off" Color="{StaticResource Wit.Color.Label.Off}"/>
+
+        </ResourceDictionary>
+
+        <!-- ================================ LIGHT - equal, not inverted ================================ -->
+        <ResourceDictionary x:Key="Light">
+
+            <!-- Sunken is the exception that proves the rule: a field on white is not a darker
+                 well, it is a bordered one, so the fill barely moves and the border does the work. -->
+            <Color x:Key="Wit.Color.Surface.Base">#FFFFFF</Color>
+            <Color x:Key="Wit.Color.Surface.Panel">#F7F8FA</Color>
+            <Color x:Key="Wit.Color.Surface.Bar">#F1F3F6</Color>
+            <Color x:Key="Wit.Color.Surface.Sunken">#FBFBFC</Color>
+
+            <!-- The light theme has one line weight. Ruling a table more faintly than the panel
+                 edge, as the dark theme does, leaves nothing visible on white. -->
+            <Color x:Key="Wit.Color.Line">#E2E6EC</Color>
+            <Color x:Key="Wit.Color.Line.Inner">#E2E6EC</Color>
+
+            <!-- Body text is the logo's navy, not black. -->
+            <Color x:Key="Wit.Color.Ink">#1A2B4C</Color>
+            <Color x:Key="Wit.Color.Ink.Secondary">#5A6779</Color>
+            <Color x:Key="Wit.Color.Ink.Muted">#8A93A3</Color>
+            <Color x:Key="Wit.Color.Ink.Data">#1A2B4C</Color>
+            <Color x:Key="Wit.Color.Ink.Null">#8A93A3</Color>
+
+            <!-- The split. #4CC13C stays the fill; text and links go to #2E7D22. -->
+            <Color x:Key="Wit.Color.Accent">#4CC13C</Color>
+            <Color x:Key="Wit.Color.Accent.Ink">#0D2410</Color>
+            <Color x:Key="Wit.Color.Accent.Text">#2E7D22</Color>
+            <Color x:Key="Wit.Color.Accent.Dim">#244CC13C</Color>
+
+            <Color x:Key="Wit.Color.Ok">#4CC13C</Color>
+            <Color x:Key="Wit.Color.Ok.Surface">#1F4CC13C</Color>
+            <Color x:Key="Wit.Color.Ok.Border">#474CC13C</Color>
+            <Color x:Key="Wit.Color.Ok.Text">#2E7D22</Color>
+
+            <Color x:Key="Wit.Color.Warn">#D9A227</Color>
+            <Color x:Key="Wit.Color.Warn.Surface">#24D9A227</Color>
+            <Color x:Key="Wit.Color.Warn.Border">#47D9A227</Color>
+            <Color x:Key="Wit.Color.Warn.Text">#8A6410</Color>
+
+            <Color x:Key="Wit.Color.Error">#D9534F</Color>
+            <Color x:Key="Wit.Color.Error.Surface">#1FD9534F</Color>
+            <Color x:Key="Wit.Color.Error.Border">#4CD9534F</Color>
+            <Color x:Key="Wit.Color.Error.Text">#A8322E</Color>
+
+            <Color x:Key="Wit.Color.Danger.Text">#A8322E</Color>
+
+            <Color x:Key="Wit.Color.Brand.Navy">#1A2B4C</Color>
+            <Color x:Key="Wit.Color.Brand.Neon">#39FF14</Color>
+
+            <Color x:Key="Wit.Color.Label.Violet">#8A7BE8</Color>
+            <Color x:Key="Wit.Color.Label.Cyan">#35A7C4</Color>
+            <Color x:Key="Wit.Color.Label.Off">#5D6879</Color>
+
+            <SolidColorBrush x:Key="Wit.Surface.Base" Color="{StaticResource Wit.Color.Surface.Base}"/>
+            <SolidColorBrush x:Key="Wit.Surface.Panel" Color="{StaticResource Wit.Color.Surface.Panel}"/>
+            <SolidColorBrush x:Key="Wit.Surface.Bar" Color="{StaticResource Wit.Color.Surface.Bar}"/>
+            <SolidColorBrush x:Key="Wit.Surface.Sunken" Color="{StaticResource Wit.Color.Surface.Sunken}"/>
+            <SolidColorBrush x:Key="Wit.Line" Color="{StaticResource Wit.Color.Line}"/>
+            <SolidColorBrush x:Key="Wit.Line.Inner" Color="{StaticResource Wit.Color.Line.Inner}"/>
+            <SolidColorBrush x:Key="Wit.Ink" Color="{StaticResource Wit.Color.Ink}"/>
+            <SolidColorBrush x:Key="Wit.Ink.Secondary" Color="{StaticResource Wit.Color.Ink.Secondary}"/>
+            <SolidColorBrush x:Key="Wit.Ink.Muted" Color="{StaticResource Wit.Color.Ink.Muted}"/>
+            <SolidColorBrush x:Key="Wit.Ink.Data" Color="{StaticResource Wit.Color.Ink.Data}"/>
+            <SolidColorBrush x:Key="Wit.Ink.Null" Color="{StaticResource Wit.Color.Ink.Null}"/>
+            <SolidColorBrush x:Key="Wit.Accent" Color="{StaticResource Wit.Color.Accent}"/>
+            <SolidColorBrush x:Key="Wit.Accent.Ink" Color="{StaticResource Wit.Color.Accent.Ink}"/>
+            <SolidColorBrush x:Key="Wit.Accent.Text" Color="{StaticResource Wit.Color.Accent.Text}"/>
+            <SolidColorBrush x:Key="Wit.Accent.Dim" Color="{StaticResource Wit.Color.Accent.Dim}"/>
+            <SolidColorBrush x:Key="Wit.Ok" Color="{StaticResource Wit.Color.Ok}"/>
+            <SolidColorBrush x:Key="Wit.Ok.Surface" Color="{StaticResource Wit.Color.Ok.Surface}"/>
+            <SolidColorBrush x:Key="Wit.Ok.Border" Color="{StaticResource Wit.Color.Ok.Border}"/>
+            <SolidColorBrush x:Key="Wit.Ok.Text" Color="{StaticResource Wit.Color.Ok.Text}"/>
+            <SolidColorBrush x:Key="Wit.Warn" Color="{StaticResource Wit.Color.Warn}"/>
+            <SolidColorBrush x:Key="Wit.Warn.Surface" Color="{StaticResource Wit.Color.Warn.Surface}"/>
+            <SolidColorBrush x:Key="Wit.Warn.Border" Color="{StaticResource Wit.Color.Warn.Border}"/>
+            <SolidColorBrush x:Key="Wit.Warn.Text" Color="{StaticResource Wit.Color.Warn.Text}"/>
+            <SolidColorBrush x:Key="Wit.Error" Color="{StaticResource Wit.Color.Error}"/>
+            <SolidColorBrush x:Key="Wit.Error.Surface" Color="{StaticResource Wit.Color.Error.Surface}"/>
+            <SolidColorBrush x:Key="Wit.Error.Border" Color="{StaticResource Wit.Color.Error.Border}"/>
+            <SolidColorBrush x:Key="Wit.Error.Text" Color="{StaticResource Wit.Color.Error.Text}"/>
+            <SolidColorBrush x:Key="Wit.Danger.Text" Color="{StaticResource Wit.Color.Danger.Text}"/>
+            <SolidColorBrush x:Key="Wit.Brand.Navy" Color="{StaticResource Wit.Color.Brand.Navy}"/>
+            <SolidColorBrush x:Key="Wit.Brand.Neon" Color="{StaticResource Wit.Color.Brand.Neon}"/>
+            <SolidColorBrush x:Key="Wit.Label.Violet" Color="{StaticResource Wit.Color.Label.Violet}"/>
+            <SolidColorBrush x:Key="Wit.Label.Cyan" Color="{StaticResource Wit.Color.Label.Cyan}"/>
+            <SolidColorBrush x:Key="Wit.Label.Off" Color="{StaticResource Wit.Color.Label.Off}"/>
+
+        </ResourceDictionary>
+
+    </ResourceDictionary.ThemeDictionaries>
+</ResourceDictionary>
