@@ -7,7 +7,7 @@
 	<AntlrScriptPath>$(MSBuildProjectDirectory)\MakeInternal.ps1</AntlrScriptPath>
     <_AntlrVendoredJar>$([System.IO.Path]::GetFullPath('$(MSBuildProjectDirectory)/../../../build/antlr/antlr4-4.13.1-complete.jar'))</_AntlrVendoredJar>
     
-    <Version>12.7.0</Version>
+    <Version>12.8.0</Version>
     <Description>SQL parser for WitDatabase. ANTLR4-based parser for WitSQL dialect with full SQL-92 compatibility and .NET type extensions.</Description>
     <PackageTags>OutWit;database;sql;parser;antlr;witsql;query;syntax</PackageTags>
   </PropertyGroup>
