@@ -1,4 +1,4 @@
-using OutWit.Database.AdoNet;
+﻿using OutWit.Database.AdoNet;
 using OutWit.Database.Core.Utils;
 using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
@@ -273,6 +273,70 @@ public class DatabaseCopyTests
         // property, and answering a query is the thing that was taken away.
         Assert.That(await m_fixture.CountRowsAsync("Customers", m_fixture.Database),
             Is.EqualTo(StudioFixture.CUSTOMER_COUNT));
+    }
+
+    /// <summary>
+    /// Opening the copy (WS-60) puts it in the tree, beside the original and in a different colour.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The method's own comment said both of these and neither was true.</b> Driven in the running
+    /// application on 2026-08-11: the copy opened, the status bar named it as the active connection,
+    /// and the tree still showed <b>one</b> root until «Обновить» was pressed by hand - because the
+    /// explorer subscribes to a connection CLOSING and deliberately not to one opening, so whoever
+    /// opens is who builds the branch, and this path did not. And it opened in the SOURCE's colour,
+    /// because a cloned <c>ConnectionInfo</c> carries <c>ColorIndex</c> and the manager only hands out
+    /// a new one when it is unset.
+    /// </para>
+    /// <para>
+    /// The colour is not decoration here: with the original and its copy open together, it is the
+    /// thing that answers "which of these two am I about to write to".
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task TheCopyOpensBesideTheOriginalInItsOwnColourTest()
+    {
+        m_fixture = await StudioFixture.CreateAsync(StudioStorage.Lsm);
+
+        await m_fixture.Explorer.RefreshAsync();
+
+        var rootsBefore = m_fixture.Explorer.Nodes.Count;
+
+        // The colour has to be CHOSEN for this half to mean anything. A fixture connection leaves
+        // ColorIndex unset, the manager then hands out a fresh one to anything opened after it, and
+        // the two differ whatever this code does - a green that says nothing. It is a person picking
+        // a colour in the Open dialog that puts a value on the ConnectionInfo, and it is the clone of
+        // THAT which used to repeat it.
+        m_fixture.Database.Connection.ColorIndex = 3;
+        var sourceColour = 3;
+
+        var copy = new DatabaseCopyViewModel(m_fixture.App, m_fixture.Database)
+        {
+            Destination = Path.Combine(m_fixture.Root, "beside"),
+            Verify = true
+        };
+
+        await StudioFixture.PressAsync(copy.CopyCommand);
+        Assert.That(copy.IsDone, Is.True, copy.Message);
+
+        await StudioFixture.PressAsync(copy.OpenCopyCommand);
+
+        var opened = m_fixture.Connections.Sessions
+            .FirstOrDefault(session => session.Connection.FilePath == Path.Combine(m_fixture.Root, "beside"));
+
+        Assert.That(opened, Is.Not.Null, "the copy was not opened at all");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_fixture.Explorer.Nodes, Has.Count.EqualTo(rootsBefore + 1),
+                "the copy is open and the tree does not show it until it is refreshed by hand");
+
+            Assert.That(m_fixture.Explorer.Nodes.Any(node => node.ConnectionId == opened!.Id),
+                Is.True, "and the new root is the copy's");
+
+            Assert.That(opened!.ColorIndex, Is.Not.EqualTo(sourceColour),
+                "the copy wears the original's colour, so the two are indistinguishable on a tab");
+        });
     }
 
     #endregion

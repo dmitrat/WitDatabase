@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
 using OutWit.Common.Aspects;
@@ -121,6 +121,14 @@ public sealed class DatabaseCopyViewModel : ViewModelBase<ApplicationViewModel>
     /// <summary>
     /// WS-60: the copy is opened as its own connection, in its own colour, beside the original.
     /// </summary>
+    /// <remarks>
+    /// <b>Both halves of that sentence were false until 2026-08-11, and this comment was the only
+    /// place either was true.</b> Driven in the running application: the copy opened, and the tree
+    /// still showed one root until «Обновить» was pressed by hand; and it opened in the SOURCE's
+    /// colour, because a clone carries <c>ColorIndex</c> and the manager only assigns one when it is
+    /// unset. A copy that looks exactly like the database it was taken from is the one thing this
+    /// decision exists to prevent - the colour is what answers "which of these two am I looking at".
+    /// </remarks>
     private async Task OpenCopyAsync()
     {
         var connection = m_session.Connection.Clone();
@@ -129,8 +137,20 @@ public sealed class DatabaseCopyViewModel : ViewModelBase<ApplicationViewModel>
         connection.DisplayName = Path.GetFileNameWithoutExtension(
             Destination.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
 
-        if (await ApplicationVm.Connections.OpenAsync(connection) != null)
-            ShouldCloseDialog?.Invoke(true);
+        // Unset, so the manager hands out the next colour rather than repeating the source's.
+        connection.ColorIndex = ConnectionInfo.NO_COLOUR;
+
+        var opened = await ApplicationVm.Connections.OpenAsync(connection);
+
+        if (opened == null)
+            return;
+
+        // The branch, for this connection only - the same call the Open dialog's path makes. Opening
+        // a connection does not build a tree by itself: the explorer subscribes to the CLOSING half
+        // and deliberately not to the opening one, so whoever opens is who builds.
+        await ApplicationVm.DatabaseExplorerVm.RefreshAsync(opened);
+
+        ShouldCloseDialog?.Invoke(true);
     }
 
     private string Describe(CopyResult result)
