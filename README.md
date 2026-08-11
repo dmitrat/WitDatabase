@@ -318,8 +318,11 @@ above is believed.
 >
 > The 2026-08-11 re-measurement found the write paths **1.5-1.7x slower than the 2026-08-02
 > baseline** on the same benchmark and the same machine, while SQLite's and LiteDB's numbers on those
-> same rows were unchanged and every read was unchanged. That is recorded rather than explained: it
-> is a real difference between 11.1.0 and 12.8.0 and it has not yet been diagnosed.
+> same rows moved by less than 13%. The heavy read paths did not move - full scan, `ORDER BY`, point
+> query and unique-index seek are all within 6% of the baseline - but three lighter ones did:
+> `LIMIT 100` 0.08 -> 0.12 ms, sequential reads 0.31 -> 0.35, index range scan 0.83 -> 0.93. All of
+> that is recorded rather than explained: it is a real difference between 11.1.0 and 12.8.0 and it
+> has not yet been diagnosed.
 
 ## Requirements
 
