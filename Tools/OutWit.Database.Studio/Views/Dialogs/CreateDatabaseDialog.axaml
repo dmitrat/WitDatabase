@@ -21,7 +21,7 @@
         <ScrollViewer Grid.Row="0" Padding="18,16">
             <StackPanel Spacing="10">
 
-                <TextBlock Text="{DynamicResource S.Dialog.Create.Storage}" FontSize="10" Opacity="0.55"/>
+                <TextBlock Text="{DynamicResource S.Dialog.Create.Storage}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55"/>
 
                 <UniformGrid Columns="3" HorizontalAlignment="Stretch">
                     <RadioButton AutomationProperties.AutomationId="CreateStorageBTree" AutomationProperties.Name="{DynamicResource S.Dialog.Create.BTree.Name}"
@@ -31,7 +31,7 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="{DynamicResource S.Dialog.Create.BTree}" FontWeight="SemiBold"/>
                             <TextBlock Text="{DynamicResource S.Dialog.Create.BTreeHint}"
-                                       FontSize="10.5" Opacity="0.6" TextWrapping="Wrap" MaxWidth="140"/>
+                                       FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.6" TextWrapping="Wrap" MaxWidth="140"/>
                         </StackPanel>
                     </RadioButton>
 
@@ -42,7 +42,7 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="{DynamicResource S.Dialog.Create.Lsm}" FontWeight="SemiBold"/>
                             <TextBlock Text="{DynamicResource S.Dialog.Create.LsmHint}"
-                                       FontSize="10.5" Opacity="0.6" TextWrapping="Wrap" MaxWidth="140"/>
+                                       FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.6" TextWrapping="Wrap" MaxWidth="140"/>
                         </StackPanel>
                     </RadioButton>
 
@@ -53,7 +53,7 @@
                         <StackPanel Spacing="4">
                             <TextBlock Text="{DynamicResource S.Dialog.Create.InMemory}" FontWeight="SemiBold"/>
                             <TextBlock Text="{DynamicResource S.Dialog.Create.InMemoryHint}"
-                                       FontSize="10.5" Opacity="0.6" TextWrapping="Wrap" MaxWidth="140"/>
+                                       FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.6" TextWrapping="Wrap" MaxWidth="140"/>
                         </StackPanel>
                     </RadioButton>
                 </UniformGrid>
@@ -68,7 +68,7 @@
                         <Button AutomationProperties.AutomationId="CreateDatabaseBrowse"
                                 Content="{DynamicResource S.Common.Browse}"
                                 Command="{Binding BrowseFileCommand}"/>
-                        <TextBlock FontSize="11" Opacity="0.55" TextWrapping="Wrap"
+                        <TextBlock FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.55" TextWrapping="Wrap"
                                    Text="{Binding PathHint}"/>
                     </StackPanel>
                 </Grid>
@@ -77,10 +77,10 @@
                 <Border Padding="10,8" CornerRadius="6" IsVisible="{Binding IsInMemory}"
                         Background="{DynamicResource Wit.Warn.Surface}" BorderBrush="{DynamicResource Wit.Warn.Border}" BorderThickness="1">
                     <TextBlock Text="{DynamicResource S.Dialog.Create.InMemoryWarning}"
-                               TextWrapping="Wrap" FontSize="12"/>
+                               TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Body}"/>
                 </Border>
 
-                <TextBlock Text="{DynamicResource S.Dialog.Create.Encryption}" FontSize="10" Opacity="0.55"
+                <TextBlock Text="{DynamicResource S.Dialog.Create.Encryption}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55"
                            Margin="0,8,0,0"/>
 
                 <Grid ColumnDefinitions="110,*">
@@ -114,15 +114,15 @@
                                  Watermark="{DynamicResource S.Dialog.Create.PasswordAgain}"
                                  PasswordChar="*" RevealPassword="False"/>
                         <TextBlock Text="{DynamicResource S.Dialog.Create.PasswordHint}"
-                                   FontSize="11" Opacity="0.55" TextWrapping="Wrap"/>
+                                   FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.55" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
 
                 <StackPanel Spacing="6" IsVisible="{Binding IsConnectionStringVisible}">
-                    <TextBlock Text="{DynamicResource S.Common.ConnectionString}" FontSize="11" Opacity="0.6"/>
+                    <TextBlock Text="{DynamicResource S.Common.ConnectionString}" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.6"/>
                     <TextBox AutomationProperties.AutomationId="CreateConnectionStringBox"
                              Text="{Binding ConnectionString, Mode=TwoWay}"
-                             FontFamily="Consolas" FontSize="11" TextWrapping="Wrap"/>
+                             FontFamily="Consolas" FontSize="{DynamicResource Wit.Font.Mono.Data}" TextWrapping="Wrap"/>
                 </StackPanel>
 
             </StackPanel>
@@ -132,7 +132,7 @@
                 Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
             <TextBlock AutomationProperties.AutomationId="CreateDatabaseError"
-                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12"/>
+                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Body}"/>
         </Border>
 
         <Border Grid.Row="2" Padding="14,10"

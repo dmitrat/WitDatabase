@@ -21,9 +21,9 @@
                 Padding="16">
             <StackPanel Spacing="4">
                 <TextBlock Text="{Binding Heading}"
-                           FontSize="18" FontWeight="SemiBold"/>
+                           FontSize="{DynamicResource Wit.Font.WindowTitle}" FontWeight="SemiBold"/>
                 <TextBlock Text="{DynamicResource S.Dialog.Trigger.NoAlter}"
-                           FontSize="12" Foreground="Gray"
+                           FontSize="{DynamicResource Wit.Font.Body}" Foreground="Gray"
                            IsVisible="{Binding IsReplacing}"/>
             </StackPanel>
         </Border>
@@ -65,7 +65,7 @@
                              PlaceholderText="Total, Status"
                              FontFamily="Consolas,Courier New"/>
                     <TextBlock Text="{DynamicResource S.Dialog.Trigger.UpdateColumnsHint}"
-                               FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+                               FontSize="{DynamicResource Wit.Font.Control}" Foreground="Gray" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <StackPanel Spacing="6">
@@ -75,7 +75,7 @@
                              PlaceholderText="NEW.Total &gt; 100"
                              FontFamily="Consolas,Courier New"/>
                     <TextBlock Text="{DynamicResource S.Dialog.Trigger.ConditionHint}"
-                               FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+                               FontSize="{DynamicResource Wit.Font.Control}" Foreground="Gray" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <StackPanel Spacing="6">
@@ -85,11 +85,11 @@
                         <TextBox AutomationProperties.AutomationId="TriggerBody"
                                  Text="{Binding Body}"
                                  AcceptsReturn="True" TextWrapping="NoWrap"
-                                 FontFamily="Consolas,Courier New" FontSize="13"
+                                 FontFamily="Consolas,Courier New" FontSize="{DynamicResource Wit.Font.Mono.Sql}"
                                  Padding="8" BorderThickness="0" Background="Transparent"
                                  PlaceholderText="INSERT INTO OrdersAudit (OrderId) VALUES (NEW.Id);"/>
                     </Border>
-                    <TextBlock Text="{Binding LanguageNote}" FontSize="11" Foreground="Gray" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding LanguageNote}" FontSize="{DynamicResource Wit.Font.Control}" Foreground="Gray" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!-- What is wrong with it, before the engine is asked -->
@@ -110,7 +110,7 @@
                     <Border Background="{DynamicResource Wit.Surface.Panel}"
                             CornerRadius="4" Padding="8">
                         <TextBlock Text="{Binding GeneratedDdl}"
-                                   FontFamily="Consolas,Courier New" FontSize="12"
+                                   FontFamily="Consolas,Courier New" FontSize="{DynamicResource Wit.Font.Mono.Data}"
                                    TextWrapping="Wrap"/>
                     </Border>
                 </StackPanel>

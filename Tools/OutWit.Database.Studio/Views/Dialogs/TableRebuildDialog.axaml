@@ -23,8 +23,8 @@
                 Padding="16">
             <StackPanel Spacing="4">
                 <TextBlock Text="{Binding Heading}"
-                           FontSize="18" FontWeight="SemiBold"/>
-                <TextBlock Text="{Binding RowCountText}" FontSize="12" Foreground="Gray"/>
+                           FontSize="{DynamicResource Wit.Font.WindowTitle}" FontWeight="SemiBold"/>
+                <TextBlock Text="{Binding RowCountText}" FontSize="{DynamicResource Wit.Font.Body}" Foreground="Gray"/>
             </StackPanel>
         </Border>
 
@@ -41,12 +41,12 @@
                         <TextBlock Text="{Binding Summary}" TextWrapping="Wrap" FontWeight="SemiBold"/>
 
                         <StackPanel Spacing="4" IsVisible="{Binding HasRecovery}">
-                            <TextBlock Text="{DynamicResource S.Dialog.Rebuild.Recovery}" FontSize="12"/>
+                            <TextBlock Text="{DynamicResource S.Dialog.Rebuild.Recovery}" FontSize="{DynamicResource Wit.Font.Body}"/>
                             <ItemsControl ItemsSource="{Binding Recovery}">
                                 <ItemsControl.ItemTemplate>
                                     <DataTemplate>
                                         <TextBlock Text="{Binding}" TextWrapping="Wrap"
-                                                   FontFamily="Consolas,Courier New" FontSize="11"/>
+                                                   FontFamily="Consolas,Courier New" FontSize="{DynamicResource Wit.Font.Mono.Data}"/>
                                     </DataTemplate>
                                 </ItemsControl.ItemTemplate>
                             </ItemsControl>
@@ -84,13 +84,13 @@
                                     <StackPanel Grid.Column="1" Spacing="4">
                                         <TextBlock Text="{Binding Title}" TextWrapping="Wrap"/>
                                         <TextBlock Text="{Binding Sql}"
-                                                   FontFamily="Consolas,Courier New" FontSize="11"
+                                                   FontFamily="Consolas,Courier New" FontSize="{DynamicResource Wit.Font.Mono.Data}"
                                                    Foreground="Gray" TextWrapping="Wrap"
                                                    IsVisible="{Binding $parent[Window].((vm:TableRebuildViewModel)DataContext).IsScriptVisible}"/>
                                     </StackPanel>
 
                                     <TextBlock Grid.Column="2" Text="{Binding State}"
-                                               FontSize="11" Foreground="Gray" VerticalAlignment="Top"/>
+                                               FontSize="{DynamicResource Wit.Font.Control}" Foreground="Gray" VerticalAlignment="Top"/>
                                 </Grid>
                             </Border>
                         </DataTemplate>

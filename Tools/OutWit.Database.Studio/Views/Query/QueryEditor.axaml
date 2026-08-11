@@ -46,7 +46,7 @@
                                     AutomationProperties.AutomationId="SearchClose"
                                     AutomationProperties.Name="{DynamicResource S.Search.Close}"
                                     ToolTip.Tip="{DynamicResource S.Search.Close}"
-                                    Height="24" Padding="7,0" FontSize="11" Margin="6,0,0,0"
+                                    Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="7,0" Margin="6,0,0,0"
                                     Content="✕"
                                     Command="{Binding Search.CloseCommand}"/>
 
@@ -54,12 +54,12 @@
                                  a single row is a promise this band cannot keep in every one. -->
                             <WrapPanel Orientation="Horizontal" ItemSpacing="6" LineSpacing="4">
                             <PathIcon Data="{x:Static ui:StudioIcons.COMMON_SEARCH}"
-                                      Width="12" Height="12" VerticalAlignment="Center"/>
+                                      Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}" VerticalAlignment="Center"/>
 
                             <TextBox Name="SearchTerm"
                                      AutomationProperties.AutomationId="SearchTerm"
                                      AutomationProperties.Name="{DynamicResource S.Search.Find}"
-                                     Width="160" Height="24" Padding="6,2" FontSize="12"
+                                     Width="160" Height="{DynamicResource Wit.Height.Field}" Padding="6,2"
                                      Watermark="{DynamicResource S.Search.FindPlaceholder}"
                                      Text="{Binding Search.Term, Mode=TwoWay}"/>
 
@@ -67,7 +67,7 @@
                                           AutomationProperties.AutomationId="SearchMatchCase"
                                           AutomationProperties.Name="{DynamicResource S.Search.MatchCase}"
                                           ToolTip.Tip="{DynamicResource S.Search.MatchCase}"
-                                          Height="24" Padding="7,0" FontSize="11"
+                                          Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="7,0"
                                           Content="Aa"
                                           IsChecked="{Binding Search.MatchCase, Mode=TwoWay}"/>
 
@@ -75,7 +75,7 @@
                                           AutomationProperties.AutomationId="SearchRegex"
                                           AutomationProperties.Name="{DynamicResource S.Search.Regex}"
                                           ToolTip.Tip="{DynamicResource S.Search.Regex}"
-                                          Height="24" Padding="7,0" FontSize="11"
+                                          Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="7,0"
                                           Content=".*"
                                           IsChecked="{Binding Search.UseRegex, Mode=TwoWay}"/>
 
@@ -83,14 +83,14 @@
                                           AutomationProperties.AutomationId="SearchWholeWord"
                                           AutomationProperties.Name="{DynamicResource S.Search.WholeWord}"
                                           ToolTip.Tip="{DynamicResource S.Search.WholeWord}"
-                                          Height="24" Padding="7,0" FontSize="11"
+                                          Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="7,0"
                                           Content="{DynamicResource S.Search.WholeWordShort}"
                                           IsChecked="{Binding Search.WholeWord, Mode=TwoWay}"/>
 
                             <!-- Where we are, in words. The highlight alone cannot say "2 of 5". -->
                             <TextBlock Name="SearchSummary"
                                        AutomationProperties.AutomationId="SearchSummary"
-                                       VerticalAlignment="Center" FontSize="11" Opacity="0.75"
+                                       VerticalAlignment="Center" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.75"
                                        MinWidth="70"
                                        Text="{Binding Search.Summary}"/>
 
@@ -98,31 +98,30 @@
                                     AutomationProperties.AutomationId="SearchPrevious"
                                     AutomationProperties.Name="{DynamicResource S.Search.Previous}"
                                     ToolTip.Tip="{DynamicResource S.Search.Previous}"
-                                    Height="24" Padding="7,0"
+                                    Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="7,0"
                                     Command="{Binding Search.FindPreviousCommand}">
-                                <PathIcon Data="{x:Static ui:StudioIcons.ARROW_UP}" Width="10" Height="10"/>
+                                <PathIcon Data="{x:Static ui:StudioIcons.ARROW_UP}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
                             </Button>
 
                             <Button Name="SearchNext"
                                     AutomationProperties.AutomationId="SearchNext"
                                     AutomationProperties.Name="{DynamicResource S.Search.Next}"
                                     ToolTip.Tip="{DynamicResource S.Search.Next}"
-                                    Height="24" Padding="7,0"
+                                    Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="7,0"
                                     Command="{Binding Search.FindNextCommand}">
-                                <PathIcon Data="{x:Static ui:StudioIcons.ARROW_DOWN}" Width="10" Height="10"/>
+                                <PathIcon Data="{x:Static ui:StudioIcons.ARROW_DOWN}" Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"/>
                             </Button>
 
                             <CheckBox Name="SearchInSelection"
                                       AutomationProperties.AutomationId="SearchInSelection"
-                                      AutomationProperties.Name="{DynamicResource S.Search.InSelection}"
-                                      FontSize="11" VerticalAlignment="Center"
+                                      AutomationProperties.Name="{DynamicResource S.Search.InSelection}" VerticalAlignment="Center"
                                       Content="{DynamicResource S.Search.InSelection}"
                                       IsChecked="{Binding Search.InSelection, Mode=TwoWay}"/>
 
                             <Button Name="SearchShowReplace"
                                     AutomationProperties.AutomationId="SearchShowReplace"
                                     AutomationProperties.Name="{DynamicResource S.Search.ShowReplace}"
-                                    Height="24" Padding="8,0" FontSize="11"
+                                    Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="8,0"
                                     Content="{DynamicResource S.Search.Replace}"
                                     IsVisible="{Binding !Search.IsReplaceMode}"
                                     Command="{Binding Search.ToggleReplaceCommand}"/>
@@ -134,26 +133,26 @@
                         <StackPanel Orientation="Horizontal" Spacing="6"
                                     IsVisible="{Binding Search.IsReplaceMode}">
                             <PathIcon Data="{x:Static ui:StudioIcons.TAB_TABLE_EDIT}"
-                                      Width="12" Height="12" VerticalAlignment="Center"/>
+                                      Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}" VerticalAlignment="Center"/>
 
                             <TextBox Name="SearchReplacement"
                                      AutomationProperties.AutomationId="SearchReplacement"
                                      AutomationProperties.Name="{DynamicResource S.Search.ReplacePlaceholder}"
-                                     Width="190" Height="24" Padding="6,2" FontSize="12"
+                                     Width="190" Height="{DynamicResource Wit.Height.Field}" Padding="6,2"
                                      Watermark="{DynamicResource S.Search.ReplacePlaceholder}"
                                      Text="{Binding Search.Replacement, Mode=TwoWay}"/>
 
                             <Button Name="SearchReplaceOne"
                                     AutomationProperties.AutomationId="SearchReplaceOne"
                                     AutomationProperties.Name="{DynamicResource S.Search.ReplaceOne}"
-                                    Height="24" Padding="8,0" FontSize="11"
+                                    Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="8,0"
                                     Content="{DynamicResource S.Search.ReplaceOne}"
                                     Command="{Binding Search.ReplaceCommand}"/>
 
                             <Button Name="SearchReplaceAll"
                                     AutomationProperties.AutomationId="SearchReplaceAll"
                                     AutomationProperties.Name="{DynamicResource S.Search.ReplaceAll}"
-                                    Height="24" Padding="8,0" FontSize="11"
+                                    Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="8,0"
                                     Content="{DynamicResource S.Search.ReplaceAll}"
                                     Command="{Binding Search.ReplaceAllCommand}"/>
                         </StackPanel>
@@ -182,7 +181,7 @@
                         IsVisible="{Binding SyntaxErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                                  Width="13" Height="13" Foreground="{DynamicResource Wit.Error.Text}"/>
+                                  Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}" Foreground="{DynamicResource Wit.Error.Text}"/>
                         <!-- One catalogue entry, not three Runs. The message itself is the ENGINE's
                              and stays in its own words (WS-64); only the frame around it is Studio's. -->
                         <TextBlock Foreground="{DynamicResource Wit.Error.Text}" VerticalAlignment="Center">
@@ -225,39 +224,39 @@
                                           Command="{Binding CopyRowsCommand}"
                                           InputGesture="Ctrl+C">
                                     <MenuItem.Icon>
-                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="14" Height="14"/>
+                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem AutomationProperties.AutomationId="QueryEditorCopyWithHeaders" Header="{DynamicResource S.Query.Menu.CopyWithHeaders}"
                                           Command="{Binding CopyRowsAsCsvCommand}">
                                     <MenuItem.Icon>
-                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="14" Height="14"/>
+                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem AutomationProperties.AutomationId="QueryEditorCopyAsINSERT" Header="{DynamicResource S.Query.Menu.CopyAsInsert}"
                                           Command="{Binding CopyRowsAsInsertCommand}">
                                     <MenuItem.Icon>
-                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="14" Height="14"/>
+                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <Separator/>
                                 <MenuItem AutomationProperties.AutomationId="QueryEditorCopyAllRows" Header="{DynamicResource S.Query.Menu.CopyAllRows}"
                                           Command="{Binding CopyAllRowsCommand}">
                                     <MenuItem.Icon>
-                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="14" Height="14"/>
+                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <MenuItem AutomationProperties.AutomationId="QueryEditorCopyAllAsINSERT" Header="{DynamicResource S.Query.Menu.CopyAllAsInsert}"
                                           Command="{Binding CopyAllRowsAsInsertCommand}">
                                     <MenuItem.Icon>
-                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="14" Height="14"/>
+                                        <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                                 <Separator/>
                                 <MenuItem AutomationProperties.AutomationId="QueryEditorExportResults" Header="{DynamicResource S.Query.Menu.ExportResults}"
                                           Command="{Binding ExportResultsCommand}">
                                     <MenuItem.Icon>
-                                        <PathIcon Data="{x:Static ui:StudioIcons.EXPORT}" Width="14" Height="14"/>
+                                        <PathIcon Data="{x:Static ui:StudioIcons.EXPORT}" Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
                             </ContextMenu>
@@ -298,17 +297,17 @@
                                         AutomationProperties.Name="{DynamicResource S.Query.CopyRows}"
                                         Command="{Binding CopyRowsCommand}"
                                         IsEnabled="{Binding CanCopyRows}"
-                                        Width="28" Height="28" Padding="0"
+                                        Width="28" Height="{DynamicResource Wit.Height.Button}" Padding="0"
                                         ToolTip.Tip="{DynamicResource S.Query.CopyRows.Tip}">
-                                    <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="14" Height="14"/>
+                                    <PathIcon Data="{x:Static ui:StudioIcons.COPY}" Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"/>
                                 </Button>
                                 <Button AutomationProperties.AutomationId="QueryEditorCopyAsINSERTStatements"
                                         AutomationProperties.Name="{DynamicResource S.Query.CopyAsInsert}"
                                         Command="{Binding CopyRowsAsInsertCommand}"
                                         IsEnabled="{Binding CanCopyRows}"
-                                        Width="28" Height="28" Padding="0"
+                                        Width="28" Height="{DynamicResource Wit.Height.Button}" Padding="0"
                                         ToolTip.Tip="{DynamicResource S.Query.CopyAsInsert}">
-                                    <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="14" Height="14"/>
+                                    <PathIcon Data="{x:Static ui:StudioIcons.COPY_AS_INSERT}" Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"/>
                                 </Button>
                             </StackPanel>
                         </StackPanel>
@@ -324,11 +323,11 @@
                                   Width="42" Height="42"
                                   Foreground="{DynamicResource Wit.Ink.Muted}"/>
                         <TextBlock Text="{DynamicResource S.Query.NoRows}"
-                                   FontSize="15"
+                                   FontSize="{DynamicResource Wit.Font.SectionTitle}"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                         <TextBlock Text="{DynamicResource S.Query.NoRows.Hint}"
-                                   FontSize="12"
+                                   FontSize="{DynamicResource Wit.Font.Body}"
                                    HorizontalAlignment="Center"
                                    Foreground="{DynamicResource Wit.Ink.Muted}"/>
                     </StackPanel>
@@ -378,7 +377,7 @@
                             <StackPanel Spacing="6">
                                 <StackPanel Orientation="Horizontal" Spacing="8">
                                     <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                                              Width="15" Height="15" Foreground="{DynamicResource Wit.Error.Text}"/>
+                                              Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}" Foreground="{DynamicResource Wit.Error.Text}"/>
                                     <TextBlock Text="{Binding ErrorMessage}"
                                                TextWrapping="Wrap"
                                                FontWeight="SemiBold"
@@ -408,7 +407,7 @@
                                     <SelectableTextBlock Text="{Binding ErrorDetail}"
                                                          TextWrapping="Wrap"
                                                          FontFamily="Consolas,monospace"
-                                                         FontSize="11"/>
+                                                         FontSize="{DynamicResource Wit.Font.Mono.Data}"/>
                                 </Expander>
                             </StackPanel>
                         </Border>
@@ -435,7 +434,7 @@
                             <!-- WS-28. Measured: this engine returns id, parent and detail and no
                                  numbers at all - so there is not even an estimate to label. -->
                             <TextBlock Grid.Column="1" Margin="10,0" VerticalAlignment="Center"
-                                       FontSize="11"
+                                       FontSize="{DynamicResource Wit.Font.Control}"
                                        TextTrimming="CharacterEllipsis"
                                        ToolTip.Tip="{DynamicResource S.Query.PlanNote}"
                                        Foreground="{DynamicResource Wit.Ink.Secondary}"
@@ -472,17 +471,17 @@
                                                 Background="{Binding Kind, Converter={x:Static conv:PlanConverters.KindBrush}}">
                                             <TextBlock Text="{Binding Operator}"
                                                        FontFamily="Consolas,monospace"
-                                                       FontSize="12"/>
+                                                       FontSize="{DynamicResource Wit.Font.Mono.Data}"/>
                                         </Border>
                                         <TextBlock Text="{Binding Columns}"
-                                                   FontSize="11"
+                                                   FontSize="{DynamicResource Wit.Font.Control}"
                                                    VerticalAlignment="Center"
                                                    TextTrimming="CharacterEllipsis"
                                                    MaxWidth="420"
                                                    Foreground="{DynamicResource Wit.Ink.Muted}"/>
                                     </StackPanel>
                                     <TextBlock Text="{Binding Warning}"
-                                               FontSize="11"
+                                               FontSize="{DynamicResource Wit.Font.Control}"
                                                TextWrapping="Wrap"
                                                MaxWidth="420"
                                                Margin="4,0,0,0"
@@ -534,9 +533,9 @@
                                 <StackPanel Spacing="2" Margin="0,3">
                                     <TextBlock Text="{Binding Text}"
                                                FontFamily="Consolas,monospace"
-                                               FontSize="12"
+                                               FontSize="{DynamicResource Wit.Font.Mono.Data}"
                                                TextTrimming="CharacterEllipsis"/>
-                                    <TextBlock FontSize="11"
+                                    <TextBlock FontSize="{DynamicResource Wit.Font.Control}"
                                                Foreground="{DynamicResource Wit.Ink.Secondary}">
                                         <TextBlock.Text>
                                             <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
@@ -563,7 +562,7 @@
 
                     <Border Grid.Row="2" Padding="8,4"
                             Background="{DynamicResource Wit.Surface.Panel}">
-                        <TextBlock FontSize="11"
+                        <TextBlock FontSize="{DynamicResource Wit.Font.Control}"
                                    Foreground="{DynamicResource Wit.Ink.Secondary}"
                                    Text="{DynamicResource S.Query.History.Note}"/>
                     </Border>

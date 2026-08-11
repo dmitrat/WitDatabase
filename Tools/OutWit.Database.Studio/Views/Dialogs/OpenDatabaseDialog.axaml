@@ -36,7 +36,7 @@
                                     Command="{Binding BrowseFolderCommand}"/>
                         </StackPanel>
                         <TextBlock Text="{DynamicResource S.Dialog.Open.PathHint}"
-                                   Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                                   Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
 
@@ -52,10 +52,10 @@
                         IsVisible="{Binding HasProbeBanner}">
                     <StackPanel x:Name="ProbeBanner" Spacing="4">
                         <TextBlock AutomationProperties.AutomationId="OpenDatabaseProbe"
-                                   Text="{Binding ProbeMessage}" TextWrapping="Wrap" FontSize="12"
+                                   Text="{Binding ProbeMessage}" TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Body}"
                                    IsVisible="{Binding ProbeMessage, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                         <TextBlock AutomationProperties.AutomationId="OpenDatabaseAlreadyOpen"
-                                   Text="{Binding AlreadyOpenNote}" TextWrapping="Wrap" FontSize="12"
+                                   Text="{Binding AlreadyOpenNote}" TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Body}"
                                    IsVisible="{Binding AlreadyOpenNote, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"/>
                     </StackPanel>
                 </Border>
@@ -103,7 +103,7 @@
                             </ListBox>
                         </StackPanel>
                         <TextBlock Text="{DynamicResource S.Dialog.Open.ColourHint}"
-                                   Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                                   Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
                     </StackPanel>
                 </Grid>
 
@@ -114,10 +114,10 @@
                      dozen and a half properties this window deliberately does not ask about; not
                      asking is a choice, hiding them is not. -->
                 <StackPanel Spacing="6" IsVisible="{Binding IsConnectionStringVisible}">
-                    <TextBlock Text="{DynamicResource S.Common.ConnectionString}" FontSize="11" Opacity="0.6"/>
+                    <TextBlock Text="{DynamicResource S.Common.ConnectionString}" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.6"/>
                     <TextBox AutomationProperties.AutomationId="OpenDatabaseConnectionStringBox"
                              Text="{Binding ConnectionString, Mode=TwoWay}"
-                             FontFamily="Consolas" FontSize="11"
+                             FontFamily="Consolas" FontSize="{DynamicResource Wit.Font.Mono.Data}"
                              TextWrapping="Wrap" AcceptsReturn="False"/>
                 </StackPanel>
 
@@ -129,7 +129,7 @@
                 Background="{DynamicResource Wit.Error.Surface}" BorderBrush="{DynamicResource Wit.Error.Border}" BorderThickness="1"
                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
             <TextBlock AutomationProperties.AutomationId="OpenDatabaseError"
-                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="12"/>
+                       Text="{Binding ErrorMessage}" TextWrapping="Wrap" FontSize="{DynamicResource Wit.Font.Body}"/>
         </Border>
 
         <Border Grid.Row="2" Padding="14,10"

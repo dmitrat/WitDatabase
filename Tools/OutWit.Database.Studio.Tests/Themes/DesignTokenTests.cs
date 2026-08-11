@@ -445,8 +445,23 @@ public class DesignTokenTests
             Assert.That(hex, Is.EqualTo(1), "hex colours written into a view");
             Assert.That(HexSites(), Is.EqualTo(new[] { "WorkspaceTabStrip.axaml:#22000000" }));
 
-            Assert.That(fontSize, Is.EqualTo(283), "font sizes written by hand");
-            Assert.That(height, Is.EqualTo(173), "heights written by hand");
+            // ZERO. Every size a view named is a step of the nine-step scale now, and 48 of them
+            // are gone rather than tokenised because the V2 control styles already provide them.
+            Assert.That(fontSize, Is.EqualTo(0), "font sizes written by hand");
+
+            // NOT zero, and it should not be. What is left is not on the canon's metric table:
+            // window sizes, the boxes of decorative blocks, a progress bar, a splitter, two
+            // empty-state glyphs drawn at 36 and 42 and a multi-line editing region. The table
+            // measures ROWS and CONTROLS - a titlebar, a tab, a tree row, a field - and every one
+            // of those is on a token. Asserting zero here would mean inventing metrics the canon
+            // does not have, which is the failure mode a lint invites.
+            Assert.That(height, Is.EqualTo(68), "heights written by hand");
+            Assert.That(HeightSiteKinds(), Is.EqualTo(new[]
+            {
+                "Border:23", "Button:1", "DataGrid:2", "Ellipse:1", "Grid:2", "GridSplitter:1",
+                "ListBox:1", "PathIcon:2", "ProgressBar:4", "ScrollViewer:3", "TextBox:1",
+                "Window:27",
+            }));
         });
     }
 
@@ -458,6 +473,42 @@ public class DesignTokenTests
     /// while an old one is removed cannot pass, which is the direction a bare count is blind in.
     /// </para>
     /// </summary>
+    /// <summary>
+    /// The remaining heights by the ELEMENT that carries them, which is the only form in which the
+    /// remainder can be read as a decision rather than as a number.
+    ///
+    /// <para>
+    /// A count of 68 says nothing; "27 of them are windows and 23 are decorative blocks" says that
+    /// the metric table has been applied and that what is left is outside it. The direction this
+    /// catches is a <c>Button</c> or a <c>TabItem</c> reappearing in the list.
+    /// </para>
+    /// </summary>
+    private static string[] HeightSiteKinds()
+    {
+        var tag = new Regex(@"<([A-Za-z][\w.:]*)", RegexOptions.Compiled);
+        var kinds = new List<string>();
+
+        foreach (var file in MarkupFiles().Where(f => f.Contains("Views")))
+        {
+            var text = File.ReadAllText(file);
+
+            foreach (Match match in Regex.Matches(text, @"\b(?:Min|Max)?Height=""[0-9.]+"""))
+            {
+                // walk back to the opening tag this attribute belongs to
+                var start = text.LastIndexOf('<', match.Index);
+                while (start >= 0 && !tag.Match(text, start).Success)
+                    start = text.LastIndexOf('<', start - 1);
+
+                kinds.Add(start < 0 ? "?" : tag.Match(text, start).Groups[1].Value);
+            }
+        }
+
+        return kinds.GroupBy(k => k)
+            .Select(g => $"{g.Key}:{g.Count()}")
+            .OrderBy(s => s, StringComparer.Ordinal)
+            .ToArray();
+    }
+
     private static string[] HexSites() =>
         MarkupFiles()
             .Where(f => f.Contains("Views"))

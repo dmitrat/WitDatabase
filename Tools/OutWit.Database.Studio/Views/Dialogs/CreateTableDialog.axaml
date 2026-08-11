@@ -21,7 +21,7 @@
                 BorderThickness="0,0,0,1"
                 Padding="16">
             <TextBlock Text="{DynamicResource S.Dialog.CreateTable.Heading}"
-                       FontSize="18"
+                       FontSize="{DynamicResource Wit.Font.WindowTitle}"
                        FontWeight="SemiBold"/>
         </Border>
 
@@ -223,14 +223,14 @@
                         Background="White"
                         CornerRadius="24">
                     <TextBlock Text="..."
-                               FontSize="24"
+                               FontSize="{DynamicResource Wit.Font.WindowTitle}"
                                Foreground="Black"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
                 </Border>
                 <TextBlock Text="{DynamicResource S.Dialog.CreateTable.Creating}"
                            Foreground="White"
-                           FontSize="16"
+                           FontSize="{DynamicResource Wit.Font.SectionTitle}"
                            HorizontalAlignment="Center"/>
             </StackPanel>
         </Border>

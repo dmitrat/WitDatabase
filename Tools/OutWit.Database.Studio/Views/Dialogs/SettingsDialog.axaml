@@ -23,7 +23,7 @@
                 BorderBrush="{DynamicResource Wit.Line.Inner}" BorderThickness="0,0,1,0">
             <DockPanel Margin="8,10">
                 <StackPanel DockPanel.Dock="Bottom" Margin="8,10,8,4" Spacing="2">
-                    <TextBlock FontFamily="Consolas" FontSize="10" Opacity="0.6">
+                    <TextBlock FontFamily="Consolas" FontSize="{DynamicResource Wit.Font.Mono.Label}" Opacity="0.6">
                         <TextBlock.Text>
                             <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                 <DynamicResource ResourceKey="S.Settings.About.StudioVersion"/>
@@ -31,7 +31,7 @@
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>
-                    <TextBlock FontFamily="Consolas" FontSize="10" Opacity="0.6">
+                    <TextBlock FontFamily="Consolas" FontSize="{DynamicResource Wit.Font.Mono.Label}" Opacity="0.6">
                         <TextBlock.Text>
                             <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                 <DynamicResource ResourceKey="S.Settings.About.EngineVersion"/>
@@ -72,10 +72,10 @@
 
                 <!-- GENERAL -->
                 <StackPanel Spacing="10" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsGeneral}}">
-                    <TextBlock Text="{DynamicResource S.Settings.General}" FontWeight="SemiBold" FontSize="14"/>
-                    <TextBlock Text="{DynamicResource S.Settings.General.Hint}" Opacity="0.6" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource S.Settings.General}" FontWeight="SemiBold" FontSize="{DynamicResource Wit.Font.SectionTitle}"/>
+                    <TextBlock Text="{DynamicResource S.Settings.General.Hint}" Opacity="0.6" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.LanguageAndLook}" FontSize="10" Opacity="0.55" Margin="0,8,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.LanguageAndLook}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,8,0,0"/>
 
                     <Grid ColumnDefinitions="150,*" Margin="0,2">
                         <TextBlock Grid.Column="0" Text="{DynamicResource S.Settings.Language}" VerticalAlignment="Center"/>
@@ -86,7 +86,7 @@
                                   DisplayMemberBinding="{Binding NativeName}"
                                   Width="220" HorizontalAlignment="Left"/>
                     </Grid>
-                    <TextBlock Text="{DynamicResource S.Settings.Language.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Language.Hint}" Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
 
                     <Grid ColumnDefinitions="150,*" Margin="0,2">
                         <TextBlock Grid.Column="0" Text="{DynamicResource S.Settings.Theme}" VerticalAlignment="Center"/>
@@ -112,10 +112,10 @@
                         </ComboBox>
                     </Grid>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.AtStartup}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.AtStartup}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <CheckBox Content="{DynamicResource S.Settings.CheckForUpdates}" IsChecked="{Binding Values.CheckForUpdates}"/>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.Recent}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Recent}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="{DynamicResource S.Settings.RememberHowMany}" VerticalAlignment="Center" Width="140"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsRecentCount"
@@ -129,10 +129,10 @@
 
                 <!-- EDITOR -->
                 <StackPanel Spacing="10" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsEditor}}">
-                    <TextBlock Text="{DynamicResource S.Settings.Editor}" FontWeight="SemiBold" FontSize="14"/>
-                    <TextBlock Text="{DynamicResource S.Settings.Editor.Hint}" Opacity="0.6" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Editor}" FontWeight="SemiBold" FontSize="{DynamicResource Wit.Font.SectionTitle}"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Editor.Hint}" Opacity="0.6" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.Look}" FontSize="10" Opacity="0.55" Margin="0,8,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Look}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,8,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="{DynamicResource S.Settings.Font}" VerticalAlignment="Center" Width="140"/>
                         <TextBox AutomationProperties.AutomationId="SettingsFontFamily"
@@ -144,7 +144,7 @@
                     <CheckBox Content="{DynamicResource S.Settings.LineNumbers}" IsChecked="{Binding Values.ShowLineNumbers}"/>
                     <CheckBox Content="{DynamicResource S.Settings.Whitespace}" IsChecked="{Binding Values.ShowWhitespace}"/>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.Hints}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Hints}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <CheckBox Content="{DynamicResource S.Settings.CompleteAsYouType}" IsChecked="{Binding Values.CompleteAsYouType}"/>
                     <CheckBox Content="{DynamicResource S.Settings.CheckSyntax}" IsChecked="{Binding Values.CheckSyntaxAsYouType}"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
@@ -154,7 +154,7 @@
                                   SelectedItem="{Binding Values.KeywordCase}" Width="140"/>
                     </StackPanel>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.Execution}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Execution}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="{DynamicResource S.Settings.RowLimit}" VerticalAlignment="Center" Width="140"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsRowLimit"
@@ -165,10 +165,10 @@
 
                 <!-- DATA -->
                 <StackPanel Spacing="10" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsData}}">
-                    <TextBlock Text="{DynamicResource S.Settings.Data}" FontWeight="SemiBold" FontSize="14"/>
-                    <TextBlock Text="{DynamicResource S.Settings.Data.Hint}" Opacity="0.6" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Data}" FontWeight="SemiBold" FontSize="{DynamicResource Wit.Font.SectionTitle}"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Data.Hint}" Opacity="0.6" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.Formats}" FontSize="10" Opacity="0.55" Margin="0,8,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Formats}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,8,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="{DynamicResource S.Settings.DateTime}" VerticalAlignment="Center" Width="140"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsDateFormat"
@@ -181,7 +181,7 @@
                                   ItemsSource="{Binding NumberFormats}"
                                   SelectedItem="{Binding Values.NumberFormat}" Width="140"/>
                     </StackPanel>
-                    <TextBlock Text="{DynamicResource S.Settings.Formats.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Formats.Hint}" Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="{DynamicResource S.Settings.Binary}" VerticalAlignment="Center" Width="140"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsBinaryDisplay"
@@ -189,7 +189,7 @@
                                   SelectedItem="{Binding Values.BinaryDisplay}" Width="140"/>
                     </StackPanel>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.Grid}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Grid}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="{DynamicResource S.Settings.PageSize}" VerticalAlignment="Center" Width="140"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsPageSize"
@@ -199,7 +199,7 @@
                     <CheckBox Content="{DynamicResource S.Settings.CountRows}" IsChecked="{Binding Values.CountRowsAutomatically}"/>
 
                     <!-- WS-67: the catalogue of every modal question the product asks. -->
-                    <TextBlock Text="{DynamicResource S.Settings.Group.AskBefore}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.AskBefore}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <CheckBox Content="{DynamicResource S.Settings.AskClosingEditedTab}" IsChecked="{Binding Values.AskBeforeClosingEditedTab}"/>
                     <CheckBox Content="{DynamicResource S.Settings.AskDroppingObject}" IsChecked="{Binding Values.AskBeforeDroppingObject}"/>
                     <CheckBox Content="{DynamicResource S.Settings.AskUnfilteredWrite}" IsChecked="{Binding Values.AskBeforeUnfilteredWrite}"/>
@@ -208,18 +208,18 @@
 
                 <!-- DIAGNOSTICS -->
                 <StackPanel Spacing="10" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsDiagnostics}}">
-                    <TextBlock Text="{DynamicResource S.Settings.Diagnostics}" FontWeight="SemiBold" FontSize="14"/>
-                    <TextBlock Text="{DynamicResource S.Settings.Diagnostics.Hint}" Opacity="0.6" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Diagnostics}" FontWeight="SemiBold" FontSize="{DynamicResource Wit.Font.SectionTitle}"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Diagnostics.Hint}" Opacity="0.6" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.Log}" FontSize="10" Opacity="0.55" Margin="0,8,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Log}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,8,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
                         <TextBlock Text="{DynamicResource S.Settings.LogLevel}" VerticalAlignment="Center" Width="140"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsLogLevel"
                                   ItemsSource="{Binding LogLevels}"
                                   SelectedItem="{Binding Values.LogLevel}" Width="140"/>
                     </StackPanel>
-                    <TextBlock Text="{DynamicResource S.Settings.LogLevel.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
-                    <TextBlock Text="{Binding LogFilePath}" FontFamily="Consolas" FontSize="11" TextWrapping="Wrap" Opacity="0.75"/>
+                    <TextBlock Text="{DynamicResource S.Settings.LogLevel.Hint}" Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
+                    <TextBlock Text="{Binding LogFilePath}" FontFamily="Consolas" FontSize="{DynamicResource Wit.Font.Mono.Data}" TextWrapping="Wrap" Opacity="0.75"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button AutomationProperties.AutomationId="SettingsOpenLogFolder"
                                 Content="{DynamicResource S.Settings.OpenLogFolder}" Command="{Binding OpenLogFolderCommand}"/>
@@ -227,7 +227,7 @@
                                 Content="{DynamicResource S.Settings.OpenLastLog}" Command="{Binding OpenLastLogCommand}"/>
                     </StackPanel>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.Facts}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Facts}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <Grid ColumnDefinitions="180,*">
                         <TextBlock Grid.Column="0" Text="{DynamicResource S.Settings.FileFormat}" Opacity="0.7"/>
                         <TextBlock Grid.Column="1" Text="{Binding FileFormatVersion}" FontFamily="Consolas"/>
@@ -235,22 +235,22 @@
                     <Grid ColumnDefinitions="180,*">
                         <TextBlock Grid.Column="0" Text="{DynamicResource S.Settings.SettingsPath}" Opacity="0.7"/>
                         <TextBlock Grid.Column="1" Text="{Binding SettingsFilePath}" FontFamily="Consolas"
-                                   FontSize="11" TextWrapping="Wrap"/>
+                                   FontSize="{DynamicResource Wit.Font.Mono.Data}" TextWrapping="Wrap"/>
                     </Grid>
 
-                    <TextBlock Text="{DynamicResource S.Settings.Group.Reset}" FontSize="10" Opacity="0.55" Margin="0,10,0,0"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Group.Reset}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <Button AutomationProperties.AutomationId="SettingsReset"
                                 Content="{DynamicResource S.Settings.Reset}" Command="{Binding ResetSettingsCommand}"/>
                         <Button AutomationProperties.AutomationId="SettingsClearHistory"
                                 Content="{DynamicResource S.Settings.ClearHistory}" Command="{Binding ClearHistoryCommand}"/>
                     </StackPanel>
-                    <TextBlock Text="{DynamicResource S.Settings.Reset.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource S.Settings.Reset.Hint}" Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
                 </StackPanel>
 
                 <!-- ABOUT: a section, not a window (WS-53). -->
                 <StackPanel Spacing="8" IsVisible="{Binding SelectedSection, Converter={x:Static conv:SettingsSection.IsAbout}}">
-                    <TextBlock Text="WitDatabase Studio" FontWeight="SemiBold" FontSize="16"/>
+                    <TextBlock Text="WitDatabase Studio" FontWeight="SemiBold" FontSize="{DynamicResource Wit.Font.SectionTitle}"/>
                     <TextBlock Text="{Binding StudioVersion}" FontFamily="Consolas" Opacity="0.7"/>
 
                     <Grid ColumnDefinitions="180,*" Margin="0,10,0,0">
@@ -278,7 +278,7 @@
                         <Button AutomationProperties.AutomationId="SettingsSources"
                                 Content="{DynamicResource S.About.Sources}" Command="{Binding OpenSourcesCommand}"/>
                     </StackPanel>
-                    <TextBlock Text="{DynamicResource S.About.CopyDetails.Hint}" Opacity="0.55" FontSize="11" TextWrapping="Wrap"/>
+                    <TextBlock Text="{DynamicResource S.About.CopyDetails.Hint}" Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
                 </StackPanel>
 
             </StackPanel>

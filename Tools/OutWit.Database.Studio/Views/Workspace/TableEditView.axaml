@@ -23,11 +23,11 @@
                 AutomationProperties.AutomationId="TableEditReadOnlyBanner">
             <StackPanel Orientation="Horizontal" Spacing="8">
                 <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                          Width="14" Height="14"
+                          Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"
                           Foreground="{DynamicResource Wit.Warn.Text}"
                           VerticalAlignment="Center"/>
                 <TextBlock Text="{Binding ReadOnlyReason}"
-                           FontSize="12"
+                           FontSize="{DynamicResource Wit.Font.Body}"
                            TextWrapping="Wrap"
                            Foreground="{DynamicResource Wit.Warn.Text}"
                            VerticalAlignment="Center"/>
@@ -45,11 +45,11 @@
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="16" VerticalAlignment="Center">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
-                                  Width="16" Height="16"
+                                  Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"
                                   Foreground="{DynamicResource Wit.Accent.Text}"/>
                         <TextBlock Text="{Binding TableName}"
                                    FontWeight="SemiBold"
-                                   FontSize="14"
+                                   FontSize="{DynamicResource Wit.Font.SectionTitle}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                     
@@ -74,10 +74,10 @@
                             IsVisible="{Binding HasChanges}">
                         <StackPanel Orientation="Horizontal" Spacing="4">
                             <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                                      Width="12" Height="12"
+                                      Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"
                                       Foreground="{DynamicResource Wit.Warn.Text}"/>
                             <TextBlock Text="{DynamicResource S.Dialog.Unsaved.Title}"
-                                       FontSize="12"
+                                       FontSize="{DynamicResource Wit.Font.Body}"
                                        Foreground="{DynamicResource Wit.Warn.Text}"/>
                         </StackPanel>
                     </Border>
@@ -90,13 +90,13 @@
                     <Button AutomationProperties.AutomationId="TableEditPreviousPage" AutomationProperties.Name="{DynamicResource S.Grid.PrevPage}" Command="{Binding PreviousPageCommand}"
                             IsEnabled="{Binding CanGoToPreviousPage}"
                             ToolTip.Tip="{DynamicResource S.Grid.PrevPage}"
-                            Height="32" MinWidth="32"
+                            Height="{DynamicResource Wit.Height.Button}" MinWidth="32"
                             Padding="8,0"
                             Content="&lt;"/>
 
                     <TextBlock VerticalAlignment="Center"
                                Foreground="Gray"
-                               FontSize="12"
+                               FontSize="{DynamicResource Wit.Font.Body}"
                                ToolTip.Tip="{Binding PagingNote}">
                         <Run Text="{DynamicResource S.Grid.PageLabel}"/>
                         <Run Text="{Binding PageIndex}"/>
@@ -105,7 +105,7 @@
                     <Button AutomationProperties.AutomationId="TableEditNextPage" AutomationProperties.Name="{DynamicResource S.Grid.NextPage}" Command="{Binding NextPageCommand}"
                             IsEnabled="{Binding CanGoToNextPage}"
                             ToolTip.Tip="{DynamicResource S.Grid.NextPage}"
-                            Height="32" MinWidth="32"
+                            Height="{DynamicResource Wit.Height.Button}" MinWidth="32"
                             Padding="8,0"
                             Content="&gt;"/>
 
@@ -116,10 +116,10 @@
                     <Button AutomationProperties.AutomationId="TableEditRefreshData" AutomationProperties.Name="{DynamicResource S.Grid.Refresh}" Command="{Binding RefreshCommand}"
                             IsEnabled="{Binding CanRefresh}"
                             ToolTip.Tip="{DynamicResource S.Grid.Refresh}"
-                            Width="32" Height="32"
+                            Width="32" Height="{DynamicResource Wit.Height.Button}"
                             Padding="0">
                         <PathIcon Data="{x:Static ui:StudioIcons.TABLE_STRUCTURE_REFRESH}"
-                                  Width="16" Height="16"/>
+                                  Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"/>
                     </Button>
 
                     <Rectangle Width="1"
@@ -129,19 +129,19 @@
                     <Button AutomationProperties.AutomationId="TableEditAddNewRow" AutomationProperties.Name="{DynamicResource S.Grid.AddRow}" Command="{Binding AddRowCommand}"
                             IsEnabled="{Binding CanAddRow}"
                             ToolTip.Tip="{DynamicResource S.Grid.AddRow}"
-                            Width="32" Height="32"
+                            Width="32" Height="{DynamicResource Wit.Height.Button}"
                             Padding="0">
                         <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_ADD_ROW}"
-                                  Width="16" Height="16"/>
+                                  Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"/>
                     </Button>
 
                     <Button AutomationProperties.AutomationId="TableEditDeleteSelectedRow" AutomationProperties.Name="{DynamicResource S.Grid.DeleteRow}" Command="{Binding DeleteRowCommand}"
                             IsEnabled="{Binding CanDeleteRow}"
                             ToolTip.Tip="{DynamicResource S.Grid.DeleteRow}"
-                            Width="32" Height="32"
+                            Width="32" Height="{DynamicResource Wit.Height.Button}"
                             Padding="0">
                         <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_DELETE_ROW}"
-                                  Width="16" Height="16"/>
+                                  Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"/>
                     </Button>
 
                     <Rectangle Width="1"
@@ -151,20 +151,20 @@
                     <Button AutomationProperties.AutomationId="TableEditCommitChanges" AutomationProperties.Name="{DynamicResource S.Grid.Commit}" Command="{Binding CommitCommand}"
                             IsEnabled="{Binding CanCommit}"
                             ToolTip.Tip="{DynamicResource S.Grid.Commit}"
-                            Width="32" Height="32"
+                            Width="32" Height="{DynamicResource Wit.Height.Button}"
                             Padding="0"
                             Classes="accent">
                         <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_COMMIT}"
-                                  Width="16" Height="16"/>
+                                  Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"/>
                     </Button>
 
                     <Button AutomationProperties.AutomationId="TableEditDiscardChanges" AutomationProperties.Name="{DynamicResource S.Grid.Discard}" Command="{Binding RollbackCommand}"
                             IsEnabled="{Binding CanRollback}"
                             ToolTip.Tip="{DynamicResource S.Grid.Discard}"
-                            Width="32" Height="32"
+                            Width="32" Height="{DynamicResource Wit.Height.Button}"
                             Padding="0">
                         <PathIcon Data="{x:Static ui:StudioIcons.TABLE_EDITOR_ROLLBACK}"
-                                  Width="16" Height="16"/>
+                                  Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"/>
                     </Button>
 
                     <!-- WS-32, the other direction: what the buffer will send, BEFORE it is sent -
@@ -174,7 +174,7 @@
                             Command="{Binding ShowChangesSqlCommand}"
                             IsEnabled="{Binding HasChanges}"
                             ToolTip.Tip="{DynamicResource S.Grid.ShowChangesSql.Tip}"
-                            Height="32" Padding="10,0" FontSize="12"
+                            Height="{DynamicResource Wit.Height.Button}" Padding="10,0"
                             Content="SQL"/>
                 </StackPanel>
             </Grid>
@@ -201,12 +201,11 @@
                             <DataTemplate x:DataType="models:ColumnFilter">
                                 <StackPanel Orientation="Horizontal" Spacing="3" VerticalAlignment="Center">
                                     <TextBlock Text="{Binding Column}"
-                                               FontSize="11"
+                                               FontSize="{DynamicResource Wit.Font.Control}"
                                                VerticalAlignment="Center"
                                                Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                                     <TextBox Text="{Binding Text, Mode=TwoWay}"
-                                             Width="110" Height="24"
-                                             FontSize="11"
+                                             Width="110" Height="{DynamicResource Wit.Height.Field}"
                                              Padding="4,0"
                                              VerticalContentAlignment="Center"
                                              PlaceholderText="{DynamicResource S.Grid.Filter}"/>
@@ -219,12 +218,12 @@
                 <Button Grid.Column="1" Margin="6,0,0,0"
                         AutomationProperties.AutomationId="TableEditApplyFilters"
                         AutomationProperties.Name="{DynamicResource S.Grid.ApplyFilters}"
-                        Content="{DynamicResource S.Grid.FilterButton}" Height="24" Padding="10,0" FontSize="11"
+                        Content="{DynamicResource S.Grid.FilterButton}" Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0"
                         Command="{Binding ApplyFiltersCommand}"/>
                 <Button Grid.Column="2" Margin="4,0,0,0"
                         AutomationProperties.AutomationId="TableEditClearFilters"
                         AutomationProperties.Name="{DynamicResource S.Grid.ClearFilters}"
-                        Content="{DynamicResource S.Toolbar.Clear}" Height="24" Padding="10,0" FontSize="11"
+                        Content="{DynamicResource S.Toolbar.Clear}" Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0"
                         Command="{Binding ClearFiltersCommand}"/>
             </Grid>
         </Border>
@@ -239,14 +238,14 @@
                 AutomationProperties.AutomationId="TableEditConflictBanner">
             <StackPanel Spacing="6">
                 <TextBlock Text="{Binding ConflictSummary}"
-                           FontSize="12" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}"/>
+                           FontSize="{DynamicResource Wit.Font.Body}" TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}"/>
 
                 <ItemsControl ItemsSource="{Binding ConflictColumns}">
                     <ItemsControl.ItemTemplate>
                         <DataTemplate x:DataType="models:ConflictedValue">
                             <Grid ColumnDefinitions="140,*,*" Margin="0,1">
-                                <TextBlock Grid.Column="0" Text="{Binding Column}" FontSize="11" FontWeight="SemiBold"/>
-                                <TextBlock Grid.Column="1" FontSize="11" FontFamily="Consolas,monospace">
+                                <TextBlock Grid.Column="0" Text="{Binding Column}" FontSize="{DynamicResource Wit.Font.Control}" FontWeight="SemiBold"/>
+                                <TextBlock Grid.Column="1" FontSize="{DynamicResource Wit.Font.Mono.Data}" FontFamily="Consolas,monospace">
                                     <TextBlock.Text>
                                         <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                             <DynamicResource ResourceKey="S.Grid.Conflict.Mine"/>
@@ -254,7 +253,7 @@
                                         </MultiBinding>
                                     </TextBlock.Text>
                                 </TextBlock>
-                                <TextBlock Grid.Column="2" FontSize="11" FontFamily="Consolas,monospace">
+                                <TextBlock Grid.Column="2" FontSize="{DynamicResource Wit.Font.Mono.Data}" FontFamily="Consolas,monospace">
                                     <TextBlock.Text>
                                         <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                             <DynamicResource ResourceKey="S.Grid.Conflict.Theirs"/>
@@ -270,11 +269,11 @@
                 <StackPanel Orientation="Horizontal" Spacing="6">
                     <Button AutomationProperties.AutomationId="TableEditReread"
                             AutomationProperties.Name="{DynamicResource S.Grid.Reread.Name}"
-                            Content="{DynamicResource S.Grid.Reread}" Height="24" Padding="10,0" FontSize="11"
+                            Content="{DynamicResource S.Grid.Reread}" Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0"
                             Command="{Binding RereadCommand}"/>
                     <Button AutomationProperties.AutomationId="TableEditOverwrite"
                             AutomationProperties.Name="{DynamicResource S.Grid.Overwrite.Name}"
-                            Content="{DynamicResource S.Grid.Overwrite}" Height="24" Padding="10,0" FontSize="11"
+                            Content="{DynamicResource S.Grid.Overwrite}" Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0"
                             Command="{Binding OverwriteCommand}"/>
                 </StackPanel>
             </StackPanel>
@@ -297,10 +296,10 @@
             <StackPanel HorizontalAlignment="Center" VerticalAlignment="Center" Spacing="8"
                         IsVisible="{Binding IsEmptyByFilter}">
                 <TextBlock Text="{DynamicResource S.Grid.NoMatches}"
-                           FontSize="15" HorizontalAlignment="Center"
+                           FontSize="{DynamicResource Wit.Font.SectionTitle}" HorizontalAlignment="Center"
                            Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                 <TextBlock Text="{Binding ViewDescription}"
-                           FontSize="12" HorizontalAlignment="Center" TextAlignment="Center"
+                           FontSize="{DynamicResource Wit.Font.Body}" HorizontalAlignment="Center" TextAlignment="Center"
                            MaxWidth="420" TextWrapping="Wrap"
                            Foreground="{DynamicResource Wit.Ink.Muted}"/>
                 <Button AutomationProperties.AutomationId="TableEditClearFiltersEmpty"
@@ -319,7 +318,7 @@
                             Background="White"
                             CornerRadius="16">
                         <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"
-                                  Width="16" Height="16"
+                                  Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"
                                   Foreground="{DynamicResource Wit.Accent.Text}"/>
                     </Border>
                     <TextBlock Text="{DynamicResource S.Grid.Loading}"
@@ -341,7 +340,7 @@
                      read as "page0 ·12rows shown". One bound string per fact instead. -->
                 <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="4" VerticalAlignment="Center"
                             AutomationProperties.AutomationId="TableEditPageSummary">
-                    <TextBlock FontSize="11" VerticalAlignment="Center">
+                    <TextBlock FontSize="{DynamicResource Wit.Font.Control}" VerticalAlignment="Center">
                         <TextBlock.Text>
                             <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                 <DynamicResource ResourceKey="S.Grid.Page"/>
@@ -349,8 +348,8 @@
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>
-                    <TextBlock Text="·" FontSize="11" Opacity="0.5" VerticalAlignment="Center"/>
-                    <TextBlock FontSize="11" VerticalAlignment="Center">
+                    <TextBlock Text="·" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.5" VerticalAlignment="Center"/>
+                    <TextBlock FontSize="{DynamicResource Wit.Font.Control}" VerticalAlignment="Center">
                         <TextBlock.Text>
                             <MultiBinding Converter="{x:Static conv:LocalizedText.Plural}"
                                           ConverterParameter="Count.RowsShown">
@@ -363,18 +362,18 @@
 
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4" Margin="12,0"
                             VerticalAlignment="Center">
-                    <TextBlock Text="{DynamicResource S.Grid.Of}" FontSize="11" VerticalAlignment="Center" Opacity="0.7"/>
-                    <TextBlock Text="{Binding TotalRows, TargetNullValue='—'}" FontSize="11"
+                    <TextBlock Text="{DynamicResource S.Grid.Of}" FontSize="{DynamicResource Wit.Font.Control}" VerticalAlignment="Center" Opacity="0.7"/>
+                    <TextBlock Text="{Binding TotalRows, TargetNullValue='—'}" FontSize="{DynamicResource Wit.Font.Control}"
                                VerticalAlignment="Center"/>
                     <Button AutomationProperties.AutomationId="TableEditCountRows"
                             AutomationProperties.Name="{DynamicResource S.Grid.Count.Name}"
-                            Content="{DynamicResource S.Grid.Count}" Height="20" Padding="6,0" FontSize="10"
+                            Content="{DynamicResource S.Grid.Count}" Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="6,0"
                             IsVisible="{Binding TotalRows, Converter={x:Static ObjectConverters.IsNull}}"
                             Command="{Binding CountRowsCommand}"/>
                 </StackPanel>
 
                 <TextBlock Grid.Column="2" Margin="12,0" VerticalAlignment="Center"
-                           FontSize="11" Opacity="0.75"
+                           FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.75"
                            TextTrimming="CharacterEllipsis"
                            ToolTip.Tip="{Binding ViewDescription}"
                            Text="{Binding ViewDescription}"/>
@@ -384,13 +383,13 @@
                           AutomationProperties.Name="{DynamicResource S.Grid.PageSize}"
                           ItemsSource="{Binding PageSizes}"
                           SelectedItem="{Binding PageSize, Mode=TwoWay}"
-                          Height="24" FontSize="11" MinWidth="80"
+                          Height="{DynamicResource Wit.Height.Field}" MinWidth="80"
                           ToolTip.Tip="{DynamicResource S.Grid.PageSize.Tip}"/>
 
                 <Button Grid.Column="4" Margin="6,0,0,0"
                         AutomationProperties.AutomationId="TableEditShowSql"
                         AutomationProperties.Name="{DynamicResource S.Grid.ShowViewSql}"
-                        Content="{DynamicResource S.Common.ShowSql}" Height="24" Padding="10,0" FontSize="11"
+                        Content="{DynamicResource S.Common.ShowSql}" Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0"
                         ToolTip.Tip="{DynamicResource S.Grid.ShowViewSql.Tip}"
                         Command="{Binding ShowViewSqlCommand}"/>
             </Grid>
@@ -406,7 +405,7 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="M21,7L9,19L3.5,13.5L4.91,12.09L9,16.17L19.59,5.59L21,7Z"
-                                  Width="14" Height="14"
+                                  Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"
                                   Foreground="{DynamicResource Wit.Ok.Text}"/>
                         <TextBlock Text="{Binding StatusMessage}"
                                    Foreground="{DynamicResource Wit.Ok.Text}"
@@ -418,11 +417,11 @@
                                 Spacing="16">
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Commit}"
                                    Foreground="{DynamicResource Wit.Ok.Text}"
-                                   FontSize="11"
+                                   FontSize="{DynamicResource Wit.Font.Control}"
                                    VerticalAlignment="Center"/>
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Delete}"
                                    Foreground="{DynamicResource Wit.Ok.Text}"
-                                   FontSize="11"
+                                   FontSize="{DynamicResource Wit.Font.Control}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
@@ -435,7 +434,7 @@
                 <Grid ColumnDefinitions="*,Auto">
                     <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                                  Width="14" Height="14"
+                                  Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"
                                   Foreground="{DynamicResource Wit.Error.Text}"/>
                         <TextBlock Text="{Binding ErrorMessage}"
                                    Foreground="{DynamicResource Wit.Error.Text}"
@@ -448,11 +447,11 @@
                                 Spacing="16">
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Commit}"
                                    Foreground="{DynamicResource Wit.Error.Text}"
-                                   FontSize="11"
+                                   FontSize="{DynamicResource Wit.Font.Control}"
                                    VerticalAlignment="Center"/>
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Delete}"
                                    Foreground="{DynamicResource Wit.Error.Text}"
-                                   FontSize="11"
+                                   FontSize="{DynamicResource Wit.Font.Control}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                 </Grid>
@@ -466,7 +465,7 @@
                     <TextBlock Grid.Column="0"
                                Text="{DynamicResource S.Grid.Hint.Edit}"
                                Foreground="Gray"
-                               FontSize="12"
+                               FontSize="{DynamicResource Wit.Font.Body}"
                                VerticalAlignment="Center"/>
                     
                     <StackPanel Grid.Column="1"
@@ -474,11 +473,11 @@
                                 Spacing="16">
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Commit}"
                                    Foreground="Gray"
-                                   FontSize="11"
+                                   FontSize="{DynamicResource Wit.Font.Control}"
                                    VerticalAlignment="Center"/>
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Delete}"
                                    Foreground="Gray"
-                                   FontSize="11"
+                                   FontSize="{DynamicResource Wit.Font.Control}"
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                 </Grid>

@@ -247,17 +247,17 @@
 			        HorizontalAlignment="Center"
 			        VerticalAlignment="Center"
 			        MinWidth="320"
-			        Height="24"
+			        Height="{DynamicResource Wit.Height.ButtonCompact}"
 			        Padding="10,0"
 			        Background="{DynamicResource Wit.Surface.Sunken}"
 			        BorderThickness="1"
 			        CornerRadius="6">
 				<Grid ColumnDefinitions="Auto,*,Auto">
 					<PathIcon Grid.Column="0" Data="{x:Static ui:StudioIcons.COMMON_SEARCH}"
-					          Width="12" Height="12" Opacity="0.6"/>
+					          Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}" Opacity="0.6"/>
 					<TextBlock Grid.Column="1" Text="{DynamicResource S.Shell.Palette}"
-					           Margin="8,0" FontSize="12" Opacity="0.6" VerticalAlignment="Center"/>
-					<TextBlock Grid.Column="2" Text="Ctrl+K" FontSize="11" Opacity="0.45"
+					           Margin="8,0" FontSize="{DynamicResource Wit.Font.Body}" Opacity="0.6" VerticalAlignment="Center"/>
+					<TextBlock Grid.Column="2" Text="Ctrl+K" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.45"
 					           VerticalAlignment="Center"/>
 				</Grid>
 			</Button>
@@ -272,7 +272,7 @@
 				        Padding="10,4"
 				        Command="{Binding MainWindowVm.ShowNotificationsCommand}">
 					<Panel>
-						<PathIcon Data="{x:Static ui:StudioIcons.COMMON_BELL}" Width="16" Height="16"/>
+						<PathIcon Data="{x:Static ui:StudioIcons.COMMON_BELL}" Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"/>
 						<Ellipse Width="7" Height="7"
 						         Fill="{DynamicResource Wit.Accent}"
 						         HorizontalAlignment="Right" VerticalAlignment="Top"
@@ -290,8 +290,8 @@
 				        Margin="0,0,8,0"
 				        VerticalAlignment="Center">
 					<StackPanel Orientation="Horizontal" Spacing="6">
-						<PathIcon x:Name="ThemeIcon" Width="16" Height="16"/>
-						<TextBlock x:Name="ThemeText" VerticalAlignment="Center" FontSize="12"/>
+						<PathIcon x:Name="ThemeIcon" Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"/>
+						<TextBlock x:Name="ThemeText" VerticalAlignment="Center" FontSize="{DynamicResource Wit.Font.Body}"/>
 					</StackPanel>
 				</Button>
 			</StackPanel>
@@ -315,40 +315,40 @@
 						        Command="{Binding WorkspaceTabsVm.ExecuteCurrentStatementCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Execute.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Execute}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Execute}"/>
 						<Button AutomationProperties.AutomationId="ToolbarExecuteScript" AutomationProperties.Name="{DynamicResource S.Toolbar.Script.Name}"
 						        Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Script.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Script}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Script}"/>
 						<Button AutomationProperties.AutomationId="ToolbarExecuteSelection" AutomationProperties.Name="{DynamicResource S.Toolbar.Selection.Name}"
 						        Command="{Binding WorkspaceTabsVm.ExecuteSelectionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Selection.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Selection}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Selection}"/>
 						<Button AutomationProperties.AutomationId="ToolbarStop" AutomationProperties.Name="{DynamicResource S.Toolbar.Stop}"
 						        Command="{Binding WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.IsExecuting}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Stop.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Stop}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Stop}"/>
 						<Button AutomationProperties.AutomationId="ToolbarClearResults" AutomationProperties.Name="{DynamicResource S.Toolbar.Clear.Name}"
 						        Command="{Binding WorkspaceTabsVm.ClearResultsCommand}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Clear.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Clear}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Clear}"/>
 						<Button AutomationProperties.AutomationId="ToolbarFormat" AutomationProperties.Name="{DynamicResource S.Toolbar.Format}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.FormatCommand}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Format.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Format}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Format}"/>
 						<Button AutomationProperties.AutomationId="ToolbarExplain" AutomationProperties.Name="{DynamicResource S.Query.Explain}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.ShowPlanCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanExecuteQuery}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Plan.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Plan}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Plan}"/>
 						<Button AutomationProperties.AutomationId="ToolbarSaveQuery" AutomationProperties.Name="{DynamicResource S.Toolbar.Save.Name}"
 						        Command="{Binding WorkspaceTabsVm.SaveTabCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.CanSaveTab}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Save.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Save}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Save}"/>
 
 						<!-- The transaction is the connection's, and the toolbar is where it is decided
 						     (WS-26). Autocommit until somebody presses Begin. -->
@@ -360,41 +360,41 @@
 						          SelectedItem="{Binding WorkspaceTabsVm.SelectedQueryTab.Isolation, Mode=TwoWay}"
 						          IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
 						          ToolTip.Tip="{DynamicResource S.Toolbar.Isolation.Tip}"
-						          Height="24" FontSize="12" MinWidth="130"/>
+						          Height="{DynamicResource Wit.Height.Field}" MinWidth="130"/>
 						<Button AutomationProperties.AutomationId="ToolbarBeginTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Begin.Name}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.BeginTransactionCommand}"
 						        IsEnabled="{Binding !WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Begin.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Begin}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Begin}"/>
 						<Button AutomationProperties.AutomationId="ToolbarCommitTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Commit.Name}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.CommitTransactionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Commit.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Commit}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Commit}"/>
 						<Button AutomationProperties.AutomationId="ToolbarRollbackTransaction" AutomationProperties.Name="{DynamicResource S.Toolbar.Rollback.Name}"
 						        Command="{Binding WorkspaceTabsVm.SelectedQueryTab.RollbackTransactionCommand}"
 						        IsEnabled="{Binding WorkspaceTabsVm.SelectedQueryTab.HasOpenTransaction}"
 						        ToolTip.Tip="{DynamicResource S.Toolbar.Rollback.Tip}"
-						        Height="24" Padding="10,0" Content="{DynamicResource S.Toolbar.Rollback}" FontSize="12"/>
+						        Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="10,0" Content="{DynamicResource S.Toolbar.Rollback}"/>
 					</StackPanel>
 
 					<!-- Data tab -->
 					<StackPanel Orientation="Horizontal" Spacing="4"
 					            IsVisible="{Binding WorkspaceTabsVm.IsTableEditTabSelected}">
-						<TextBlock Text="{DynamicResource S.Tab.Data}" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
+						<TextBlock Text="{DynamicResource S.Tab.Data}" FontSize="{DynamicResource Wit.Font.Body}" VerticalAlignment="Center" Opacity="0.6"/>
 					</StackPanel>
 
 					<!-- Structure tab -->
 					<StackPanel Orientation="Horizontal" Spacing="4"
 					            IsVisible="{Binding WorkspaceTabsVm.IsStructureTabSelected}">
-						<TextBlock Text="{DynamicResource S.Tab.Structure}" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
+						<TextBlock Text="{DynamicResource S.Tab.Structure}" FontSize="{DynamicResource Wit.Font.Body}" VerticalAlignment="Center" Opacity="0.6"/>
 					</StackPanel>
 
 					<!-- Database tab. The fourth kind, and it had no band: the query toolbar hides and
 					     nothing took its place, so the strip was empty across the window. -->
 					<StackPanel Orientation="Horizontal" Spacing="4"
 					            IsVisible="{Binding WorkspaceTabsVm.IsDatabaseTabSelected}">
-						<TextBlock Text="{DynamicResource S.Tab.Database}" FontSize="12" VerticalAlignment="Center" Opacity="0.6"/>
+						<TextBlock Text="{DynamicResource S.Tab.Database}" FontSize="{DynamicResource Wit.Font.Body}" VerticalAlignment="Center" Opacity="0.6"/>
 					</StackPanel>
 				</StackPanel>
 
@@ -407,7 +407,7 @@
 				        VerticalAlignment="Center">
 					<TextBlock AutomationProperties.AutomationId="ToolbarConnectionChip"
 					           Text="{Binding WorkspaceTabsVm.SelectedTab.ConnectionName}"
-					           FontSize="11"
+					           FontSize="{DynamicResource Wit.Font.Control}"
 					           VerticalAlignment="Center"/>
 				</Border>
 			</Grid>
@@ -467,13 +467,13 @@
 							<!-- Title -->
 							<TextBlock Text="WitDatabase Studio"
 							           HorizontalAlignment="Center"
-							           FontSize="22"
+							           FontSize="{DynamicResource Wit.Font.WindowTitle}"
 							           FontWeight="SemiBold"/>
 
 							<!-- Subtitle -->
 							<TextBlock Text="{DynamicResource S.Welcome.Subtitle}"
 							           HorizontalAlignment="Center"
-							           FontSize="13"
+							           FontSize="{DynamicResource Wit.Font.BlockTitle}"
 							           Foreground="Gray"/>
 
 							<!-- Action Buttons -->
@@ -484,7 +484,7 @@
 								        Padding="16,10">
 									<StackPanel Orientation="Horizontal" Spacing="12">
 										<PathIcon Data="{x:Static ui:StudioIcons.MENU_NEW_DATABASE}"
-										          Width="18" Height="18"/>
+										          Width="{DynamicResource Wit.Icon.Large}" Height="{DynamicResource Wit.Icon.Large}"/>
 										<TextBlock Text="{DynamicResource S.Welcome.NewDatabase}" VerticalAlignment="Center"/>
 									</StackPanel>
 								</Button>
@@ -496,7 +496,7 @@
 								        Classes="accent">
 									<StackPanel Orientation="Horizontal" Spacing="12">
 										<PathIcon Data="{x:Static ui:StudioIcons.MENU_OPEN_DATABASE}"
-										          Width="18" Height="18"/>
+										          Width="{DynamicResource Wit.Icon.Large}" Height="{DynamicResource Wit.Icon.Large}"/>
 										<TextBlock Text="{DynamicResource S.Welcome.OpenDatabase}" VerticalAlignment="Center"/>
 									</StackPanel>
 								</Button>
@@ -505,7 +505,7 @@
 							<!-- Hint -->
 							<TextBlock Text="Ctrl+O"
 							           HorizontalAlignment="Center"
-							           FontSize="11"
+							           FontSize="{DynamicResource Wit.Font.Control}"
 							           Foreground="Gray"
 							           Opacity="0.7"
 							           Margin="0,8,0,0"/>
@@ -527,7 +527,7 @@
 						            MinWidth="200">
 							
 							<TextBlock Text="{DynamicResource S.Welcome.Recent}"
-							           FontSize="14"
+							           FontSize="{DynamicResource Wit.Font.SectionTitle}"
 							           FontWeight="SemiBold"
 							           Foreground="Gray"
 							           Margin="0,0,0,8"/>
@@ -545,7 +545,6 @@
 							        Classes="hyperlink"
 							        HorizontalAlignment="Left"
 							        Margin="0,8,0,0"
-							        FontSize="11"
 							        Foreground="Gray"/>
 						</StackPanel>
 					</Grid>
@@ -585,12 +584,12 @@
 				<StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="6" VerticalAlignment="Center"
 				            IsVisible="{Binding MainWindowVm.IsConnected}">
 					<PathIcon Data="{x:Static ui:StudioIcons.COMMON_BULLET}"
-					          Width="8" Height="8"
+					          Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"
 					          Foreground="LimeGreen"
 					          VerticalAlignment="Center"/>
 					<TextBlock AutomationProperties.AutomationId="StatusConnection"
 					           Text="{Binding MainWindowVm.ConnectionSummary}"
-					           FontSize="12"
+					           FontSize="{DynamicResource Wit.Font.Body}"
 					           MaxWidth="440"
 					           TextTrimming="CharacterEllipsis"
 					           VerticalAlignment="Center"/>
@@ -600,7 +599,7 @@
 				           AutomationProperties.AutomationId="StatusEngine"
 				           Text="{Binding MainWindowVm.EngineSummary}"
 				           Margin="12,0,0,0"
-				           FontSize="12"
+				           FontSize="{DynamicResource Wit.Font.Body}"
 				           Opacity="0.65"
 				           VerticalAlignment="Center"
 				           IsVisible="{Binding MainWindowVm.IsConnected}"/>
@@ -621,16 +620,15 @@
 					<TextBlock Grid.Column="1"
 					           AutomationProperties.AutomationId="StatusActivity"
 					           Text="{Binding MainWindowVm.StatusText}"
-					           FontSize="12"
+					           FontSize="{DynamicResource Wit.Font.Body}"
 					           TextAlignment="Center"
 					           TextTrimming="CharacterEllipsis"
 					           VerticalAlignment="Center"/>
 					<Button Grid.Column="2"
 					        AutomationProperties.AutomationId="StatusCancel" AutomationProperties.Name="{DynamicResource S.Common.Cancel}"
 					        Content="{DynamicResource S.Common.Cancel}"
-					        FontSize="11"
 					        Padding="8,0"
-					        Height="20"
+					        Height="{DynamicResource Wit.Height.ButtonCompact}"
 					        Margin="8,0,0,0"
 					        IsVisible="{Binding WorkspaceTabsVm.IsExecuting}"
 					        Command="{Binding WorkspaceTabsVm.CurrentExecutingTab.StopQueryCommand}"/>
@@ -651,7 +649,7 @@
 					     FallbackValue - a DynamicResource there is assigned as the markup extension
 					     OBJECT and the status bar reads its type name. -->
 					<TextBlock AutomationProperties.AutomationId="StatusTransaction"
-					           FontSize="12"
+					           FontSize="{DynamicResource Wit.Font.Body}"
 					           VerticalAlignment="Center">
 						<TextBlock.Text>
 							<MultiBinding Converter="{x:Static converters:LocalizedText.Or}"
@@ -667,7 +665,7 @@
 				<TextBlock Grid.Column="4"
 				           AutomationProperties.AutomationId="StatusCaret"
 				           Text="{Binding MainWindowVm.CaretSummary}"
-				           FontSize="12"
+				           FontSize="{DynamicResource Wit.Font.Body}"
 				           Opacity="0.65"
 				           VerticalAlignment="Center"
 				           IsVisible="{Binding WorkspaceTabsVm.IsQueryTabSelected}"/>
@@ -692,7 +690,6 @@
 					         x:Name="PaletteQueryBox"
 					         Text="{Binding PaletteVm.Query, Mode=TwoWay}"
 					         Watermark="{DynamicResource S.Shell.Palette}"
-					         FontSize="14"
 					         BorderThickness="0"/>
 
 					<ListBox AutomationProperties.AutomationId="PaletteItems"
@@ -704,8 +701,8 @@
 						<ListBox.ItemTemplate>
 							<DataTemplate x:DataType="vm:PaletteItem">
 								<Grid ColumnDefinitions="*,Auto">
-									<TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="13"/>
-									<TextBlock Grid.Column="1" Text="{Binding Subtitle}" FontSize="11"
+									<TextBlock Grid.Column="0" Text="{Binding Title}" FontSize="{DynamicResource Wit.Font.BlockTitle}"/>
+									<TextBlock Grid.Column="1" Text="{Binding Subtitle}" FontSize="{DynamicResource Wit.Font.Control}"
 									           Opacity="0.55" Margin="12,0,0,0"/>
 								</Grid>
 							</DataTemplate>
@@ -730,7 +727,7 @@
 			        BorderThickness="1"
 			        Padding="8">
 				<Grid RowDefinitions="Auto,*,Auto">
-					<TextBlock Grid.Row="0" Text="{DynamicResource S.Shell.Notifications}" FontWeight="SemiBold" FontSize="12"
+					<TextBlock Grid.Row="0" Text="{DynamicResource S.Shell.Notifications}" FontWeight="SemiBold" FontSize="{DynamicResource Wit.Font.Body}"
 					           Margin="4,2,0,6"/>
 
 					<ScrollViewer Grid.Row="1">
@@ -742,8 +739,8 @@
 									        Background="{DynamicResource Wit.Surface.Sunken}"
 									        CornerRadius="5">
 										<StackPanel Spacing="2">
-											<TextBlock Text="{Binding Title}" FontSize="12"/>
-											<TextBlock Text="{Binding Detail}" FontSize="11" Opacity="0.6"
+											<TextBlock Text="{Binding Title}" FontSize="{DynamicResource Wit.Font.Body}"/>
+											<TextBlock Text="{Binding Detail}" FontSize="{DynamicResource Wit.Font.Control}" Opacity="0.6"
 											           TextWrapping="Wrap"
 											           IsVisible="{Binding Detail, Converter={x:Static ObjectConverters.IsNotNull}}"/>
 										</StackPanel>
@@ -754,12 +751,12 @@
 					</ScrollViewer>
 
 					<TextBlock Grid.Row="1" Text="{DynamicResource S.Shell.NothingYet}"
-					           FontSize="12" Opacity="0.5" Margin="4,8"
+					           FontSize="{DynamicResource Wit.Font.Body}" Opacity="0.5" Margin="4,8"
 					           IsVisible="{Binding !MainWindowVm.HasNotifications}"/>
 
 					<Button AutomationProperties.AutomationId="NotificationsClose"
 					        AutomationProperties.Name="{DynamicResource S.Shell.CloseNotifications}"
-					        Grid.Row="2" Content="{DynamicResource S.Common.Close}" FontSize="11" HorizontalAlignment="Right"
+					        Grid.Row="2" Content="{DynamicResource S.Common.Close}" HorizontalAlignment="Right"
 					        Margin="0,6,0,0"
 					        Command="{Binding MainWindowVm.HideNotificationsCommand}"/>
 				</Grid>

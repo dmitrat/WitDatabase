@@ -58,7 +58,7 @@
                         IsVisible="{Binding IsQueryResult}">
                     <StackPanel Orientation="Horizontal" Spacing="8">
                         <PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}"
-                                  Width="16" Height="16"
+                                  Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"
                                   Foreground="{DynamicResource Wit.Accent.Text}"/>
                         <!-- One string, not five Runs. A sentence assembled out of fragments cannot
                              be translated: the word order of another language moves the pieces. -->
@@ -154,7 +154,7 @@
                     IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
                 <StackPanel Orientation="Horizontal" Spacing="8">
                     <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
-                              Width="16" Height="16"
+                              Width="{DynamicResource Wit.Icon.Header}" Height="{DynamicResource Wit.Icon.Header}"
                               Foreground="{DynamicResource Wit.Error.Text}"/>
                     <TextBlock Text="{Binding ErrorMessage}"
                                Foreground="{DynamicResource Wit.Error.Text}"
@@ -201,13 +201,13 @@
                            Text="{Binding ProgressText}"
                            Foreground="White"
                            HorizontalAlignment="Center"
-                           FontSize="16"/>
+                           FontSize="{DynamicResource Wit.Font.SectionTitle}"/>
 
                 <!-- Percentage -->
                 <TextBlock Text="{Binding ExportProgress, StringFormat='{}{0:F1} %'}"
                            Foreground="White"
                            HorizontalAlignment="Center"
-                           FontSize="14"
+                           FontSize="{DynamicResource Wit.Font.SectionTitle}"
                            Opacity="0.8"/>
                 
                 <!-- Cancel Button -->

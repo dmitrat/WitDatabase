@@ -25,19 +25,19 @@
                 <TextBlock Grid.Column="0" 
                            Text="{DynamicResource S.Explorer.Title}" 
                            FontWeight="SemiBold" 
-                           FontSize="14"
+                           FontSize="{DynamicResource Wit.Font.SectionTitle}"
                            VerticalAlignment="Center"/>
                 
                 <Button AutomationProperties.AutomationId="DatabaseExplorerRefresh" AutomationProperties.Name="{DynamicResource S.Common.Refresh}" Grid.Column="1"
                         Command="{Binding DatabaseExplorerVm.RefreshCommand}"
                         ToolTip.Tip="{DynamicResource S.Common.Refresh}"
                         Width="32"
-                        Height="32"
+                        Height="{DynamicResource Wit.Height.Button}"
                         Padding="0"
                         VerticalAlignment="Center">
                     <PathIcon Data="{x:Static ui:StudioIcons.MENU_REFRESH}"
-                              Width="16"
-                              Height="16" />
+                              Width="{DynamicResource Wit.Icon.Header}"
+                              Height="{DynamicResource Wit.Icon.Header}" />
                 </Button>
             </Grid>
         </Border>
@@ -54,14 +54,12 @@
                          Grid.Column="0"
                          Text="{Binding DatabaseExplorerVm.Filter, Mode=TwoWay}"
                          Watermark="{DynamicResource S.Explorer.Filter}"
-                         FontSize="12"
-                         Height="24"/>
+                         Height="{DynamicResource Wit.Height.Field}"/>
                 <Button AutomationProperties.AutomationId="ExplorerClearFilter"
                         AutomationProperties.Name="{DynamicResource S.Explorer.ClearFilter}"
                         Grid.Column="1"
                         Content="Esc"
-                        FontSize="10"
-                        Height="24"
+                        Height="{DynamicResource Wit.Height.ButtonCompact}"
                         Padding="6,0"
                         Margin="4,0,0,0"
                         Command="{Binding DatabaseExplorerVm.ClearFilterCommand}"
@@ -78,8 +76,8 @@
                 <ListBox.ItemTemplate>
                     <DataTemplate x:DataType="models:FilterMatch">
                         <StackPanel Spacing="1">
-                            <TextBlock Text="{Binding Node.Name}" FontSize="12"/>
-                            <TextBlock Text="{Binding Path}" FontSize="10" Opacity="0.55"/>
+                            <TextBlock Text="{Binding Node.Name}" FontSize="{DynamicResource Wit.Font.Body}"/>
+                            <TextBlock Text="{Binding Path}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55"/>
                         </StackPanel>
                     </DataTemplate>
                 </ListBox.ItemTemplate>
@@ -88,7 +86,7 @@
             <TextBlock Grid.Row="1"
                        AutomationProperties.AutomationId="ExplorerFilterSummary"
                        Text="{Binding DatabaseExplorerVm.FilterSummary}"
-                       FontSize="11"
+                       FontSize="{DynamicResource Wit.Font.Control}"
                        Opacity="0.6"
                        Margin="8,4"/>
         </Grid>
@@ -115,8 +113,8 @@
                         <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="models:DatabaseNode">
                             <StackPanel Orientation="Horizontal" Spacing="6">
                                 <PathIcon Data="{Binding NodeType, Converter={StaticResource NodeTypeToIconConverter}}"
-                                         Width="16"
-                                         Height="16"/>
+                                         Width="{DynamicResource Wit.Icon.Header}"
+                                         Height="{DynamicResource Wit.Icon.Header}"/>
                                 <TextBlock Text="{Binding Name}"
                                            VerticalAlignment="Center"
                                            IsVisible="{Binding !IsRenaming}"
@@ -135,11 +133,11 @@
                                      count, a table's row count once it arrives (2.1, WS-16). -->
                                 <TextBlock Text="{Binding Detail}"
                                            VerticalAlignment="Center"
-                                           FontSize="11"
+                                           FontSize="{DynamicResource Wit.Font.Control}"
                                            Opacity="0.55"/>
                                 <TextBlock Text="{DynamicResource S.Explorer.Counting}"
                                            VerticalAlignment="Center"
-                                           FontSize="11"
+                                           FontSize="{DynamicResource Wit.Font.Control}"
                                            Opacity="0.4"
                                            IsVisible="{Binding CountState, Converter={x:Static converters:NodeConverters.IsCounting}}"/>
                             </StackPanel>
@@ -278,7 +276,7 @@
                         Background="White"
                         CornerRadius="16">
                     <TextBlock Text="..."
-                               FontSize="18"
+                               FontSize="{DynamicResource Wit.Font.WindowTitle}"
                                Foreground="Black"
                                HorizontalAlignment="Center"
                                VerticalAlignment="Center"/>
@@ -319,11 +317,11 @@
                         CornerRadius="24"
                         HorizontalAlignment="Center">
                     <PathIcon Data="{x:Static ui:StudioIcons.DB_DATABASE}"
-                              Width="24" Height="24"
+                              Width="{DynamicResource Wit.Icon.Large}" Height="{DynamicResource Wit.Icon.Large}"
                               Foreground="Gray"/>
                 </Border>
                 <TextBlock Text="{DynamicResource S.Explorer.NotConnected}"
-                           FontSize="14"
+                           FontSize="{DynamicResource Wit.Font.SectionTitle}"
                            Foreground="Gray"
                            HorizontalAlignment="Center"/>
             </StackPanel>
