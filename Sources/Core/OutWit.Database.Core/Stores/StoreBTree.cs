@@ -1,4 +1,4 @@
-﻿using System.Runtime.CompilerServices;
+using System.Runtime.CompilerServices;
 using OutWit.Database.Core.Cache;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Core.Managers;
@@ -12,7 +12,7 @@ namespace OutWit.Database.Core.Stores;
 /// Key-value store implementation backed by B+Tree.
 /// Implements IKeyValueStore for unified storage engine interface.
 /// </summary>
-public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoredConfigurationSource, IPageCacheOccupancySource, IKeyRangeSource, IAsyncDisposable
+public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoredConfigurationSource, IPageCacheOccupancySource, IKeyRangeSource, IStoreOriginSource, IAsyncDisposable
 {
     #region Constants
 
@@ -533,6 +533,15 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
     #endregion
 
     #region Properties
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// The page manager decides this at construction, when it either initialises an empty database
+    /// or loads a header that was already there. Nothing else in the process can tell afterwards -
+    /// an empty store and a store whose file was missing look identical from above, which is the
+    /// whole reason this is published.
+    /// </remarks>
+    public bool WasCreatedEmpty => m_pageManager.WasCreatedEmpty;
 
     /// <summary>
     /// Gets the root page number of the underlying B+Tree.

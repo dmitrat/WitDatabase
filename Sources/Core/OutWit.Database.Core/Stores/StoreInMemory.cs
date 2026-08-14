@@ -10,7 +10,7 @@ namespace OutWit.Database.Core.Stores;
 /// Thread-safe for concurrent reads and exclusive writes.
 /// Does not persist data - suitable for testing or temporary storage.
 /// </summary>
-public sealed class StoreInMemory : IKeyValueStore
+public sealed class StoreInMemory : IKeyValueStore, IStoreOriginSource
 {
     #region Constants
 
@@ -267,6 +267,18 @@ public sealed class StoreInMemory : IKeyValueStore
             m_data.Clear();
         }
     }
+
+    #endregion
+
+    #region Origin
+
+    /// <inheritdoc/>
+    /// <remarks>
+    /// Always true: this store keeps nothing between sessions, so there is never content to find. An
+    /// index built over one is rebuilt on every open, which is the only correct answer for a store
+    /// that does not persist.
+    /// </remarks>
+    public bool WasCreatedEmpty => true;
 
     #endregion
 

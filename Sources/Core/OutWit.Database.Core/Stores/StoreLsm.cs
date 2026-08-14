@@ -10,7 +10,7 @@ namespace OutWit.Database.Core.Stores
     /// Combines MemTable, WAL, and SSTables for efficient reads and writes.
     /// Thread-safe: concurrent reads allowed, writes are serialized.
     /// </summary>
-    public sealed class StoreLsm : IKeyValueStore, IKeyValueStoreStatistics
+    public sealed class StoreLsm : IKeyValueStore, IKeyValueStoreStatistics, IStoreOriginSource
     {
         #region Constants
 
@@ -70,6 +70,14 @@ namespace OutWit.Database.Core.Stores
                 m_blockCache = new BlockCache(m_options.BlockCacheSizeBytes);
             }
 
+            // Asked BEFORE the directory is made, because making it is what destroys the answer.
+            // An LSM store with no SSTable and no write-ahead log has nothing to load, and an index
+            // over it that comes up empty is empty because its content is gone rather than because
+            // nothing qualified. See IStoreOriginSource.
+            WasCreatedEmpty = !System.IO.Directory.Exists(directory)
+                              || (System.IO.Directory.GetFiles(directory, "sst_*.sst").Length == 0
+                                  && !File.Exists(Path.Combine(directory, "wal.log")));
+
             // Ensure directory exists
             System.IO.Directory.CreateDirectory(directory);
 
@@ -83,6 +91,13 @@ namespace OutWit.Database.Core.Stores
             // Load existing SSTables and recover from WAL
             Recover();
         }
+
+        #endregion
+
+        #region Origin
+
+        /// <inheritdoc/>
+        public bool WasCreatedEmpty { get; }
 
         #endregion
 

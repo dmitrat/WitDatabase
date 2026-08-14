@@ -1,7 +1,8 @@
-﻿using System.Buffers.Binary;
+using System.Buffers.Binary;
 using OutWit.Database.Core.Comparers;
 using OutWit.Database.Core.Exceptions;
 using OutWit.Database.Core.Interfaces;
+using OutWit.Database.Core.Stores;
 
 namespace OutWit.Database.Core.Indexes
 {
@@ -467,6 +468,17 @@ namespace OutWit.Database.Core.Indexes
 
         /// <inheritdoc/>
         public long Count => Interlocked.Read(ref m_count);
+
+        /// <inheritdoc/>
+        /// <remarks>
+        /// Asked of the store underneath rather than answered here, and through
+        /// <c>FindCapability</c> so that a wrapped store - and an index store is always wrapped for
+        /// concurrency - is walked down rather than mistaken for one that cannot tell. A store that
+        /// does not publish the capability is taken at its word that its content is there, which is
+        /// what every implementation did before this existed.
+        /// </remarks>
+        public bool ContentWasFound =>
+            m_store.FindCapability<IStoreOriginSource>() is not { WasCreatedEmpty: true };
 
         #endregion
     }

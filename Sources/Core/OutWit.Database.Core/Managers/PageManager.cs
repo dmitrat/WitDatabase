@@ -54,6 +54,7 @@ public sealed class PageManager : IDisposable, IAsyncDisposable
 
         if (m_storage.PageCount == 0 || IsNewDatabase())
         {
+            WasCreatedEmpty = true;
             InitializeNewDatabase();
         }
         else
@@ -146,6 +147,7 @@ public sealed class PageManager : IDisposable, IAsyncDisposable
 
         if (m_storage.PageCount == 0 || await IsNewDatabaseAsync(cancellationToken).ConfigureAwait(false))
         {
+            WasCreatedEmpty = true;
             await InitializeNewDatabaseAsync(cancellationToken).ConfigureAwait(false);
         }
         else
@@ -809,6 +811,19 @@ public sealed class PageManager : IDisposable, IAsyncDisposable
             return m_header.TransactionCounter;
         }
     }
+
+    /// <summary>
+    /// Whether this page manager initialised an empty database at construction rather than loading a
+    /// header that was already there.
+    /// </summary>
+    /// <remarks>
+    /// Kept because it is the only moment the difference is knowable, and it was being computed and
+    /// thrown away. A secondary index needs it: an index that holds nothing because its file was
+    /// never there has to be rebuilt, and one that holds nothing because every indexed value is NULL
+    /// must not be - and no amount of looking at the index tells those apart. See
+    /// <see cref="IStoreOriginSource"/>.
+    /// </remarks>
+    public bool WasCreatedEmpty { get; private set; }
 
     private bool IsNewDatabase()
     {

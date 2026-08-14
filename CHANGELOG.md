@@ -1,5 +1,58 @@
 ﻿# Changelog
 
+## 13.1.0
+
+**An index whose content is not on disk is no longer answered from.** Copy a `.witdb` without its
+`_indexes` directory - which is what copying a database means to everyone outside Studio, and what a
+backup script does - and the catalogue still named the index, the planner still used it, the index
+held nothing, and the query answered **zero rows with no error**. Measured 2026-08-14, encrypted and
+plain alike, with the un-indexed arm of the same probe answering correctly. Deleting the index file
+and leaving the directory did the same.
+
+### What was actually wrong
+
+`EnsurePhysicalIndexesExist` checked whether an index EXISTED, and that is a question nothing can
+fail: `WitDatabase.RestoreIndexesFromMetadata` runs first and calls `CreateIndex` for every index the
+metadata names, which MAKES the physical index. So one was always there, whatever had happened to its
+content, and the `physicalIndex == null` branch was unreachable for every index in the metadata -
+which is all of them. The method's own summary promised that "rebuilding happens lazily when the
+index is first accessed"; there is no such rebuild.
+
+### And "rebuild anything empty" is the wrong rule
+
+`FillIndexFromExistingData` skips rows whose indexed columns are NULL and rows outside a partial
+index's condition, so an index over an all-NULL column is **legitimately** empty. A rule keyed on
+emptiness would rescan the whole table on every open, for ever. What separates the two cases is not
+how much an index holds - it is whether its content was **there**.
+
+`IStoreOriginSource.WasCreatedEmpty` is that fact. The page manager already computed it at
+construction, when it either initialises an empty database or loads a header that is already there,
+and then threw it away; it keeps it now, `StoreBTree`, `StoreLsm` and `StoreInMemory` publish it, and
+`ISecondaryIndex.ContentWasFound` asks for it **through `FindCapability`** - an index store is always
+wrapped for concurrency, so the question has to walk down. A store that does not publish the
+capability is taken at its word, so nothing that existed before behaves differently.
+
+### Measured both ways
+
+Each part of the fix was removed on its own, and each has a different red set: the store forgetting
+how it began, **5**; the question no longer walking through the wrapper, **3**; the engine ignoring
+the answer, **2**. The middle one is why the wrapper walk is not decoration - without it the fix
+silently never fires.
+
+A control that was written as a positive control **went red, and that was the finding**: the record
+said the engine already rebuilds a missing index, and it does not. A real positive control had to be
+found instead - creating an index over a table that already holds rows, the one route that reaches
+`BuildIndexFromExistingData` today.
+
+### Still open, and named
+
+An index that was created empty, **partly** filled and then left is still adopted as complete:
+`BuildIndexFromExistingData` returns early when the index holds entries. That is `KnownIssues` 14's
+remainder and it needs the index to record what it was built against - a row count or a completeness
+flag written last. This release does not close it.
+
+Core 2356, Engine 2543, ADO.NET 1037, EF 590, Studio 858, Parser 815 - all green.
+
 ## 13.0.0
 
 **An encrypted database now carries its own salt, iteration count and nonce sequence.** Four defects

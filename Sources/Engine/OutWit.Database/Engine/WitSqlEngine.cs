@@ -1,4 +1,4 @@
-﻿using OutWit.Database.Context;
+using OutWit.Database.Context;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Core.Interfaces;
 using OutWit.Database.Interfaces;
@@ -113,10 +113,41 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, IAsyncDisposa
     #region Index Synchronization
 
     /// <summary>
-    /// Ensures physical indexes exist for all schema indexes.
-    /// Creates missing physical indexes but does NOT rebuild existing ones.
-    /// Rebuilding happens lazily when the index is first accessed.
+    /// Makes sure every index the catalogue names can actually answer for the rows in its table.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This used to check whether an index EXISTED, and that is a question nothing can fail.</b>
+    /// <c>WitDatabase.RestoreIndexesFromMetadata</c> runs first and calls <c>CreateIndex</c> for
+    /// every index the metadata names, which MAKES the physical index - so by the time this method
+    /// looked, one was always there, whatever had happened to its content. The
+    /// <c>physicalIndex == null</c> branch was unreachable for any index in the metadata, which is
+    /// all of them, and the summary's promise that "rebuilding happens lazily when the index is
+    /// first accessed" was describing code that does not exist.
+    /// </para>
+    /// <para>
+    /// What that cost: copy a <c>.witdb</c> without its <c>_indexes</c> directory - which is what
+    /// copying a database means to everyone outside Studio - and the catalogue still names the
+    /// index, the planner still uses it, the index holds nothing, and the query answers zero rows
+    /// with no error. Measured 2026-08-14, encrypted and plain alike. Deleting the index file with
+    /// the directory left in place does the same.
+    /// </para>
+    /// <para>
+    /// <b>The rule is not "rebuild anything empty".</b> <c>FillIndexFromExistingData</c> skips rows
+    /// whose indexed columns are NULL and rows outside a partial index's condition, so an index over
+    /// an all-NULL column is legitimately empty; rebuilding on emptiness would rescan the whole
+    /// table on every open, for ever. The rule is <see cref="ISecondaryIndex.ContentWasFound"/> -
+    /// was there anything to load - which the store below knows for exactly one moment and now
+    /// keeps.
+    /// </para>
+    /// <para>
+    /// <c>BuildIndexFromExistingData</c> still returns early when the index holds entries, so an
+    /// index that was created empty and then filled by something else is not rebuilt twice. The
+    /// case it does NOT cover is an index that was created empty, partly filled, and left - that is
+    /// <c>KnownIssues</c> 14's open remainder and needs the index to record what it was built
+    /// against.
+    /// </para>
+    /// </remarks>
     private void EnsurePhysicalIndexesExist()
     {
         if (!m_database.SupportsIndexes)
@@ -124,16 +155,18 @@ public sealed partial class WitSqlEngine : IDatabase, IDisposable, IAsyncDisposa
 
         foreach (var indexDef in m_schema.GetIndexes())
         {
-            // Check if physical index exists
             var physicalIndex = m_database.GetIndex(indexDef.Name);
+
             if (physicalIndex == null)
             {
-                // Physical index doesn't exist - create it and build from data
                 m_database.CreateIndex(indexDef.Name, indexDef.IsUnique);
                 BuildIndexFromExistingData(indexDef);
+                continue;
             }
-            // If physical index exists (even if empty), don't rebuild
-            // The data should be persisted in the index files
+
+            // There is an index object either way; the question is whether anything was behind it.
+            if (!physicalIndex.ContentWasFound)
+                BuildIndexFromExistingData(indexDef);
         }
     }
 
