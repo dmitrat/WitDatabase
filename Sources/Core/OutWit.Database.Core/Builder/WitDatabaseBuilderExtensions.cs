@@ -240,6 +240,26 @@ public static class WitDatabaseBuilderExtensions
 
     #endregion
 
+    #region Encryption - the iteration count
+
+    /// <summary>
+    /// Marks the iteration count as the library's rather than the caller's.
+    /// </summary>
+    /// <remarks>
+    /// Every "no count named" overload reaches its work through the overload that takes one, which
+    /// records the count as EXPLICIT - so without this, <c>WithEncryption(password)</c> would create
+    /// databases at the old 100,000 for ever and the number in the file would be a copy of a default
+    /// rather than a decision. Found by measuring an open: 24 ms where 600,000 iterations cost about
+    /// 60, which is what a file written at 100,000 costs.
+    /// </remarks>
+    private static WitDatabaseBuilder NoCountWasNamed(this WitDatabaseBuilder builder)
+    {
+        builder.Options.EncryptionParameters.Set("iterationsExplicit", false);
+        return builder;
+    }
+
+    #endregion
+
     #region Encryption - Password Based
 
     /// <summary>
@@ -247,7 +267,7 @@ public static class WitDatabaseBuilderExtensions
     /// </summary>
     public static WitDatabaseBuilder WithEncryption(this WitDatabaseBuilder builder, string password)
     {
-        return builder.WithEncryption(password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS);
+        return builder.WithEncryption(password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS).NoCountWasNamed();
     }
 
     /// <summary>
@@ -260,7 +280,12 @@ public static class WitDatabaseBuilderExtensions
 
         builder.Options.EncryptionParameters.Set("password", password);
         builder.Options.EncryptionParameters.Set("iterations", iterations);
-        
+
+        // The caller named a count, so a database created through this overload records it. The
+        // parameterless one leaves the flag alone and gets the current default, which is a different
+        // number from the one an OLD file has to be opened at - see NewDatabaseIterations.
+        builder.Options.EncryptionParameters.Set("iterationsExplicit", true);
+
         // Pre-derive key and salt for immediate use
         var salt = CryptoUtils.DerivePasswordSalt(password);
         var key = CryptoUtils.DeriveKey(password, salt, iterations);
@@ -285,7 +310,7 @@ public static class WitDatabaseBuilderExtensions
     /// </summary>
     public static WitDatabaseBuilder WithEncryption(this WitDatabaseBuilder builder, string user, string password)
     {
-        return builder.WithUserEncryption(user, password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS);
+        return builder.WithUserEncryption(user, password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS).NoCountWasNamed();
     }
 
     /// <summary>
@@ -301,7 +326,8 @@ public static class WitDatabaseBuilderExtensions
         builder.Options.EncryptionParameters.Set("user", user);
         builder.Options.EncryptionParameters.Set("password", password);
         builder.Options.EncryptionParameters.Set("iterations", iterations);
-        
+        builder.Options.EncryptionParameters.Set("iterationsExplicit", true);
+
         // Pre-derive key and salt for immediate use
         var salt = CryptoUtils.DeriveUserSalt(user);
         var key = CryptoUtils.DeriveKey(password, salt, iterations);
@@ -399,7 +425,7 @@ public static class WitDatabaseBuilderExtensions
     /// </summary>
     public static WitDatabaseBuilder WithEncryptionKey(this WitDatabaseBuilder builder, string providerKey, string password)
     {
-        return builder.WithEncryptionKey(providerKey, password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS);
+        return builder.WithEncryptionKey(providerKey, password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS).NoCountWasNamed();
     }
 
     /// <summary>
@@ -417,6 +443,7 @@ public static class WitDatabaseBuilderExtensions
         builder.Options.EncryptionProviderKey = providerKey;
         builder.Options.EncryptionParameters.Set("password", password);
         builder.Options.EncryptionParameters.Set("iterations", iterations);
+        builder.Options.EncryptionParameters.Set("iterationsExplicit", true);
         builder.Options.EncryptionParameters.Set("key", key);
         builder.Options.EncryptionParameters.Set("salt", salt);
         builder.Options.CustomCryptoProvider = null;
@@ -428,7 +455,7 @@ public static class WitDatabaseBuilderExtensions
     /// </summary>
     public static WitDatabaseBuilder WithEncryptionKey(this WitDatabaseBuilder builder, string providerKey, string user, string password)
     {
-        return builder.WithEncryptionKey(providerKey, user, password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS);
+        return builder.WithEncryptionKey(providerKey, user, password, CryptoUtils.DEFAULT_PBKDF2_ITERATIONS).NoCountWasNamed();
     }
 
     /// <summary>
@@ -449,6 +476,7 @@ public static class WitDatabaseBuilderExtensions
         builder.Options.EncryptionParameters.Set("user", user);
         builder.Options.EncryptionParameters.Set("password", password);
         builder.Options.EncryptionParameters.Set("iterations", iterations);
+        builder.Options.EncryptionParameters.Set("iterationsExplicit", true);
         builder.Options.EncryptionParameters.Set("key", key);
         builder.Options.EncryptionParameters.Set("salt", salt);
         builder.Options.CustomCryptoProvider = null;

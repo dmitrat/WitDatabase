@@ -34,6 +34,22 @@ public sealed class WitDatabaseBuilder
 
     #endregion
 
+    #region Fields
+
+    /// <summary>
+    /// The data key of the database this build opened, once its crypto header has been read.
+    /// </summary>
+    /// <remarks>
+    /// A database is a set of files - the database itself and one per secondary index - and they
+    /// share a key. Each carries its own crypto header with its own random salt and its own nonce
+    /// sequence, but only the database's header wraps a key, because deriving one per index would
+    /// cost a full PBKDF2 per index on every open. Null until the database's own storage is built,
+    /// which is always before an index store is asked for.
+    /// </remarks>
+    private byte[]? m_dataKey;
+
+    #endregion
+
     #region Properties
 
     /// <summary>
@@ -745,10 +761,7 @@ public sealed class WitDatabaseBuilder
                          ?? LsmOptions.FromParameters(Options.StoreParameters);
 
         if (cryptoProvider != null)
-        {
-            var salt = GetEncryptionSalt();
-            lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider, salt);
-        }
+            lsmOptions.Encryptor = BuildLsmEncryptor(directory, cryptoProvider);
 
         // Written before the store, and only when the directory does not already carry one: the sidecar
         // records what the database was CREATED with, so reopening it under other settings must not
@@ -871,13 +884,176 @@ public sealed class WitDatabaseBuilder
         var baseStorage = CreateBaseStorage(storagePageSize);
 
         if (cryptoProvider != null)
-        {
-            var salt = GetEncryptionSalt();
-            var encryptor = new EncryptorPage(cryptoProvider, salt);
-            return new StorageEncrypted(baseStorage, encryptor);
-        }
+            return WrapEncrypted(baseStorage, cryptoProvider);
 
         return baseStorage;
+    }
+
+    /// <summary>
+    /// Wraps a storage in encryption, choosing the format from what the file already says rather
+    /// than from what this connection was configured with.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three cases, told apart by the first sixteen bytes of the first physical page, and none of
+    /// them needs the password to decide:
+    /// </para>
+    /// <list type="bullet">
+    /// <item><description><b>Nothing there</b> - a database being created. A preamble is drawn: a
+    /// random salt, the iteration count, a nonce sequence and, when there is a password, a random
+    /// data key wrapped under it.</description></item>
+    /// <item><description><b>A preamble</b> - read it, unwrap the data key, and encrypt with a nonce
+    /// that carries a sequence number the file remembers.</description></item>
+    /// <item><description><b>Anything else</b> - a database written before the preamble existed.
+    /// Its salt is a function of its password and its nonce counter restarts on every open, and
+    /// nothing done here can change either: those are properties of bytes already on disk. It opens
+    /// exactly as it always did. Studio's password change is what moves such a file into the new
+    /// format, and it is the documented migration.</description></item>
+    /// </list>
+    /// </remarks>
+    private IStorage WrapEncrypted(IStorage baseStorage, ICryptoProvider cryptoProvider, byte[]? sharedDataKey = null)
+    {
+        var shape = CryptoPreamble.Inspect(baseStorage, out var header);
+
+        return shape switch
+        {
+            CryptoPreamble.Shape.Other => new StorageEncrypted(
+                baseStorage, new EncryptorPage(cryptoProvider, GetEncryptionSalt())),
+
+            CryptoPreamble.Shape.Empty => CreateWithPreamble(baseStorage, cryptoProvider, sharedDataKey),
+
+            _ => OpenWithPreamble(baseStorage, cryptoProvider, header, sharedDataKey)
+        };
+    }
+
+    /// <summary>
+    /// The LSM store's half of the same choice. It has no page 0 to put a preamble in, so its
+    /// header is a small plaintext file beside the SSTables.
+    /// </summary>
+    /// <remarks>
+    /// A directory that already holds SSTables and carries no header file was written before the
+    /// header existed, and keeps its old encryptor - the same rule the paged store applies, decided
+    /// the only way a directory can decide it.
+    /// </remarks>
+    private IBlockEncryptor BuildLsmEncryptor(string directory, ICryptoProvider cryptoProvider, byte[]? sharedDataKey = null)
+    {
+        if (CryptoPreamble.InspectDirectory(directory, out var existing))
+        {
+            ICryptoProvider provider;
+
+            if (existing.Kdf == CryptoKdf.Pbkdf2Sha256)
+            {
+                var password = EncryptionPassword()
+                    ?? throw new InvalidOperationException(
+                        "This store is encrypted under a password and none was supplied.");
+
+                var dataKey = existing.UnwrapDataKey(password);
+                m_dataKey ??= dataKey;
+                provider = ProviderForKey(dataKey);
+            }
+            else
+            {
+                provider = sharedDataKey != null ? ProviderForKey(sharedDataKey) : cryptoProvider;
+            }
+
+            var opened = CryptoPreamble.OpenDirectory(directory, existing, create: false);
+
+            return new EncryptorBlockSequenced(provider, opened, opened);
+        }
+
+        if (HasSstables(directory))
+            return new EncryptorBlock(cryptoProvider, GetEncryptionSalt());
+
+        var password2 = sharedDataKey == null ? EncryptionPassword() : null;
+
+        CryptoHeader header;
+        ICryptoProvider newProvider;
+
+        if (password2 != null)
+        {
+            header = CryptoHeader.CreateWrapping(password2, NewDatabaseIterations(), out var created);
+            newProvider = ProviderForKey(created);
+            m_dataKey ??= created;
+        }
+        else
+        {
+            header = CryptoHeader.CreateUnwrapped();
+            newProvider = sharedDataKey != null ? ProviderForKey(sharedDataKey) : cryptoProvider;
+        }
+
+        var preamble = CryptoPreamble.OpenDirectory(directory, header, create: true);
+
+        return new EncryptorBlockSequenced(newProvider, preamble, preamble);
+    }
+
+    private static bool HasSstables(string directory)
+    {
+        return Directory.Exists(directory) && Directory.GetFiles(directory, "sst_*.sst").Length > 0;
+    }
+
+    private IStorage CreateWithPreamble(IStorage baseStorage, ICryptoProvider cryptoProvider, byte[]? sharedDataKey)
+    {
+        var password = sharedDataKey == null ? EncryptionPassword() : null;
+
+        CryptoHeader header;
+        ICryptoProvider provider;
+
+        if (password != null)
+        {
+            header = CryptoHeader.CreateWrapping(password, NewDatabaseIterations(), out var dataKey);
+            provider = ProviderForKey(dataKey);
+
+            // Remembered so that the index files beside this database can be encrypted under the
+            // same key without each of them paying for its own derivation - at the OWASP iteration
+            // count that would be tens of milliseconds per index, per open.
+            m_dataKey = dataKey;
+        }
+        else
+        {
+            // Either a caller who owns the key material - there is nothing to wrap and nothing this
+            // build could improve about a key it did not choose - or a file in a set whose key was
+            // already established. Both still gain the random salt and the sequence that survives
+            // the file, which is what closes the nonce reuse.
+            header = CryptoHeader.CreateUnwrapped();
+            provider = sharedDataKey != null ? ProviderForKey(sharedDataKey) : cryptoProvider;
+        }
+
+        var preamble = CryptoPreamble.Create(baseStorage, header);
+
+        return new StorageEncrypted(
+            baseStorage,
+            new EncryptorPageSequenced(provider, preamble),
+            pageOffset: CryptoPreamble.PREAMBLE_PAGE + 1,
+            preamble: preamble);
+    }
+
+    private IStorage OpenWithPreamble(
+        IStorage baseStorage, ICryptoProvider cryptoProvider, CryptoHeader header, byte[]? sharedDataKey)
+    {
+        ICryptoProvider provider;
+
+        if (header.Kdf == CryptoKdf.Pbkdf2Sha256)
+        {
+            var password = EncryptionPassword()
+                ?? throw new InvalidOperationException(
+                    "This database is encrypted under a password and none was supplied.");
+
+            var dataKey = header.UnwrapDataKey(password);
+            m_dataKey = dataKey;
+            provider = ProviderForKey(dataKey);
+        }
+        else
+        {
+            provider = sharedDataKey != null ? ProviderForKey(sharedDataKey) : cryptoProvider;
+        }
+
+        var preamble = CryptoPreamble.Open(baseStorage, header);
+
+        return new StorageEncrypted(
+            baseStorage,
+            new EncryptorPageSequenced(provider, preamble),
+            pageOffset: CryptoPreamble.PREAMBLE_PAGE + 1,
+            preamble: preamble);
     }
 
     /// <summary>
@@ -895,13 +1071,12 @@ public sealed class WitDatabaseBuilder
         if (cryptoProvider == null)
             return customStorage;
 
-        var encryptor = new EncryptorPage(cryptoProvider, GetEncryptionSalt());
-
         // Encryption spends Overhead bytes of every physical page on the nonce and tag, so the
         // logical page size the rest of the engine sees is PageSize - Overhead - and that has to
         // remain a legal page size. The built-in storages are sized as PageSize + Overhead for
         // exactly this reason; a caller-supplied one has to be too.
-        var logicalPageSize = customStorage.PageSize - encryptor.Overhead;
+        var overhead = cryptoProvider.Overhead;
+        var logicalPageSize = customStorage.PageSize - overhead;
 
         if (logicalPageSize < DatabaseConstants.MIN_PAGE_SIZE ||
             logicalPageSize > DatabaseConstants.MAX_PAGE_SIZE ||
@@ -909,13 +1084,13 @@ public sealed class WitDatabaseBuilder
         {
             throw new InvalidOperationException(
                 $"The storage supplied to WithStorage() has a page size of {customStorage.PageSize} " +
-                $"bytes, which leaves {logicalPageSize} usable after the {encryptor.Overhead} bytes " +
+                $"bytes, which leaves {logicalPageSize} usable after the {overhead} bytes " +
                 $"encryption needs per page - not a valid page size. Construct it with " +
-                $"{Options.PageSize + encryptor.Overhead} bytes (a power of two plus the overhead), " +
+                $"{Options.PageSize + overhead} bytes (a power of two plus the overhead), " +
                 $"or build the database without encryption.");
         }
 
-        return new StorageEncrypted(customStorage, encryptor);
+        return WrapEncrypted(customStorage, cryptoProvider);
     }
 
     private int CalculateStoragePageSize(ICryptoProvider? cryptoProvider)
@@ -984,8 +1159,58 @@ public sealed class WitDatabaseBuilder
 
     private byte[] GetEncryptionSalt()
     {
-        return Options.EncryptionParameters.Get<byte[]>("salt") 
+        return Options.EncryptionParameters.Get<byte[]>("salt")
             ?? throw new InvalidOperationException("Encryption salt is required.");
+    }
+
+    /// <summary>
+    /// Builds a crypto provider over a key this build chose, rather than over the one derived from
+    /// the password before any file was opened.
+    /// </summary>
+    private ICryptoProvider ProviderForKey(byte[] key)
+    {
+        if (string.IsNullOrEmpty(Options.EncryptionProviderKey))
+            return new EncryptorProviderAesGcm(key);
+
+        var parameters = new ProviderParameters();
+
+        foreach (var (name, value) in Options.EncryptionParameters.GetAll())
+            parameters.Set(name, value);
+
+        parameters.Set("key", key);
+
+        return ProviderRegistry.Instance.Create<ICryptoProvider>(Options.EncryptionProviderKey, parameters);
+    }
+
+    /// <summary>
+    /// The secret a password-protected database is opened with, or null when the caller owns the key.
+    /// </summary>
+    private string? EncryptionPassword()
+    {
+        var password = Options.EncryptionParameters.Get<string?>("password", null);
+
+        if (string.IsNullOrEmpty(password))
+            return null;
+
+        return CryptoHeader.CombineUserAndPassword(
+            Options.EncryptionParameters.Get<string?>("user", null), password);
+    }
+
+    /// <summary>
+    /// The iteration count to record in a database being created.
+    /// </summary>
+    /// <remarks>
+    /// A count the caller named is the caller's - <c>WithEncryption(password, 250_000)</c> means it,
+    /// and so does <c>WithEncryptionFast</c>. The DEFAULT is a different matter: 100,000 was chosen
+    /// when the number could not be written into the file, so every build had to agree on it
+    /// forever. It can be written down now, so a new database gets the current OWASP figure and old
+    /// databases keep opening at the count they were written with.
+    /// </remarks>
+    private int NewDatabaseIterations()
+    {
+        return Options.EncryptionParameters.Get("iterationsExplicit", false)
+            ? Options.EncryptionParameters.Get("iterations", CryptoHeader.DEFAULT_ITERATIONS)
+            : CryptoHeader.DEFAULT_ITERATIONS;
     }
 
     private ITransactionJournal? BuildJournal()
@@ -1190,7 +1415,9 @@ public sealed class WitDatabaseBuilder
                 var lsmOptions = LsmOptions.FromParameters(Options.StoreParameters);
                 if (cryptoProvider != null && encryptionSalt != null)
                 {
-                    lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider.Clone(), encryptionSalt);
+                    // Through the same three-way choice the LSM store itself makes, and under the
+                    // database's own data key - an index directory is part of the same set.
+                    lsmOptions.Encryptor = BuildLsmEncryptor(indexPath, cryptoProvider.Clone(), m_dataKey);
                 }
 
                 return new StoreLsm(indexPath, lsmOptions);
@@ -1224,8 +1451,12 @@ public sealed class WitDatabaseBuilder
                 {
                     storagePageSize = pageSize + cryptoProvider.Overhead;
                     var baseStorage = new StorageFile(indexPath, storagePageSize);
-                    var encryptor = new EncryptorPage(cryptoProvider.Clone(), encryptionSalt);
-                    storage = new StorageEncrypted(baseStorage, encryptor);
+
+                    // Through the same three-way choice the database file makes, so an index written
+                    // before the crypto header keeps opening and a new one gets the new format. The
+                    // data key is the database's: an index sidecar is part of the same set, and
+                    // deriving a separate one would cost a full PBKDF2 per index per open.
+                    storage = WrapEncrypted(baseStorage, cryptoProvider.Clone(), m_dataKey);
                 }
                 else
                 {

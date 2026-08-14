@@ -1,5 +1,102 @@
 ﻿# Changelog
 
+## 13.0.0
+
+**An encrypted database now carries its own salt, iteration count and nonce sequence.** Four defects
+were measured on 12.8.0 and all four came from the same absence: the file said nothing about its own
+encryption, so every one of those values had to be recomputed from the password by whatever build
+happened to open it.
+
+| | what it was | how it was known |
+|---|---|---|
+| E1 | The salt was `SHA256(password + "_WitDB_Salt")[..16]` - a pure function of the password, so one password meant one key across every database ever created with it | measured: two databases, identical salts |
+| E2 | And that salt was written **in the clear** as the first eight bytes of the file, by way of the page nonce | measured: file head `00379B03582ABC05` = `salt[0..8]` |
+| E3 | `Fast Encryption=true` derived at 10,000 iterations and the count lived only in the connection string, so reopening without the flag failed with `Failed to decrypt page 0 - authentication failed` | driven |
+| E4 | The nonce counter was a field set to 0 in a constructor that runs on **open**, so two sessions walked the same sequence | measured, and then demonstrated |
+
+**E2 is why this went before everything else.** The file carried a password verifier costing one
+SHA-256. Measured single-threaded on the development machine: **2,000,007 candidates in 0.48 s**
+against **5.6 hours** for the same candidates through PBKDF2 at 100,000 - about **41,000x** on one
+core, and far more on a GPU. A work factor protects the key and does nothing for the search, which
+is the step a dictionary attack actually pays for.
+
+**E4 turned out to be worse than recorded.** The 2026-08-11 note said no collision with differing
+plaintext had been produced. Driving `EncryptorPage` directly - the component the engine builds on
+every open - produces one immediately: two sessions encrypt page 0 under
+`00379B03582ABC0501000000`, and AES-GCM under a repeated nonce hands the second plaintext to anyone
+holding both ciphertexts, with no key at all.
+
+### What was built
+
+A plaintext preamble, 128 bytes in a physical page in front of everything else, carrying a magic of
+its own, a format version, a KDF id, the iteration count, a **random 16-byte salt**, the next unused
+nonce sequence number, and a **data key wrapped under the password**. The nonce becomes
+`pageNumber || sequence`; the salt leaves it entirely, which is what stops the file's first bytes
+being a verifier.
+
+There was nowhere to put any of this before. An encrypted database began with page 0's ciphertext
+and had no plaintext region at all - `StorageDetector` reports "encrypted" precisely BECAUSE nothing
+matches. A place had to be made rather than a field added.
+
+**Opening reserves a block of sequence numbers**, written and flushed before a single one is used. A
+process that is killed loses the remainder of its block; it never hands the next session numbers it
+already spent.
+
+**The wrapped data key pays three times.** A password change is 60 bytes rather than a rewrite of
+the database, raising the iteration count is the same operation, and a wrong password now fails
+against the wrap tag with a message about the password instead of "Failed to decrypt page 0" from
+four layers down.
+
+The LSM store has no page 0, so its header is `crypto.hdr` beside the SSTables. `EncryptorBlock`
+carried `EncryptorPage`'s construction exactly and therefore both defects; it has the same
+replacement.
+
+### Old databases
+
+**They keep opening, unchanged.** Three cases are told apart by the first sixteen bytes and none of
+it needs the password: the crypto magic means the new format, the database magic means unencrypted,
+and anything else means a file written before this existed. Such a file's salt is its password's
+hash and its nonce counter restarts on every open, and nothing in this release can change that -
+those are properties of bytes already on disk.
+
+**Studio's password change is the migration**, and it always was: it writes a NEW database, which
+the new code creates in the new format. That is now a test rather than a sentence.
+
+Databases written by 12.8.0 - a paged one, a `Fast Encryption` one and an LSM directory, the last
+generated from a worktree at the parent commit - are committed as fixtures and opened by the test
+suite.
+
+### Why the major version
+
+A database created by this build cannot be opened by 12.8.0 or earlier: it would meet a preamble
+page where it expects ciphertext. Unencrypted databases are unaffected and byte-identical.
+
+### The default iteration count is now 600,000
+
+The current OWASP figure for PBKDF2-HMAC-SHA256, and possible only because the number is in the file
+rather than agreed between builds. A count the caller names is still the caller's, and an old file
+is still opened at the count it was written with.
+
+**It is not free, and the number is measured rather than reasoned.** Opening a password-protected
+database, seven interleaved rounds on an idle machine, spreads of 4%:
+
+| iterations | open |
+|---|---|
+| 600,000 - the new default | **73.4 ms** |
+| 100,000 - the old default | 22.0 ms |
+| 10,000 - `Fast Encryption` | 12.9 ms |
+| unencrypted | 1.4 ms |
+
+That is +51 ms per open of an encrypted database, paid once per engine rather than once per pooled
+connection. A database is a SET of files - itself and one per secondary index - and they share the
+data key, so it is also paid once and not once per index.
+
+**Measuring it found a defect in the change itself.** The first reading was 24 ms, not 73: every
+"no count named" overload reaches its work through the overload that takes one, which records the
+count as EXPLICIT, so `WithEncryption(password)` was still creating databases at 100,000 and the
+number in the file was a copy of a default rather than a decision. An extrapolation from the PBKDF2
+rate would have agreed with the intention and missed it.
+
 ## 12.8.0
 
 **The asynchronous path under the B+Tree store was real, and unreachable.** `StoreBTree` has been

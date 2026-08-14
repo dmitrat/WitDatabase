@@ -256,6 +256,57 @@ public class DatabaseMigrationTests
     }
 
     /// <summary>
+    /// The copy a password change produces is in the CURRENT encryption format, which is what makes
+    /// this window the documented migration for a database written before that format existed.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Phase 18 gave encrypted databases a plaintext preamble carrying a random salt, the iteration
+    /// count and a nonce sequence that survives the file. It cannot repair a file already on disk:
+    /// that file's salt IS its password's hash and its nonce counter restarts on every open, and
+    /// both are properties of bytes nobody can change from here. What can be done is to write a NEW
+    /// database, and that is exactly what this window already does.
+    /// </para>
+    /// <para>
+    /// So the claim in <c>Docs/PHASE18-ENCRYPTION-PLAN.md</c> - "Studio's password change is the
+    /// documented migration" - is answerable here rather than being a sentence in a document.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task ThePasswordChangeWritesTheCurrentEncryptionFormatAsync()
+    {
+        const string PASSWORD = "correct horse battery staple";
+
+        var target = new ConnectionInfo
+        {
+            FilePath = Path.Combine(m_fixture.Root, "migrated-format.witdb"),
+            IsEncrypted = true,
+            Password = PASSWORD,
+            EncryptionProvider = "aes-gcm"
+        };
+
+        var result = await DatabaseMigrator.MigrateAsync(m_fixture.Database, target);
+
+        Assert.That(result.Outcome, Is.EqualTo(MigrationOutcome.Transferred), result.EngineMessage);
+
+        var bytes = await File.ReadAllBytesAsync(target.FilePath);
+        var derived = OutWit.Database.Core.Utils.CryptoUtils.DerivePasswordSalt(PASSWORD);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(OutWit.Database.Core.Encryption.CryptoHeader.TryReadFrom(bytes, out var header),
+                Is.True, "the copy must carry a crypto preamble");
+
+            Assert.That(header.Salt, Is.Not.EqualTo(derived),
+                "and its salt must be the file's own, not the password's hash");
+
+            Assert.That(header.Iterations, Is.GreaterThan(0),
+                "and the iteration count must be recorded in the file rather than remembered by the "
+                + "caller");
+        });
+    }
+
+    /// <summary>
     /// The steps are reported as they happen, and each has words in every language.
     /// </summary>
     [Test]

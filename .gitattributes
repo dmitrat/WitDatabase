@@ -1,0 +1,12 @@
+# Deliberately narrow.
+#
+# This repository has no `* text=auto` rule and must not acquire one: ten source files are
+# Windows-1252 without a BOM, and a normalisation pass would rewrite them into something Roslyn reads
+# differently on Windows and on Linux.
+#
+# What is declared here is only the binary test fixtures, whose whole value is that their bytes are
+# the bytes some earlier version wrote. Git's own binary detection would probably reach the same
+# conclusion; "probably" is not good enough for a file that exists to be compared byte for byte.
+
+*.witdb binary
+*.idx   binary
