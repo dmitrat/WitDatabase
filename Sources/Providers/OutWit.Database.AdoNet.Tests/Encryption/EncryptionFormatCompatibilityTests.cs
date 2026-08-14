@@ -235,35 +235,44 @@ public class EncryptionFormatCompatibilityTests
 
     /// <summary>
     /// E1 and E2 where a person can see them: two databases made through the ADO.NET provider with
-    /// one password begin with the same eight bytes, and those bytes are
-    /// <c>SHA256(password + "_WitDB_Salt")[..8]</c>.
+    /// one password must not share key material, and the file must not carry anything a guess at the
+    /// password can be checked against.
     /// </summary>
     /// <remarks>
-    /// RED on 12.8.0, twice over. Both committed fixtures have head <c>9638ABA4E53529EC</c> for the
-    /// same reason, which is the shape this rule exists to end.
+    /// RED on 12.8.0, twice over. Both committed fixtures begin <c>9638ABA4E53529EC</c> - the same
+    /// eight bytes, because they share a password and the salt was that password's hash. Asserted on
+    /// the whole file rather than on a header field, so that this rule survives any later change to
+    /// where the salt is kept.
     /// </remarks>
     [Test]
-    public void TwoDatabasesWithOnePasswordDoNotShareTheirFirstBytesTest()
+    public void TwoDatabasesWithOnePasswordDoNotShareTheirBytesTest()
     {
         var first = Create("head-one.witdb", "one password for both");
         var second = Create("head-two.witdb", "one password for both");
 
-        Assert.That(Head(second), Is.Not.EqualTo(Head(first)),
-            $"two databases made with one password must not begin alike; both read "
-            + $"{Convert.ToHexString(Head(first))}");
+        Assert.Multiple(() =>
+        {
+            Assert.That(File.ReadAllBytes(second), Is.Not.EqualTo(File.ReadAllBytes(first)),
+                "two databases made with one password, holding the same row, must not be the same "
+                + "file");
+
+            Assert.That(Head(first), Is.Not.EqualTo(DerivedSaltHead("one password for both")),
+                "and neither may begin with a value the password alone computes, which is what made "
+                + "a guess cost one SHA-256");
+        });
     }
 
     /// <summary>
-    /// Control: the helper reads two different files and can see a difference between them.
+    /// Control: the comparison can see a difference between two files at all.
     /// </summary>
     [Test]
-    public void ControlTwoDatabasesWithDifferentPasswordsDoNotShareTheirFirstBytesTest()
+    public void ControlTwoDatabasesWithDifferentPasswordsDoNotShareTheirBytesTest()
     {
         var first = Create("differs-one.witdb", "one password");
         var second = Create("differs-two.witdb", "another password");
 
-        Assert.That(Head(second), Is.Not.EqualTo(Head(first)),
-            "the instrument must be able to see a difference between two files' first bytes");
+        Assert.That(File.ReadAllBytes(second), Is.Not.EqualTo(File.ReadAllBytes(first)),
+            "the instrument must be able to see a difference between two files");
     }
 
     #endregion
@@ -329,6 +338,14 @@ public class EncryptionFormatCompatibilityTests
     }
 
     private static byte[] Head(string path) => File.ReadAllBytes(path).AsSpan(0, 8).ToArray();
+
+    /// <summary>
+    /// What the first eight bytes of an encrypted database USED to be: the head of a salt computed
+    /// from the password and nothing else.
+    /// </summary>
+    private static byte[] DerivedSaltHead(string password) =>
+        System.Security.Cryptography.SHA256.HashData(
+            System.Text.Encoding.UTF8.GetBytes(password + "_WitDB_Salt")).AsSpan(0, 8).ToArray();
 
     private static object? Scalar(WitDbConnection connection, string sql)
     {

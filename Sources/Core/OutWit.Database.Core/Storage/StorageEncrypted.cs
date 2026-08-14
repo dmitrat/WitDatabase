@@ -33,6 +33,10 @@ namespace OutWit.Database.Core.Storage
 
         private readonly int m_overhead;
 
+        private readonly long m_pageOffset;
+
+        private readonly IDisposable? m_preamble;
+
         private bool m_disposed;
 
         #endregion
@@ -44,14 +48,30 @@ namespace OutWit.Database.Core.Storage
         /// </summary>
         /// <param name="innerStorage">The underlying storage.</param>
         /// <param name="encryptor">The page encryptor.</param>
-        public StorageEncrypted(IStorage innerStorage, IPageEncryptor encryptor)
+        /// <param name="pageOffset">
+        /// How many physical pages sit in front of logical page 0. One for a database carrying a
+        /// <see cref="Encryption.CryptoPreamble"/>; zero for one written before the preamble
+        /// existed, which is why the parameter has a default.
+        /// </param>
+        /// <param name="preamble">
+        /// Disposed with this storage when the wrapper owns it. The preamble hands the encryptor its
+        /// nonce sequence, so its lifetime is this one.
+        /// </param>
+        public StorageEncrypted(
+            IStorage innerStorage,
+            IPageEncryptor encryptor,
+            long pageOffset = 0,
+            IDisposable? preamble = null)
         {
             ArgumentNullException.ThrowIfNull(innerStorage);
             ArgumentNullException.ThrowIfNull(encryptor);
+            ArgumentOutOfRangeException.ThrowIfNegative(pageOffset);
 
             m_innerStorage = innerStorage;
             m_encryptor = encryptor;
             m_overhead = encryptor.Overhead;
+            m_pageOffset = pageOffset;
+            m_preamble = preamble;
         }
 
         #endregion
@@ -72,7 +92,7 @@ namespace OutWit.Database.Core.Storage
                     ? stackalloc byte[innerPageSize]
                     : (rentedBuffer = ArrayPool<byte>.Shared.Rent(innerPageSize)).AsSpan(0, innerPageSize);
                 
-                m_innerStorage.ReadPage(pageNumber, encrypted);
+                m_innerStorage.ReadPage(pageNumber + m_pageOffset, encrypted);
         
                 // Check if page is uninitialized (all zeros) - return zeros
                 if (IsAllZeros(encrypted))
@@ -108,7 +128,7 @@ namespace OutWit.Database.Core.Storage
             
             try
             {
-                await m_innerStorage.ReadPageAsync(pageNumber, encrypted.AsMemory(0, innerPageSize), cancellationToken);
+                await m_innerStorage.ReadPageAsync(pageNumber + m_pageOffset, encrypted.AsMemory(0, innerPageSize), cancellationToken);
         
                 // Check if page is uninitialized (all zeros) - return zeros
                 if (IsAllZeros(encrypted.AsSpan(0, innerPageSize)))
@@ -149,7 +169,7 @@ namespace OutWit.Database.Core.Storage
                     : (rentedBuffer = ArrayPool<byte>.Shared.Rent(innerPageSize)).AsSpan(0, innerPageSize);
                 
                 m_encryptor.Encrypt(buffer, pageNumber, encrypted);
-                m_innerStorage.WritePage(pageNumber, encrypted);
+                m_innerStorage.WritePage(pageNumber + m_pageOffset, encrypted);
             }
             finally
             {
@@ -171,7 +191,7 @@ namespace OutWit.Database.Core.Storage
             try
             {
                 m_encryptor.Encrypt(buffer.Span, pageNumber, encrypted.AsSpan(0, innerPageSize));
-                await m_innerStorage.WritePageAsync(pageNumber, encrypted.AsMemory(0, innerPageSize), cancellationToken);
+                await m_innerStorage.WritePageAsync(pageNumber + m_pageOffset, encrypted.AsMemory(0, innerPageSize), cancellationToken);
             }
             finally
             {
@@ -205,7 +225,7 @@ namespace OutWit.Database.Core.Storage
         public void SetSize(long pageCount)
         {
             ThrowIfDisposed();
-            m_innerStorage.SetSize(pageCount);
+            m_innerStorage.SetSize(pageCount + m_pageOffset);
         }
 
         #endregion
@@ -288,6 +308,7 @@ namespace OutWit.Database.Core.Storage
         {
             if (!m_disposed)
             {
+                m_preamble?.Dispose();
                 m_encryptor.Dispose();
                 m_innerStorage.Dispose();
                 m_disposed = true;
@@ -302,7 +323,7 @@ namespace OutWit.Database.Core.Storage
         public int PageSize => m_innerStorage.PageSize - m_overhead;
 
         /// <inheritdoc/>
-        public long PageCount => m_innerStorage.PageCount;
+        public long PageCount => Math.Max(0, m_innerStorage.PageCount - m_pageOffset);
 
         /// <inheritdoc/>
         public bool IsReadOnly => m_innerStorage.IsReadOnly;

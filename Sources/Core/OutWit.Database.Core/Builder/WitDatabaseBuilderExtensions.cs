@@ -260,7 +260,12 @@ public static class WitDatabaseBuilderExtensions
 
         builder.Options.EncryptionParameters.Set("password", password);
         builder.Options.EncryptionParameters.Set("iterations", iterations);
-        
+
+        // The caller named a count, so a database created through this overload records it. The
+        // parameterless one leaves the flag alone and gets the current default, which is a different
+        // number from the one an OLD file has to be opened at - see NewDatabaseIterations.
+        builder.Options.EncryptionParameters.Set("iterationsExplicit", true);
+
         // Pre-derive key and salt for immediate use
         var salt = CryptoUtils.DerivePasswordSalt(password);
         var key = CryptoUtils.DeriveKey(password, salt, iterations);
@@ -301,7 +306,8 @@ public static class WitDatabaseBuilderExtensions
         builder.Options.EncryptionParameters.Set("user", user);
         builder.Options.EncryptionParameters.Set("password", password);
         builder.Options.EncryptionParameters.Set("iterations", iterations);
-        
+        builder.Options.EncryptionParameters.Set("iterationsExplicit", true);
+
         // Pre-derive key and salt for immediate use
         var salt = CryptoUtils.DeriveUserSalt(user);
         var key = CryptoUtils.DeriveKey(password, salt, iterations);
@@ -417,6 +423,7 @@ public static class WitDatabaseBuilderExtensions
         builder.Options.EncryptionProviderKey = providerKey;
         builder.Options.EncryptionParameters.Set("password", password);
         builder.Options.EncryptionParameters.Set("iterations", iterations);
+        builder.Options.EncryptionParameters.Set("iterationsExplicit", true);
         builder.Options.EncryptionParameters.Set("key", key);
         builder.Options.EncryptionParameters.Set("salt", salt);
         builder.Options.CustomCryptoProvider = null;
@@ -449,6 +456,7 @@ public static class WitDatabaseBuilderExtensions
         builder.Options.EncryptionParameters.Set("user", user);
         builder.Options.EncryptionParameters.Set("password", password);
         builder.Options.EncryptionParameters.Set("iterations", iterations);
+        builder.Options.EncryptionParameters.Set("iterationsExplicit", true);
         builder.Options.EncryptionParameters.Set("key", key);
         builder.Options.EncryptionParameters.Set("salt", salt);
         builder.Options.CustomCryptoProvider = null;
