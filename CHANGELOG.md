@@ -55,6 +55,10 @@ Core 2356, Engine 2543, ADO.NET 1037, EF 590, Studio 858, Parser 815 - all green
 
 ## 13.0.0
 
+> **13.0.0 was never published as packages.** It was merged and then 13.1.0 followed the same day,
+> so the feed goes 12.8.0 to 13.1.0 and this section describes changes that reach a consumer as part
+> of 13.1.0. Nothing is missing; there is simply no `13.0.0` on nuget.org to look for.
+
 **An encrypted database now carries its own salt, iteration count and nonce sequence.** Four defects
 were measured on 12.8.0 and all four came from the same absence: the file said nothing about its own
 encryption, so every one of those values had to be recomputed from the password by whatever build
