@@ -164,6 +164,38 @@ jobs:
           echo "numeric=$NUMERIC" >> "$GITHUB_OUTPUT"
           echo "Bundle version: $NUMERIC"
 
+      # The guard the engine's publish.yml has carried since 3.0.1, applied here for the first time.
+      #
+      # Its lesson: a release shipped the wrong version SILENTLY because a csproj bump had been
+      # reverted by accident, and every downstream check reported success. Studio has the same shape
+      # and a worse blind spot - the workflow stamps the version into the .parcel from the TAG, so
+      # the installers are named correctly whatever the csproj says, while the application itself
+      # reports Assembly.GetExecutingAssembly()'s version in its About panel and compares that
+      # against the update feed. A mismatch produces artifacts called 3.0.0-rc.1 that call
+      # themselves 3.0.0-dev, and the only place it shows is a corner of a settings window.
+      #
+      # A dispatch with an explicit version override is exempt: that run is deliberately building
+      # something other than what the tree says.
+      - name: Verify the csproj version matches the tag
+        if: github.ref_type == 'tag' && github.event.inputs.version == ''
+        shell: bash
+        run: |
+          set -euo pipefail
+
+          # sed, not `grep -oP`: -P is a GNU extension and this job also runs on macos-14, whose
+          # BSD grep refuses it outright. A guard that fails on a third of the platforms it guards
+          # is worse than none.
+          csproj=$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*//p'             Tools/OutWit.Database.Studio/OutWit.Database.Studio.csproj | head -1)
+          tag="${{ steps.ver.outputs.version }}"
+
+          echo "csproj: $csproj"
+          echo "tag:    $tag"
+
+          if [ "$csproj" != "$tag" ]; then
+            echo "::error::The Studio csproj says $csproj and the tag says $tag. The installers would be named for the tag while the application reported $csproj in its About panel and to the update check. Fix <Version> in OutWit.Database.Studio.csproj."
+            exit 1
+          fi
+
       - name: Patch .parcel (version, track, macOS signing)
         shell: bash
         env:

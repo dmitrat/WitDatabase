@@ -3,6 +3,28 @@
 Studio is versioned separately from the WitDatabase engine and released under its own `studio-v*` tag.
 The engine's changelog is `/CHANGELOG.md`.
 
+## 3.0.0-rc.1
+
+**The first candidate, and the first Studio built with every signature it ships with.** Windows
+Authenticode, macOS Developer-ID with notarization, and a GPG-signed `SHA256SUMS` on Linux - the
+release pipeline signs every tag that is not `-dev`/`-test`/`-internal`, and until now Studio had
+only ever been tagged `-dev`.
+
+It is a **pre-release**: the tag carries a suffix, so it is not the repository's Latest and the
+in-application update check will not offer it to anybody on 2.0.0. That is the point of an rc - it is
+for testing on all three platforms, not for pulling users onto.
+
+**What is in it** is everything under `3.0.0-dev` below, which is the whole of phases 13 through 18:
+the frame, the explorer, the query workspace, the data grid, the schema designer, the dialogs and the
+localisation, plus this session's read-only signs, the status bar and tree corrections, and an update
+check that can now answer.
+
+**Known and deliberate:** Studio still downloads and runs nothing - the update dialog opens the
+release page. Whether it should install its own updates, and what would anchor the trust if it did,
+is written up in `/Docs/STUDIO-UPDATE-STUDY-2026-08-14.md` and is not decided.
+
+Engine: 13.1.0.
+
 ## 3.0.0-dev - in progress
 
 Studio is being refactored and redesigned. This section collects what has landed on the way; it is
