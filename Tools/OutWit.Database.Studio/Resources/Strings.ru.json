@@ -1,4 +1,4 @@
-{
+﻿{
   "$language": "Русский",
   "$plural": "slavic",
   "Menu.File": "_Файл",
@@ -215,6 +215,11 @@
     "few": "{0} подключения",
     "many": "{0} подключений"
   },
+  "Count.ConnectionsIn": {
+    "one": "{0} подключении",
+    "few": "{0} подключениях",
+    "many": "{0} подключениях"
+  },
   "Count.Tables": {
     "one": "{0} таблица",
     "few": "{0} таблицы",
@@ -264,6 +269,7 @@
   "Tabs.CloseOthers": "Закрыть остальные",
   "Tabs.CloseAll": "Закрыть все",
   "Tabs.CloseTab": "Закрыть вкладку",
+  "Tabs.ReadOnly": "Только чтение: запись отклоняется",
   "Tabs.NewTab": "Новая вкладка запроса",
   "Tabs.NewTab.Tip": "Новая вкладка запроса (Ctrl+N)",
   "Common.Name": "Имя",
@@ -738,6 +744,7 @@
   "Tab.StructureOf": "{0} — структура",
   "Tab.EditOf": "{0} — правка",
   "Query.Cancelled": "Запрос прерван",
+  "Query.Running": "Запрос выполняется…",
   "Query.CancelledAt": "Прервано на операторе {0} из {1}",
   "Query.Failed": "Запрос не выполнен: {0}",
   "Query.NothingToExplain": "Здесь нет оператора, для которого можно построить план",
@@ -1114,5 +1121,7 @@
   "Explorer.DropFailed.Trigger": "Не удалось удалить триггер: {0}",
   "Confirm.Drop.Headline.Sequence": "Удалить последовательность «{0}»? Отменить будет нельзя.",
   "Explorer.Dropped.Sequence": "Последовательность удалена: {0}",
-  "Explorer.DropFailed.Sequence": "Не удалось удалить последовательность: {0}"
+  "Explorer.DropFailed.Sequence": "Не удалось удалить последовательность: {0}",
+  "Query.ReadOnly.Banner": "Подключение открыто только для чтения — запись будет отклонена движком.",
+  "Query.ReadOnly.Short": "Только чтение"
 }

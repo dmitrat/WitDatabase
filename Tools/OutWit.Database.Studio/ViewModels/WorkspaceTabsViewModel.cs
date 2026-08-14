@@ -472,8 +472,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
         if (string.IsNullOrWhiteSpace(queryTab.SqlText) || !IsRunnable(queryTab))
             return;
 
-        IsExecuting = true;
-        CurrentExecutingTab = queryTab;
+        BeginExecuting(queryTab);
 
         try
         {
@@ -486,6 +485,24 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             IsExecuting = false;
             CurrentExecutingTab = null;
         }
+    }
+
+    /// <summary>
+    /// Everything a run has to say before it starts, in one place.
+    /// </summary>
+    /// <remarks>
+    /// <b>The status bar used to keep the LAST query's completion time while the next one ran.</b>
+    /// The progress bar said something was happening and the words beside it said «Выполнено за
+    /// 9,60 мс» - about a query that had already finished. Two of the three execution paths set
+    /// <c>IsExecuting</c> by hand and neither touched the text; they go through here now, so a
+    /// fourth path cannot forget it either.
+    /// </remarks>
+    private void BeginExecuting(QueryTabViewModel tab)
+    {
+        IsExecuting = true;
+        CurrentExecutingTab = tab;
+
+        ApplicationVm.MainWindowVm.StatusText = ApplicationVm.Localization["Query.Running"];
     }
 
     private async Task ExecuteQueryAsync()
@@ -548,8 +565,7 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     /// </summary>
     private async Task ExecuteSqlAsync(QueryTabViewModel tab, string sql)
     {
-        IsExecuting = true;
-        CurrentExecutingTab = tab;
+        BeginExecuting(tab);
 
         try
         {

@@ -1,4 +1,4 @@
-{
+﻿{
   "$language": "English",
   "$plural": "one-other",
   "Menu.File": "_File",
@@ -211,6 +211,10 @@
     "one": "{0} connection",
     "other": "{0} connections"
   },
+  "Count.ConnectionsIn": {
+    "one": "{0} connection",
+    "other": "{0} connections"
+  },
   "Count.Tables": {
     "one": "{0} table",
     "other": "{0} tables"
@@ -259,6 +263,7 @@
   "Tabs.CloseOthers": "Close Others",
   "Tabs.CloseAll": "Close All",
   "Tabs.CloseTab": "Close tab",
+  "Tabs.ReadOnly": "Read-only: writes are refused",
   "Tabs.NewTab": "New Query Tab",
   "Tabs.NewTab.Tip": "New Query Tab (Ctrl+N)",
   "Common.Name": "Name",
@@ -727,6 +732,7 @@
   "Tab.StructureOf": "{0} - Structure",
   "Tab.EditOf": "{0} - Edit",
   "Query.Cancelled": "Query cancelled",
+  "Query.Running": "Running the query…",
   "Query.CancelledAt": "Cancelled at statement {0} of {1}",
   "Query.Failed": "Query failed: {0}",
   "Query.NothingToExplain": "There is no statement here to explain",
@@ -1092,5 +1098,7 @@
   "Explorer.DropFailed.Trigger": "Could not delete the trigger: {0}",
   "Confirm.Drop.Headline.Sequence": "Delete sequence «{0}»? This cannot be undone.",
   "Explorer.Dropped.Sequence": "Sequence deleted: {0}",
-  "Explorer.DropFailed.Sequence": "Could not delete the sequence: {0}"
+  "Explorer.DropFailed.Sequence": "Could not delete the sequence: {0}",
+  "Query.ReadOnly.Banner": "This connection is open read-only - a write will be refused by the engine.",
+  "Query.ReadOnly.Short": "Read-only"
 }

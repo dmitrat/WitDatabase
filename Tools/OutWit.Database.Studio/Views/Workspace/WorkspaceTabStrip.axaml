@@ -1,4 +1,4 @@
-﻿<UserControl xmlns="https://github.com/avaloniaui"
+<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -196,6 +196,18 @@
                                                   VerticalAlignment="Center"
                                                   Foreground="{DynamicResource Wit.Ink.Secondary}"/>
                                         
+                                        <!-- Read-only indicator (WS-10). The canon asks for three
+                                             signs and only the status bar had one: four words at the
+                                             bottom of the window, in English, on a surface nobody
+                                             looks at before pressing Execute. This is the one on the
+                                             tab a query is about to run FROM. -->
+                                        <PathIcon Data="{x:Static ui:StudioIcons.COMMON_LOCK}"
+                                                  Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"
+                                                  Foreground="{DynamicResource Wit.Ink.Secondary}"
+                                                  IsVisible="{Binding IsReadOnly}"
+                                                  ToolTip.Tip="{DynamicResource S.Tabs.ReadOnly}"
+                                                  VerticalAlignment="Center"/>
+
                                         <!-- Pin indicator -->
                                         <PathIcon Data="{x:Static ui:StudioIcons.TAB_PIN}"
                                                   Width="{DynamicResource Wit.Icon.InLine}" Height="{DynamicResource Wit.Icon.InLine}"

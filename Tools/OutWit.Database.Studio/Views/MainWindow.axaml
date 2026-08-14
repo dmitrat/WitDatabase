@@ -1,4 +1,4 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:OutWit.Database.Studio.ViewModels"
         xmlns:views="using:OutWit.Database.Studio.Views"
@@ -701,14 +701,25 @@
 					           VerticalAlignment="Center"/>
 				</StackPanel>
 
-				<TextBlock Grid.Column="1"
-				           AutomationProperties.AutomationId="StatusEngine"
-				           Text="{Binding MainWindowVm.EngineSummary}"
-				           Margin="12,0,0,0"
-				           FontSize="{DynamicResource Wit.Font.Body}"
-				           Opacity="0.65"
-				           VerticalAlignment="Center"
-				           IsVisible="{Binding MainWindowVm.IsConnected}"/>
+				<!-- A RULE, not more margin. The engine label sits between two texts that both
+				     grow - a full file path on one side, whatever is happening on the other - and
+				     with only whitespace between them the three segments read as one sentence the
+				     moment either is long enough. Measured on screen: «…readonly.witdb B-Tree -
+				     read-only readonly: таблиц 1…». A line says where one ends. -->
+				<StackPanel Grid.Column="1" Orientation="Horizontal" VerticalAlignment="Center"
+				            IsVisible="{Binding MainWindowVm.IsConnected}">
+					<Border Width="1"
+					        Margin="10,3"
+					        Background="{DynamicResource Wit.Line}"/>
+					<TextBlock AutomationProperties.AutomationId="StatusEngine"
+					           Text="{Binding MainWindowVm.EngineSummary}"
+					           FontSize="{DynamicResource Wit.Font.Body}"
+					           Opacity="0.65"
+					           VerticalAlignment="Center"/>
+					<Border Width="1"
+					        Margin="10,3"
+					        Background="{DynamicResource Wit.Line}"/>
+				</StackPanel>
 
 				<!-- What is happening. A long operation does not block the window: other tabs keep
 				     working and this is where it is stopped (WS-6). -->

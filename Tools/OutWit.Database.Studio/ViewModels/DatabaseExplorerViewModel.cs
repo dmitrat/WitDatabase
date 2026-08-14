@@ -1,4 +1,4 @@
-﻿using System.Collections.ObjectModel;
+using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Windows.Input;
 using Microsoft.Extensions.Logging;
@@ -983,9 +983,13 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         FilterSummary = FilterMatches.Count == 0
             ? Localization["Explorer.Filter.NoMatches"]
+            // The second half is read as «в {N} подключении», and the plural table held nominative
+            // forms only - so a correct count came out in the wrong case: «11 совпадений в 1
+            // подключение». A count is not a noun on its own; the phrase it lands in decides the
+            // form, and Russian has six of them.
             : Localization.Format("Explorer.Filter.Matches",
                 Localization.Plural("Count.Matches", FilterMatches.Count),
-                Localization.Plural("Count.Connections", connections));
+                Localization.Plural("Count.ConnectionsIn", connections));
     }
 
     /// <summary>
