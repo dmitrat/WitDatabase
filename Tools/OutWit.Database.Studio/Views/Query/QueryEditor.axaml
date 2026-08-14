@@ -17,13 +17,40 @@
 
         <!-- SQL Editor. 45/55 by default: once the query is written, the result matters more (3.1) -->
         <Border Grid.Row="0" Background="{DynamicResource Wit.Surface.Bar}" Padding="8">
-            <Grid RowDefinitions="Auto,*,Auto">
+            <Grid RowDefinitions="Auto,Auto,*,Auto">
+
+                <!-- ================================ READ-ONLY (WS-10) ================================
+                     The refusal is the engine's and it is real; what was missing was any sign of it
+                     where writing is typed. A person learned the mode by being refused, or from four
+                     English words in the status bar at the other end of the window.
+
+                     Above the editor rather than over it, and it takes a row of its own so it never
+                     covers the text it is about. Absent entirely when the connection is writable. -->
+                <Border Grid.Row="0"
+                        IsVisible="{Binding IsReadOnly}"
+                        Background="{DynamicResource Wit.Surface.Panel}"
+                        BorderBrush="{DynamicResource Wit.Line}"
+                        BorderThickness="1"
+                        CornerRadius="3"
+                        Padding="8,5"
+                        Margin="0,0,0,6">
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <PathIcon Data="{x:Static ui:StudioIcons.COMMON_LOCK}"
+                                  Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"
+                                  Foreground="{DynamicResource Wit.Ink.Secondary}"
+                                  VerticalAlignment="Center"/>
+                        <TextBlock Text="{DynamicResource S.Query.ReadOnly.Banner}"
+                                   Foreground="{DynamicResource Wit.Ink.Secondary}"
+                                   TextWrapping="Wrap"
+                                   VerticalAlignment="Center"/>
+                    </StackPanel>
+                </Border>
 
                 <!-- ============================ FIND AND REPLACE (9.7) ============================
                      A band inside the tab, not a window: a modal find dialog covers the very text
                      being searched. It sits ABOVE the editor rather than floating over it, so it
                      never hides a match either. -->
-                <Border Grid.Row="0"
+                <Border Grid.Row="1"
                         IsVisible="{Binding Search.IsOpen}"
                         Background="{DynamicResource Wit.Surface.Panel}"
                         CornerRadius="3"
@@ -159,7 +186,7 @@
                     </StackPanel>
                 </Border>
 
-                <c:SqlEditor Grid.Row="1"
+                <c:SqlEditor Grid.Row="2"
                              SqlText="{Binding SqlText, Mode=TwoWay}"
                              SelectedText="{Binding SelectedText, Mode=OneWayToSource}"
                              SelectionStartInText="{Binding SelectionStart, Mode=TwoWay}"
@@ -173,7 +200,7 @@
                              CompletionSource="{Binding}"/>
 
                 <!-- What is wrong with the text as it stands, before anything is sent (3.6) -->
-                <Border Grid.Row="2"
+                <Border Grid.Row="3"
                         Background="{DynamicResource Wit.Error.Surface}"
                         CornerRadius="3"
                         Padding="8,4"

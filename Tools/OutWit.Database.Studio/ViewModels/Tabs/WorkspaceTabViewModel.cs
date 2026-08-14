@@ -68,6 +68,7 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
 
         ConnectionName = session.DisplayName;
         ConnectionColorIndex = session.ColorIndex;
+        IsReadOnly = session.IsReadOnly;
 
         OnSessionChanged();
     }
@@ -230,6 +231,20 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
     /// </summary>
     [Notify]
     public int ConnectionColorIndex { get; private set; }
+
+    /// <summary>
+    /// Whether the connection this tab writes through refuses writes (WS-10).
+    /// </summary>
+    /// <remarks>
+    /// Set beside <see cref="ConnectionName"/> and <see cref="ConnectionColorIndex"/> rather than
+    /// computed from <c>Session</c>, for the same reason they are: a tab keeps what it knew after
+    /// its connection is gone, and a computed property over a null session would quietly answer
+    /// "writable" for a tab whose database was read-only. It is also <c>[Notify]</c>, because a
+    /// property bound in markup that tells nobody is the exact defect this application has found
+    /// three times.
+    /// </remarks>
+    [Notify]
+    public bool IsReadOnly { get; private set; }
 
     #endregion
 }

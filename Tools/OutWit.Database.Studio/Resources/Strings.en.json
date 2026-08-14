@@ -1,4 +1,4 @@
-{
+﻿{
   "$language": "English",
   "$plural": "one-other",
   "Menu.File": "_File",
@@ -259,6 +259,7 @@
   "Tabs.CloseOthers": "Close Others",
   "Tabs.CloseAll": "Close All",
   "Tabs.CloseTab": "Close tab",
+  "Tabs.ReadOnly": "Read-only: writes are refused",
   "Tabs.NewTab": "New Query Tab",
   "Tabs.NewTab.Tip": "New Query Tab (Ctrl+N)",
   "Common.Name": "Name",
@@ -1092,5 +1093,7 @@
   "Explorer.DropFailed.Trigger": "Could not delete the trigger: {0}",
   "Confirm.Drop.Headline.Sequence": "Delete sequence «{0}»? This cannot be undone.",
   "Explorer.Dropped.Sequence": "Sequence deleted: {0}",
-  "Explorer.DropFailed.Sequence": "Could not delete the sequence: {0}"
+  "Explorer.DropFailed.Sequence": "Could not delete the sequence: {0}",
+  "Query.ReadOnly.Banner": "This connection is open read-only - a write will be refused by the engine.",
+  "Query.ReadOnly.Short": "Read-only"
 }

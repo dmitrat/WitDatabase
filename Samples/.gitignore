@@ -1,0 +1,14 @@
+# The samples CREATE their schema at startup - IdentityServer migrates and seeds, WebApi runs its
+# initializer, WebApiEF issues CREATE TABLE IF NOT EXISTS - so a database file here is the output of
+# having run one, never an input to running it. Twenty-eight of them were committed, 624 KB,
+# including the IdentityServer one carrying its seeded administrator.
+#
+# Deliberately scoped to this directory. A repository-wide `*.witdb` rule would also exclude
+# Sources/Providers/OutWit.Database.AdoNet.Tests/Fixtures, where a database written by an older
+# version IS the input and has to be committed.
+
+*.witdb
+*.witdb-wal
+*.witdb.lock
+*.lock
+*_indexes/
