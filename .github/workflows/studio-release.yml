@@ -182,10 +182,14 @@ jobs:
         run: |
           set -euo pipefail
 
-          # sed, not `grep -oP`: -P is a GNU extension and this job also runs on macos-14, whose
-          # BSD grep refuses it outright. A guard that fails on a third of the platforms it guards
-          # is worse than none.
-          csproj=$(sed -n 's/.*<Version>\([^<]*\)<\/Version>.*//p'             Tools/OutWit.Database.Studio/OutWit.Database.Studio.csproj | head -1)
+          # Two substitutions with a | delimiter and NO capture group, which is deliberate on
+          # both counts. `grep -oP` is out because -P is a GNU extension and this job also runs
+          # on macos-14, whose BSD grep refuses it - a guard that fails on a third of the
+          # platforms it guards is worse than none. And a backreference is out because writing
+          # one through a scripted edit is how a raw 0x01 byte got into this file and made
+          # GitHub reject the whole workflow before a single job started.
+          csproj=$(grep '<Version>' Tools/OutWit.Database.Studio/OutWit.Database.Studio.csproj \
+            | head -1 | sed -e 's|.*<Version>||' -e 's|</Version>.*||')
           tag="${{ steps.ver.outputs.version }}"
 
           echo "csproj: $csproj"
