@@ -761,10 +761,7 @@ public sealed class WitDatabaseBuilder
                          ?? LsmOptions.FromParameters(Options.StoreParameters);
 
         if (cryptoProvider != null)
-        {
-            var salt = GetEncryptionSalt();
-            lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider, salt);
-        }
+            lsmOptions.Encryptor = BuildLsmEncryptor(directory, cryptoProvider);
 
         // Written before the store, and only when the directory does not already carry one: the sidecar
         // records what the database was CREATED with, so reopening it under other settings must not
@@ -927,6 +924,71 @@ public sealed class WitDatabaseBuilder
 
             _ => OpenWithPreamble(baseStorage, cryptoProvider, header, sharedDataKey)
         };
+    }
+
+    /// <summary>
+    /// The LSM store's half of the same choice. It has no page 0 to put a preamble in, so its
+    /// header is a small plaintext file beside the SSTables.
+    /// </summary>
+    /// <remarks>
+    /// A directory that already holds SSTables and carries no header file was written before the
+    /// header existed, and keeps its old encryptor - the same rule the paged store applies, decided
+    /// the only way a directory can decide it.
+    /// </remarks>
+    private IBlockEncryptor BuildLsmEncryptor(string directory, ICryptoProvider cryptoProvider, byte[]? sharedDataKey = null)
+    {
+        if (CryptoPreamble.InspectDirectory(directory, out var existing))
+        {
+            ICryptoProvider provider;
+
+            if (existing.Kdf == CryptoKdf.Pbkdf2Sha256)
+            {
+                var password = EncryptionPassword()
+                    ?? throw new InvalidOperationException(
+                        "This store is encrypted under a password and none was supplied.");
+
+                var dataKey = existing.UnwrapDataKey(password);
+                m_dataKey ??= dataKey;
+                provider = ProviderForKey(dataKey);
+            }
+            else
+            {
+                provider = sharedDataKey != null ? ProviderForKey(sharedDataKey) : cryptoProvider;
+            }
+
+            var opened = CryptoPreamble.OpenDirectory(directory, existing, create: false);
+
+            return new EncryptorBlockSequenced(provider, opened, opened);
+        }
+
+        if (HasSstables(directory))
+            return new EncryptorBlock(cryptoProvider, GetEncryptionSalt());
+
+        var password2 = sharedDataKey == null ? EncryptionPassword() : null;
+
+        CryptoHeader header;
+        ICryptoProvider newProvider;
+
+        if (password2 != null)
+        {
+            header = CryptoHeader.CreateWrapping(password2, NewDatabaseIterations(), out var created);
+            newProvider = ProviderForKey(created);
+            m_dataKey ??= created;
+        }
+        else
+        {
+            header = CryptoHeader.CreateUnwrapped();
+            newProvider = sharedDataKey != null ? ProviderForKey(sharedDataKey) : cryptoProvider;
+        }
+
+        var preamble = CryptoPreamble.OpenDirectory(directory, header, create: true);
+
+        return new EncryptorBlockSequenced(newProvider, preamble, preamble);
+    }
+
+    private static bool HasSstables(string directory)
+    {
+        return Directory.Exists(directory) && Directory.GetFiles(directory, "sst_*.sst").Length > 0;
     }
 
     private IStorage CreateWithPreamble(IStorage baseStorage, ICryptoProvider cryptoProvider, byte[]? sharedDataKey)
@@ -1353,7 +1415,9 @@ public sealed class WitDatabaseBuilder
                 var lsmOptions = LsmOptions.FromParameters(Options.StoreParameters);
                 if (cryptoProvider != null && encryptionSalt != null)
                 {
-                    lsmOptions.Encryptor = new EncryptorBlock(cryptoProvider.Clone(), encryptionSalt);
+                    // Through the same three-way choice the LSM store itself makes, and under the
+                    // database's own data key - an index directory is part of the same set.
+                    lsmOptions.Encryptor = BuildLsmEncryptor(indexPath, cryptoProvider.Clone(), m_dataKey);
                 }
 
                 return new StoreLsm(indexPath, lsmOptions);

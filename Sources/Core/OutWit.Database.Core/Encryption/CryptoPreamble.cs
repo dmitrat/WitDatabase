@@ -48,7 +48,9 @@ public sealed class CryptoPreamble : INonceSequence, IDisposable
 
     #region Fields
 
-    private readonly IStorage m_storage;
+    private readonly Action<CryptoHeader> m_persist;
+
+    private readonly Func<bool> m_isReadOnly;
 
     private readonly Lock m_lock = new();
 
@@ -64,10 +66,16 @@ public sealed class CryptoPreamble : INonceSequence, IDisposable
 
     #region Constructors
 
-    private CryptoPreamble(IStorage storage, CryptoHeader header)
+    /// <summary>
+    /// The reservation logic has one copy and two media: a page of the database's own storage, and a
+    /// small file beside an LSM directory, which has no page 0 to put anything in. Writing this
+    /// twice would mean two chances to get the order wrong, and the order is the guarantee.
+    /// </summary>
+    private CryptoPreamble(CryptoHeader header, Action<CryptoHeader> persist, Func<bool> isReadOnly)
     {
-        m_storage = storage;
         m_header = header;
+        m_persist = persist;
+        m_isReadOnly = isReadOnly;
         m_next = header.NonceSequence;
         m_reservedTo = header.NonceSequence;
     }
@@ -138,7 +146,7 @@ public sealed class CryptoPreamble : INonceSequence, IDisposable
         if (storage.PageCount <= PREAMBLE_PAGE)
             storage.SetSize(PREAMBLE_PAGE + 1);
 
-        var preamble = new CryptoPreamble(storage, header);
+        var preamble = Open(storage, header);
         preamble.Write(header.NonceSequence);
 
         return preamble;
@@ -150,7 +158,92 @@ public sealed class CryptoPreamble : INonceSequence, IDisposable
     public static CryptoPreamble Open(IStorage storage, CryptoHeader header)
     {
         ArgumentNullException.ThrowIfNull(storage);
-        return new CryptoPreamble(storage, header);
+
+        return new CryptoPreamble(header, WriteToStorage, () => storage.IsReadOnly);
+
+        void WriteToStorage(CryptoHeader current)
+        {
+            var buffer = ArrayPool<byte>.Shared.Rent(storage.PageSize);
+
+            try
+            {
+                var page = buffer.AsSpan(0, storage.PageSize);
+                page.Clear();
+                current.WriteTo(page);
+
+                storage.WritePage(PREAMBLE_PAGE, page);
+                storage.Flush();
+            }
+            finally
+            {
+                ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
+            }
+        }
+    }
+
+    #endregion
+
+    #region Open - beside a directory
+
+    /// <summary>
+    /// The file an LSM directory keeps its crypto header in. An LSM store is a directory of
+    /// SSTables and has no page 0 to hide a preamble in, so the preamble is a file of its own -
+    /// small, plaintext, and outside the <c>sst_*.sst</c> pattern everything else there scans for.
+    /// </summary>
+    public const string DIRECTORY_FILE_NAME = "crypto.hdr";
+
+    /// <summary>
+    /// Reads the crypto header beside an LSM directory, or says there is none.
+    /// </summary>
+    /// <remarks>
+    /// A directory that already holds SSTables and has no header file was written before this
+    /// existed; an empty directory is a store being created. Told apart by the caller, because only
+    /// the caller knows what "already holds data" means for its store.
+    /// </remarks>
+    public static bool InspectDirectory(string directory, out CryptoHeader header)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+
+        header = default;
+
+        var path = Path.Combine(directory, DIRECTORY_FILE_NAME);
+
+        if (!File.Exists(path))
+            return false;
+
+        var bytes = File.ReadAllBytes(path);
+
+        return CryptoHeader.TryReadFrom(bytes, out header);
+    }
+
+    /// <summary>
+    /// Creates or takes over the crypto header beside an LSM directory.
+    /// </summary>
+    public static CryptoPreamble OpenDirectory(string directory, CryptoHeader header, bool create)
+    {
+        ArgumentException.ThrowIfNullOrWhiteSpace(directory);
+
+        Directory.CreateDirectory(directory);
+
+        var path = Path.Combine(directory, DIRECTORY_FILE_NAME);
+        var preamble = new CryptoPreamble(header, WriteToFile, () => false);
+
+        if (create)
+            preamble.Write(header.NonceSequence);
+
+        return preamble;
+
+        void WriteToFile(CryptoHeader current)
+        {
+            var buffer = new byte[CryptoHeader.SIZE];
+            current.WriteTo(buffer);
+
+            // Written whole and flushed, the same order the paged medium uses: the number on disk
+            // is above everything this session may hand out before any of it is handed out.
+            using var stream = new FileStream(path, FileMode.Create, FileAccess.Write, FileShare.None);
+            stream.Write(buffer);
+            stream.Flush(flushToDisk: true);
+        }
     }
 
     #endregion
@@ -203,7 +296,7 @@ public sealed class CryptoPreamble : INonceSequence, IDisposable
     /// </summary>
     private void Reserve()
     {
-        if (m_storage.IsReadOnly)
+        if (m_isReadOnly())
         {
             throw new InvalidOperationException(
                 "This database is open read-only, so no nonce sequence can be reserved - and without "
@@ -221,22 +314,7 @@ public sealed class CryptoPreamble : INonceSequence, IDisposable
     private void Write(ulong sequence)
     {
         m_header.NonceSequence = sequence;
-
-        var buffer = ArrayPool<byte>.Shared.Rent(m_storage.PageSize);
-
-        try
-        {
-            var page = buffer.AsSpan(0, m_storage.PageSize);
-            page.Clear();
-            m_header.WriteTo(page);
-
-            m_storage.WritePage(PREAMBLE_PAGE, page);
-            m_storage.Flush();
-        }
-        finally
-        {
-            ArrayPool<byte>.Shared.Return(buffer, clearArray: true);
-        }
+        m_persist(m_header);
     }
 
     private static bool IsAllZeros(ReadOnlySpan<byte> data)

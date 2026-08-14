@@ -460,6 +460,67 @@ public class EncryptionFormatFindingsTests
 
     #endregion
 
+    #region The LSM store has the same shape
+
+    /// <summary>
+    /// <c>EncryptorBlock</c> carried the identical construction to <c>EncryptorPage</c> - the salt
+    /// XORed into the nonce prefix, a counter zeroed in the constructor - so the LSM store had both
+    /// defects too. It has no page 0 to hide a preamble in, so its header is a file beside the
+    /// SSTables.
+    /// </summary>
+    /// <remarks>
+    /// RED on 12.8.0, where no such file existed. Checking the other implementation of an interface
+    /// is the cheapest version of "fix every path with the shape, not the one the finding names".
+    /// </remarks>
+    [Test]
+    public void TwoLsmStoresWithOnePasswordHaveDifferentSaltsTest()
+    {
+        var first = WriteLsm("lsm-one");
+        var second = WriteLsm("lsm-two");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(CryptoPreamble.InspectDirectory(first, out var one), Is.True,
+                "an encrypted LSM directory must carry a crypto header of its own");
+            Assert.That(CryptoPreamble.InspectDirectory(second, out var two), Is.True,
+                "and so must the second one");
+            Assert.That(two.Salt, Is.Not.EqualTo(one.Salt),
+                "two LSM stores made with one password must not share a salt");
+        });
+    }
+
+    /// <summary>
+    /// And the sequence survives the directory the same way it survives a file: two sessions over
+    /// one LSM store must not encrypt a block under one nonce.
+    /// </summary>
+    /// <remarks>
+    /// Asserted on what the ENCRYPTOR writes, not on the number in the header. A first version read
+    /// the header field and stayed green with the sequence sabotaged back into a per-session counter
+    /// - the reservation advanced perfectly while the encryptor ignored it. Two encryptors over one
+    /// directory is exactly what opening the store twice builds.
+    /// </remarks>
+    [Test]
+    public void TwoLsmSessionsDoNotEncryptOneBlockUnderOneNonceTest()
+    {
+        var directory = WriteLsm("lsm-sequence");
+        var key = System.Security.Cryptography.RandomNumberGenerator.GetBytes(32);
+
+        var first = EncryptBlockInAFreshSession(directory, key, "session one");
+        var second = EncryptBlockInAFreshSession(directory, key, "session two");
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(second.AsSpan(0, 4).ToArray(), Is.EqualTo(first.AsSpan(0, 4).ToArray()),
+                "the two readings must be of the SAME block, or 'the nonces differ' means nothing");
+
+            Assert.That(second.AsSpan(0, NONCE_SIZE).ToArray(), Is.Not.EqualTo(first.AsSpan(0, NONCE_SIZE).ToArray()),
+                "two sessions over one LSM store must not encrypt block 0 under one nonce; both used "
+                + $"{Convert.ToHexString(first.AsSpan(0, NONCE_SIZE).ToArray())}");
+        });
+    }
+
+    #endregion
+
     #region Tools
 
     private const int NONCE_SIZE = 12;
@@ -484,6 +545,33 @@ public class EncryptionFormatFindingsTests
     }
 
     private static byte[] HeadOf(string path) => File.ReadAllBytes(path).AsSpan(0, 8).ToArray();
+
+    /// <summary>
+    /// One block, encrypted by an encryptor built the way opening the store builds one.
+    /// </summary>
+    private static byte[] EncryptBlockInAFreshSession(string directory, byte[] key, string text)
+    {
+        Assert.That(CryptoPreamble.InspectDirectory(directory, out var header), Is.True,
+            "the LSM directory must carry a crypto header for this case to be about anything");
+
+        using var preamble = CryptoPreamble.OpenDirectory(directory, header, create: false);
+        using var encryptor = new EncryptorBlockSequenced(new EncryptorProviderAesGcm(key), preamble);
+
+        return encryptor.Encrypt(System.Text.Encoding.ASCII.GetBytes(text), 0);
+    }
+
+    private string WriteLsm(string name)
+    {
+        var directory = Path.Combine(m_directory, name);
+
+        using var database = new WitDatabaseBuilder().WithLsmTree(directory)
+            .WithEncryption(PASSWORD).Build();
+
+        database.Put("k"u8.ToArray(), "v"u8.ToArray());
+        database.Flush();
+
+        return directory;
+    }
 
     private static int IndexOf(byte[] haystack, ReadOnlySpan<byte> needle)
     {

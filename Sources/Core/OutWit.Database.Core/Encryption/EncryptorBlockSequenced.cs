@@ -34,16 +34,23 @@ public sealed class EncryptorBlockSequenced : IBlockEncryptor
 
     private readonly INonceSequence m_sequence;
 
+    private readonly IDisposable? m_owned;
+
     private bool m_disposed;
 
     #endregion
 
     #region Constructors
 
-    public EncryptorBlockSequenced(ICryptoProvider crypto, INonceSequence sequence)
+    /// <param name="owned">
+    /// Disposed with this encryptor. An LSM store owns its encryptor and nothing else owns the
+    /// preamble the sequence comes from, so it travels with it.
+    /// </param>
+    public EncryptorBlockSequenced(ICryptoProvider crypto, INonceSequence sequence, IDisposable? owned = null)
     {
         m_crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
         m_sequence = sequence ?? throw new ArgumentNullException(nameof(sequence));
+        m_owned = owned;
 
         if (m_crypto.NonceSize != PREFIX_SIZE + sizeof(ulong))
         {
@@ -134,6 +141,7 @@ public sealed class EncryptorBlockSequenced : IBlockEncryptor
             return;
 
         m_disposed = true;
+        m_owned?.Dispose();
         m_crypto.Dispose();
     }
 

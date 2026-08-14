@@ -48,6 +48,10 @@
     <None Update="Fixtures\*_indexes\**\*">
       <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
     </None>
+    <!-- An LSM store is a directory, generated from a worktree at the parent commit. -->
+    <None Update="Fixtures\12.8.0-encrypted-lsm\**\*">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
   </ItemGroup>
 
 </Project>

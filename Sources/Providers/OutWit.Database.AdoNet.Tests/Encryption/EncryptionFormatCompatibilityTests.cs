@@ -1,4 +1,5 @@
 using System.Security.Cryptography;
+using OutWit.Database.Core.Builder;
 
 namespace OutWit.Database.AdoNet.Tests.Encryption;
 
@@ -30,6 +31,8 @@ public class EncryptionFormatCompatibilityTests
     private const string DEFAULT_FIXTURE = "12.8.0-encrypted.witdb";
 
     private const string FAST_FIXTURE = "12.8.0-encrypted-fast.witdb";
+
+    private const string LSM_FIXTURE = "12.8.0-encrypted-lsm";
 
     /// <summary>
     /// A secondary index does not live in the database file. It lives in a directory beside it,
@@ -156,6 +159,57 @@ public class EncryptionFormatCompatibilityTests
             return Scalar(connection, "SELECT COUNT(*) FROM Customers");
         }, Throws.Exception,
             "the wrong password must not open a 12.8.0 database");
+    }
+
+    /// <summary>
+    /// The LSM store's half of the compatibility claim. Its directory was written by 12.8.0 and
+    /// carries no crypto header, which is exactly how the new code recognises it.
+    /// </summary>
+    /// <remarks>
+    /// <c>Fixtures/12.8.0-encrypted-lsm</c> was generated from a git worktree at the parent commit,
+    /// so it is the old code's output rather than the new code's imitation of it.
+    /// </remarks>
+    [Test]
+    public void A1280EncryptedLsmStoreStillOpensTest()
+    {
+        var directory = CopyLsmFixture();
+
+        using var database = new WitDatabaseBuilder()
+            .WithLsmTree(directory).WithEncryption(FIXTURE_PASSWORD).Build();
+
+        Assert.That(System.Text.Encoding.UTF8.GetString(database.Get("key-007") ?? []),
+            Is.EqualTo("value for key 7"),
+            "an LSM store written before the crypto header must keep opening and answering");
+    }
+
+    /// <summary>
+    /// Control: the same directory refuses the wrong password, so the test above is about the
+    /// password and not about a build that decrypts nothing.
+    /// </summary>
+    [Test]
+    public void ControlThe1280LsmFixtureRefusesTheWrongPasswordTest()
+    {
+        var directory = CopyLsmFixture("lsm-wrong-password");
+
+        // What matters is that the data does not come out; whether the store throws or answers
+        // nothing is a separate question and this case does not pretend to settle it.
+        string? answered = null;
+
+        try
+        {
+            using var database = new WitDatabaseBuilder()
+                .WithLsmTree(directory).WithEncryption("not-the-password").Build();
+
+            var value = database.Get("key-007");
+            answered = value == null ? null : System.Text.Encoding.UTF8.GetString(value);
+        }
+        catch (Exception)
+        {
+            answered = null;
+        }
+
+        Assert.That(answered, Is.Not.EqualTo("value for key 7"),
+            "the wrong password must not read a 12.8.0 LSM store");
     }
 
     #endregion
@@ -314,6 +368,22 @@ public class EncryptionFormatCompatibilityTests
 
         foreach (var file in Directory.GetFiles(indexes))
             File.Copy(file, Path.Combine(destinationIndexes, Path.GetFileName(file)));
+
+        return destination;
+    }
+
+    private string CopyLsmFixture(string? renameTo = null)
+    {
+        var source = Path.Combine(FixtureDirectory, LSM_FIXTURE);
+
+        Assert.That(Directory.Exists(source), Is.True,
+            $"the committed LSM fixture '{LSM_FIXTURE}' must reach the test output directory");
+
+        var destination = Path.Combine(m_directory, renameTo ?? LSM_FIXTURE);
+        Directory.CreateDirectory(destination);
+
+        foreach (var file in Directory.GetFiles(source))
+            File.Copy(file, Path.Combine(destination, Path.GetFileName(file)));
 
         return destination;
     }
