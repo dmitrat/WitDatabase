@@ -120,6 +120,24 @@ namespace OutWit.Database.Core.Interfaces
         /// </summary>
         long Count { get; }
 
+        /// <summary>
+        /// Whether this index's content was found where it was expected, rather than the index
+        /// having been created from nothing at this open.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b><see cref="Count"/> cannot answer this and that is the point.</b> An index over a
+        /// column that is NULL in every row holds nothing and is perfectly healthy; an index whose
+        /// file was never copied holds nothing and answers every query wrongly, with no error. Only
+        /// the layer that opened the storage knows which happened, and it knows it for one moment.
+        /// </para>
+        /// <para>
+        /// Defaulted to <c>true</c> so that an implementation which cannot tell keeps today's
+        /// behaviour - nothing is rebuilt on a guess.
+        /// </para>
+        /// </remarks>
+        bool ContentWasFound => true;
+
         #endregion
     }
 }
