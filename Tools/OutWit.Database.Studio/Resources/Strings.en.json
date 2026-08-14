@@ -211,6 +211,10 @@
     "one": "{0} connection",
     "other": "{0} connections"
   },
+  "Count.ConnectionsIn": {
+    "one": "{0} connection",
+    "other": "{0} connections"
+  },
   "Count.Tables": {
     "one": "{0} table",
     "other": "{0} tables"
@@ -728,6 +732,7 @@
   "Tab.StructureOf": "{0} - Structure",
   "Tab.EditOf": "{0} - Edit",
   "Query.Cancelled": "Query cancelled",
+  "Query.Running": "Running the query…",
   "Query.CancelledAt": "Cancelled at statement {0} of {1}",
   "Query.Failed": "Query failed: {0}",
   "Query.NothingToExplain": "There is no statement here to explain",

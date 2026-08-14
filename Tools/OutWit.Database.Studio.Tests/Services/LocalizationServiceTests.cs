@@ -350,10 +350,22 @@ public class LocalizationServiceTests
     #region Plurals
 
     /// <summary>
-    /// Every plural entry carries exactly the forms its language's family uses, and they are different
-    /// strings. This is what makes the family declaration mean something: a Slavic catalogue with two
-    /// forms would otherwise fall back quietly and be wrong for 5, 11 and 25.
+    /// Every plural entry carries exactly the forms its language's family uses, and it does not
+    /// carry one string in all of them. This is what makes the family declaration mean something: a
+    /// Slavic catalogue with two forms would otherwise fall back quietly and be wrong for 5, 11
+    /// and 25.
     /// </summary>
+    /// <remarks>
+    /// <b>This asked for all three forms to be DISTINCT until 2026-08-14, and that rule is wrong.</b>
+    /// It held for every entry in the catalogue because every entry was nominative -
+    /// «подключение / подключения / подключений» - and it went red on the first entry that was not:
+    /// the prepositional «в 1 подключении / в 2 подключениях / в 5 подключениях», where the plural
+    /// forms are correctly identical. Russian distinguishes 2-4 from 5+ in the nominative and the
+    /// accusative and not in the other four cases.
+    ///
+    /// What a repeated form actually risks is a set filled in by copying, so the check is that a set
+    /// is not entirely uniform. That is weaker, and it is as strong as the truth allows.
+    /// </remarks>
     [Test]
     public void EveryPluralCarriesTheFormsItsFamilyUsesTest()
     {
@@ -370,13 +382,39 @@ public class LocalizationServiceTests
                 Assert.That(entry.Keys.OrderBy(form => form), Is.EqualTo(forms.OrderBy(form => form)),
                     $"{language} {key} does not carry the forms of its declared family");
 
-                Assert.That(entry.Values.Distinct().Count(), Is.EqualTo(forms.Count),
-                    $"{language} {key} repeats a form, so at least one count reads wrongly");
+                if (forms.Count > 1)
+                {
+                    Assert.That(entry.Values.Distinct().Count(), Is.GreaterThan(1),
+                        $"{language} {key} is one string in every form, so the family it declares "
+                        + "does nothing");
+                }
             }
         }
 
         Assert.That(checkedEntries, Is.GreaterThan(4),
             "CONTROL: too few plural entries - this case is not measuring anything");
+    }
+
+    /// <summary>
+    /// The control the rule above lost when it was relaxed: the NOMINATIVE sets, which are what the
+    /// catalogue is nearly all of, still carry three different strings in Russian.
+    /// </summary>
+    /// <remarks>
+    /// Named one by one rather than swept, because the point is that a set which SHOULD have three
+    /// distinct forms still does. A sweep would go quiet the moment another case-inflected set was
+    /// added, which is the failure this whole pair exists to avoid.
+    /// </remarks>
+    [TestCase("Count.Rows")]
+    [TestCase("Count.Columns")]
+    [TestCase("Count.Statements")]
+    [TestCase("Count.Connections")]
+    [TestCase("Count.Tables")]
+    public void ControlANominativeRussianSetStillCarriesThreeFormsTest(string key)
+    {
+        var entry = m_localization.Plurals("ru")[key];
+
+        Assert.That(entry.Values.Distinct().Count(), Is.EqualTo(3),
+            $"{key} is nominative, where Russian does distinguish one, few and many");
     }
 
     [TestCase(1, "1 row")]
