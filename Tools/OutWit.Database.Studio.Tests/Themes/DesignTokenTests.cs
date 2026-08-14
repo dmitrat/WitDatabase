@@ -1,4 +1,4 @@
-using System.Globalization;
+﻿using System.Globalization;
 using System.Text.RegularExpressions;
 using Avalonia;
 using Avalonia.Controls;
@@ -410,6 +410,53 @@ public class DesignTokenTests
     #endregion
 
     #region The census - what stage V1 has to strike off
+
+    /// <summary>
+    /// <summary>
+    /// WS-4: the application asks for the DARK variant, and the setting it would read agrees.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>These two disagreed until phase 16 and every test was green.</b> <c>App.axaml</c> said
+    /// Light, <c>Settings.Theme</c> said <c>"Light"</c>, the toggle beside it read «Тёмная», and a
+    /// test asserted the wrong default with a straight face. The value was checked; the pair was
+    /// not, and the pair is the decision.
+    /// </para>
+    /// <para>
+    /// Three things have to agree and the third is what makes this more than a spelling check:
+    /// the markup's <c>RequestedThemeVariant</c>, the default in <c>Settings</c>, and what
+    /// <c>ApplyTheme</c> DOES with that default - which is the call the window makes on startup, so
+    /// a settings string nothing maps to <c>Dark</c> would leave the window on Avalonia's own
+    /// default and nothing would say so.
+    /// </para>
+    /// </remarks>
+    [AvaloniaTest]
+    public void TheApplicationStartsInTheDarkVariantAndTheSettingAgreesTest()
+    {
+        var application = Application.Current as App;
+
+        Assert.That(application, Is.Not.Null, "CONTROL: this case measures Studio's own App");
+
+        var settings = new OutWit.Database.Studio.Models.Settings();
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(application!.RequestedThemeVariant, Is.EqualTo(ThemeVariant.Dark),
+                "the markup asks for a variant the canon does not name");
+
+            Assert.That(settings.Theme, Is.EqualTo("Dark").IgnoreCase,
+                "and the setting the window reads on startup disagrees with it");
+        });
+
+        // What the window actually calls, with what it would actually have read.
+        application!.ApplyTheme("Light");
+        Assert.That(application.RequestedThemeVariant, Is.EqualTo(ThemeVariant.Light),
+            "CONTROL: ApplyTheme moves the variant, so the assertion below is about the value");
+
+        application.ApplyTheme(settings.Theme);
+        Assert.That(application.RequestedThemeVariant, Is.EqualTo(ThemeVariant.Dark),
+            "the default setting does not map to the dark variant");
+    }
 
     /// <summary>
     /// The ledger of hard-coded values, asserted EXACTLY and in both directions.

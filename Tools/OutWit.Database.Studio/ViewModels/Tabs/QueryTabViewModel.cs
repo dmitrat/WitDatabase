@@ -1,4 +1,4 @@
-using System.Collections;
+﻿using System.Collections;
 using System.Collections.ObjectModel;
 using System.ComponentModel;
 using System.Data;
@@ -227,6 +227,14 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel, ISearchTarget
         ErrorLength = 0;
         ErrorSuggestion = null;
         ErrorName = null;
+
+        // And the wavy line goes with them. Clearing ErrorLine is not enough: UnderlineLine is a
+        // separate property the editor binds to, and only UpdateUnderline copies one into the other.
+        // Without this the mark from a failed statement stays under the text for the rest of the
+        // tab's life - measured in the running application, where a refused UPDATE left a mark that
+        // was still there after the SELECT that replaced it had run and returned rows.
+        UpdateUnderline();
+
         Statements.Clear();
         DdlWasExecuted = false;
         TablesWritten.Clear();

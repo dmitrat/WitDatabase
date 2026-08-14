@@ -93,6 +93,46 @@ public class QueryWorkspaceTests
         Assert.That(m_tab.UnderlineLine, Is.EqualTo(3));
     }
 
+    /// <summary>
+    /// A statement that runs takes the previous statement's mark away with it.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Found by driving, and it had been there since the underline was built.</b> A refused
+    /// <c>UPDATE</c> on a read-only connection put the mark at line 1; the <c>SELECT</c> typed over
+    /// it ran and returned rows, and the mark was still there. A fresh tab had none, which is what
+    /// proved the mark was the underline rather than something the editor draws by itself.
+    /// </para>
+    /// <para>
+    /// The cause is that <c>ErrorLine</c> and <c>UnderlineLine</c> are two properties: execution
+    /// cleared the first and only <c>UpdateUnderline</c> copies it into the second. So the error was
+    /// gone from the message panel and the status bar, and the text still carried it - one of
+    /// WS-11's three places quietly disagreeing with the other two.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task AStatementThatSucceedsTakesTheLastErrorsMarkWithItTest()
+    {
+        m_tab.SqlText = "UPDATE Orders SET Total = Total / 0 WHERE Id = 1;";
+        await StudioFixture.PressAsync(m_tab.ExecuteQueryCommand);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_tab.ErrorMessage, Is.Not.Null, "the control: this statement has to fail");
+            Assert.That(m_tab.UnderlineLine, Is.GreaterThan(0), "and it has to be marked in the text");
+        });
+
+        m_tab.SqlText = "SELECT Id FROM Orders;";
+        await StudioFixture.PressAsync(m_tab.ExecuteQueryCommand);
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(m_tab.ErrorMessage, Is.Null, "the control: this one has to succeed");
+            Assert.That(m_tab.UnderlineLine, Is.Zero,
+                "the mark from the failed statement is still under text that has since run");
+        });
+    }
+
     [Test]
     public void TextThatParsesLeavesNothingUnderlinedTest()
     {

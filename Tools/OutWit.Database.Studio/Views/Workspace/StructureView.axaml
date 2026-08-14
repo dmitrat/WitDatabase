@@ -1,4 +1,4 @@
-<UserControl xmlns="https://github.com/avaloniaui"
+﻿<UserControl xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
              xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
              xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -442,7 +442,7 @@
 
                     <Border Background="{DynamicResource Wit.Warn.Surface}" BorderBrush="{DynamicResource Wit.Warn.Border}" BorderThickness="1"
                             CornerRadius="4" Padding="10"
-                            IsVisible="{Binding !CanEditView}">
+                            IsVisible="{Binding ShowsViewNote}">
                         <TextBlock TextWrapping="Wrap" Foreground="{DynamicResource Wit.Warn.Text}"
                                    Text="{DynamicResource S.Structure.ViewNote}"/>
                     </Border>
