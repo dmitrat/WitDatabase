@@ -29,6 +29,25 @@ public sealed class LsmParallelCompactor : IDisposable, IAsyncDisposable
     private readonly Action<CompactionResult> m_onCompactionComplete;
     private readonly Lock m_statsLock = new();
 
+    /// <summary>
+    /// Jobs submitted and not yet finished - queued AND running.
+    /// </summary>
+    /// <remarks>
+    /// The queue's own depth cannot answer this: a job leaves the queue when a worker PICKS IT UP,
+    /// which is the moment the expensive part begins. See <see cref="WaitForAllAsync"/>.
+    /// </remarks>
+    private int m_inFlight;
+
+    /// <summary>
+    /// Completed while nothing is in flight, so a waiter awaits it instead of polling.
+    /// </summary>
+    /// <remarks>
+    /// <c>RunContinuationsAsynchronously</c> deliberately: without it the continuation runs on the
+    /// worker thread that finished the last compaction, which is the shape that once cost this
+    /// repository a 1,004 ms <c>Cancel()</c>.
+    /// </remarks>
+    private volatile TaskCompletionSource m_idle = AlreadyIdle();
+
     private long m_compactionsCompleted;
     private long m_totalInputFiles;
     private long m_totalOutputEntries;
@@ -90,7 +109,16 @@ public sealed class LsmParallelCompactor : IDisposable, IAsyncDisposable
         ThrowIfDisposed();
 
         var job = new CompactionJob(inputFiles, outputPath, null);
-        return m_jobChannel.Writer.TryWrite(job);
+
+        // Counted BEFORE the write, or a worker can take the job and finish it between the write
+        // and the increment - which would leave the counter above zero for ever.
+        Enter();
+
+        if (m_jobChannel.Writer.TryWrite(job))
+            return true;
+
+        Leave();
+        return false;
     }
 
     /// <summary>
@@ -110,7 +138,17 @@ public sealed class LsmParallelCompactor : IDisposable, IAsyncDisposable
         var completion = new TaskCompletionSource<CompactionResult>(TaskCreationOptions.RunContinuationsAsynchronously);
         var job = new CompactionJob(inputFiles, outputPath, completion);
 
-        await m_jobChannel.Writer.WriteAsync(job, cancellationToken);
+        Enter();
+
+        try
+        {
+            await m_jobChannel.Writer.WriteAsync(job, cancellationToken);
+        }
+        catch
+        {
+            Leave();
+            throw;
+        }
 
         return await completion.Task.WaitAsync(cancellationToken);
     }
@@ -118,17 +156,33 @@ public sealed class LsmParallelCompactor : IDisposable, IAsyncDisposable
     /// <summary>
     /// Waits for all pending compactions to complete.
     /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This waited on the QUEUE and then slept, and the two are not the same thing.</b> It polled
+    /// <c>Reader.Count</c> - jobs still waiting to be picked up - so it returned as soon as a worker
+    /// had DEQUEUED the last job, with the compaction itself still running. Its own comment admitted
+    /// as much and added a 100 ms delay "to ensure in-progress compactions complete", which is a
+    /// guess about how long a compaction takes.
+    /// </para>
+    /// <para>
+    /// On a loaded CI runner the guess is wrong, and it was: a callback that had not run yet made
+    /// <c>TrySubmitCompactsFilesTest</c> read 0 results of 1. Eight local runs of that fixture in
+    /// isolation passed, which is what this class of defect looks like from the wrong end. It is
+    /// public API, so every consumer got the same sleep-and-hope.
+    /// </para>
+    /// <para>
+    /// It waits on a count of jobs that are queued OR running now, and that count reaches zero only
+    /// after the completion callback has been invoked.
+    /// </para>
+    /// </remarks>
     public async Task WaitForAllAsync(CancellationToken cancellationToken = default)
     {
         ThrowIfDisposed();
 
-        while (m_jobChannel.Reader.Count > 0)
-        {
-            await Task.Delay(50, cancellationToken);
-        }
-
-        // Additional delay to ensure in-progress compactions complete
-        await Task.Delay(100, cancellationToken);
+        // Read once. If nothing is outstanding now this is already completed and the call returns;
+        // if something is, this is the source that completes when THAT work drains. A job submitted
+        // after this line belongs to the next wait, which is what the name promises.
+        await m_idle.Task.WaitAsync(cancellationToken).ConfigureAwait(false);
     }
 
     #endregion
@@ -147,13 +201,19 @@ public sealed class LsmParallelCompactor : IDisposable, IAsyncDisposable
                 try
                 {
                     var result = ExecuteCompaction(job);
-                    
+
                     m_onCompactionComplete(result);
                     job.Completion?.TrySetResult(result);
                 }
                 catch (Exception ex)
                 {
                     job.Completion?.TrySetException(ex);
+                }
+                finally
+                {
+                    // After the callback, not before: "all the work is done" has to include the
+                    // caller's own handler, which is the only thing a TrySubmit caller can observe.
+                    Leave();
                 }
             }
         }
@@ -165,6 +225,28 @@ public sealed class LsmParallelCompactor : IDisposable, IAsyncDisposable
         {
             // Channel closed during shutdown
         }
+    }
+
+    /// <summary>One more job outstanding; the compactor is no longer idle.</summary>
+    private void Enter()
+    {
+        if (Interlocked.Increment(ref m_inFlight) == 1)
+            m_idle = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+    }
+
+    /// <summary>One fewer; when the last one goes, waiters are released.</summary>
+    private void Leave()
+    {
+        if (Interlocked.Decrement(ref m_inFlight) == 0)
+            m_idle.TrySetResult();
+    }
+
+    private static TaskCompletionSource AlreadyIdle()
+    {
+        var source = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
+        source.SetResult();
+
+        return source;
     }
 
     private CompactionResult ExecuteCompaction(CompactionJob job)
