@@ -723,6 +723,7 @@
   "Dialog.Rebuild.Step.Running": "выполняется",
   "Palette.ObjectIn": "{0} в {1}",
   "Explorer.Editing": "Правка таблицы: {0}",
+  "Explorer.Viewing": "Просмотр таблицы: {0} — у неё нет первичного ключа, поэтому править её здесь нельзя",
   "Explorer.DefinitionFailed": "Не удалось получить определение: {0}",
   "Explorer.NoDefinition": "Определение для {0} не найдено",
   "Explorer.Dropped": "Удалено ({0}): {1}",
@@ -782,7 +783,7 @@
   "Explorer.Folder.Triggers": "Триггеры",
   "Explorer.Folder.Sequences": "Последовательности",
   "Explorer.Folder.Routines": "Процедуры и функции",
-  "Explorer.Summary": "{0}: таблиц {1}, представлений {2}, индексов {3}, триггеров {4}, последовательностей {5}",
+  "Explorer.Summary": "{0}: {1}, {2}, {3}, {4}, {5}",
   "Query.Autocommit": "Автофиксация",
   "Query.TransactionOpen": "Транзакция открыта · {0}",
   "Settings.Theme.System": "Как в системе",
@@ -889,6 +890,11 @@
     "few": "{0} триггера",
     "many": "{0} триггеров"
   },
+  "Count.Sequences": {
+    "one": "{0} последовательность",
+    "few": "{0} последовательности",
+    "many": "{0} последовательностей"
+  },
   "Count.Tabs": {
     "one": "{0} вкладка",
     "few": "{0} вкладки",
@@ -935,6 +941,7 @@
   "Database.Config.Chain": "Цепочка хранилищ",
   "Database.Journal.None": "нет",
   "Database.Cache.Holding": "{0} · {1} · занято {2}, из них грязных {3}",
+  "Database.Cache.HoldingNoKind": "{0} · занято {1}, из них грязных {2}",
   "Database.Cache.Sized": "{0} · {1}",
   "Database.Locking.On": "включена",
   "Database.Locking.Off": "выключена",

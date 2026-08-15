@@ -277,6 +277,14 @@ public class LocalizationCoverageTests
     private static readonly string[] CODE_FOLDERS = ["ViewModels", "Views", "Services"];
 
     /// <summary>
+    /// A caption written into a control BY CODE: <c>ThemeText.Text = …</c>, <c>dialog.Header.Text = …</c>.
+    /// Rule 6 asks when it is written, not what it says, so the value is captured whole and filtered
+    /// afterwards on whether the catalogue is in it.
+    /// </summary>
+    private static readonly Regex CODE_BEHIND_CAPTION =
+        new(@"(\w+(?:\.\w+)*)\.(?:Text|Content|Header)\s*=\s*([^;]{0,300});", RegexOptions.Compiled);
+
+    /// <summary>
     /// The remainder, NAMED rather than finished - the same shape stage 9 used for the fourteen
     /// unswept views, so the rule bites everywhere else in the meantime.
     ///
@@ -704,6 +712,73 @@ public class LocalizationCoverageTests
             Assert.That(CaughtInTable(@"private static readonly string[] UNITS = [""B"", ""KB"", ""MB""];"),
                 Is.False,
                 "a unit is one word, and a key has no spaces - neither looks like prose");
+        });
+    }
+
+    /// <summary>
+    /// A caption a view WRITES from the catalogue is written again when the language changes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The five rules above are about the string; this one is about the MOMENT, and it is the class
+    /// they cannot see. The theme button's caption has come from the catalogue since 2026-08-07 - the
+    /// key exists, is spelled correctly and is referenced, so every rule here passed over it - and the
+    /// running application still showed <c>Dark</c> in a Russian interface, because the code that
+    /// writes it runs at startup and on a THEME change and nothing re-ran it when the catalogue was
+    /// swapped. Markup does not have this problem: a <c>DynamicResource</c> is re-evaluated when the
+    /// dictionary is replaced.
+    /// </para>
+    /// <para>
+    /// <b>The discriminator is mechanical, not a name.</b> A view whose caption is written inside a
+    /// static factory that CONSTRUCTS the window it fills writes it once per showing, so a language
+    /// change cannot leave stale text behind - the next showing is a new window. Everything else
+    /// outlives a language change and has to subscribe. The two dialogs pass on the first arm and the
+    /// main window on the second, and neither needed an exemption written for it.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void ACaptionWrittenByAViewIsWrittenAgainWhenTheLanguageChangesTest()
+    {
+        var stale = new List<string>();
+        var written = 0;
+
+        foreach (var file in Directory.EnumerateFiles(Path.Combine(StudioFolder(), "Views"),
+                     "*.axaml.cs", SearchOption.AllDirectories))
+        {
+            var code = WithoutComments(File.ReadAllText(file));
+            var view = Path.GetFileName(file).Replace(".axaml.cs", string.Empty);
+
+            var captions = CODE_BEHIND_CAPTION.Matches(code)
+                .Where(match => match.Groups[2].Value.Contains("ocalization", StringComparison.Ordinal))
+                .ToList();
+
+            written += captions.Count;
+
+            if (captions.Count == 0)
+                continue;
+
+            // Built fresh for every showing: the method that writes the caption also makes the window.
+            if (code.Contains($"new {view}(", StringComparison.Ordinal))
+                continue;
+
+            if (code.Contains("LanguageChanged +=", StringComparison.Ordinal))
+                continue;
+
+            stale.AddRange(captions.Select(match =>
+                $"{Path.GetFileName(file)}:{Line(code, match.Index)} {Shorten(match.Value.Trim())}"));
+        }
+
+        Assert.Multiple(() =>
+        {
+            // THE SURFACE. These are three lines in the whole application, and a rule that reads none
+            // of them passes exactly as loudly as one that reads all three.
+            Assert.That(written, Is.EqualTo(3),
+                "the views write a different number of captions from the catalogue than this rule was "
+                + "measured against - check the new one, then change this number");
+
+            Assert.That(stale, Is.Empty,
+                "these stay in the language the window was opened in:"
+                + Environment.NewLine + string.Join(Environment.NewLine, stale));
         });
     }
 

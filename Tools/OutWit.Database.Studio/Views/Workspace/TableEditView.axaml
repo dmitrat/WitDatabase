@@ -412,9 +412,13 @@
                                    VerticalAlignment="Center"/>
                     </StackPanel>
                     
+                    <!-- WS-11: the same flag the buttons read. A table with no primary key opens as a
+                         viewer with every editing control disabled, and a footer advertising Ctrl+S
+                         and Del beside them is the application contradicting itself. -->
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
-                                Spacing="16">
+                                Spacing="16"
+                                IsVisible="{Binding !IsReadOnly}">
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Commit}"
                                    Foreground="{DynamicResource Wit.Ok.Text}"
                                    FontSize="{DynamicResource Wit.Font.Control}"
@@ -444,7 +448,8 @@
                     
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
-                                Spacing="16">
+                                Spacing="16"
+                                IsVisible="{Binding !IsReadOnly}">
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Commit}"
                                    Foreground="{DynamicResource Wit.Error.Text}"
                                    FontSize="{DynamicResource Wit.Font.Control}"
@@ -466,11 +471,13 @@
                                Text="{DynamicResource S.Grid.Hint.Edit}"
                                Foreground="Gray"
                                FontSize="{DynamicResource Wit.Font.Body}"
-                               VerticalAlignment="Center"/>
-                    
+                               VerticalAlignment="Center"
+                               IsVisible="{Binding !IsReadOnly}"/>
+
                     <StackPanel Grid.Column="1"
                                 Orientation="Horizontal"
-                                Spacing="16">
+                                Spacing="16"
+                                IsVisible="{Binding !IsReadOnly}">
                         <TextBlock Text="{DynamicResource S.Grid.Hint.Commit}"
                                    Foreground="Gray"
                                    FontSize="{DynamicResource Wit.Font.Control}"

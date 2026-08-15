@@ -711,6 +711,7 @@
   "Dialog.Rebuild.Step.Running": "running",
   "Palette.ObjectIn": "{0} in {1}",
   "Explorer.Editing": "Editing table: {0}",
+  "Explorer.Viewing": "Viewing table: {0} - it has no primary key, so it cannot be edited here",
   "Explorer.DefinitionFailed": "Failed to get definition: {0}",
   "Explorer.NoDefinition": "No definition found for {0}",
   "Explorer.Dropped": "Dropped {0}: {1}",
@@ -769,7 +770,7 @@
   "Explorer.Folder.Triggers": "Triggers",
   "Explorer.Folder.Sequences": "Sequences",
   "Explorer.Folder.Routines": "Routines",
-  "Explorer.Summary": "{0}: {1} tables, {2} views, {3} indexes, {4} triggers, {5} sequences",
+  "Explorer.Summary": "{0}: {1}, {2}, {3}, {4}, {5}",
   "Query.Autocommit": "Autocommit",
   "Query.TransactionOpen": "Transaction open · {0}",
   "Settings.Theme.System": "System",
@@ -870,6 +871,10 @@
     "one": "{0} trigger",
     "other": "{0} triggers"
   },
+  "Count.Sequences": {
+    "one": "{0} sequence",
+    "other": "{0} sequences"
+  },
   "Count.Tabs": {
     "one": "{0} tab",
     "other": "{0} tabs"
@@ -913,6 +918,7 @@
   "Database.Config.Chain": "Store chain",
   "Database.Journal.None": "none",
   "Database.Cache.Holding": "{0} · {1} · holding {2}, {3} dirty",
+  "Database.Cache.HoldingNoKind": "{0} · holding {1}, {2} dirty",
   "Database.Cache.Sized": "{0} · {1}",
   "Database.Locking.On": "on",
   "Database.Locking.Off": "off",

@@ -136,6 +136,65 @@ public class ExplorerTests
         });
     }
 
+    /// <summary>
+    /// The status line the refresh writes counts in words, and the words agree with the numbers at
+    /// ONE - in both languages.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Driven on rc.1 the line read <c>calib: 6 tables, 1 views, 2 indexes, 1 triggers, 0 sequences</c>
+    /// while the Database tab, at the same moment and over the same counts, read <c>1 table</c>
+    /// correctly. The difference was not the language: <c>Database.SchemaSummary</c> fills its slots
+    /// with <c>Localization.Plural</c> and <c>Explorer.Summary</c> had the nouns written INSIDE the
+    /// format string with raw numbers passed in - one string, of the whole application, skipping a
+    /// mechanism that was already there.
+    /// </para>
+    /// <para>
+    /// <b>The fixture is the reason this can be seen at all.</b> Its schema has exactly one view and
+    /// exactly one trigger; every arrangement with none or several prints a plural that is right by
+    /// accident. That is also why the Russian half is asserted here rather than trusted - «1 триггер»
+    /// and «1 представление» are two different forms of the same rule.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public async Task TheSummaryLineCountsInWordsThatAgreeAtOneTest()
+    {
+        await using var studio = await StudioFixture.CreateAsync();
+
+        await studio.Explorer.RefreshAsync(studio.Database);
+
+        var english = studio.MainWindow.StatusText;
+
+        studio.App.Localization.SetLanguage("ru");
+        await studio.Explorer.RefreshAsync(studio.Database);
+
+        var russian = studio.MainWindow.StatusText;
+
+        TestContext.Out.WriteLine(english);
+        TestContext.Out.WriteLine(russian);
+
+        Assert.Multiple(() =>
+        {
+            // CONTROL: the line was written by THIS refresh. Without it every assertion below is
+            // about a status bar that was never touched.
+            Assert.That(english, Does.StartWith(studio.Database.DisplayName + ":"),
+                "CONTROL: the summary of this connection is not on the status bar at all");
+
+            Assert.That(english, Does.Contain("1 view,").And.Not.Contain("1 views"),
+                "the fixture has exactly one view");
+            Assert.That(english, Does.Contain("1 trigger,").And.Not.Contain("1 triggers"),
+                "the fixture has exactly one trigger");
+            Assert.That(english, Does.Contain("0 sequences"),
+                "and zero is still the plural - the rule is not 'drop the s when it looks odd'");
+
+            Assert.That(russian, Does.Contain("1 представление").And.Not.Contain("1 представления"),
+                "Russian at one takes the singular too, and it is a different form from the English one");
+            Assert.That(russian, Does.Contain("1 триггер,").And.Not.Contain("1 триггера"));
+            Assert.That(russian, Does.Contain("0 последовательностей"),
+                "Count.Sequences is the family that had to be added; without it the key prints itself");
+        });
+    }
+
     #endregion
 
     #region Counting (WS-16)
