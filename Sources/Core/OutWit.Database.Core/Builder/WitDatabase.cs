@@ -430,6 +430,59 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
         m_store.FindCapability<IPageCacheOccupancySource>()?.CacheOccupancy;
 
     /// <summary>
+    /// Whether this database's password can be changed in place. False for an unencrypted database
+    /// and for one whose caller owns the key material.
+    /// </summary>
+    public bool CanChangePassword =>
+        m_store.FindCapability<IPasswordRewrapSource>()?.CanRewrapPassword == true;
+
+    /// <summary>
+    /// Changes the password by rewrapping the data key. Every encrypted page is left exactly as it
+    /// is, so the cost does not grow with the database.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is not a migration and it is not a copy.</b> The data key was drawn at random when the
+    /// database was created and the password only wraps it, so what changes is 60 bytes in the
+    /// preamble. Before the format change the password WAS the key, and building a new database was
+    /// the only honest answer; a consumer that still does that for this case is doing work that has
+    /// not been necessary since.
+    /// </para>
+    /// <para>
+    /// <b>It must be done on the open database</b>, which is why it is here and not a static over a
+    /// path. The preamble keeps the header in memory and writes it back on its next reservation of
+    /// nonce numbers, so a rewrap applied to the file from outside would be undone the moment this
+    /// session needed more of them - after 65,536 page encryptions, which is a defect that appears
+    /// long after the change appeared to work.
+    /// </para>
+    /// <para>
+    /// <b>What it cannot do:</b> encrypt a database that is not encrypted. There is no wrapped key to
+    /// rewrap and no preamble to hold one, so going from no password to a password is still a
+    /// migration - see <see cref="CanChangePassword"/>, and offer both.
+    /// </para>
+    /// </remarks>
+    /// <param name="currentPassword">
+    /// The password in force. It is verified by being used: a wrong one throws and nothing is written.
+    /// </param>
+    /// <param name="newPassword">The password that unwraps the key from now on.</param>
+    /// <param name="iterations">
+    /// PBKDF2 iterations for the new wrap. Null keeps what the database already records.
+    /// </param>
+    /// <exception cref="System.Security.Cryptography.CryptographicException">
+    /// <paramref name="currentPassword"/> does not unwrap the key. Nothing has been written.
+    /// </exception>
+    /// <exception cref="NotSupportedException">There is no wrapped key here.</exception>
+    public void ChangePassword(string currentPassword, string newPassword, int? iterations = null)
+    {
+        var source = m_store.FindCapability<IPasswordRewrapSource>()
+            ?? throw new NotSupportedException(
+                "This database is not encrypted, so there is no password to change. Adding one means "
+                + "creating an encrypted database and migrating into it.");
+
+        source.RewrapPassword(currentPassword, newPassword, iterations);
+    }
+
+    /// <summary>
     /// Gets information about a database without opening it.
     /// Works with both BTree (file) and LSM (directory) databases.
     /// </summary>

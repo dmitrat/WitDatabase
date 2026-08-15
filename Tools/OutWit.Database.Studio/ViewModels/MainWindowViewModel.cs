@@ -314,6 +314,18 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
             return;
         }
 
+        // The recent list holds a path and nothing else - no password is stored anywhere, which is a
+        // decision and not an omission. So an encrypted database cannot be opened from here, and
+        // saying "Failed to open x" for it names neither the cause nor the remedy: Studio KNOWS the
+        // file is encrypted before it tries, because the same probe tells the Open dialog to grow a
+        // password box. Driven 2026-08-15 - it read "Failed to open secret.witdb" and left the person
+        // to work out why.
+        if (StorageProbe.Look(filePath).RequiresPassword)
+        {
+            StatusText = Localization.Format("Status.RecentNeedsPassword", Path.GetFileName(filePath));
+            return;
+        }
+
         // Nothing is closed first. Opening a recent file used to call CloseDatabaseAsync - an
         // 'async void' method - without awaiting it, and then connect over the top of the close.
         var connection = new ConnectionInfo { FilePath = filePath };

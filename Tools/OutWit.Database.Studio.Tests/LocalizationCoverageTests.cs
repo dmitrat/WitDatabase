@@ -500,7 +500,12 @@ public class LocalizationCoverageTests
 
         foreach (var file in Sources())
         {
-            var code = File.ReadAllText(file);
+            // Comments out first, or a sentence ABOUT a table is read as a row IN it. Found
+            // 2026-08-15 by a comment inside the capability matrix that quoted the old wording it
+            // was replacing - three phrases in prose, reported as three rows of English. Exactly the
+            // hole phase 17 closed in the settings lint, which "counted PROSE as a reader"; it was
+            // still open here because the two rules were corrected one at a time.
+            var code = WithoutComments(File.ReadAllText(file));
 
             foreach (Match table in DATA_TABLE.Matches(code))
             {
@@ -814,6 +819,21 @@ public class LocalizationCoverageTests
 
         return Directory.EnumerateFiles(views, "*.axaml", SearchOption.AllDirectories);
     }
+
+    /// <summary>
+    /// The file with its comments taken out, so that a sentence ABOUT a data table is not read as a
+    /// row in it.
+    /// </summary>
+    /// <remarks>
+    /// The same crude shape as <c>SettingsAreActedOnTests.WithoutComments</c>, and deliberately the
+    /// same: block comments, line comments, and a <c>//</c> inside a string literal go together. The
+    /// literals this rule cares about are catalogue keys and English prose, and neither carries a
+    /// <c>//</c>. A C# parser is the correct instrument and is far more than this rule is worth - and
+    /// the count control below is what would notice if this ever cut too much.
+    /// </remarks>
+    private static string WithoutComments(string source) =>
+        Regex.Replace(Regex.Replace(source, @"/\*.*?\*/", " ", RegexOptions.Singleline),
+            @"//[^\r\n]*", " ");
 
     private static IEnumerable<string> Sources()
     {

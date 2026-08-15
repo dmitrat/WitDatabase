@@ -94,8 +94,18 @@ public static class StorageCapabilities
         new("Database.Cap.IntegrityCheck", "Database.Cap.Source.Specification",
             StorageAvailability.NotInEngine, "Database.Cap.Note.ReadCheckInstead"),
 
-        new("Database.Cap.ChangePassword", "Database.Cap.Source.None", StorageAvailability.NotInEngine,
-            "Database.Cap.Note.MigrationInstead")
+        // Was "not in the engine", with "the key is derived when the database is created" as its
+        // reason. Both stopped being true at the format change: the data key is drawn at random and
+        // the password only WRAPS it, so replacing a password rewrites 60 bytes.
+        //
+        // The sharper half of the mistake is that the RIGHT answer already had a name here.
+        // NeedsProviderAccess exists for exactly this - a thing the engine can do that nothing above
+        // it can ask for - and its own comment says no row had been in that state since 2026-08-09.
+        // The rewrap was in that state for a whole release and this row said "not in the engine"
+        // instead, which is the matrix failing at its one job: it is the row a reader trusts most,
+        // because the honest "not in the engine" rows are what make the rest of it credible.
+        new("Database.Cap.ChangePassword", "Database.Cap.Source.Rewrap", StorageAvailability.Available,
+            "Database.Cap.Note.RewrapNotMigration")
     ];
 
     #endregion

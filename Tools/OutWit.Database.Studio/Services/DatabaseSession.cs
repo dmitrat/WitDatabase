@@ -239,6 +239,27 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
     /// </summary>
     public PageCacheOccupancy? CacheOccupancy => m_connection?.CacheOccupancy;
 
+    /// <inheritdoc />
+    public bool CanChangePassword => m_connection?.CanChangePassword == true;
+
+    /// <inheritdoc />
+    public void ChangePassword(string currentPassword, string newPassword)
+    {
+        if (m_connection == null)
+        {
+            throw new InvalidOperationException(
+                "The database is not open, so there is no preamble to rewrap.");
+        }
+
+        m_connection.ChangePassword(currentPassword, newPassword);
+
+        // What this session remembers is now out of date. Nothing else updates it, and it is what a
+        // reconnect uses - the byte copy closes and reopens the connection, and so does opening a
+        // copy beside the original. Left stale, the very next thing Studio does with this connection
+        // would be refused with the password the user has just replaced.
+        Connection.Password = newPassword;
+    }
+
     public ISchemaCatalog Catalog { get; }
 
     /// <summary>

@@ -20,7 +20,7 @@ namespace OutWit.Database.Core.Encryption;
 /// Kept for reading blocks written before the crypto header existed; new databases get this one.
 /// </para>
 /// </remarks>
-public sealed class EncryptorBlockSequenced : IBlockEncryptor
+public sealed class EncryptorBlockSequenced : IBlockEncryptor, IPasswordRewrapSource
 {
     #region Constants
 
@@ -35,6 +35,13 @@ public sealed class EncryptorBlockSequenced : IBlockEncryptor
     private readonly INonceSequence m_sequence;
 
     private readonly IDisposable? m_owned;
+
+    /// <summary>
+    /// The same object as <see cref="m_owned"/> when it is one, kept typed so an LSM database's
+    /// password can be rewrapped through the LIVE preamble - the same reason and the same shape as
+    /// <c>StorageEncrypted</c>, which does it for the paged store.
+    /// </summary>
+    private readonly CryptoPreamble? m_rewrappable;
 
     private bool m_disposed;
 
@@ -51,6 +58,7 @@ public sealed class EncryptorBlockSequenced : IBlockEncryptor
         m_crypto = crypto ?? throw new ArgumentNullException(nameof(crypto));
         m_sequence = sequence ?? throw new ArgumentNullException(nameof(sequence));
         m_owned = owned;
+        m_rewrappable = owned as CryptoPreamble ?? sequence as CryptoPreamble;
 
         if (m_crypto.NonceSize != PREFIX_SIZE + sizeof(ulong))
         {
@@ -129,6 +137,43 @@ public sealed class EncryptorBlockSequenced : IBlockEncryptor
     private void ThrowIfDisposed()
     {
         ObjectDisposedException.ThrowIf(m_disposed, this);
+    }
+
+    #endregion
+
+    #region IPasswordRewrapSource
+
+    /// <summary>
+    /// True when this encryptor's preamble holds a WRAPPED key. False for an index directory, whose
+    /// sidecar rides on the database's data key and has no wrapped key of its own - which is also
+    /// why rewrapping the database does not disturb its indexes.
+    /// </summary>
+    public bool CanRewrapPassword => m_rewrappable?.Header.WrappedKey != null;
+
+    /// <inheritdoc />
+    public void RewrapPassword(string currentPassword, string newPassword, int? iterations = null)
+    {
+        ArgumentException.ThrowIfNullOrEmpty(currentPassword);
+        ArgumentException.ThrowIfNullOrEmpty(newPassword);
+        ObjectDisposedException.ThrowIf(m_disposed, this);
+
+        if (m_rewrappable == null || m_rewrappable.Header.WrappedKey == null)
+        {
+            throw new NotSupportedException(
+                "This store has no wrapped key, so there is no password to rewrap. A store created "
+                + "without a password cannot be given one in place - that is a migration.");
+        }
+
+        var dataKey = m_rewrappable.Header.UnwrapDataKey(currentPassword);
+
+        try
+        {
+            m_rewrappable.Rewrap(dataKey, newPassword, iterations ?? (int)m_rewrappable.Header.Iterations);
+        }
+        finally
+        {
+            CryptographicOperations.ZeroMemory(dataKey);
+        }
     }
 
     #endregion
