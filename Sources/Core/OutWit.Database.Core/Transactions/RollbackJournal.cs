@@ -1,4 +1,4 @@
-using OutWit.Database.Core.Interfaces;
+﻿using OutWit.Database.Core.Interfaces;
 using System.Buffers.Binary;
 
 namespace OutWit.Database.Core.Transactions
@@ -156,12 +156,28 @@ namespace OutWit.Database.Core.Transactions
             }
         }
 
-        /// <inheritdoc/>
+        /// <summary>
+        /// Applies what the journals hold, and REPORTS what it could not apply rather than deleting
+        /// the evidence.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// This used to be <c>try { … } catch { }</c> per file, under the comment "Skip corrupted
+        /// journals", with the file deleted at the end of the successful path only - so a journal
+        /// that threw half way left the database carrying half a transaction and told nobody, and one
+        /// whose ENTRIES stopped reading part way through looked exactly like one that ended there.
+        /// </para>
+        /// <para>
+        /// The intent is kept: one bad file does not stop a database opening. What changes is that
+        /// the failure reaches <see cref="RecoveryFailures"/> and the file survives.
+        /// </para>
+        /// </remarks>
         public int Recover(IKeyValueStore store)
         {
             ThrowIfDisposed();
 
             int recoveredCount = 0;
+            var failures = new List<JournalRecoveryFailure>();
             var pattern = Path.GetFileName(m_basePath) + "_*.rollback";
             var dir = Path.GetDirectoryName(m_basePath) ?? ".";
 
@@ -170,8 +186,8 @@ namespace OutWit.Database.Core.Transactions
                 try
                 {
                     // Read and apply rollback entries (restore original values)
-                    var entries = ReadJournalFile(journalPath);
-                
+                    var entries = ReadJournalFile(journalPath, out var readToTheEnd);
+
                     foreach (var (type, key, oldValue) in entries)
                     {
                         switch (type)
@@ -194,22 +210,51 @@ namespace OutWit.Database.Core.Transactions
                         }
                     }
 
-                    // Delete processed journal
-                    File.Delete(journalPath);
+                    if (readToTheEnd)
+                    {
+                        // Applied in full, so the file has nothing left to say.
+                        File.Delete(journalPath);
+                    }
+                    else
+                    {
+                        // The prefix went in; the rest is still in the file, which is why the file
+                        // stays. A torn tail is what an interrupted write leaves, and it is not the
+                        // same thing as a journal that ended there.
+                        failures.Add(new JournalRecoveryFailure(journalPath,
+                            "the journal stopped reading before its end, so the entries after that "
+                            + "point were not applied. The file is kept."));
+                    }
                 }
-                catch
+                catch (Exception ex)
                 {
-                    // Skip corrupted journals
+                    // One unreadable journal must not stop the database opening - that part of the
+                    // old behaviour is deliberate and kept. What is new is that it is reported, and
+                    // that the file is not deleted: it is the only remaining evidence of whatever
+                    // happened, and something has to be able to look at it.
+                    failures.Add(new JournalRecoveryFailure(journalPath,
+                        $"{ex.GetType().Name}: {ex.Message}"));
                 }
             }
+
+            RecoveryFailures = failures;
 
             return recoveredCount;
         }
 
         /// <inheritdoc/>
+        public IReadOnlyList<JournalRecoveryFailure> RecoveryFailures { get; private set; } = [];
+
+        /// <summary>
+        /// A rollback journal has nothing to checkpoint.
+        /// </summary>
+        /// <remarks>
+        /// The comment here used to say it "ensures no orphan journals exist", which it never did -
+        /// and must not: since recovery keeps the files it could not apply, deleting orphans would
+        /// throw away exactly the evidence that was just deliberately preserved. A journal that WAS
+        /// applied is already gone, removed by <see cref="Recover"/>.
+        /// </remarks>
         public void Checkpoint()
         {
-            // For rollback journal, checkpoint just ensures no orphan journals exist
             ThrowIfDisposed();
         }
 
@@ -218,9 +263,20 @@ namespace OutWit.Database.Core.Transactions
             return $"{m_basePath}_{transactionId}.rollback";
         }
 
-        private List<(RollbackEntryType Type, byte[] Key, byte[] OldValue)> ReadJournalFile(string path)
+        /// <summary>
+        /// Reads a journal's entries, and says whether it reached the end of the file.
+        /// </summary>
+        /// <param name="path">The journal.</param>
+        /// <param name="readToTheEnd">
+        /// False when reading stopped early - a torn tail, a damaged entry, an encryption mismatch,
+        /// or a header this build does not recognise. The caller keeps such a file and reports it;
+        /// without this flag "stopped at the damage" and "ended here" were the same answer.
+        /// </param>
+        private List<(RollbackEntryType Type, byte[] Key, byte[] OldValue)> ReadJournalFile(
+            string path, out bool readToTheEnd)
         {
             var entries = new List<(RollbackEntryType, byte[], byte[])>();
+            readToTheEnd = false;
 
             using var stream = new FileStream(path, FileMode.Open, FileAccess.Read);
             using var reader = new BinaryReader(stream);
@@ -230,9 +286,9 @@ namespace OutWit.Database.Core.Transactions
 
             var magic = reader.ReadUInt32();
             bool fileIsEncrypted = magic == MAGIC_ENCRYPTED;
-        
+
             if (magic != MAGIC && magic != MAGIC_ENCRYPTED) return entries;
-        
+
             // Check encryption mismatch
             if (m_isEncrypted && !fileIsEncrypted) return entries;
             if (!m_isEncrypted && fileIsEncrypted) return entries;
@@ -240,10 +296,22 @@ namespace OutWit.Database.Core.Transactions
             var txId = reader.ReadInt64();
             var committed = reader.ReadBoolean();
 
-            // If committed, no need to rollback
-            if (committed) return entries;
+            // If committed, no need to rollback. Nothing is left to apply, so the file has been read
+            // for everything it is worth.
+            if (committed)
+            {
+                readToTheEnd = true;
+                return entries;
+            }
 
             long entryId = 0;
+
+            // Set at every exit that is not "the file ended". It cannot be inferred from the position:
+            // BinaryReader.ReadBytes on a truncated entry returns a SHORT array and leaves the stream
+            // at its end, so a torn tail looks exactly like a clean end to anything counting bytes.
+            // That is how a damaged journal came to be deleted as though it had been applied in full.
+            var damaged = false;
+
             while (stream.Position < stream.Length)
             {
                 try
@@ -252,17 +320,19 @@ namespace OutWit.Database.Core.Transactions
                     {
                         // Read encrypted entry
                         var encLen = reader.ReadInt32();
-                        if (encLen < 0 || encLen > 100 * 1024 * 1024) break;
+                        if (encLen < 0 || encLen > 100 * 1024 * 1024) { damaged = true; break; }
                         var encrypted = reader.ReadBytes(encLen);
-                    
+
+                        if (encrypted.Length != encLen) { damaged = true; break; }
+
                         var decrypted = m_encryptor!.Decrypt(encrypted, entryId++);
-                        if (decrypted == null) break;
+                        if (decrypted == null) { damaged = true; break; }
 
                         // Parse decrypted entry
-                        if (decrypted.Length < 9) break;
+                        if (decrypted.Length < 9) { damaged = true; break; }
                         var type = (RollbackEntryType)decrypted[0];
                         var keyLen = BinaryPrimitives.ReadInt32LittleEndian(decrypted.AsSpan(1));
-                        if (keyLen < 0 || 5 + keyLen + 4 > decrypted.Length) break;
+                        if (keyLen < 0 || 5 + keyLen + 4 > decrypted.Length) { damaged = true; break; }
                         var key = decrypted.AsSpan(5, keyLen).ToArray();
                         var valueLen = BinaryPrimitives.ReadInt32LittleEndian(decrypted.AsSpan(5 + keyLen));
                         var value = decrypted.AsSpan(9 + keyLen, valueLen).ToArray();
@@ -272,21 +342,28 @@ namespace OutWit.Database.Core.Transactions
                     {
                         var type = (RollbackEntryType)reader.ReadByte();
                         var keyLen = reader.ReadInt32();
-                        if (keyLen < 0 || keyLen > 1024 * 1024) break;
+                        if (keyLen < 0 || keyLen > 1024 * 1024) { damaged = true; break; }
                         var key = reader.ReadBytes(keyLen);
 
+                        if (key.Length != keyLen) { damaged = true; break; }
+
                         var valueLen = reader.ReadInt32();
-                        if (valueLen < 0 || valueLen > 100 * 1024 * 1024) break;
+                        if (valueLen < 0 || valueLen > 100 * 1024 * 1024) { damaged = true; break; }
                         var value = reader.ReadBytes(valueLen);
+
+                        if (value.Length != valueLen) { damaged = true; break; }
 
                         entries.Add((type, key, value));
                     }
                 }
                 catch
                 {
+                    damaged = true;
                     break;
                 }
             }
+
+            readToTheEnd = !damaged;
 
             return entries;
         }
