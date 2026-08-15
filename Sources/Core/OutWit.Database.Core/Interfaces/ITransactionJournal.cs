@@ -45,6 +45,23 @@ namespace OutWit.Database.Core.Interfaces
         int Recover(IKeyValueStore store);
 
         /// <summary>
+        /// What the last <see cref="Recover"/> could not apply, and why. Empty when it applied
+        /// everything it found.
+        /// </summary>
+        /// <remarks>
+        /// <para>
+        /// <b>Recovery does not stop a database opening</b> - one unreadable journal must not lock
+        /// somebody out of the rest of their data - so a failure has to arrive some other way. This
+        /// is that way, and the file it names is kept rather than deleted.
+        /// </para>
+        /// <para>
+        /// A journal that has nothing to report answers empty, which is why this has a default
+        /// implementation: an implementation that recovers all or nothing needs no opinion about it.
+        /// </para>
+        /// </remarks>
+        IReadOnlyList<JournalRecoveryFailure> RecoveryFailures => [];
+
+        /// <summary>
         /// Creates a checkpoint, truncating the journal.
         /// </summary>
         void Checkpoint();

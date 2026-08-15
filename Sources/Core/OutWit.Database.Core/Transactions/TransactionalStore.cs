@@ -416,6 +416,18 @@ public sealed class TransactionalStore : ITransactionalStore, IStoreWrapper, IAs
 
     #region Tools
 
+    /// <summary>
+    /// What the journal could not apply when this store opened, and why.
+    /// </summary>
+    /// <remarks>
+    /// Empty in the ordinary case. A journal that failed is not a reason to refuse the database - one
+    /// unreadable file must not lock somebody out of the rest of their data - so the failure arrives
+    /// here instead, and the file it names is kept. Nothing logs it: this assembly has no logging
+    /// dependency, so a caller who wants to know reads this after opening.
+    /// </remarks>
+    public IReadOnlyList<JournalRecoveryFailure> RecoveryFailures =>
+        m_journal?.RecoveryFailures ?? [];
+
     private void Recover()
     {
         try
