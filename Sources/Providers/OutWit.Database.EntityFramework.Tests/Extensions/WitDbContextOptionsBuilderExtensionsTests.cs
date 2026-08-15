@@ -91,6 +91,18 @@ public class WitDbContextOptionsBuilderExtensionsTests
 
     #region UseWitDbInMemory Tests
 
+    /// <summary>
+    /// The fixture is configured with an OPEN CONNECTION rather than with a connection string, and
+    /// this case says so.
+    /// </summary>
+    /// <remarks>
+    /// It used to assert <c>ConnectionString == "Data Source=:memory:"</c>, which was true and was
+    /// the defect: an in-memory database is private to its connection, EF opens and closes one per
+    /// operation, so every operation got a fresh empty database and <c>SaveChanges</c> failed one
+    /// step after <c>EnsureCreated</c> succeeded. Supplying the connection - open - is what makes the
+    /// store outlive an operation, and <c>RelationalOptionsExtension.ConnectionString</c> is null in
+    /// that shape by design, exactly as it is for every other provider given a connection.
+    /// </remarks>
     [Test]
     public void UseWitDbInMemoryConfiguresExtensionTest()
     {
@@ -99,9 +111,18 @@ public class WitDbContextOptionsBuilderExtensionsTests
         builder.UseWitDbInMemory();
 
         var extension = builder.Options.FindExtension<WitDbContextOptionsExtension>();
+
         Assert.That(extension, Is.Not.Null);
-        Assert.That(extension!.InMemory, Is.True);
-        Assert.That(extension.ConnectionString, Is.EqualTo("Data Source=:memory:"));
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(extension!.InMemory, Is.True);
+            Assert.That(extension.Connection, Is.Not.Null, "the fixture supplies its own connection");
+            Assert.That(extension.Connection!.State, Is.EqualTo(System.Data.ConnectionState.Open),
+                "and it is open - a closed one takes the database with it");
+            Assert.That(extension.Connection.ConnectionString, Is.EqualTo("Data Source=:memory:"),
+                "the creator decides 'in memory' by reading this");
+        });
     }
 
     [Test]
