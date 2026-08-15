@@ -1443,6 +1443,83 @@ ledger is one lighter.
 
 ---
 
+## Found by writing the documentation site, 2026-08-15
+
+The three below are not defects to be fixed by surprise: each is behaviour the engine has, that a
+document claimed otherwise about, and that an application has to be built around. All three were
+measured on 2026-08-15, while checking what the documentation says against what the engine does; the
+run itself is a working paper and is not published here, but every number below is quoted from it.
+
+---
+
+## 22. Write skew is permitted at every isolation level, `Serializable` included
+
+> **NOT A DEFECT TO FIX QUIETLY.** `Concurrency/WhatEachIsolationLevelPreventsTests` pins it, in
+> both directions. Preventing it needs predicate locking or serializable snapshot isolation, which
+> this engine does not have; if a future change starts refusing it, those cases go red and the
+> decision is visible rather than accidental.
+
+Two transactions read the same rows, each writes a **different** row, both commit, and an invariant
+that held for each of them separately is gone. Measured with the standard example: two doctors on
+call, each transaction takes a different one off, both commit, and the ward ends with none.
+
+```
+SKEW a sees on call: 1 | 2        SKEW b sees on call: 1 | 2
+SKEW a commits: ok                SKEW b commits: ok
+SKEW on call afterwards: <no rows>
+```
+
+Nothing detects it, because neither transaction touched what the other wrote. **What `Serializable`
+does prevent, also measured:** a transaction that reads a range, another that inserts into that
+range and commits, and then a write from the first - the first is refused with a serialization
+failure. And two transactions writing the same row: the second is refused.
+
+**What this means for an application.** An invariant across ROWS - "at least one of these is true",
+"these must sum to zero" - is not enforced by choosing a higher level. Enforce it by writing a row
+both transactions touch, so the conflict becomes visible, or serialise the operation outside the
+database.
+
+**And a documentation defect behind it:** `WitIsolationLevel.RepeatableRead` promised that read
+locks are held for the duration of the transaction. Every level above `ReadCommitted` here is
+optimistic - the conflict is found at COMMIT and raised as an exception, so a caller who expected to
+block gets an error and has to retry. Corrected 2026-08-15.
+
+---
+
+## 23. Partial indexes are never chosen by the planner
+
+> Measured 2026-08-15. `OptimizerQuery.EvaluateIndex` returns null for any index whose definition
+> carries a `WHERE`, with the comment *"For now, skip filtered indexes in automatic selection"*.
+
+`CREATE INDEX ... WHERE ...` is accepted, the index is built, and it costs every write that touches
+its table. No query will use it: index selection skips it before cost is considered.
+
+The comment adds *"they can still be used with explicit hints"*, which is a claim nobody has
+verified - it should not be repeated in documentation until somebody checks that a hint reaches this
+path.
+
+**Until it is implemented, a partial index is a cost with no benefit.** A full index on the same
+column is the answer.
+
+---
+
+## 24. No page cache counts hits or misses, so there is no hit rate to report
+
+> Measured twice, 2026-08-02 and 2026-08-09, and stated in `IPageCacheOccupancySource`'s own
+> remarks.
+
+Neither `PageCacheLru` nor `PageCacheShardedClock` counts a hit or a miss. **The hit rate is absent
+from the engine rather than merely unexposed**, so no amount of plumbing publishes one. Only the LSM
+`BlockCache` counts, and that is a different cache.
+
+What the engine does publish is **occupancy**: how many pages the cache is holding and how many of
+those are dirty, taken as a reading at the moment it is asked. Studio's Database tab shows it.
+
+A monitoring page or dashboard that plots "cache hit ratio" for this engine is plotting something
+that does not exist.
+
+---
+
 ## Verifying a fix
 
 WitAnalytics is a ready-made regression harness: its stats test fixture runs the
