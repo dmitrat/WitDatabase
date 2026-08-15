@@ -1,5 +1,28 @@
 ﻿# Changelog
 
+## 13.1.1
+
+**`LsmParallelCompactor.WaitForAllAsync` waited on the queue and then slept**, and those are not the
+same thing. It polled `Reader.Count` - the number of jobs still *queued* - so it returned the moment
+a worker had **dequeued** the last job, with the compaction itself still running; its own comment
+then added a 100 ms delay "to ensure in-progress compactions complete", which is a guess about how
+long a compaction takes.
+
+It is public API, so every consumer got the same sleep-and-hope. It now waits on a count of jobs
+that are queued **or running**, and that count reaches zero only after the completion callback has
+been invoked - because "all the work is done" has to include the caller's own handler, which is the
+only thing a `TrySubmit` caller can observe.
+
+**Found by CI on a branch that changed a version string and a workflow file**, nowhere near the LSM
+store: a case asserting the callback had run read 0 of 1. Eight local runs of that fixture in
+isolation passed, which is what this class of defect looks like from the wrong end. The new case
+does not wait for a slow machine to expose it - its callback blocks until the case releases it, so
+with the old code the failure is deterministic.
+
+Nothing else changed. This is 13.1.0 plus that one fix, and it exists as its own version because the
+repository's 13.1.0 would otherwise no longer be the feed's 13.1.0 - which this project has already
+paid for once, in 12.2.1.
+
 ## 13.1.0
 
 **An index whose content is not on disk is no longer answered from.** Copy a `.witdb` without its
