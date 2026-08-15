@@ -1,4 +1,4 @@
-using System.ComponentModel;
+﻿using System.ComponentModel;
 using System.Windows.Input;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
@@ -383,12 +383,38 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
                     await ApplicationVm.Profiles.SaveAsync(profile);
                 }
                 
+                // Opened under the old scheme, which is a state to leave rather than to settle into.
+                // Said once, where it will be read: the conversion is a password change and nothing
+                // else has to be understood.
+                if (ConnectionInfo.IsLegacyEncryption)
+                {
+                    ApplicationVm.Notifications.Warning(
+                        Localization["Notification.LegacyEncryption.Title"],
+                        Localization["Notification.LegacyEncryption.Body"],
+                        OpenedSession.DisplayName);
+                }
+
                 SelectedConnection = ConnectionInfo;
                 DialogResult = true;
-                
+
                 CloseDialog();
-                
+
                 Logger.LogInformation("Successfully connected to {FilePath}", ConnectionInfo.FilePath);
+            }
+            else if (Connections.LastOpenError is OutWit.Database.Core.Exceptions.LegacyEncryptionException)
+            {
+                // The engine's own verdict, branched on by TYPE rather than by matching its message:
+                // this database is in the encryption format that preceded the crypto preamble, and
+                // since 14.0.0 opening it has to be asked for.
+                //
+                // Offered AFTER the refusal rather than as a box everybody sees, because it is not a
+                // choice anybody makes on purpose - it is what you tick to get your data out, and the
+                // way to stop needing it is one password change away.
+                IsLegacyEncryptionOffered = true;
+                ErrorMessage = Localization["Dialog.Open.LegacyEncryption"];
+
+                Logger.LogWarning("Refused a database in the pre-preamble encryption format: {FilePath}",
+                    ConnectionInfo.FilePath);
             }
             else
             {
@@ -732,6 +758,17 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
 
     /// <summary>Whether the password box is shown at all: only an encrypted database needs one.</summary>
     public bool NeedsPassword => Probe.RequiresPassword;
+
+    /// <summary>
+    /// Whether the dialog is offering to open a database in the encryption format that preceded the
+    /// crypto preamble.
+    /// </summary>
+    /// <remarks>
+    /// False until the engine has refused one. It is not a choice to make in advance - nobody wants
+    /// the old scheme - so the offer appears with the sentence that explains why it is being made.
+    /// </remarks>
+    [Notify]
+    public bool IsLegacyEncryptionOffered { get; set; }
 
     /// <summary>Whether the connection string panel is open (WS-49).</summary>
     [Notify]

@@ -110,6 +110,12 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
             m_logger.LogError(ex, "Failed to connect to database: {FilePath}, ConnectionString: {ConnectionString}",
                 Connection.FilePath, Connection.ToLogString());
 
+            // KEPT, because "it did not open" is not the same sentence as "it did not open BECAUSE".
+            // This method answers a bool, so without it the reason died here and the caller could only
+            // say "Failed to open x" - which is what the Recent list used to say about an encrypted
+            // database Studio already knew was encrypted.
+            LastError = ex;
+
             m_connection?.Dispose();
             m_connection = null;
 
@@ -141,6 +147,9 @@ public sealed partial class DatabaseSession : IDatabaseSession, IDisposable
     }
 
     public bool IsConnected => m_connection?.State == ConnectionState.Open;
+
+    /// <summary>Why the last <see cref="OpenAsync"/> failed, or null when none has.</summary>
+    public Exception? LastError { get; private set; }
 
     public bool IsReadOnly => Connection.IsReadOnly;
 

@@ -1,4 +1,4 @@
-<Window xmlns="https://github.com/avaloniaui"
+﻿<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
@@ -68,6 +68,16 @@
                              Text="{Binding ConnectionInfo.Password, Mode=TwoWay}"
                              PasswordChar="*" RevealPassword="False"/>
                 </Grid>
+
+                <!-- Offered only after the engine has refused such a database (14.0.0). Nobody
+                     chooses the old encryption scheme on purpose: the box is what you tick to get
+                     your data out, and the sentence above it says the conversion is a password
+                     change. -->
+                <CheckBox AutomationProperties.AutomationId="OpenDatabaseLegacyEncryption"
+                          AutomationProperties.Name="{DynamicResource S.Dialog.Open.LegacyEncryption.Check.Name}"
+                          IsVisible="{Binding IsLegacyEncryptionOffered}"
+                          IsChecked="{Binding ConnectionInfo.IsLegacyEncryption, Mode=TwoWay}"
+                          Content="{DynamicResource S.Dialog.Open.LegacyEncryption.Check}"/>
 
                 <Grid ColumnDefinitions="110,*">
                     <TextBlock Grid.Column="0" Text="{DynamicResource S.Dialog.Open.NameAndLabel}" Margin="0,6,0,0"/>

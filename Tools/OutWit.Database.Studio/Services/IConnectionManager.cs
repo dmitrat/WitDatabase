@@ -43,6 +43,17 @@ public interface IConnectionManager : IDisposable
     ObservableCollection<IDatabaseSession> Sessions { get; }
 
     /// <summary>
+    /// Why the last <c>OpenAsync</c> returned null, or null when the last one succeeded.
+    /// </summary>
+    /// <remarks>
+    /// Opening answers a session or nothing, and one refusal is not another: a database in the
+    /// encryption format that preceded the crypto preamble can be offered a way forward, and a file
+    /// that is not a database cannot. Without this every refusal reached the dialog as the same
+    /// sentence.
+    /// </remarks>
+    Exception? LastOpenError { get; }
+
+    /// <summary>
     /// The connection the user is looking at - the one a new tab and the object dialogs belong to.
     /// Null when nothing is open.
     /// </summary>

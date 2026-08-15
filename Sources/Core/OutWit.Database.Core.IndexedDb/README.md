@@ -15,7 +15,7 @@ This package allows WitDatabase to run entirely in the browser with data persist
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="13.1.1" />
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="14.0.0" />
 ```
 
 Add the JavaScript files to your `index.html`:

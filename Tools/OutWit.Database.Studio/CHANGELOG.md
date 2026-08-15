@@ -3,6 +3,65 @@
 Studio is versioned separately from the WitDatabase engine and released under its own `studio-v*` tag.
 The engine's changelog is `/CHANGELOG.md`.
 
+## 3.0.0-rc.2
+
+**The second candidate.** rc.1 was walked on Windows against a calibration database built to make
+wrong answers look different from right ones, and it produced eleven findings; the six that cost a
+user most are fixed here, together with the one thing engine 14.0.0 makes Studio responsible for.
+
+Engine: 14.0.0.
+
+### A database in the old encryption format can still be opened, and converted
+
+Engine 14.0.0 refuses a database encrypted before 13.1.0 - its salt is derived from its password and
+stored in the clear, and its nonce counter restarts on every open - and tells the user to convert it
+**by changing its password**. Studio is the tool that does that, so Studio has to be able to open one.
+
+It now recognises the refusal by its type rather than by its wording, says what happened in a sentence
+that names the version and the remedy, and offers a box that opens the database in the old format.
+Ticking it and pressing Connect gets the data; a notification then says the conversion is one password
+change away. An ordinary refusal - a file that is not a database, a wrong password - is unaffected and
+gets its own message, which is what the control case asserts.
+
+Beside it, a smaller thing with a wider reach: **a failed open now carries its reason back**.
+`ConnectionManager.OpenAsync` answered null and nothing else, so every refusal reached the dialog as
+the same sentence.
+
+### Fixed
+
+- **Three menu items printed a shortcut that does something else.** *New Query Tab* said `Ctrl+N`,
+  which opens **New Database**; *View ▸ Refresh* said `F5`, which runs the statement under the cursor;
+  and *Query ▸ Execute* said `F5` for a command that is on `Ctrl+Shift+F5`. *New Database…* now prints
+  the `Ctrl+N` it has always owned. A rule over every printed gesture in every view is what found the
+  third - the two in the report were the two somebody happened to notice.
+
+- **English plurals disagreed with their numbers at one.** The status bar read
+  `calib: 6 tables, 1 views, 2 indexes, 1 triggers` while the Database tab, over the same counts at
+  the same moment, read `1 table` correctly: one string had its nouns written inside the format with
+  raw numbers passed in, and skipped the plural mechanism the rest of the application uses.
+
+- **The `Page cache` line opened with a separator and nothing before it.** The cache kind is a field an
+  older file does not carry; an absent field is dropped with its separator now rather than printed as
+  an empty slot.
+
+- **A table with no primary key was announced as being edited.** Every editing control was correctly
+  disabled while the status bar said `Editing table: NoKey` and the footer advertised `Ctrl+S` and
+  `Del`. The words follow the same flag the buttons read.
+
+- **The three storage options in *Create database* did not share a baseline.** They were centred in a
+  grid whose row height comes from the tallest description, and **which option looked wrong moved with
+  the language** - LSM in English, «В памяти» in Russian.
+
+- **The theme button kept its caption in the language the window was opened in.** It has read the
+  catalogue since 3.0.0-dev, but nothing re-read it when the language changed, so «Dark» stayed on a
+  Russian window. It is not a missing translation; it is a caption written once.
+
+### Known and unchanged
+
+Four clipped labels, the status bar not following the language, `BOOLEAN` drawn as text rather than a
+checkbox, and `''` against `' '` in the grid being indistinguishable. All four are written up with
+what each would cost to fix.
+
 ## 3.0.0-rc.1
 
 **The first candidate, and the first Studio built with every signature it ships with.** Windows

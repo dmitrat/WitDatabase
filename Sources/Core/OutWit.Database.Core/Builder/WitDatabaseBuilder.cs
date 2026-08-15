@@ -943,7 +943,7 @@ public sealed class WitDatabaseBuilder
         {
             CryptoPreamble.Shape.Other => LegacyEncryptionAllowed
                 ? new StorageEncrypted(baseStorage, new EncryptorPage(cryptoProvider, GetEncryptionSalt()))
-                : throw LegacyRefused("This database"),
+                : throw LegacyRefused("This database", isDirectory: false),
 
             CryptoPreamble.Shape.Empty => CreateWithPreamble(baseStorage, cryptoProvider, sharedDataKey),
 
@@ -976,7 +976,7 @@ public sealed class WitDatabaseBuilder
     /// that a converter can do exactly that.
     /// </para>
     /// </remarks>
-    private static InvalidOperationException LegacyRefused(string subject) =>
+    private static LegacyEncryptionException LegacyRefused(string subject, bool isDirectory) =>
         new($"{subject} was written with the encryption scheme used before 13.1.0, and this version "
             + "will not open it: its salt is derived from the password and stored in the clear, and "
             + "its nonce counter restarts on every open. Both are properties of the bytes on disk "
@@ -984,7 +984,7 @@ public sealed class WitDatabaseBuilder
             + "WitDatabase that wrote it, or convert it by changing its password - which rewrites it "
             + "into the current format. To read it as it is, ask for the old scheme by name: "
             + "WithLegacyEncryption() on the builder, or 'Legacy Encryption=true' in a connection "
-            + "string.");
+            + "string.", isDirectory);
 
     /// <summary>
     /// The LSM store's half of the same choice. It has no page 0 to put a preamble in, so its
@@ -1025,7 +1025,7 @@ public sealed class WitDatabaseBuilder
         {
             return LegacyEncryptionAllowed
                 ? new EncryptorBlock(cryptoProvider, GetEncryptionSalt())
-                : throw LegacyRefused("This store");
+                : throw LegacyRefused("This store", isDirectory: true);
         }
 
         var password2 = sharedDataKey == null ? EncryptionPassword() : null;
