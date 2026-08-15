@@ -3,6 +3,27 @@
 Studio is versioned separately from the WitDatabase engine and released under its own `studio-v*` tag.
 The engine's changelog is `/CHANGELOG.md`.
 
+## 3.0.0
+
+**The release, and the same build as `3.0.0-rc.2`.** Nothing in the application changed between the
+candidate and this - only the version it carries. What the candidate was for had already happened: it
+was walked on Windows against a calibration database, its findings were fixed or written up, and the
+three platforms were built and signed twice over.
+
+This is the first Studio that is the repository's **Latest**, so it is the first one the update check
+inside 2.0.0 will offer. A user coming from 2.0.0 arrives at an application with a different shape -
+several databases open at once, a tab that belongs to its connection, a schema designer that shows the
+DDL before it runs, and an object tree that answers rather than lists. Everything under `3.0.0-rc.2`
+and `3.0.0-dev` below is what changed and why.
+
+Engine: 14.0.0. **A database encrypted before 13.1.0 is refused by the engine**, and Studio is the tool
+that converts one - see the candidate's first section for how, because it is the one thing in this
+release a 2.0.0 user can be stopped by.
+
+**Known and unchanged:** four clipped labels, the status bar not following the language, `BOOLEAN`
+drawn as text rather than a checkbox, and `''` against `' '` in the grid being indistinguishable.
+Studio still downloads and runs nothing - the update dialog opens the release page.
+
 ## 3.0.0-rc.2
 
 **The second candidate.** rc.1 was walked on Windows against a calibration database built to make
