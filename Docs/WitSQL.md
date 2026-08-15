@@ -917,8 +917,13 @@ SELECT IIF(IsActive, 'Yes', 'No') AS ActiveText FROM Users;
 | ------------------------- | ----------------------- | --------------------------- |
 | `NEWGUID()`               | Generate new GUID       | `NEWGUID()`                 |
 | `NEWUUID()`               | Alias for NEWGUID       | `NEWUUID()`                 |
-| `INCREMENT(sequence)`     | Get next sequence value | `INCREMENT('order_id')`     |
-| `LASTINCREMENT(sequence)` | Get last sequence value | `LASTINCREMENT('order_id')` |
+| `NEXTVAL(sequence)`       | Take the next sequence value | `NEXTVAL('order_id')`  |
+| `INCREMENT(sequence)`     | The same function, older name | `INCREMENT('order_id')` |
+| `CURRVAL(sequence)`       | The last value taken    | `CURRVAL('order_id')`       |
+| `LASTINCREMENT(sequence)` | The same function, older name | `LASTINCREMENT('order_id')` |
+
+These read a sequence created by `CREATE SEQUENCE` - see **23.1**, which is where the syntax and the
+limits are.
 
 **Examples:**
 
@@ -1996,106 +2001,125 @@ WHERE Id = 1;
 
 ---
 
-## 22. User-Defined Functions
+## 22. Functions
 
-> **Status: not implemented as of 2026-07-29.** This section describes intended behaviour, not
-> shipped behaviour — `CREATE FUNCTION` does not parse. It is **planned**, not withdrawn: PostgreSQL and
-> SQL Server both provide this, and WitDatabase aims to substitute for those without the calling
-> application noticing. What it needs is a subsystem rather than a grammar rule — a function catalog, integration with the expression evaluator, and persistence — so it is
-> tracked outside the grammar work. Executable specification: `CreateFunctionIsSupportedTest` in
-> `Sources/Engine/OutWit.Database.Tests/AuditVerification/DropInGapsEngineTests.cs`.
-
-
-### 22.1 Scalar Functions
+Shipped in **11.0.0**. A function's body is **one expression** over its parameters, and that is the
+decision the rest of the subsystem rests on: calling one is a substitution inside the expression
+evaluator, so it runs no statements, opens no transaction and consumes no nesting budget. That is
+what makes it safe to call from a path evaluated once per row.
 
 ```sql
-CREATE FUNCTION function_name (parameters)
+CREATE FUNCTION function_name (parameter type, ...)
 RETURNS return_type
-[DETERMINISTIC]
 AS
 BEGIN
-    -- function body
     RETURN expression;
 END;
-```
 
-### 22.2 Table-Valued Functions
-
-```sql
-CREATE FUNCTION function_name (parameters)
-RETURNS TABLE (column_definitions)
-AS
-BEGIN
-    RETURN SELECT ...;
-END;
-```
-
-**Examples:**
-
-```sql
--- Scalar function
-CREATE FUNCTION FormatPrice(price DECIMAL)
-RETURNS VARCHAR(20)
-DETERMINISTIC
-AS
-BEGIN
-    RETURN '$' || CAST(ROUND(price, 2) AS VARCHAR);
-END;
-
--- Usage
-SELECT Name, FormatPrice(Price) FROM Products;
-
--- Drop function
 DROP FUNCTION [IF EXISTS] function_name;
 ```
 
+A function is callable **anywhere an expression may appear**: a select list, a `WHERE`, a `CHECK`, a
+computed column, a `DEFAULT`, an index key, a view, a trigger body.
+
+```sql
+CREATE FUNCTION Doubled(N INT) RETURNS INT AS BEGIN RETURN N * 2; END;
+
+SELECT Doubled(Price) FROM Orders WHERE Doubled(Price) > 100;
+```
+
+**What a function body is not:**
+
+- **not a statement list.** One `RETURN` of one expression. Control flow (`IF`, `WHILE`) is not in
+  the language;
+- **not table-valued.** `RETURNS TABLE` is not accepted - a function returns a scalar;
+- **not external.** SQL only: no assembly loading, and no `LANGUAGE` other than `SQL`;
+- **not transactional.** A body may not commit or roll back.
+
+`INFORMATION_SCHEMA.ROUTINES` and `INFORMATION_SCHEMA.PARAMETERS` describe what is defined, which is
+what scaffolding reads.
+
 ---
 
-## 23. Stored Procedures
+## 23. Procedures
 
-> **Status: not implemented as of 2026-07-29.** This section describes intended behaviour, not
-> shipped behaviour — `CREATE PROCEDURE` does not parse. It is **planned**, not withdrawn: PostgreSQL and
-> SQL Server both provide this, and WitDatabase aims to substitute for those without the calling
-> application noticing. What it needs is a subsystem rather than a grammar rule — a procedural interpreter with variables, control flow and CALL — so it is
-> tracked outside the grammar work. Executable specification: `CreateProcedureIsSupportedTest` in
-> `Sources/Engine/OutWit.Database.Tests/AuditVerification/DropInGapsEngineTests.cs`.
-
+Shipped in **11.0.0**. A procedure's body is a **sequence of statements**, invoked as one unit of
+work by `CALL`. **The last statement's result is the call's result**, so a body ending in a `SELECT`
+returns rows.
 
 ```sql
-CREATE PROCEDURE procedure_name (parameters)
+CREATE PROCEDURE procedure_name (parameter type, ...)
 AS
 BEGIN
-    -- procedure body
+    -- statements
 END;
 
--- Execute procedure
 CALL procedure_name(arguments);
-EXECUTE procedure_name(arguments);
-```
 
-**Example:**
+DROP PROCEDURE [IF EXISTS] procedure_name;
+```
 
 ```sql
-CREATE PROCEDURE TransferFunds(
-    @FromAccount BIGINT,
-    @ToAccount BIGINT,
-    @Amount DECIMAL
-)
-AS
-BEGIN
-    BEGIN TRANSACTION;
-    
-    UPDATE Accounts SET Balance = Balance - @Amount 
-    WHERE Id = @FromAccount;
-    
-    UPDATE Accounts SET Balance = Balance + @Amount 
-    WHERE Id = @ToAccount;
-    
-    COMMIT;
+CREATE PROCEDURE ArchiveOrder(OrderId INT) AS BEGIN
+    INSERT INTO OrdersArchive SELECT * FROM Orders WHERE Id = OrderId;
+    DELETE FROM Orders WHERE Id = OrderId;
 END;
 
-CALL TransferFunds(1001, 1002, 500.00);
+CALL ArchiveOrder(42);
 ```
+
+From ADO.NET, `CommandType.StoredProcedure` reaches the same thing.
+
+**The rules, each of which is a decision rather than an omission:**
+
+- **A body may not control transactions.** Committing inside one would commit the statement that
+  called it, and nothing would report that.
+- **A trigger body may not `CALL` a procedure.** A procedure may contain DDL precisely because a
+  `CALL` is a statement rather than a loop over rows.
+- **Statements nest at most 32 deep**, and the limit is a catchable error. Before 11.0.0 a trigger
+  writing to its own table recursed until the stack ran out, which killed the host process:
+  `StackOverflowException` cannot be caught.
+- **`OUT` parameters and multiple result sets are not in the language.** Parameters go in; the last
+  statement's result comes out.
+
+---
+
+## 23.1 Sequences
+
+A sequence is a named counter, read through a function. The whole of the syntax is:
+
+```sql
+CREATE SEQUENCE [IF NOT EXISTS] sequence_name [START WITH n]
+ALTER SEQUENCE sequence_name RESTART [WITH n]
+DROP SEQUENCE [IF EXISTS] sequence_name
+```
+
+**There is no `INCREMENT BY`, no `MINVALUE` or `MAXVALUE`, and no `CYCLE`** - `INCREMENT BY 2` is a
+syntax error, and the step is always 1. `START WITH` and `RESTART WITH` are the two numbers a
+sequence takes.
+
+Reading it:
+
+| | |
+|---|---|
+| `NEXTVAL(name)` | the next value; `INCREMENT(name)` is the same function |
+| `CURRVAL(name)` | the last value taken; `LASTINCREMENT(name)` is the same function |
+
+```sql
+CREATE SEQUENCE order_id START WITH 1000;
+
+INSERT INTO Orders (Id, UserId, Amount) VALUES (NEXTVAL('order_id'), @UserId, @Amount);
+
+SELECT CURRVAL('order_id');          -- what the last INSERT used
+
+ALTER SEQUENCE order_id RESTART WITH 5000;
+```
+
+`INFORMATION_SCHEMA.SEQUENCES` lists them.
+
+**A sequence is not the same thing as `AUTOINCREMENT`.** An autoincrement key is per table and the
+engine assigns it; a sequence is an object of its own that several tables may read, and the value is
+taken by the statement that names it.
 
 ---
 
