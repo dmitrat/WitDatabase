@@ -164,10 +164,26 @@ public class SecondaryIndexConcurrencyProbeTests
     /// silent change - it is the standing evidence for why the wrapper exists.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// The shape of the damage varies and is deliberately not pinned: over ten runs the second writer
     /// threw <c>ArgumentOutOfRangeException</c> or <c>IndexOutOfRangeException</c> nine times, and
     /// once nothing threw at all and three entries were simply gone - two of them the FIRST writer's,
     /// already inserted and acknowledged. The exception is the lucky outcome.
+    /// </para>
+    /// <para>
+    /// <b>It asserted one of those shapes anyway until 2026-08-15</b> - that the SECOND writer's key
+    /// was among the missing ones - which contradicted the paragraph above. It reddened CI on a branch
+    /// that touches no engine code and passed on a re-run of the same commit: on a loaded runner the
+    /// second writer did not finish inside the two seconds
+    /// <see cref="Outcome.SecondWriterFinishedWhileFirstWasParked"/> waits, so it landed after the
+    /// release and its own entry survived - while <b>207 of the first writer's were lost</b>. The
+    /// damage was real and larger than usual, and the case failed for having said in advance which
+    /// entry it would be.
+    /// </para>
+    /// <para>
+    /// So it asserts what it can measure on a machine whose scheduling it does not control - that two
+    /// writers in one leaf split damage the index - and REPORTS the shape rather than pinning it.
+    /// </para>
     /// </remarks>
     [Test]
     public void ProbeConcurrentAddOverABareIndexStoreTest()
@@ -185,13 +201,20 @@ public class SecondaryIndexConcurrencyProbeTests
             // PINS A DEFECT, NOT CORRECT BEHAVIOUR. A bare StoreBTree is what CreateBTreeIndexFactory
             // hands every secondary index, and it has no locking of any kind: the second writer walks
             // straight into the leaf the first one is halfway through splitting, snapshots it, and
-            // the two then rewrite it from two different snapshots. Invert both assertions when index
-            // stores are serialised - nothing may be lost and no writer may throw.
+            // the two then rewrite it from two different snapshots. Invert this when index stores are
+            // serialised - nothing may be lost and no writer may throw.
             Assert.That(outcome.Damage, Is.Not.EqualTo(Damage.None),
                 "two writers were inside the same leaf split and nothing went wrong - re-measure "
                 + "before believing it");
-            Assert.That(outcome.MissingKeys, Does.Contain(SECOND_WRITER_KEY),
-                "the second writer's entry survived - the damage this probe pins has moved");
+
+            // WHOSE entries went is the weather; that acknowledged work was lost, or that a writer
+            // threw, is the finding. Both are already what Damage classifies, so this says out loud
+            // what the value has to have come from.
+            Assert.That(outcome.MissingKeys.Count > 0
+                        || outcome.FirstWriterError != null
+                        || outcome.SecondWriterError != null, Is.True,
+                "nothing is missing and nobody threw, so Damage was classified from something this "
+                + "probe does not measure: " + outcome.Describe());
         });
     }
 

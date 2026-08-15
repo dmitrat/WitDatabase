@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Data.Common;
 using Transaction = System.Transactions.Transaction;
 using OutWit.Database.AdoNet.Engines;
@@ -905,7 +905,11 @@ public sealed partial class WitDbConnection : DbConnection
     }
 
     /// <inheritdoc/>
-    public override string ServerVersion => "1.0.0";
+    /// <remarks>
+    /// The ENGINE's version, read from its assembly. It answered the literal <c>1.0.0</c> until
+    /// 2026-08-15, which is what every ADO.NET consumer was told while the engine was on 13.1.1.
+    /// </remarks>
+    public override string ServerVersion => WitDatabaseVersion.Text;
 
     /// <inheritdoc/>
     public override ConnectionState State => m_state;

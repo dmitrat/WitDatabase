@@ -1,4 +1,4 @@
-using OutWit.Database.Parser.Expressions;
+﻿using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Sql;
 using OutWit.Database.Types;
 using OutWit.Database.Values;
@@ -186,7 +186,7 @@ public sealed partial class ExpressionEvaluator
 
             // System Functions
             "DATABASE" => WitSqlValue.FromText("WitDB"),
-            "VERSION" => WitSqlValue.FromText("1.0.0"),
+            "VERSION" => WitSqlValue.FromText(WitDatabaseVersion.Text),
 
             // Metadata Functions
             "CHANGES" => WitSqlValue.FromInt(m_context.LastChangesCount),

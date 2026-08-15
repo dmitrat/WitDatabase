@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using OutWit.Database.Engine;
 
 namespace OutWit.Database.AdoNet.Schema;
@@ -170,8 +170,8 @@ internal sealed class SchemaProvider
         var row = table.NewRow();
         row["CompositeIdentifierSeparatorPattern"] = @"\.";
         row["DataSourceProductName"] = "WitDatabase";
-        row["DataSourceProductVersion"] = "1.0.0";
-        row["DataSourceProductVersionNormalized"] = "01.00.0000";
+        row["DataSourceProductVersion"] = WitDatabaseVersion.Text;
+        row["DataSourceProductVersionNormalized"] = WitDatabaseVersion.Normalized;
         row["GroupByBehavior"] = 1; // GroupByBehavior.Unrelated
         row["IdentifierPattern"] = @"(^\[\p{Lo}\p{Lu}\p{Ll}_@#][\p{Lo}\p{Lu}\p{Ll}\p{Nd}@$#_]*$)|(^\[([^\]\0]|\]\])+\]$)|(^\"".+\""$)";
         row["IdentifierCase"] = 1; // IdentifierCase.Insensitive

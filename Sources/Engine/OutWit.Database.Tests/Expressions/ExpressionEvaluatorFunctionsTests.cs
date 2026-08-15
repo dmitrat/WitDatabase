@@ -1,3 +1,4 @@
+using System.Reflection;
 using OutWit.Database.Expressions;
 using OutWit.Database.Parser.Expressions;
 using OutWit.Database.Parser.Schema.Types;
@@ -808,6 +809,16 @@ public class ExpressionEvaluatorFunctionsTests : ExpressionEvaluatorTestsBase
         Assert.That(result.AsString(), Is.EqualTo("WitDB"));
     }
 
+    /// <summary>
+    /// <c>VERSION()</c> answers the version of the engine that is running.
+    /// </summary>
+    /// <remarks>
+    /// It answered the literal <c>"1.0.0"</c> until 2026-08-15, and this case pinned it there while
+    /// the engine was on 13.1.1 - `SELECT VERSION()` being the obvious thing for a user to run. The
+    /// expectation is read from the ASSEMBLY here, independently of the property under test: a case
+    /// carrying <c>"13.1.1"</c> in its own text would be the same defect one layer out, stale at the
+    /// next release.
+    /// </remarks>
     [Test]
     public void EvaluateVersionTest()
     {
@@ -816,7 +827,20 @@ public class ExpressionEvaluatorFunctionsTests : ExpressionEvaluatorTestsBase
 
         var result = evaluator.Evaluate(func, CreateEmptyRow());
 
-        Assert.That(result.AsString(), Is.EqualTo("1.0.0"));
+        var informational = typeof(ExpressionEvaluator).Assembly
+            .GetCustomAttribute<AssemblyInformationalVersionAttribute>()!.InformationalVersion;
+
+        var expected = informational.Split('+')[0];
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(result.AsString(), Is.EqualTo(expected));
+
+            // CONTROL: the assembly is not itself answering 1.0.0, which would make the comparison
+            // above pass for the wrong reason.
+            Assert.That(expected, Is.Not.EqualTo("1.0.0"),
+                "the engine assembly reports 1.0.0, so this case cannot tell the fix from the defect");
+        });
     }
 
     [Test]
