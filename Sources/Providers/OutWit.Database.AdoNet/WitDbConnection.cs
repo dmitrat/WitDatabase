@@ -628,8 +628,14 @@ public sealed partial class WitDbConnection : DbConnection
             return;
 
         // Check for fast encryption flag
-        bool fastEncryption = providerParams.Get("FastEncryption", false) || 
+        bool fastEncryption = providerParams.Get("FastEncryption", false) ||
                               providerParams.Get("Fast Encryption", false);
+
+        // A database written before the crypto preamble is refused since 14.0.0, and this is how a
+        // caller asks for it anyway - to read it, or to convert it by changing its password. Both
+        // spellings, for the same reason the fast flag has both.
+        if (providerParams.Get("LegacyEncryption", false) || providerParams.Get("Legacy Encryption", false))
+            builder.WithLegacyEncryption();
 
         var encryptionKey = options.Encryption?.ToLowerInvariant();
 
