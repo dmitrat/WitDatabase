@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
   <PropertyGroup>
     <OutputType>WinExe</OutputType>
     <TargetFramework>net10.0</TargetFramework>
@@ -18,7 +18,7 @@
 
     <!-- Release info. The release workflow overrides Version from the studio-v* tag; this
          is what a local build gets. -->
-    <Version>3.0.0-dev</Version>
+    <Version>3.0.0-rc.1</Version>
     <Product>WitDatabase Studio</Product>
     <Company>OutWit</Company>
   </PropertyGroup>
