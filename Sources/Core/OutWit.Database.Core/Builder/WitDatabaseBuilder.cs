@@ -20,6 +20,17 @@ namespace OutWit.Database.Core.Builder;
 /// </summary>
 public sealed class WitDatabaseBuilder
 {
+    #region Constants
+
+    /// <summary>
+    /// The encryption parameter that lets a database written before the crypto preamble be opened.
+    /// Set by <see cref="WitDatabaseBuilderExtensions.WithLegacyEncryption"/>, and by
+    /// <c>Legacy Encryption=true</c> in a connection string.
+    /// </summary>
+    public const string LEGACY_ENCRYPTION_PARAMETER = "allowLegacyEncryption";
+
+    #endregion
+
     #region Events
 
     /// <summary>
@@ -919,9 +930,9 @@ public sealed class WitDatabaseBuilder
     /// that carries a sequence number the file remembers.</description></item>
     /// <item><description><b>Anything else</b> - a database written before the preamble existed.
     /// Its salt is a function of its password and its nonce counter restarts on every open, and
-    /// nothing done here can change either: those are properties of bytes already on disk. It opens
-    /// exactly as it always did. Studio's password change is what moves such a file into the new
-    /// format, and it is the documented migration.</description></item>
+    /// nothing done here can change either: those are properties of bytes already on disk.
+    /// <b>Since 14.0.0 it is REFUSED</b> unless the caller asks for the old scheme by name - see
+    /// <see cref="WitDatabaseBuilderExtensions.WithLegacyEncryption"/>.</description></item>
     /// </list>
     /// </remarks>
     private IStorage WrapEncrypted(IStorage baseStorage, ICryptoProvider cryptoProvider, byte[]? sharedDataKey = null)
@@ -930,8 +941,9 @@ public sealed class WitDatabaseBuilder
 
         return shape switch
         {
-            CryptoPreamble.Shape.Other => new StorageEncrypted(
-                baseStorage, new EncryptorPage(cryptoProvider, GetEncryptionSalt())),
+            CryptoPreamble.Shape.Other => LegacyEncryptionAllowed
+                ? new StorageEncrypted(baseStorage, new EncryptorPage(cryptoProvider, GetEncryptionSalt()))
+                : throw LegacyRefused("This database"),
 
             CryptoPreamble.Shape.Empty => CreateWithPreamble(baseStorage, cryptoProvider, sharedDataKey),
 
@@ -940,13 +952,48 @@ public sealed class WitDatabaseBuilder
     }
 
     /// <summary>
+    /// Whether the caller has asked, by name, to open a database written under the encryption scheme
+    /// that preceded the crypto preamble.
+    /// </summary>
+    private bool LegacyEncryptionAllowed =>
+        Options.EncryptionParameters.Get(LEGACY_ENCRYPTION_PARAMETER, false);
+
+    /// <summary>
+    /// The refusal, and the sentence somebody whose application stopped working on upgrade will read.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>What is wrong with such a file cannot be repaired by opening it</b>, which is why 14.0.0
+    /// refuses rather than warns. Its salt is <c>SHA256(password + "_WitDB_Salt")</c>, so one password
+    /// means one key across every database ever created with it, and that salt is the file's first
+    /// eight bytes in the clear - a password verifier costing one SHA-256 against 5.6 hours through
+    /// PBKDF2. Its nonce counter is set to zero on every OPEN, so two sessions encrypt different
+    /// plaintext under one nonce, which is the failure AES-GCM has no recovery from.
+    /// </para>
+    /// <para>
+    /// The data is not taken away. The message names both ways forward, in the order a person would
+    /// try them: read it with the version that wrote it, or convert it - and the opt-in exists so
+    /// that a converter can do exactly that.
+    /// </para>
+    /// </remarks>
+    private static InvalidOperationException LegacyRefused(string subject) =>
+        new($"{subject} was written with the encryption scheme used before 13.1.0, and this version "
+            + "will not open it: its salt is derived from the password and stored in the clear, and "
+            + "its nonce counter restarts on every open. Both are properties of the bytes on disk "
+            + "and cannot be repaired by reading them. Either open it with the version of "
+            + "WitDatabase that wrote it, or convert it by changing its password - which rewrites it "
+            + "into the current format. To read it as it is, ask for the old scheme by name: "
+            + "WithLegacyEncryption() on the builder, or 'Legacy Encryption=true' in a connection "
+            + "string.");
+
+    /// <summary>
     /// The LSM store's half of the same choice. It has no page 0 to put a preamble in, so its
     /// header is a small plaintext file beside the SSTables.
     /// </summary>
     /// <remarks>
     /// A directory that already holds SSTables and carries no header file was written before the
-    /// header existed, and keeps its old encryptor - the same rule the paged store applies, decided
-    /// the only way a directory can decide it.
+    /// header existed, and is refused for the same reason and with the same way out as a paged one -
+    /// the same rule, decided the only way a directory can decide it.
     /// </remarks>
     private IBlockEncryptor BuildLsmEncryptor(string directory, ICryptoProvider cryptoProvider, byte[]? sharedDataKey = null)
     {
@@ -975,7 +1022,11 @@ public sealed class WitDatabaseBuilder
         }
 
         if (HasSstables(directory))
-            return new EncryptorBlock(cryptoProvider, GetEncryptionSalt());
+        {
+            return LegacyEncryptionAllowed
+                ? new EncryptorBlock(cryptoProvider, GetEncryptionSalt())
+                : throw LegacyRefused("This store");
+        }
 
         var password2 = sharedDataKey == null ? EncryptionPassword() : null;
 

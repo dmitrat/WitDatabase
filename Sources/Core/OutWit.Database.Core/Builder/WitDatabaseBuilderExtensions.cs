@@ -306,6 +306,30 @@ public static class WitDatabaseBuilderExtensions
     }
 
     /// <summary>
+    /// Opens a database written under the encryption scheme that preceded the crypto preamble.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Since 14.0.0 such a database is refused unless this is asked for by name</b>, and the
+    /// reason is that nothing done at open can repair it: its salt is a function of its password and
+    /// is stored in the clear, so the head of the file is a password verifier costing one SHA-256;
+    /// its nonce counter restarts on every open, so two sessions encrypt under one nonce. Both are
+    /// properties of the bytes on disk.
+    /// </para>
+    /// <para>
+    /// <b>This exists so that such a file can be READ - by a converter, or by somebody getting their
+    /// data out.</b> The way to stop needing it is to change the database's password, which rewrites
+    /// it in the current format; Studio does that from its Database tab, and does it through this
+    /// method.
+    /// </para>
+    /// </remarks>
+    public static WitDatabaseBuilder WithLegacyEncryption(this WitDatabaseBuilder builder)
+    {
+        builder.Options.EncryptionParameters.Set(WitDatabaseBuilder.LEGACY_ENCRYPTION_PARAMETER, true);
+        return builder;
+    }
+
+    /// <summary>
     /// Enable AES-GCM encryption with user and password-based key derivation.
     /// </summary>
     public static WitDatabaseBuilder WithEncryption(this WitDatabaseBuilder builder, string user, string password)

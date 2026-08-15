@@ -1484,6 +1484,20 @@ without a password is refused rather than misread. Nothing else can be restored 
 database except its transaction model: the header is inside the encrypted page, so a non-default
 `PageSize`, `Cache` or `CacheSize` has to be named again.
 
+**A database written before 13.1.0 is refused since 14.0.0**, and the refusal is about the encryption
+scheme rather than about the file's age. Such a file derives its salt from its password and stores it
+in the clear as its first eight bytes - which makes the head of the file a password verifier costing
+one SHA-256 - and its nonce counter restarts on every open, so two sessions encrypt under one nonce.
+Neither can be repaired by reading the file.
+
+| | |
+|---|---|
+| Read it as it is | `Legacy Encryption=true` in the connection string, or `WithLegacyEncryption()` on the builder |
+| Stop needing that | **change the database's password**, which rewrites it in the current format |
+
+The opt-in exists so that a converter can read the source; it selects the old scheme and nothing
+else, and a wrong password is still refused. Unencrypted databases are untouched by any of this.
+
 **A transaction model you name and the database does not have is still refused at `Open`.** The MVCC
 store keeps every value under a versioned key and no other configuration does, so a database written
 with `MVCC=true` - the default - and opened with `MVCC=false` used to open without a word of complaint

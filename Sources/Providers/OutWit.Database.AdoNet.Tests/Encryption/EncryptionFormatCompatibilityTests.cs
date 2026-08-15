@@ -9,6 +9,17 @@ namespace OutWit.Database.AdoNet.Tests.Encryption;
 /// </summary>
 /// <remarks>
 /// <para>
+/// <b>What "keep working" means changed in 14.0.0.</b> A database written before the crypto preamble
+/// is refused unless the caller names the old scheme - <c>Legacy Encryption=true</c>, or
+/// <c>WithLegacyEncryption()</c> - because its salt is a password verifier stored in the clear and
+/// its nonce counter restarts on every open, and neither can be repaired by reading the file. The
+/// cases below carry the opt-in and go on proving the half that matters to somebody holding such a
+/// file: <b>the data is still reachable</b>, which is what makes converting it possible. The refusal
+/// is <c>LegacyEncryptionIsRefusedTests</c>.
+/// </para>
+/// </remarks>
+/// <remarks>
+/// <para>
 /// <c>Fixtures/12.8.0-encrypted.witdb</c> and <c>Fixtures/12.8.0-encrypted-fast.witdb</c> were
 /// written by the code at <c>main = 92b6056</c> - engine 12.8.0, the last version before the format
 /// change - and are committed so that "old files keep opening" is answerable rather than asserted.
@@ -69,20 +80,32 @@ public class EncryptionFormatCompatibilityTests
     #region A 12.8.0 database still opens
 
     /// <summary>
-    /// The compatibility claim of the format change, as a test rather than as a comment: a database
-    /// written before the change is opened by the code after it, and answers with its rows.
+    /// The compatibility claim, as a test rather than as a comment: a database written before the
+    /// format change is opened by the code after it, and answers with its rows.
     /// </summary>
     /// <remarks>
+    /// <para>
     /// GREEN on 12.8.0, which is the point - it is a guard, not a finding. Its power is measured by
     /// <see cref="ControlATamperedFixtureDoesNotOpenTest"/>: without something that makes this shape
     /// fail, "the old file opened" is a sentence no run could contradict.
+    /// </para>
+    /// <para>
+    /// <b>The claim became CONDITIONAL in 14.0.0</b> and the connection string says so:
+    /// <c>Legacy Encryption=true</c>. 13.0.0 kept opening such files without being asked; 14.0.0
+    /// refuses unless the old scheme is named, because its salt is a password verifier in the clear
+    /// and its nonce counter restarts on every open, and neither can be repaired by reading it. What
+    /// this case still proves is the half that matters to somebody holding an old file: <b>the data
+    /// is reachable</b>, which is what makes "convert it" possible at all. The refusal itself is
+    /// <c>LegacyEncryptionIsRefusedTests</c>.
+    /// </para>
     /// </remarks>
     [Test]
-    public void A1280EncryptedDatabaseStillOpensTest()
+    public void A1280EncryptedDatabaseOpensWithTheLegacyOptInTest()
     {
         var path = CopyFixture(DEFAULT_FIXTURE);
 
-        using var connection = new WitDbConnection($"Data Source={path};Password={FIXTURE_PASSWORD}");
+        using var connection = new WitDbConnection(
+            $"Data Source={path};Password={FIXTURE_PASSWORD};Legacy Encryption=true");
         connection.Open();
 
         Assert.Multiple(() =>
@@ -103,16 +126,18 @@ public class EncryptionFormatCompatibilityTests
     /// the documented migration.
     /// </summary>
     [Test]
-    public void A1280FastEncryptedDatabaseStillOpensWithTheFlagTest()
+    public void A1280FastEncryptedDatabaseOpensWithTheFlagAndTheOptInTest()
     {
         var path = CopyFixture(FAST_FIXTURE);
 
         using var connection = new WitDbConnection(
-            $"Data Source={path};Password={FIXTURE_PASSWORD};FastEncryption=true");
+            $"Data Source={path};Password={FIXTURE_PASSWORD};FastEncryption=true;Legacy Encryption=true");
         connection.Open();
 
         Assert.That(Scalar(connection, "SELECT Name FROM Customers WHERE Id = 7"), Is.EqualTo("Customer 7"),
-            "an old fast-encrypted file must keep opening with the flag it was written with");
+            "an old fast-encrypted file needs BOTH: the flag it was written with, because its "
+            + "iteration count is not in the file, and the legacy opt-in, because its scheme is the "
+            + "one 14.0.0 refuses by default");
     }
 
     /// <summary>
@@ -134,7 +159,10 @@ public class EncryptionFormatCompatibilityTests
 
         Assert.That(() =>
         {
-            using var connection = new WitDbConnection($"Data Source={path};Password={FIXTURE_PASSWORD}");
+            // With the opt-in, so that the open reaches authentication. Without it the refusal would
+            // arrive first and this control would be measuring the refusal instead of the ciphertext.
+            using var connection = new WitDbConnection(
+                $"Data Source={path};Password={FIXTURE_PASSWORD};Legacy Encryption=true");
             connection.Open();
 
             return Scalar(connection, "SELECT COUNT(*) FROM Customers");
@@ -170,12 +198,12 @@ public class EncryptionFormatCompatibilityTests
     /// so it is the old code's output rather than the new code's imitation of it.
     /// </remarks>
     [Test]
-    public void A1280EncryptedLsmStoreStillOpensTest()
+    public void A1280EncryptedLsmStoreOpensWithTheLegacyOptInTest()
     {
         var directory = CopyLsmFixture();
 
         using var database = new WitDatabaseBuilder()
-            .WithLsmTree(directory).WithEncryption(FIXTURE_PASSWORD).Build();
+            .WithLsmTree(directory).WithEncryption(FIXTURE_PASSWORD).WithLegacyEncryption().Build();
 
         Assert.That(System.Text.Encoding.UTF8.GetString(database.Get("key-007") ?? []),
             Is.EqualTo("value for key 7"),
@@ -198,7 +226,7 @@ public class EncryptionFormatCompatibilityTests
         try
         {
             using var database = new WitDatabaseBuilder()
-                .WithLsmTree(directory).WithEncryption("not-the-password").Build();
+                .WithLsmTree(directory).WithEncryption("not-the-password").WithLegacyEncryption().Build();
 
             var value = database.Get("key-007");
             answered = value == null ? null : System.Text.Encoding.UTF8.GetString(value);
