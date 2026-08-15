@@ -26,7 +26,7 @@ OutWit.Database.Parser is a high-performance SQL parser built on [ANTLR4](https:
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Parser" Version="13.1.1" />
+<PackageReference Include="OutWit.Database.Parser" Version="14.0.0" />
 ```
 
 ---

@@ -1,4 +1,4 @@
-using System.Collections.ObjectModel;
+﻿using System.Collections.ObjectModel;
 using Microsoft.Extensions.Logging;
 using OutWit.Database.Studio.Models;
 
@@ -70,11 +70,19 @@ public sealed class ConnectionManager : IConnectionManager
 
         if (!await session.OpenAsync(ct))
         {
+            // The reason is taken off the session BEFORE it is disposed. A caller gets null from here
+            // and would otherwise have nothing to say beyond "it failed" - which is exactly how a
+            // database refused for one nameable reason (an old encryption scheme, a wrong password)
+            // came to be reported the same way as one that is not a database at all.
+            LastOpenError = session.LastError;
+
             // Nothing is added and nothing is announced. A session in the list that never opened would
             // show up as a root in the tree that answers every question with "not connected".
             session.Dispose();
             return null;
         }
+
+        LastOpenError = null;
 
         m_nextColorIndex++;
 
@@ -153,6 +161,16 @@ public sealed class ConnectionManager : IConnectionManager
     #region Properties
 
     public ObservableCollection<IDatabaseSession> Sessions { get; }
+
+    /// <summary>
+    /// Why the last <see cref="OpenAsync"/> returned null, or null when the last one succeeded.
+    /// </summary>
+    /// <remarks>
+    /// <c>OpenAsync</c> answers a session or nothing, and a caller that gets nothing has to be able
+    /// to tell one refusal from another - a database in the old encryption format is offered a way
+    /// forward, and a file that is not a database is not.
+    /// </remarks>
+    public Exception? LastOpenError { get; private set; }
 
     public IDatabaseSession? Active
     {

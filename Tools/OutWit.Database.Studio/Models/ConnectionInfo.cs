@@ -1,4 +1,4 @@
-using OutWit.Common.Abstract;
+﻿using OutWit.Common.Abstract;
 using OutWit.Common.Aspects;
 using OutWit.Common.Values;
 
@@ -28,6 +28,7 @@ public sealed class ConnectionInfo : ModelBase
         IsEncrypted = false;
         Password = null;
         IsReadOnly = false;
+        IsLegacyEncryption = false;
         StorageEngine = DEFAULT_STORAGE_ENGINE;
         EncryptionProvider = DEFAULT_ENCRYPTION;
         DisplayName = null;
@@ -47,6 +48,7 @@ public sealed class ConnectionInfo : ModelBase
             && IsEncrypted.Is(other.IsEncrypted)
             && Password.Is(other.Password)
             && IsReadOnly.Is(other.IsReadOnly)
+            && IsLegacyEncryption.Is(other.IsLegacyEncryption)
             && StorageEngine.Is(other.StorageEngine)
             && EncryptionProvider.Is(other.EncryptionProvider)
             && ColorIndex.Is(other.ColorIndex)
@@ -61,6 +63,7 @@ public sealed class ConnectionInfo : ModelBase
             IsEncrypted = IsEncrypted,
             Password = Password,
             IsReadOnly = IsReadOnly,
+            IsLegacyEncryption = IsLegacyEncryption,
             StorageEngine = StorageEngine,
             EncryptionProvider = EncryptionProvider,
             ColorIndex = ColorIndex,
@@ -110,6 +113,11 @@ public sealed class ConnectionInfo : ModelBase
             // wrong key and answered that the password was wrong.
             builder.Append($";Encryption={EncryptionProvider}");
             builder.Append(redactSecrets ? ";Password=***" : $";Password={Password}");
+
+            // Only ever beside a password: it selects the OLD scheme for a database that has one, and
+            // means nothing for a database that is not encrypted.
+            if (IsLegacyEncryption)
+                builder.Append(";Legacy Encryption=true");
         }
 
         if (!string.IsNullOrEmpty(StorageEngine) && StorageEngine != DEFAULT_STORAGE_ENGINE)
@@ -166,6 +174,19 @@ public sealed class ConnectionInfo : ModelBase
     /// </summary>
     [Notify]
     public bool IsReadOnly { get; set; }
+
+    /// <summary>
+    /// Opens a database written under the encryption scheme that preceded the crypto preamble.
+    /// </summary>
+    /// <remarks>
+    /// Since engine 14.0.0 such a database is refused unless this is asked for, because its salt is
+    /// derived from its password and stored in the clear and its nonce counter restarts on every
+    /// open. Studio offers it after the refusal rather than in advance: the point of ticking it is to
+    /// get the data out, and the way to stop needing it is to change the database's password, which
+    /// rewrites the file in the current format.
+    /// </remarks>
+    [Notify]
+    public bool IsLegacyEncryption { get; set; }
 
     /// <summary>
     /// Gets or sets the storage engine (btree, lsm).

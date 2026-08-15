@@ -36,17 +36,17 @@ OutWit.Database.Core is a production-ready embedded database engine designed for
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core" Version="13.1.1" />
+<PackageReference Include="OutWit.Database.Core" Version="14.0.0" />
 ```
 
 For ChaCha20-Poly1305 encryption:
 ```xml
-<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="13.1.1" />
+<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="14.0.0" />
 ```
 
 For Blazor WebAssembly (IndexedDB storage):
 ```xml
-<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="13.1.1" />
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="14.0.0" />
 ```
 
 ---
@@ -498,7 +498,7 @@ WitDatabase can run entirely in the browser using IndexedDB as the storage backe
 ### Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="13.1.1" />
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="14.0.0" />
 ```
 
 Add JavaScript files to `index.html`:

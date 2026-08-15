@@ -1,4 +1,5 @@
 using OutWit.Database.Core.Builder;
+using OutWit.Database.Core.Exceptions;
 
 namespace OutWit.Database.AdoNet.Tests.Encryption;
 
@@ -78,7 +79,7 @@ public class LegacyEncryptionIsRefusedTests
     {
         var path = CopyFixture(DEFAULT_FIXTURE);
 
-        var error = Assert.Throws<InvalidOperationException>(() =>
+        var error = Assert.Throws<LegacyEncryptionException>(() =>
         {
             using var database = new WitDatabaseBuilder()
                 .WithFilePath(path).WithBTree().WithEncryption(FIXTURE_PASSWORD).Build();
@@ -94,6 +95,10 @@ public class LegacyEncryptionIsRefusedTests
                 "and name the way to read it anyway");
             Assert.That(error.Message, Does.Contain("password"),
                 "and point at the conversion, which is a password change");
+
+            // A TYPE rather than a sentence to match: Studio branches on this to offer the
+            // conversion, and matching the message text would break the moment a word changed.
+            Assert.That(error.IsDirectory, Is.False, "this one is a paged database");
         });
     }
 
@@ -102,15 +107,19 @@ public class LegacyEncryptionIsRefusedTests
     {
         var directory = CopyLsmFixture();
 
-        var error = Assert.Throws<InvalidOperationException>(() =>
+        var error = Assert.Throws<LegacyEncryptionException>(() =>
         {
             using var database = new WitDatabaseBuilder()
                 .WithLsmTree(directory).WithEncryption(FIXTURE_PASSWORD).Build();
         });
 
-        Assert.That(error!.Message, Does.Contain("WithLegacyEncryption"),
-            "a directory of SSTables with no crypto header is the same situation and gets the same "
-            + "answer");
+        Assert.Multiple(() =>
+        {
+            Assert.That(error!.Message, Does.Contain("WithLegacyEncryption"),
+                "a directory of SSTables with no crypto header is the same situation and gets the "
+                + "same answer");
+            Assert.That(error.IsDirectory, Is.True, "and the exception says which kind it was");
+        });
     }
 
     #endregion

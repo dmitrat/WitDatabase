@@ -1,5 +1,110 @@
 ﻿# Changelog
 
+## 14.0.0
+
+**An encrypted database written before 13.1.0 is no longer opened without being asked.** That is the
+whole of the major, and if your application stopped opening its database on this version, this is why
+and here is what to do.
+
+### If your application stopped opening a database
+
+Its encryption predates the crypto preamble, and three things are wrong with such a file that cannot
+be repaired by reading it - all three measured and written up in 13.0.0's section below:
+
+- its **salt is `SHA256(password + "_WitDB_Salt")`**, a pure function of the password, so one password
+  means one key across every database ever created with it;
+- that salt is the file's **first eight bytes, in the clear**, which makes the head of the file a
+  password verifier costing one SHA-256 - about 41,000x cheaper than PBKDF2 at 100,000 on one core,
+  and far more on a GPU;
+- its **nonce counter is set to zero on every open**, so two sessions encrypt different plaintext
+  under one nonce, which is the failure AES-GCM has no recovery from.
+
+13.1.0 kept opening such files. 14.0.0 refuses, and says so:
+
+> This database was written with the encryption scheme used before 13.1.0, and this version will not
+> open it… Either open it with the version of WitDatabase that wrote it, or convert it by changing
+> its password - which rewrites it into the current format. To read it as it is, ask for the old
+> scheme by name: `WithLegacyEncryption()` on the builder, or `'Legacy Encryption=true'` in a
+> connection string.
+
+**Two ways forward, and the opt-in is the first step of the second one:**
+
+```csharp
+// Read it as it is - what a converter does, and what gets your data out.
+new WitDatabaseBuilder().WithFilePath(path).WithBTree()
+    .WithEncryption(password).WithLegacyEncryption().Build();
+
+// Or through a connection string.
+new WitDbConnection($"Data Source={path};Password={password};Legacy Encryption=true");
+```
+
+Then **change the database's password**, which rewrites it in the current format and ends the need
+for the opt-in. WitDatabase Studio does that from its Database tab, and offers the opt-in itself when
+it meets such a database.
+
+The refusal is narrow, and both halves are asserted: a database written by 13.1.0 or later opens with
+no opt-in, and an **unencrypted** database is untouched - which matters, because an unencrypted file
+looks exactly like a legacy one to the preamble check, and the branch is only reached when encryption
+was asked for.
+
+`LegacyEncryptionException` is a type of its own so that a caller can act on the refusal without
+matching its message text.
+
+### Fixed
+
+- **The in-memory fixture the documentation recommends for tests failed at its first save.**
+  `UseWitDbInMemory()` configured the context with a connection STRING, and an in-memory database is
+  private to its connection; EF opens and closes one per operation, so `EnsureCreated()` returned true
+  and the very next `SaveChanges` threw *Table 'X' not found*. The provider now creates the
+  connection, opens it, and hands it over - EF does not close a connection it did not open. An
+  overload taking a `WitDbConnection` the caller owns sits beside it.
+
+- **Four places answered version `1.0.0`** while every package was on 13.1.1: `SELECT VERSION()`,
+  `WitDbConnection.ServerVersion`, and both version rows of `GetSchema("DataSourceInformation")` -
+  which is what tooling and ORMs read. All four now come from the assembly.
+
+- **A rollback journal that could not be applied was deleted, and nobody was told either way.**
+  Recovery wrapped each journal in an empty `catch` under the comment *"Skip corrupted journals"*, so
+  a database could carry half a transaction with the only evidence removed. The failure now reaches
+  `ITransactionJournal.RecoveryFailures` and `TransactionalStore.RecoveryFailures`, and the file is
+  kept. Opening still does not fail - one unreadable journal must not lock anybody out of the rest of
+  their data. A torn tail is also told apart from a clean end now: `BinaryReader.ReadBytes` on a
+  truncated entry returns a short array and leaves the stream at its end, so counting bytes could not
+  see the difference and a damaged journal was applied in part and then deleted as though it were
+  whole.
+
+### Added
+
+- **`WithLegacyEncryption()`** and the `Legacy Encryption=true` connection-string keyword.
+- **`ITransactionJournal.RecoveryFailures`**, a default interface member, so no existing implementer
+  had to change.
+- **`WitDatabaseVersion`** - the engine's version, read from its assembly.
+
+### Documentation, and it corrects two claims this repository was making
+
+- **`WitSQL.md` §§ 22-23 described routines that were never built.** Both said "not implemented as of
+  2026-07-29" and described table-valued functions, `IF`/`WHILE` bodies, `OUT` parameters and multiple
+  result sets. Routines shipped in 11.0.0 and are none of that: a function body is **one expression**,
+  a procedure body is a sequence of statements and the last statement's result is the call's result.
+  Both sections are replaced.
+- **Sequences are documented** (§ 23.1), and the surface is smaller than it looked:
+  `CREATE SEQUENCE [IF NOT EXISTS] name [START WITH n]`, `ALTER SEQUENCE name RESTART [WITH n]`,
+  `DROP SEQUENCE`. There is no `INCREMENT BY` - it is a syntax error - no `MINVALUE`, no `MAXVALUE`,
+  no `CYCLE`, and the step is always 1. Read with `NEXTVAL`/`CURRVAL`, of which `INCREMENT` and
+  `LASTINCREMENT` are aliases.
+- **`WitIsolationLevel.RepeatableRead` promised read locks held for the transaction's duration.** Every
+  level above `ReadCommitted` here is optimistic: the conflict is found at COMMIT and raised as an
+  exception, so a caller who expected to block gets an error and must retry.
+- **Write skew is permitted at `Serializable`**, not only at `Snapshot`, and it is measured: two
+  transactions read the same rows, each writes a different one, both commit, and an invariant that
+  held for each separately is gone. `WhatEachIsolationLevelPreventsTests` pins all four outcomes,
+  including the two `Serializable` DOES refuse.
+- **The Core README** sold LSM as write-optimised, which the 11 August measurement retired. It carries
+  the numbers now.
+- **`KnownIssues.md` gains three entries**, each behaviour to build around rather than a defect: write
+  skew at every level, partial indexes the planner never selects, and the absence of any cache hit
+  rate.
+
 ## 13.1.1
 
 **`LsmParallelCompactor.WaitForAllAsync` waited on the queue and then slept**, and those are not the

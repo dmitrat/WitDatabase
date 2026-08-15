@@ -9,7 +9,7 @@ This package provides an alternative encryption algorithm when AES-NI hardware a
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="13.1.1" />
+<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="14.0.0" />
 ```
 
 ---
