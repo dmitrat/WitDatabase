@@ -883,10 +883,23 @@ public sealed class WitDatabaseBuilder
         int storagePageSize = CalculateStoragePageSize(cryptoProvider);
         var baseStorage = CreateBaseStorage(storagePageSize);
 
-        if (cryptoProvider != null)
-            return WrapEncrypted(baseStorage, cryptoProvider);
+        if (cryptoProvider == null)
+            return baseStorage;
 
-        return baseStorage;
+        try
+        {
+            return WrapEncrypted(baseStorage, cryptoProvider);
+        }
+        catch
+        {
+            // The commonest way in here is a WRONG PASSWORD: unwrapping the key throws, and without
+            // this the file stays open for the life of the process, so the SECOND attempt fails with
+            // "the process cannot access the file" instead of "wrong password". Measured 2026-08-15
+            // by two cases in PasswordRewrapTests, which is how it was found - both were about the
+            // rewrap and neither was about this.
+            baseStorage.Dispose();
+            throw;
+        }
     }
 
     /// <summary>

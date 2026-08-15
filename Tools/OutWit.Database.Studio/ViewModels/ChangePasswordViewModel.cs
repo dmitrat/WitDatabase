@@ -66,7 +66,22 @@ public sealed class ChangePasswordViewModel : ViewModelBase<ApplicationViewModel
         // because a property changed - it has to be told - and this is the THIRD time in one day that
         // a button stayed grey in front of a filled-in form for exactly that reason. Wired here rather
         // than at each setter so that a field added later cannot forget it.
-        PropertyChanged += (_, _) => Refresh();
+        PropertyChanged += (_, args) =>
+        {
+            Refresh();
+
+            if (args.PropertyName != nameof(Change))
+                return;
+
+            // Two computed properties are bound in markup and BOTH read Change, which moves whenever
+            // a radio button is pressed. A computed property is the right answer to everyone who ASKS
+            // and an announcement to nobody - the phase-17 census found 23 of these and IsFiltering
+            // was the one that mattered. NeedsPassword was already one of them: choosing "remove the
+            // encryption" did not hide the password fields, because nothing ever said it had changed.
+            OnPropertyChanged(nameof(NeedsPassword));
+            OnPropertyChanged(nameof(IsRewrap));
+            OnPropertyChanged(nameof(ActionLabel));
+        };
     }
 
     #endregion
@@ -89,9 +104,15 @@ public sealed class ChangePasswordViewModel : ViewModelBase<ApplicationViewModel
 
         IsRunning = true;
         IsDone = false;
-        Message = Localization["Password.Running"];
+        Message = Localization[IsRewrap ? "Password.Rewrapping" : "Password.Running"];
 
         Refresh();
+
+        if (IsRewrap)
+        {
+            Rewrap();
+            return;
+        }
 
         try
         {
@@ -116,6 +137,46 @@ public sealed class ChangePasswordViewModel : ViewModelBase<ApplicationViewModel
         {
             Message = Localization.Format("Password.Failed", ex.Message);
             Logger.LogError(ex, "The migration of {Name} did not finish", m_session.DisplayName);
+        }
+        finally
+        {
+            IsRunning = false;
+
+            Refresh();
+        }
+    }
+
+    /// <summary>
+    /// Replacing a password on a database that already has one: a rewrap of the wrapped key, which
+    /// is 60 bytes in the preamble and leaves every page alone.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The current password is not asked for here either, and now there is a second reason.</b>
+    /// It was already given when this database was opened, and Studio still holds it - so the rewrap
+    /// is handed the password the connection is using rather than one typed again. A field that
+    /// re-asks for something already accepted is the theatre this window was written to avoid.
+    /// </para>
+    /// <para>
+    /// Synchronous on purpose: it is one page write. Wrapping it in a task and a progress list would
+    /// dress up an operation that finishes before the window could redraw.
+    /// </para>
+    /// </remarks>
+    private void Rewrap()
+    {
+        try
+        {
+            m_session.ChangePassword(m_session.Connection.Password!, NewPassword!);
+
+            Steps.Add(Localization["Password.Step.Rewrapped"]);
+
+            Message = Localization["Password.RewrapDone"];
+            IsDone = true;
+        }
+        catch (Exception ex)
+        {
+            Message = Localization.Format("Password.Failed", ex.Message);
+            Logger.LogError(ex, "The password of {Name} was not replaced", m_session.DisplayName);
         }
         finally
         {
@@ -198,8 +259,40 @@ public sealed class ChangePasswordViewModel : ViewModelBase<ApplicationViewModel
     /// <summary>Whether to open the new database when the transfer is done.</summary>
     [Notify] public bool ConnectAfterwards { get; set; } = true;
 
+    /// <summary>
+    /// Whether this change is a REWRAP rather than a migration - replacing a password on a database
+    /// that already has one, which the engine does in 60 bytes.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Three conditions, and each one is load-bearing. It has to be a <b>replacement</b>: encrypting
+    /// a database that is not encrypted has no wrapped key to rewrap, and removing encryption cannot
+    /// leave the pages as ciphertext - both stay migrations and always will. The <b>engine</b> has to
+    /// offer it, which is false for a database whose caller owns the key. And Studio has to
+    /// <b>know the current password</b>, because unwrapping the key with it is the only check there
+    /// is - offered without one, the button would meet an argument exception rather than a refusal.
+    /// </para>
+    /// </remarks>
+    public bool IsRewrap =>
+        Change == PasswordChange.Replace
+        && m_session.CanChangePassword
+        && !string.IsNullOrEmpty(m_session.Connection.Password);
+
+    /// <summary>
+    /// What the button does, which is not the same thing in the two cases.
+    /// </summary>
+    /// <remarks>
+    /// «Transfer» is the migration's word and it was on the button for both until 2026-08-15, next to
+    /// a checkbox offering to connect to a new database that a rewrap never creates. A branch added
+    /// under chrome that still describes the other operation is this application's most familiar
+    /// defect - the same shape as a status bar reading «Editing» over a table whose every editing
+    /// control is disabled.
+    /// </remarks>
+    public string ActionLabel =>
+        Localization[IsRewrap ? "Password.ReplaceAction" : "Password.Migrate"];
+
     public bool CanMigrate =>
-        !string.IsNullOrWhiteSpace(Destination)
+        (IsRewrap || !string.IsNullOrWhiteSpace(Destination))
         && (!NeedsPassword
             || (!string.IsNullOrEmpty(NewPassword) && NewPassword == NewPasswordAgain));
 

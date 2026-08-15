@@ -223,8 +223,15 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
                 ? overview.EncryptionProviderKey!
                 : Localization["Database.Encryption.None"]
             : Localization["Common.Unknown"];
+        // Two different things, and saying the wrong one is how the whole rewrap was missed for a
+        // release. Since the format change the data key is drawn at random and the password only
+        // WRAPS it - which is exactly what CanChangePassword answers, because a wrapped key is the
+        // thing a new password can be wrapped around. A file written before the change, and a
+        // database whose caller owns the key, get the older sentence, which is true of them.
         EncryptionDetail = overview.IsEncrypted
-            ? Localization["Database.Encryption.FromPassword"]
+            ? Localization[Session?.CanChangePassword == true
+                ? "Database.Encryption.WrappedKey"
+                : "Database.Encryption.FromPassword"]
             : string.Empty;
 
         // From the CHAIN this connection assembled, not from the header - which is both the live

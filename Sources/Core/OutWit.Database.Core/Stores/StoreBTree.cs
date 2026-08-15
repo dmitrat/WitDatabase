@@ -12,7 +12,7 @@ namespace OutWit.Database.Core.Stores;
 /// Key-value store implementation backed by B+Tree.
 /// Implements IKeyValueStore for unified storage engine interface.
 /// </summary>
-public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoredConfigurationSource, IPageCacheOccupancySource, IKeyRangeSource, IStoreOriginSource, IAsyncDisposable
+public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProviderMetadataSource, IStoredConfigurationSource, IPageCacheOccupancySource, IPasswordRewrapSource, IKeyRangeSource, IStoreOriginSource, IAsyncDisposable
 {
     #region Constants
 
@@ -609,6 +609,32 @@ public sealed class StoreBTree : IKeyValueStore, IKeyValueStoreStatistics, IProv
 
             return m_pageManager.CacheOccupancy;
         }
+    }
+
+    /// <summary>
+    /// Whether this store's storage carries a wrapped key that a new password could rewrap.
+    /// </summary>
+    /// <remarks>
+    /// Forwarded from the storage rather than answered here, because the wrapped key belongs to the
+    /// preamble and the preamble belongs to <c>StorageEncrypted</c>. This store is the lowest thing
+    /// in the chain that both holds the storage and is walked by <c>FindCapability</c>, which is why
+    /// the forwarding lives here and not one layer further down.
+    /// </remarks>
+    public bool CanRewrapPassword => (m_storage as IPasswordRewrapSource)?.CanRewrapPassword == true;
+
+    /// <inheritdoc cref="IPasswordRewrapSource.RewrapPassword" />
+    public void RewrapPassword(string currentPassword, string newPassword, int? iterations = null)
+    {
+        ThrowIfDisposed();
+
+        if (m_storage is not IPasswordRewrapSource source)
+        {
+            throw new NotSupportedException(
+                "This database is not encrypted, so there is no password to change. Adding one means "
+                + "creating an encrypted database and migrating into it.");
+        }
+
+        source.RewrapPassword(currentPassword, newPassword, iterations);
     }
 
     /// <summary>

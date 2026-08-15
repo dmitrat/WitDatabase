@@ -833,6 +833,50 @@ public sealed partial class WitDbConnection : DbConnection
     /// </remarks>
     public PageCacheOccupancy? CacheOccupancy => m_database?.CacheOccupancy;
 
+    /// <summary>
+    /// Whether this connection's database can have its password changed in place. False when the
+    /// connection is closed, when the database is not encrypted, and when the caller owns the key.
+    /// </summary>
+    public bool CanChangePassword => m_database?.CanChangePassword == true;
+
+    /// <summary>
+    /// Changes the password by rewrapping the data key. No page is rewritten, so the cost does not
+    /// grow with the database.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Exposed here because a consumer holding a connection cannot reach the engine any other way -
+    /// which is how this capability came to exist in <c>OutWit.Database.Core</c> and be callable by
+    /// nobody for a whole release. See <see cref="CanChangePassword"/> before offering it.
+    /// </para>
+    /// <para>
+    /// <b>The connection stays open and keeps working.</b> The rewrap goes through the live preamble
+    /// this connection is already using, which is the only route that survives the next block of
+    /// nonce numbers.
+    /// </para>
+    /// <para>
+    /// <b>The connection string is now out of date</b> - it still carries the old password. Nothing
+    /// here rewrites it, because this object does not own it; a caller that reconnects with the
+    /// stored string will be refused, and that is the caller's to fix.
+    /// </para>
+    /// </remarks>
+    /// <exception cref="InvalidOperationException">The connection is not open.</exception>
+    /// <exception cref="System.Security.Cryptography.CryptographicException">
+    /// <paramref name="currentPassword"/> does not unwrap the key. Nothing has been written.
+    /// </exception>
+    /// <exception cref="NotSupportedException">There is no wrapped key to rewrap.</exception>
+    public void ChangePassword(string currentPassword, string newPassword, int? iterations = null)
+    {
+        if (m_database == null)
+        {
+            throw new InvalidOperationException(
+                "The connection is not open, so there is no preamble to rewrap. Open it first: the "
+                + "current password has to unwrap the key, and that is what checks it.");
+        }
+
+        m_database.ChangePassword(currentPassword, newPassword, iterations);
+    }
+
     /// <inheritdoc/>
     public override string Database
     {

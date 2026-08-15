@@ -2,6 +2,7 @@ using System.Buffers;
 using System.Numerics;
 using System.Runtime.InteropServices;
 using System.Security.Cryptography;
+using OutWit.Database.Core.Encryption;
 using OutWit.Database.Core.Interfaces;
 
 namespace OutWit.Database.Core.Storage
@@ -9,7 +10,7 @@ namespace OutWit.Database.Core.Storage
     /// <summary>
     /// Storage wrapper that encrypts/decrypts pages transparently.
     /// </summary>
-    public sealed class StorageEncrypted : IStorage
+    public sealed class StorageEncrypted : IStorage, IPasswordRewrapSource
     {
         #region Constants
 
@@ -36,6 +37,13 @@ namespace OutWit.Database.Core.Storage
         private readonly long m_pageOffset;
 
         private readonly IDisposable? m_preamble;
+
+        /// <summary>
+        /// The same object as <see cref="m_preamble"/> when it is one, kept typed so the password can
+        /// be rewrapped through the LIVE preamble. The parameter stays <see cref="IDisposable"/>
+        /// because a caller may own the key material and pass nothing at all.
+        /// </summary>
+        private readonly CryptoPreamble? m_rewrappable;
 
         private bool m_disposed;
 
@@ -72,6 +80,47 @@ namespace OutWit.Database.Core.Storage
             m_overhead = encryptor.Overhead;
             m_pageOffset = pageOffset;
             m_preamble = preamble;
+            m_rewrappable = preamble as CryptoPreamble;
+        }
+
+        #endregion
+
+        #region IPasswordRewrapSource
+
+        /// <summary>
+        /// True when this storage carries a preamble holding a WRAPPED key. False when the caller
+        /// brought its own key material, and false for every unencrypted database, which does not
+        /// have one of these wrappers at all.
+        /// </summary>
+        public bool CanRewrapPassword => m_rewrappable?.Header.WrappedKey != null;
+
+        /// <inheritdoc />
+        public void RewrapPassword(string currentPassword, string newPassword, int? iterations = null)
+        {
+            ArgumentException.ThrowIfNullOrEmpty(currentPassword);
+            ArgumentException.ThrowIfNullOrEmpty(newPassword);
+            ObjectDisposedException.ThrowIf(m_disposed, this);
+
+            if (m_rewrappable == null || m_rewrappable.Header.WrappedKey == null)
+            {
+                throw new NotSupportedException(
+                    "This database has no wrapped key, so there is no password to rewrap. A database "
+                    + "created without encryption cannot be encrypted in place - that is a migration "
+                    + "into a new database, and it stays one.");
+            }
+
+            // The current password is verified by USE: unwrapping is the check, and it throws before
+            // anything is written. There is nothing else to check it against.
+            var dataKey = m_rewrappable.Header.UnwrapDataKey(currentPassword);
+
+            try
+            {
+                m_rewrappable.Rewrap(dataKey, newPassword, iterations ?? (int)m_rewrappable.Header.Iterations);
+            }
+            finally
+            {
+                CryptographicOperations.ZeroMemory(dataKey);
+            }
         }
 
         #endregion

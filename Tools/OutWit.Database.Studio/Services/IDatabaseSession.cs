@@ -96,6 +96,29 @@ public interface IDatabaseSession
     /// </summary>
     bool IsReadOnly { get; }
 
+    /// <summary>
+    /// Whether this database's password can be replaced in place, by rewrapping the data key
+    /// (WS-58). False for an unencrypted database, where giving one is still a migration.
+    /// </summary>
+    /// <remarks>
+    /// The data key is drawn at random when the database is created and the password only WRAPS it,
+    /// so replacing a password is 60 bytes in the preamble and no page is rewritten. That has been
+    /// true in the engine since the format change; it was unreachable from here until the capability
+    /// was carried up through the provider.
+    /// </remarks>
+    bool CanChangePassword { get; }
+
+    /// <summary>
+    /// Replaces the password by rewrapping the data key, and updates what this session remembers so
+    /// that anything reconnecting afterwards uses the new one.
+    /// </summary>
+    /// <param name="currentPassword">
+    /// The password in force. It is checked by being used - unwrapping the key is the check - and a
+    /// wrong one throws with nothing written.
+    /// </param>
+    /// <param name="newPassword">The password from now on.</param>
+    void ChangePassword(string currentPassword, string newPassword);
+
     #endregion
 
     #region Schema

@@ -5,14 +5,24 @@ using OutWit.Database.Studio.Models;
 namespace OutWit.Database.Studio.Services;
 
 /// <summary>
-/// Changing the password is building a new database and moving into it (WS-58).
+/// Encrypting a database, and removing its encryption, are a new database and a move into it (WS-58).
 /// </summary>
 /// <remarks>
 /// <para>
-/// <b>There is nothing to change in place.</b> The encryption key is derived from the password when
-/// the database is created, and every page is encrypted with it. So "change the password" is a new
-/// database with a new key, the schema and the data carried across, and the original left exactly as
-/// it was - which is also what makes it safe to try.
+/// <b>Replacing a password no longer comes here, and this paragraph is why it took a release to
+/// notice.</b> It used to open with "there is nothing to change in place - the encryption key is
+/// derived from the password", which was true when it was written and stopped being true at the
+/// format change: the data key is now drawn at random and the password only WRAPS it, so replacing a
+/// password rewrites 60 bytes and no page. The engine grew <c>CryptoHeader.Rewrap</c> for exactly
+/// that and nothing called it, and anyone asking "why does Studio copy the whole database?" read
+/// this paragraph and stopped. A comment records what was true when somebody last looked; this one
+/// went on answering with confidence after its subject had changed underneath it.
+/// </para>
+/// <para>
+/// <b>What still belongs here.</b> Going from no encryption to a password, and from a password to
+/// none, both mean every page is rewritten - there is no wrapped key to make in the first case and
+/// no way to leave ciphertext readable in the second. Those two are migrations and always will be,
+/// and the original is left exactly as it was, which is what makes them safe to try.
 /// </para>
 /// <para>
 /// <b>Encrypting an unencrypted database, and removing the encryption, are the same operation.</b>

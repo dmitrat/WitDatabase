@@ -10,7 +10,7 @@ namespace OutWit.Database.Core.Stores
     /// Combines MemTable, WAL, and SSTables for efficient reads and writes.
     /// Thread-safe: concurrent reads allowed, writes are serialized.
     /// </summary>
-    public sealed class StoreLsm : IKeyValueStore, IKeyValueStoreStatistics, IStoreOriginSource
+    public sealed class StoreLsm : IKeyValueStore, IKeyValueStoreStatistics, IStoreOriginSource, IPasswordRewrapSource
     {
         #region Constants
 
@@ -98,6 +98,35 @@ namespace OutWit.Database.Core.Stores
 
         /// <inheritdoc/>
         public bool WasCreatedEmpty { get; }
+
+        #endregion
+
+        #region IPasswordRewrapSource
+
+        /// <summary>
+        /// Whether this store's encryptor carries a wrapped key that a new password could rewrap.
+        /// </summary>
+        /// <remarks>
+        /// Forwarded to the encryptor, which is where an LSM database's preamble lives - it has no
+        /// page 0 to put one in, so its header is a small file beside the SSTables. False for an
+        /// unencrypted store and for an index directory, whose sidecar rides on the database's own
+        /// data key.
+        /// </remarks>
+        public bool CanRewrapPassword =>
+            (m_options.Encryptor as IPasswordRewrapSource)?.CanRewrapPassword == true;
+
+        /// <inheritdoc cref="IPasswordRewrapSource.RewrapPassword" />
+        public void RewrapPassword(string currentPassword, string newPassword, int? iterations = null)
+        {
+            if (m_options.Encryptor is not IPasswordRewrapSource source)
+            {
+                throw new NotSupportedException(
+                    "This store is not encrypted, so there is no password to change. Adding one means "
+                    + "creating an encrypted store and migrating into it.");
+            }
+
+            source.RewrapPassword(currentPassword, newPassword, iterations);
+        }
 
         #endregion
 
