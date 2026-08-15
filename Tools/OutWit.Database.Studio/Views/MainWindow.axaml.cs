@@ -85,6 +85,12 @@ public partial class MainWindow : Window
         // first thing typed goes nowhere.
         ApplicationViewModel.Instance.PaletteVm.PropertyChanged += OnPaletteChanged;
         ThemeToggleButton.Click += OnThemeToggleClick;
+        ApplicationViewModel.Instance.Localization.LanguageChanged += OnLanguageChanged;
+
+        // WS-63, and it is about the MOMENT rather than the string. The theme button's caption comes
+        // from the catalogue and is written by code, so - unlike a DynamicResource - nothing re-reads
+        // it when the catalogue is swapped: switching to Russian left «Dark» on a window where every
+        // other word had changed. The window outlives the language, so the window has to ask again.
 
         // The toolbar decides whether it can afford its captions, every time it is laid out.
         ToolbarActions.LayoutUpdated += OnToolbarLayoutUpdated;
@@ -481,6 +487,11 @@ public partial class MainWindow : Window
     }
 
     private void OnThemeChanged(object? sender, EventArgs e)
+    {
+        UpdateThemeButton();
+    }
+
+    private void OnLanguageChanged(object? sender, EventArgs e)
     {
         UpdateThemeButton();
     }

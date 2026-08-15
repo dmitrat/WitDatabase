@@ -6,6 +6,7 @@ using OutWit.Common.MVVM.Commands;
 using OutWit.Database.AdoNet.Maintenance;
 using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
+using OutWit.Database.Studio.Services.Localization;
 using OutWit.Database.Studio.Ui.Icons;
 
 namespace OutWit.Database.Studio.ViewModels.Tabs;
@@ -198,6 +199,43 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
     }
 
     /// <summary>
+    /// The `Page cache` line: what the database was created with, and - since 2026-08-09 - what the
+    /// cache is holding right now.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>The KIND is a field a file can be missing, and an absent field is dropped with its
+    /// separator.</b> Driven on rc.1 against <c>demo.witdb</c> the line read
+    /// <c> · 0 pages · holding 170 pages, 0 dirty</c> - a leading separator with nothing before it.
+    /// Against a database written on 2026-08-15 the same line reads
+    /// <c>clock · 1000 pages · holding 2 pages, 0 dirty</c>, so the engine answers the question
+    /// perfectly well and the formatting loses nothing: the older file simply does not carry the
+    /// value. Inventing a name for a cache whose kind was never recorded would be machinery that
+    /// looks like information.
+    /// </para>
+    /// <para>
+    /// <b>Static and public because the case that matters cannot be built from a database.</b> Every
+    /// file this repository can write records the kind, so a test driving a real connection can only
+    /// ever see the arm that was already correct.
+    /// </para>
+    /// </remarks>
+    public static string CacheLine(ILocalizationService localization, string? kind, int sizeInPages,
+        int? pagesHeld, int? dirtyPages)
+    {
+        var size = localization.Plural("Count.Pages", sizeInPages);
+        var hasKind = !string.IsNullOrWhiteSpace(kind);
+
+        if (pagesHeld is not { } held)
+            return hasKind ? localization.Format("Database.Cache.Sized", kind!, size) : size;
+
+        var holding = localization.Plural("Count.Pages", held);
+
+        return hasKind
+            ? localization.Format("Database.Cache.Holding", kind!, size, holding, dirtyPages ?? 0)
+            : localization.Format("Database.Cache.HoldingNoKind", size, holding, dirtyPages ?? 0);
+    }
+
+    /// <summary>
     /// Turns the facts into the sentences the tab shows.
     /// </summary>
     private void Describe(DatabaseOverview overview)
@@ -258,13 +296,8 @@ public sealed class DatabaseTabViewModel : WorkspaceTabViewModel
         // second half is a reading taken with the rest of this refresh, so it belongs on the line that
         // is re-read rather than in the Configuration block, which cannot change while the database is
         // open. Absent for an LSM database, which has no page cache to ask.
-        Cache = overview.CachePagesHeld is { } held
-            ? Localization.Format("Database.Cache.Holding", overview.CacheProviderKey,
-                Localization.Plural("Count.Pages", overview.CacheSizeInPages),
-                Localization.Plural("Count.Pages", held),
-                overview.CacheDirtyPages ?? 0)
-            : Localization.Format("Database.Cache.Sized", overview.CacheProviderKey,
-                Localization.Plural("Count.Pages", overview.CacheSizeInPages));
+        Cache = CacheLine(Localization, overview.CacheProviderKey, overview.CacheSizeInPages,
+            overview.CachePagesHeld, overview.CacheDirtyPages);
         Locking = Localization[overview.HasFileLocking switch
         {
             true => "Database.Locking.On",

@@ -236,9 +236,16 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         var tableName = SelectedNode.Name;
 
-        await ApplicationVm.WorkspaceTabsVm.OpenTableEditTabAsync(session, tableName);
+        var tab = await ApplicationVm.WorkspaceTabsVm.OpenTableEditTabAsync(session, tableName);
 
-        ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Editing", tableName);
+        // WS-11: the places have to agree. A table with no primary key opens with every editing
+        // control disabled - correctly - and the status bar announced "Editing" beside them anyway.
+        // The flag is the tab's own IsReadOnly, which is what CanAddRow, CanDeleteRow and CanCommit
+        // are computed from; the connection's read-only mode is a DIFFERENT thing that WorkspaceTab
+        // holds under the same name.
+        ApplicationVm.MainWindowVm.StatusText = Localization.Format(
+            tab.IsReadOnly ? "Explorer.Viewing" : "Explorer.Editing", tableName);
+
         Logger.LogInformation("Edit data for table {TableName} in {Connection}", tableName, session.DisplayName);
     }
 
@@ -755,9 +762,18 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                     TaskContinuationOptions.OnlyOnFaulted);
             }
 
+            // Through Plural, one family per noun. The nouns used to be INSIDE the format string with
+            // raw numbers passed in, which is why this line printed "1 views, 1 triggers" while the
+            // Database tab - the same counts, the same second, through the same mechanism - printed
+            // "1 table" correctly. English has one plural rule and this string was the one place that
+            // did not ask for it.
             ApplicationVm.MainWindowVm.StatusText = Localization.Format("Explorer.Summary",
-                session.DisplayName, tables.Count, views.Count, indexes.Count, triggers.Count,
-                sequences.Count);
+                session.DisplayName,
+                Localization.Plural("Count.Tables", tables.Count),
+                Localization.Plural("Count.Views", views.Count),
+                Localization.Plural("Count.Indexes", indexes.Count),
+                Localization.Plural("Count.Triggers", triggers.Count),
+                Localization.Plural("Count.Sequences", sequences.Count));
 
             Logger.LogInformation(
                 "Explorer refreshed {Connection}: {Tables} tables, {Views} views, {Indexes} indexes, {Triggers} triggers, {Sequences} sequences",

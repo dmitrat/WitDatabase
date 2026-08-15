@@ -481,3 +481,66 @@ public class DatabaseTabTests
 
     #endregion
 }
+
+/// <summary>
+/// The `Page cache` line, over the four arrangements a header can produce.
+/// </summary>
+/// <remarks>
+/// <para>
+/// Its own fixture, and over the composing function rather than over a connection, because the arm
+/// that matters cannot be built from a database: <b>every file this repository can write records the
+/// cache kind</b>, so a case driving a real connection sees only the arm that was already right. The
+/// blank came from <c>demo.witdb</c>, which predates the field.
+/// </para>
+/// <para>
+/// This is the "drop a layer and assert the guarantee itself" move: the running application is where
+/// the defect was seen, and the function is the only place where both answers exist.
+/// </para>
+/// </remarks>
+[TestFixture]
+public class DatabaseCacheLineTests
+{
+    [Test]
+    public void AnAbsentCacheKindTakesItsSeparatorWithItTest()
+    {
+        var localization = new LocalizationService("en");
+
+        // The four arrangements: kind or no kind, times an occupancy reading or none. The numbers are
+        // the ones actually driven on 2026-08-15 - "clock · 1000 pages · holding 2 pages, 0 dirty" on a
+        // database written that day, and 170 pages held on demo.witdb, whose header carries no kind.
+        var known = DatabaseTabViewModel.CacheLine(localization, "clock", 1000, 2, 0);
+        var unknown = DatabaseTabViewModel.CacheLine(localization, "", 0, 170, 0);
+        var sizedKnown = DatabaseTabViewModel.CacheLine(localization, "clock", 1000, null, null);
+        var sizedUnknown = DatabaseTabViewModel.CacheLine(localization, "", 0, null, null);
+
+        localization.SetLanguage("ru");
+
+        var russian = DatabaseTabViewModel.CacheLine(localization, "", 0, 170, 0);
+
+        TestContext.Out.WriteLine(string.Join("\n", known, unknown, sizedKnown, sizedUnknown, russian));
+
+        Assert.Multiple(() =>
+        {
+            // CONTROL: the arm that was already correct still prints the kind. Without it, "return the
+            // size and nothing else" would pass every assertion below.
+            Assert.That(known, Is.EqualTo("clock · 1000 pages · holding 2 pages, 0 dirty"));
+            Assert.That(sizedKnown, Is.EqualTo("clock · 1000 pages"));
+
+            Assert.That(unknown, Is.EqualTo("0 pages · holding 170 pages, 0 dirty"));
+            Assert.That(sizedUnknown, Is.EqualTo("0 pages"));
+
+            Assert.That(russian, Is.EqualTo("0 страниц · занято 170 страниц, из них грязных 0"),
+                "and the same in the other language, where the separator is in the same place");
+
+            // The rule over all of them rather than over the one that was reported: no line may open
+            // with a separator, whatever is missing from the header.
+            foreach (var line in new[] { known, unknown, sizedKnown, sizedUnknown, russian })
+            {
+                Assert.That(line.TrimStart(), Does.Not.StartWith("·"),
+                    "a field that is absent is dropped, not printed as an empty slot");
+                Assert.That(line, Does.Not.Contain("· ·"),
+                    "and two separators in a row is the same defect one field along");
+            }
+        });
+    }
+}

@@ -23,9 +23,15 @@
 
                 <TextBlock Text="{DynamicResource S.Dialog.Create.Storage}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55"/>
 
+                <!-- The three share a baseline, and they only do because they say so. A UniformGrid
+                     takes its row height from the TALLEST cell and centres the content of each, so
+                     the option with the longest description defined the row and the two shorter ones
+                     dropped ~10-11 px below it. Which option is the outlier moves with the language -
+                     in English it is LSM, in Russian «В памяти» - so a screenshot review pinned to
+                     one language finds the defect and blames the wrong control. -->
                 <UniformGrid Columns="3" HorizontalAlignment="Stretch">
                     <RadioButton AutomationProperties.AutomationId="CreateStorageBTree" AutomationProperties.Name="{DynamicResource S.Dialog.Create.BTree.Name}"
-                                 GroupName="Storage" Margin="0,0,6,0"
+                                 GroupName="Storage" Margin="0,0,6,0" VerticalAlignment="Top"
                                  IsChecked="{Binding NeedsFile, Mode=OneWay}"
                                  Command="{Binding ChooseStorageCommand}" CommandParameter="btree">
                         <StackPanel Spacing="4">
@@ -36,7 +42,7 @@
                     </RadioButton>
 
                     <RadioButton AutomationProperties.AutomationId="CreateStorageLsm" AutomationProperties.Name="{DynamicResource S.Dialog.Create.Lsm.Name}"
-                                 GroupName="Storage" Margin="0,0,6,0"
+                                 GroupName="Storage" Margin="0,0,6,0" VerticalAlignment="Top"
                                  IsChecked="{Binding NeedsFolder, Mode=OneWay}"
                                  Command="{Binding ChooseStorageCommand}" CommandParameter="lsm">
                         <StackPanel Spacing="4">
@@ -47,7 +53,7 @@
                     </RadioButton>
 
                     <RadioButton AutomationProperties.AutomationId="CreateStorageMemory" AutomationProperties.Name="{DynamicResource S.Dialog.Create.InMemory.Name}"
-                                 GroupName="Storage"
+                                 GroupName="Storage" VerticalAlignment="Top"
                                  IsChecked="{Binding IsInMemory, Mode=OneWay}"
                                  Command="{Binding ChooseStorageCommand}" CommandParameter="memory">
                         <StackPanel Spacing="4">

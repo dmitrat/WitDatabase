@@ -47,6 +47,58 @@ public class KeyboardMapTests
         "Alt+F4", "Ctrl+V"
     };
 
+    /// <summary>
+    /// A menu item as the markup writes it - everything up to the first <c>&gt;</c>, which is where
+    /// its automation id, its command and its printed gesture all sit.
+    /// </summary>
+    private static readonly Regex MENU_ITEM =
+        new(@"<MenuItem\b([^>]*?)/?>", RegexOptions.Singleline | RegexOptions.Compiled);
+
+    /// <summary>A whole <c>KeyBinding</c> element, so its gesture and its command are read together.</summary>
+    private static readonly Regex KEY_BINDING =
+        new(@"<KeyBinding\b([^>]*?)/?>", RegexOptions.Singleline | RegexOptions.Compiled);
+
+    /// <summary>
+    /// What a command binding names. <c>CommandParameter</c> does not match - the attribute name has
+    /// to end right there - which is why the <c>=</c> is part of the pattern.
+    /// </summary>
+    private static readonly Regex COMMAND_BINDING =
+        new(@"\bCommand=""\{Binding\s+([^}]+)\}""", RegexOptions.Compiled);
+
+    private static readonly Regex AUTOMATION_ID =
+        new(@"AutomationProperties\.AutomationId=""([^""]+)""", RegexOptions.Compiled);
+
+    private static readonly Regex GESTURE_ATTRIBUTE =
+        new(@"\bGesture=""([^""]+)""", RegexOptions.Compiled);
+
+    private static readonly Regex INPUT_GESTURE_ATTRIBUTE =
+        new(@"\bInputGesture=""([^""]+)""", RegexOptions.Compiled);
+
+    /// <summary>
+    /// The menu items whose printed gesture is deliberately NOT a Studio binding. Each one is a
+    /// decision with a reason, keyed by the item AND the gesture: an exemption that covers whatever
+    /// the item happens to print next is a hole in the rule wearing a comment's clothes.
+    /// </summary>
+    private static readonly Dictionary<(string Id, string Gesture), string> PRINTED_BY_SOMEBODY_ELSE = new()
+    {
+        [("MainWindowEXit", "Alt+F4")] =
+            "the window manager closes the window; Studio has no binding for it and must not have one",
+        [("MainWindowCopy", "Ctrl+C")] =
+            "the focused control copies - the item carries no Command at all, and KeyboardMap lists Ctrl+C in the RESULT GRID's scope",
+        [("MainWindowPaste", "Ctrl+V")] =
+            "the focused control pastes - the item carries no Command at all",
+        [("QueryEditorCopy", "Ctrl+C")] =
+            "the result grid's own copy, scope Grid in KeyboardMap; a window binding would take Ctrl+C away from every text box"
+    };
+
+    /// <summary>
+    /// How many gestures the menus print, all files counted. Asserted rather than left implicit,
+    /// because a rule that matches only what is WRONG reads zero both when the work is done and when
+    /// it is pointed at the wrong folder. If a menu item gained or lost one, change this number in the
+    /// same commit - and check the new one prints the truth.
+    /// </summary>
+    private const int PRINTED_GESTURES = 16;
+
     #endregion
 
     #region Tests
@@ -147,6 +199,94 @@ public class KeyboardMapTests
         Assert.That(missing, Is.Empty,
             "these are bound and the keyboard window does not know about them:"
             + Environment.NewLine + string.Join(Environment.NewLine, missing));
+    }
+
+    /// <summary>
+    /// The third direction: a gesture PRINTED in a menu is the gesture that item's command is really
+    /// bound to.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Phase 17 established by execution that <c>InputGesture</c> on an Avalonia <c>MenuItem</c> is a
+    /// LABEL and nothing else - it binds no key. So the two rules above cannot see this class at all:
+    /// the printed text is in neither the map nor the list of bindings, and a menu item can advertise
+    /// a key that runs something completely different with every test green.
+    /// </para>
+    /// <para>
+    /// Two of the three things this rule has to get right were found by writing it, not by using the
+    /// application. <b>Spelling:</b> the menu prints <c>Ctrl+Enter</c> where the binding says
+    /// <c>Ctrl+Return</c> - the same key, and an unnormalised rule reports it as a defect on its first
+    /// run. <b>The command's name:</b> the tab strip binds through
+    /// <c>$parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext).SaveTabCommand</c> and the File
+    /// menu binds <c>WorkspaceTabsVm.SaveTabCommand</c>, which are the same command by two paths, so
+    /// they are compared by the command's own name.
+    /// </para>
+    /// <para>
+    /// And the failure message says what the printed key ACTUALLY does, because that is the sentence a
+    /// user would have written the bug report with.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void EveryPrintedGestureIsTheOneThatCommandIsBoundToTest()
+    {
+        var bound = BindingsByCommand();
+        var printed = PrintedGestures();
+
+        var wrong = new List<string>();
+        var checkedItems = 0;
+
+        foreach (var item in printed)
+        {
+            if (PRINTED_BY_SOMEBODY_ELSE.ContainsKey((item.Id, item.Gesture)))
+                continue;
+
+            checkedItems++;
+
+            if (item.Command == null)
+            {
+                wrong.Add($"{item.Where} prints {item.Gesture} and has no Command to compare it with");
+                continue;
+            }
+
+            if (!bound.TryGetValue(item.Command, out var gestures))
+            {
+                wrong.Add($"{item.Where} prints {item.Gesture} and {item.Command} is bound to no key at all");
+                continue;
+            }
+
+            if (gestures.Any(gesture => Same(gesture, item.Gesture)))
+                continue;
+
+            wrong.Add($"{item.Where} prints {item.Gesture} for {item.Command}, which is on "
+                      + $"{string.Join(" / ", gestures)} - and {item.Gesture} runs {WhatRuns(bound, item.Gesture)}");
+        }
+
+        Assert.Multiple(() =>
+        {
+            // THE SURFACE, not the defect: with the two labels corrected this rule matches nothing, and
+            // "nothing left to find" reads exactly like "the folder moved".
+            Assert.That(printed, Has.Count.EqualTo(PRINTED_GESTURES),
+                "CONTROL: the menus print a different number of gestures than this rule was measured "
+                + "against, so either one was added without being checked or nothing was read");
+
+            Assert.That(checkedItems, Is.EqualTo(PRINTED_GESTURES - PRINTED_BY_SOMEBODY_ELSE.Count),
+                "CONTROL: the exemptions are not covering what they were written for");
+
+            // An exemption for an item that no longer prints that gesture is a hole, so it has to
+            // still match something.
+            var stale = PRINTED_BY_SOMEBODY_ELSE.Keys
+                .Where(key => !printed.Any(item => item.Id == key.Id && item.Gesture == key.Gesture))
+                .Select(key => $"{key.Id} = {key.Gesture}")
+                .ToList();
+
+            Assert.That(stale, Is.Empty,
+                "these exemptions no longer name anything, so they are only widening the rule:"
+                + Environment.NewLine + string.Join(Environment.NewLine, stale));
+
+            Assert.That(wrong, Is.Empty,
+                "the menu promises these keys and another key is what does the work:"
+                + Environment.NewLine + string.Join(Environment.NewLine, wrong));
+        });
     }
 
     /// <summary>
@@ -290,6 +430,114 @@ public class KeyboardMapTests
             .Select(match => match.Groups[1].Value)
             .ToList();
     }
+
+    /// <summary>One menu item that prints a gesture.</summary>
+    /// <param name="Where">File and line, so a failure can be opened.</param>
+    /// <param name="Id">Its automation id, which is what an exemption is keyed by.</param>
+    /// <param name="Gesture">What it prints.</param>
+    /// <param name="Command">The command's own name, or null when the item carries no command.</param>
+    private sealed record PrintedGesture(string Where, string Id, string Gesture, string? Command);
+
+    /// <summary>Every menu item in every view that prints a gesture.</summary>
+    private static List<PrintedGesture> PrintedGestures()
+    {
+        var printed = new List<PrintedGesture>();
+
+        foreach (var file in ViewFiles())
+        {
+            var markup = File.ReadAllText(file);
+
+            foreach (Match match in MENU_ITEM.Matches(markup))
+            {
+                var attributes = match.Groups[1].Value;
+                var gesture = INPUT_GESTURE_ATTRIBUTE.Match(attributes);
+
+                if (!gesture.Success)
+                    continue;
+
+                var line = markup[..match.Index].Count(character => character == '\n') + 1;
+
+                printed.Add(new PrintedGesture(
+                    $"{Path.GetFileName(file)}:{line}",
+                    AUTOMATION_ID.Match(attributes) is { Success: true } id ? id.Groups[1].Value : "(no id)",
+                    gesture.Groups[1].Value,
+                    CommandName(attributes)));
+            }
+        }
+
+        return printed;
+    }
+
+    /// <summary>Command name -> the gestures really bound to it, across every view.</summary>
+    private static Dictionary<string, List<string>> BindingsByCommand()
+    {
+        var bound = new Dictionary<string, List<string>>(StringComparer.Ordinal);
+
+        foreach (var file in ViewFiles())
+        {
+            foreach (Match match in KEY_BINDING.Matches(File.ReadAllText(file)))
+            {
+                var attributes = match.Groups[1].Value;
+                var gesture = GESTURE_ATTRIBUTE.Match(attributes);
+                var command = CommandName(attributes);
+
+                if (!gesture.Success || command == null)
+                    continue;
+
+                if (!bound.TryGetValue(command, out var gestures))
+                    bound[command] = gestures = [];
+
+                gestures.Add(gesture.Groups[1].Value);
+            }
+        }
+
+        return bound;
+    }
+
+    /// <summary>
+    /// The command's own name out of a binding path. The tab strip reaches its ViewModel through
+    /// <c>$parent[UserControl].((vm:WorkspaceTabsViewModel)DataContext)</c> and the File menu reaches
+    /// the same command through <c>WorkspaceTabsVm</c>; the tail is what they have in common.
+    /// </summary>
+    private static string? CommandName(string attributes)
+    {
+        var binding = COMMAND_BINDING.Match(attributes);
+
+        if (!binding.Success)
+            return null;
+
+        var path = binding.Groups[1].Value.Trim();
+
+        return path.Split('.')[^1].Trim();
+    }
+
+    /// <summary>
+    /// Whether two gestures are the same key. <c>Enter</c> and <c>Return</c> are one key written two
+    /// ways, and Avalonia parses both - so a rule that compares the text reports a defect that is not
+    /// there.
+    /// </summary>
+    private static bool Same(string left, string right) =>
+        Normalise(left).Equals(Normalise(right), StringComparison.OrdinalIgnoreCase);
+
+    private static string Normalise(string gesture) =>
+        gesture.Trim().Replace("Enter", "Return", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>
+    /// What the printed key really does, for the failure message: a person reading it wants to know
+    /// what happened when they pressed it, not only that the label is wrong.
+    /// </summary>
+    private static string WhatRuns(Dictionary<string, List<string>> bound, string gesture)
+    {
+        var owners = bound
+            .Where(pair => pair.Value.Any(candidate => Same(candidate, gesture)))
+            .Select(pair => pair.Key)
+            .ToList();
+
+        return owners.Count == 0 ? "nothing" : string.Join(" / ", owners);
+    }
+
+    private static IEnumerable<string> ViewFiles() =>
+        Directory.EnumerateFiles(Path.Combine(StudioFolder(), "Views"), "*.axaml", SearchOption.AllDirectories);
 
     private static string StudioFolder()
     {

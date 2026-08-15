@@ -66,7 +66,7 @@
 				<MenuItem AutomationProperties.AutomationId="MainWindowFile" Header="{DynamicResource S.Menu.File}">
 					<MenuItem AutomationProperties.AutomationId="MainWindowNewQueryTab" Header="{DynamicResource S.Menu.NewQueryTab}"
 					          Command="{Binding WorkspaceTabsVm.NewQueryTabCommand}"
-					          InputGesture="Ctrl+N">
+					          InputGesture="Ctrl+T">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.TAB_NEW}" />
 						</MenuItem.Icon>
@@ -75,7 +75,8 @@
 					<Separator />
 
 					<MenuItem AutomationProperties.AutomationId="MainWindowNewDatabase" Header="{DynamicResource S.Menu.NewDatabase}"
-					          Command="{Binding MainWindowVm.NewDatabaseCommand}">
+					          Command="{Binding MainWindowVm.NewDatabaseCommand}"
+					          InputGesture="Ctrl+N">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_NEW_DATABASE}" />
 						</MenuItem.Icon>
@@ -171,7 +172,7 @@
 				<MenuItem AutomationProperties.AutomationId="MainWindowQuery" Header="{DynamicResource S.Menu.Query}">
 					<MenuItem AutomationProperties.AutomationId="MainWindowExecute" Header="{DynamicResource S.Menu.Execute}"
 					          Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
-					          InputGesture="F5">
+					          InputGesture="Ctrl+Shift+F5">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}" />
 						</MenuItem.Icon>
@@ -216,7 +217,7 @@
 				<MenuItem AutomationProperties.AutomationId="MainWindowView" Header="{DynamicResource S.Menu.View}">
 					<MenuItem AutomationProperties.AutomationId="MainWindowRefresh" Header="{DynamicResource S.Menu.Refresh}"
 					          Command="{Binding MainWindowVm.RefreshCommand}"
-					          InputGesture="F5">
+					          InputGesture="Ctrl+R">
 						<MenuItem.Icon>
 							<PathIcon Data="{x:Static ui:StudioIcons.MENU_REFRESH}" />
 						</MenuItem.Icon>
