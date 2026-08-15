@@ -19,7 +19,8 @@ OutWit.Database.Core is a production-ready embedded database engine designed for
 
 ### Key Features
 
-- **Storage Engines**: B+Tree (read-optimized) and LSM-Tree (write-optimized)
+- **Storage Engines**: B+Tree, the default and the right choice for almost everything, and LSM-Tree
+  for a narrow shape of workload - see [Choosing a storage engine](#choosing-a-storage-engine)
 - **MVCC**: Multi-Version Concurrency Control with snapshot isolation
 - **5 Isolation Levels**: ReadUncommitted, ReadCommitted, RepeatableRead, Serializable, Snapshot
 - **Row-Level Locking**: FOR UPDATE, FOR SHARE, NOWAIT, SKIP LOCKED
@@ -35,17 +36,17 @@ OutWit.Database.Core is a production-ready embedded database engine designed for
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core" Version="12.8.0" />
+<PackageReference Include="OutWit.Database.Core" Version="13.1.1" />
 ```
 
 For ChaCha20-Poly1305 encryption:
 ```xml
-<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="12.8.0" />
+<PackageReference Include="OutWit.Database.Core.BouncyCastle" Version="13.1.1" />
 ```
 
 For Blazor WebAssembly (IndexedDB storage):
 ```xml
-<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="12.8.0" />
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="13.1.1" />
 ```
 
 ---
@@ -178,8 +179,8 @@ var db = new WitDatabaseBuilder()
     // .WithStorage(customStorage)      // Custom IStorage
     
     // Engine
-    .WithBTree()                        // B+Tree (read-optimized)
-    // .WithLsmTree()                   // LSM-Tree (write-optimized)
+    .WithBTree()                        // B+Tree - the default, and what to use unless measured otherwise
+    // .WithLsmTree()                   // LSM-Tree - see "Choosing a storage engine"
     // .WithLsmTree(opts => { ... })    // LSM with custom options
     // .WithStore(customStore)          // Custom IKeyValueStore
     
@@ -456,9 +457,32 @@ var db = new WitDatabaseBuilder()
 
 ---
 
+## Choosing a storage engine
+
+**`WithBTree()` is the default and is the right choice for almost everything.** "LSM is
+write-optimised" was the claim here until it was measured, and the measurement retired it.
+
+Measured 2026-08-11, 100,000 rows written in batches of 1,000 through SQL, microseconds per row:
+
+| | B+Tree | LSM |
+|---|---|---|
+| **MVCC on** - what you get by default | 36.8 | **771.9** |
+| `MVCC=false` | 15.1-27.4 | 16.7 |
+
+**MVCC is on by default**, so a database that names the store and nothing else gets the first row:
+the B+Tree pays roughly 1.5-2x for MVCC and the LSM pays about **50x**. It is a per-row cost rather
+than a per-transaction one, so no batch size amortises it, and `SyncWrites` is not the expensive
+property.
+
+With `MVCC=false` the two stores write at the same speed, and that is the comparison the old claim
+described. `Docs/WitSQL.md` § 14.9 has the full numbers and the shape of workload where the LSM store
+is the better answer.
+
+---
+
 ## Performance Tips
 
-1. **Choose the right engine**: B+Tree for reads, LSM-Tree for writes
+1. **Start with B+Tree**, and read *Choosing a storage engine* above before changing it
 2. **Tune cache size**: More cache = fewer disk reads
 3. **Use appropriate page size**: 4KB default, 8KB-16KB for large values
 4. **Batch operations**: Use transactions for multiple writes
@@ -474,7 +498,7 @@ WitDatabase can run entirely in the browser using IndexedDB as the storage backe
 ### Installation
 
 ```xml
-<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="12.8.0" />
+<PackageReference Include="OutWit.Database.Core.IndexedDb" Version="13.1.1" />
 ```
 
 Add JavaScript files to `index.html`:

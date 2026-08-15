@@ -28,7 +28,7 @@ OutWit.Database is the SQL execution engine built on top of OutWit.Database.Core
 ## Installation
 
 ```xml
-<PackageReference Include="OutWit.Database" Version="12.8.0" />
+<PackageReference Include="OutWit.Database" Version="13.1.1" />
 ```
 
 ---
