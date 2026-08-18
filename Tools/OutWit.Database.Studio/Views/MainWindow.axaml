@@ -503,10 +503,23 @@
 				        CornerRadius="999"
 				        Padding="10,2"
 				        VerticalAlignment="Center">
-					<TextBlock AutomationProperties.AutomationId="ToolbarConnectionChip"
-					           Text="{Binding WorkspaceTabsVm.SelectedTab.ConnectionName}"
-					           FontSize="{DynamicResource Wit.Font.Control}"
-					           VerticalAlignment="Center"/>
+					<StackPanel Orientation="Horizontal" Spacing="4">
+						<TextBlock AutomationProperties.AutomationId="ToolbarConnectionChip"
+						           Text="{Binding WorkspaceTabsVm.SelectedTab.ConnectionName}"
+						           FontSize="{DynamicResource Wit.Font.Control}"
+						           VerticalAlignment="Center"/>
+
+						<!-- A query tab outlives its connection and keeps the name, so that it can say
+						     where its text came from. This is what stops the name reading as live: the
+						     chip said «Sales» for a session that had been closed, while the status bar
+						     had already moved on to another connection. -->
+						<TextBlock AutomationProperties.AutomationId="ToolbarConnectionChipClosed"
+						           IsVisible="{Binding !WorkspaceTabsVm.SelectedTab.IsConnectionOpen}"
+						           Text="{DynamicResource S.Tab.ConnectionClosed}"
+						           FontSize="{DynamicResource Wit.Font.Control}"
+						           Opacity="0.6"
+						           VerticalAlignment="Center"/>
+					</StackPanel>
 				</Border>
 			</Grid>
 		</Border>

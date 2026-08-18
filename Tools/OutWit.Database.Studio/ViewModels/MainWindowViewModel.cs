@@ -153,6 +153,16 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     /// </remarks>
     private static bool StillThere(string path) => File.Exists(path) || Directory.Exists(path);
 
+    /// <summary>
+    /// Re-reads the recent list into the welcome screen. Called by
+    /// <see cref="ApplicationViewModel.OpenDatabaseAsync"/> once the entry has been written, because
+    /// that is the one place that knows there is a new one.
+    /// </summary>
+    public async Task ReloadRecentFilesAsync()
+    {
+        LoadRecentFiles(await Settings.LoadAsync());
+    }
+
     private void LoadRecentFiles(Models.Settings settings)
     {
         RecentFiles.Clear();
@@ -209,7 +219,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
             return;
         }
 
-        await LoadSchemaAfterConnectionAsync(ApplicationVm.ConnectionVm.OpenedSession);
+        SayItIsOpen(ApplicationVm.ConnectionVm.OpenedSession);
     }
 
     private async void OpenDatabaseAsync()
@@ -220,7 +230,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
             return;
 
         // Not a replacement: an open database stays open, with its tabs and its branch of the tree.
-        await LoadSchemaAfterConnectionAsync(ApplicationVm.ConnectionVm.OpenedSession);
+        SayItIsOpen(ApplicationVm.ConnectionVm.OpenedSession);
     }
 
     /// <summary>
@@ -345,7 +355,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
         try
         {
-            var session = await Connections.OpenAsync(connection);
+            var session = await ApplicationVm.OpenDatabaseAsync(connection);
 
             if (session == null)
             {
@@ -353,7 +363,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
                 return;
             }
 
-            await LoadSchemaAfterConnectionAsync(session);
+            SayItIsOpen(session);
         }
         catch (Exception ex)
         {
@@ -475,39 +485,21 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Connection Flow
 
-    private async Task LoadSchemaAfterConnectionAsync(IDatabaseSession session)
+    /// <summary>
+    /// What the window says once a database is open.
+    /// </summary>
+    /// <remarks>
+    /// The tree, the recent list and the saved connection are NOT here any more: they belong to every
+    /// route rather than to this one, and they live in
+    /// <see cref="ApplicationViewModel.OpenDatabaseAsync"/>. What is left is the status bar, which is
+    /// this window's own.
+    /// </remarks>
+    private void SayItIsOpen(IDatabaseSession session)
     {
-        IsLoading = true;
-        StatusText = Localization["Status.LoadingSchema"];
+        CurrentConnection = session.Connection;
+        StatusText = Localization.Format("Status.Connected", session.Connection.FilePath);
 
-        try
-        {
-            CurrentConnection = session.Connection;
-            StatusText = Localization.Format("Status.Connected", session.Connection.FilePath);
-
-            // Add to recent files
-            if (!string.IsNullOrEmpty(session.Connection.FilePath))
-            {
-                await Settings.AddRecentFileAsync(session.Connection.FilePath);
-                var settings = await Settings.LoadAsync();
-                LoadRecentFiles(settings);
-            }
-
-            // This connection's branch only: the others are already loaded and reloading them would
-            // throw away counts and expanded state nobody asked to lose.
-            await ApplicationVm.DatabaseExplorerVm.RefreshAsync(session);
-
-            Logger.LogInformation("Database schema loaded for: {FilePath}", session.Connection.FilePath);
-        }
-        catch (Exception ex)
-        {
-            StatusText = Localization.Format("Status.Error", ex.Message);
-            Logger.LogError(ex, "Error loading database schema");
-        }
-        finally
-        {
-            IsLoading = false;
-        }
+        Logger.LogInformation("Database opened: {FilePath}", session.Connection.FilePath);
     }
 
     #endregion

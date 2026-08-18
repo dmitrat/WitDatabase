@@ -11,12 +11,25 @@ namespace OutWit.Database.Studio.ViewModels;
 /// <summary>
 /// One row of the connections list: the profile, plus what the file system says about it now.
 /// </summary>
-public sealed class ConnectionRow(ConnectionProfile profile, StorageProbe probe)
+public sealed class ConnectionRow(ConnectionProfile profile, StorageProbe probe,
+    string? openStoreType = null)
 {
     public ConnectionProfile Profile { get; } = profile;
 
     /// <summary>What is at the path at this moment - which is not what the profile remembers.</summary>
     public StorageProbe Probe { get; } = probe;
+
+    /// <summary>
+    /// The store as the OPEN session knows it, or null when this application does not hold it open.
+    /// </summary>
+    /// <remarks>
+    /// A database Studio has open is held under an exclusive lock, so the probe cannot read its
+    /// header and answers a size and nothing else - the engine name disappeared from the row at the
+    /// moment it was most certainly known. It is not read from the profile: the column is about what
+    /// the database IS, not about what it was when it was saved. It is read from the session, which
+    /// is the same answer the «База» tab gives for the same reason.
+    /// </remarks>
+    public string? OpenStoreType { get; } = openStoreType;
 
     /// <summary>
     /// Whether the database is where the profile says it is. A missing one is MARKED and kept: the
@@ -43,7 +56,7 @@ public sealed class ConnectionRow(ConnectionProfile profile, StorageProbe probe)
             if (IsMissing)
                 return string.Empty;
 
-            var store = Probe.StoreType switch
+            var store = (OpenStoreType ?? Probe.StoreType) switch
             {
                 "lsm" => "LSM",
                 "btree" => "B-Tree",
@@ -133,11 +146,32 @@ public sealed class ConnectionsViewModel : ViewModelBase<ApplicationViewModel>
         Rows.Clear();
 
         foreach (var profile in profiles)
-            Rows.Add(new ConnectionRow(profile, StorageProbe.Look(profile.Path)));
+            Rows.Add(new ConnectionRow(profile, StorageProbe.Look(profile.Path), OpenStoreTypeOf(profile.Path)));
 
         Selected = Rows.FirstOrDefault();
 
         OnPropertyChanged(nameof(MissingCount));
+    }
+
+    /// <summary>
+    /// The store of the session this application has open at <paramref name="path"/>, or null when it
+    /// has none there.
+    /// </summary>
+    /// <remarks>
+    /// Null is the honest answer for a database somebody ELSE holds: the file cannot be read and
+    /// Studio has nothing to report but its size. Only what this application opened itself is known.
+    /// </remarks>
+    private string? OpenStoreTypeOf(string path)
+    {
+        var session = ApplicationVm.Connections.Sessions.FirstOrDefault(open =>
+            string.Equals(open.Connection.FilePath, path, StringComparison.OrdinalIgnoreCase));
+
+        if (session == null)
+            return null;
+
+        return session.StoredConfiguration is { } stored
+            ? stored.IsDirectory ? "lsm" : "btree"
+            : session.Connection.StorageEngine;
     }
 
     /// <summary>
@@ -173,7 +207,7 @@ public sealed class ConnectionsViewModel : ViewModelBase<ApplicationViewModel>
             return;
         }
 
-        var session = await ApplicationVm.Connections.OpenAsync(connection);
+        var session = await ApplicationVm.OpenDatabaseAsync(connection);
 
         if (session == null)
         {

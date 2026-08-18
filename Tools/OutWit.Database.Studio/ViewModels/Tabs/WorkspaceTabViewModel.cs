@@ -67,6 +67,7 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
         session.StatusChanged += OnSessionStatusChangedInternal;
 
         ConnectionName = session.DisplayName;
+        IsConnectionOpen = true;
         ConnectionColorIndex = session.ColorIndex;
         IsReadOnly = session.IsReadOnly;
 
@@ -84,6 +85,7 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
 
         Session.StatusChanged -= OnSessionStatusChangedInternal;
         Session = null;
+        IsConnectionOpen = false;
 
         OnSessionChanged();
     }
@@ -224,6 +226,18 @@ public abstract class WorkspaceTabViewModel : ViewModelBase<ApplicationViewModel
     /// </summary>
     [Notify]
     public string? ConnectionName { get; private set; }
+
+    /// <summary>
+    /// Whether that connection is still open.
+    /// </summary>
+    /// <remarks>
+    /// The name outlives the session on purpose; what must not outlive it is the impression that the
+    /// tab is connected. The toolbar chip read <i>Sales</i> for a connection that had been closed,
+    /// while the status bar had already moved on to another. A bool rather than a caption, because a
+    /// caption composed here would be frozen in the language it was composed in.
+    /// </remarks>
+    [Notify]
+    public bool IsConnectionOpen { get; private set; }
 
     /// <summary>
     /// The connection's colour (WS-3): a 2px stripe down the left edge of the tab, once the frame is

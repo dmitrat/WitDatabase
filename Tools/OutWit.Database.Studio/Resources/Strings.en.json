@@ -738,6 +738,7 @@
   "Tab.Query": "Query {0}",
   "Tab.StructureOf": "{0} - Structure",
   "Tab.EditOf": "{0} - Edit",
+  "Tab.ConnectionClosed": "· closed",
   "Query.Cancelled": "Query cancelled",
   "Query.Running": "Running the query…",
   "Query.CancelledAt": "Cancelled at statement {0} of {1}",

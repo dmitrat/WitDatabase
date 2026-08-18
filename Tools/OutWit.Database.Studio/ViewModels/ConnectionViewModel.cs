@@ -364,25 +364,14 @@ public class ConnectionViewModel : ViewModelBase<ApplicationViewModel>
             // Connect to the database (both for new and existing). The manager adds the session and
             // makes it active; any database already open stays open.
             Logger.LogInformation("Attempting to connect to database: {FilePath}", ConnectionInfo.FilePath);
-            OpenedSession = await Connections.OpenAsync(ConnectionInfo);
+            OpenedSession = await ApplicationVm.OpenDatabaseAsync(ConnectionInfo);
 
             if (OpenedSession != null)
             {
-                if (IsFileBased && !string.IsNullOrWhiteSpace(ConnectionInfo.FilePath) && ConnectionInfo.FilePath != ":memory:")
-                {
-                    await Settings.AddRecentFileAsync(ConnectionInfo.FilePath);
+                // The recent entry, the saved connection (WS-68) and the branch in the tree are not
+                // written here any more. They belong to every route rather than to this one, so they
+                // are inside OpenDatabaseAsync - which is what the Connections window was missing.
 
-                    // The saved connection (WS-68). It carries the name, the colour and the read-only
-                    // flag - the things a person chose and would have to choose again - and NEVER the
-                    // password. The session's own colour is used rather than the one in the dialog,
-                    // because the manager is what decides when the dialog left it unset.
-                    var profile = ConnectionProfile.From(ConnectionInfo);
-                    profile.ColorIndex = OpenedSession.ColorIndex;
-                    profile.Name = OpenedSession.DisplayName;
-
-                    await ApplicationVm.Profiles.SaveAsync(profile);
-                }
-                
                 // Opened under the old scheme, which is a state to leave rather than to settle into.
                 // Said once, where it will be read: the conversion is a password change and nothing
                 // else has to be understood.

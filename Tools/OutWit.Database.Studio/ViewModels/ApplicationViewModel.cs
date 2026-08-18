@@ -1,3 +1,4 @@
+using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
 using OutWit.Database.Studio.Services.Localization;
 using Microsoft.Extensions.Logging;
@@ -124,6 +125,84 @@ public sealed class ApplicationViewModel
     /// under an exclusive file lock that is released by closing the connection.
     /// </summary>
     public event EventHandler? ShutdownRequested;
+
+    #endregion
+
+    #region Opening a database
+
+    /// <summary>
+    /// Opens a database and leaves behind everything the application keeps beside an open session:
+    /// the branch in the tree, the entry in Recent Databases and the saved connection.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>This is the only way to open one</b>, and <c>EveryRouteThatOpensADatabaseTests</c> holds it
+    /// to that. Before it existed, each route did its own version: the Open dialog did all three, the
+    /// recent list did two, the copy dialog remembered the tree after an August defect and nothing
+    /// else, and the Connections window did none - so connecting from it left the tree empty until
+    /// Refresh was pressed, and the database never reached the recent list.
+    /// </para>
+    /// <para>
+    /// <b>Why not have the explorer listen to <c>SessionOpened</c>.</b> An event handler is
+    /// <c>async void</c>: it has nowhere to put a failure, and it would build a branch that the caller
+    /// has already awaited. The explorer takes the CLOSING half for exactly that reason - closing has
+    /// nothing to await and no reader to disappoint. Opening keeps its caller.
+    /// </para>
+    /// </remarks>
+    public async Task<IDatabaseSession?> OpenDatabaseAsync(ConnectionInfo connection,
+        CancellationToken ct = default)
+    {
+        var session = await Connections.OpenAsync(connection, ct);
+
+        if (session == null)
+            return null;
+
+        await RememberAsync(session);
+
+        // This connection's branch only: the others are already there, and rebuilding them would throw
+        // away counts and expanded state nobody asked to lose.
+        await DatabaseExplorerVm.RefreshAsync(session);
+
+        return session;
+    }
+
+    /// <summary>
+    /// The recent list and the saved connection, for a database that has a path.
+    /// </summary>
+    /// <remarks>
+    /// <b>A name a person chose is not overwritten by one the application derived.</b> The session's
+    /// DisplayName falls back to the file name when the dialog's name box was empty, and saving that
+    /// over a stored profile is how <i>Sales</i> became <i>sales</i> - one database under two names in
+    /// two screenshots. The colour goes with it, for the same reason.
+    /// </remarks>
+    private async Task RememberAsync(IDatabaseSession session)
+    {
+        var path = session.Connection.FilePath;
+
+        if (string.IsNullOrWhiteSpace(path) || path == ":memory:")
+            return;
+
+        await Settings.AddRecentFileAsync(path);
+
+        // The welcome screen reads its own list, and it is the one place that knows the entry is new.
+        await MainWindowVm.ReloadRecentFilesAsync();
+
+        var profile = ConnectionProfile.From(session.Connection);
+
+        profile.ColorIndex = session.ColorIndex;
+        profile.Name = session.DisplayName;
+
+        var saved = (await Profiles.LoadAsync())
+            .FirstOrDefault(other => string.Equals(other.Path, path, StringComparison.OrdinalIgnoreCase));
+
+        if (saved != null && string.IsNullOrWhiteSpace(session.Connection.DisplayName))
+        {
+            profile.Name = saved.Name;
+            profile.ColorIndex = saved.ColorIndex;
+        }
+
+        await Profiles.SaveAsync(profile);
+    }
 
     #endregion
 
