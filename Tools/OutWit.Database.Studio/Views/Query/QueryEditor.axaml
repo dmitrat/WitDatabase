@@ -448,7 +448,7 @@
             </TabItem>
 
             <!-- ================================ PLAN ================================ -->
-            <TabItem Header="{DynamicResource S.Query.Tab.Plan}">
+            <TabItem Header="{DynamicResource S.Query.Tab.Plan}" IsSelected="{Binding IsPlanSelected, Mode=TwoWay}">
                 <Grid RowDefinitions="Auto,*">
 
                     <Border Grid.Row="0"

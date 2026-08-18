@@ -143,13 +143,23 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     /// <summary>What the last check concluded, for the tests and the log.</summary>
     public UpdateVerdict? LastUpdateVerdict { get; private set; }
 
+    /// <summary>
+    /// Whether the recent list's entry is still there.
+    /// </summary>
+    /// <remarks>
+    /// <b>An LSM database is a folder</b>, so <c>File.Exists</c> is the wrong question and answers
+    /// false for one. It was asked in both places that read the list, which is why a folder database
+    /// was written to it, never shown, and taken out of it as "gone" the moment anything did show it.
+    /// </remarks>
+    private static bool StillThere(string path) => File.Exists(path) || Directory.Exists(path);
+
     private void LoadRecentFiles(Models.Settings settings)
     {
         RecentFiles.Clear();
 
         foreach (var file in settings.RecentFiles)
         {
-            if (File.Exists(file))
+            if (StillThere(file))
             {
                 RecentFiles.Add(new RecentFileItem
                 {
@@ -304,7 +314,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         if (string.IsNullOrEmpty(filePath))
             return;
 
-        if (!File.Exists(filePath))
+        if (!StillThere(filePath))
         {
             await Settings.RemoveRecentFileAsync(filePath);
             var settings = await Settings.LoadAsync();

@@ -798,9 +798,59 @@ public class LocalizationCoverageTests
         });
     }
 
+    /// <summary>
+    /// Rule 7: the English catalogue is punctuated in English.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Reported 2026-08-16 from the English interface: <i>Drop table «Orders»?</i> - guillemets,
+    /// which are the Russian quotation marks. Six strings carried them, all of them the drop
+    /// confirmation, and they were written that way because the same sentence exists in both
+    /// catalogues and one of the two was copied.
+    /// </para>
+    /// <para>
+    /// <b>The rule is about the language, not about the character</b>, and the second control says
+    /// so: the Russian catalogue goes on using them, and a fix that swept them out of both would
+    /// redden it.
+    /// </para>
+    /// </remarks>
+    [Test]
+    public void TheEnglishCatalogueIsPunctuatedInEnglishTest()
+    {
+        var localization = new LocalizationService();
+
+        var english = localization.Texts("en");
+        var russian = localization.Texts("ru");
+
+        var offenders = english
+            .Where(pair => pair.Value.Contains(GUILLEMET_OPEN) || pair.Value.Contains(GUILLEMET_CLOSE))
+            .Select(pair => pair.Key + ": " + pair.Value)
+            .ToList();
+
+        Assert.Multiple(() =>
+        {
+            // CONTROL: an empty catalogue would report no offenders either.
+            Assert.That(english, Has.Count.GreaterThan(500),
+                "CONTROL: the English catalogue was not read");
+
+            Assert.That(offenders, Is.Empty,
+                "these English strings are quoted with the Russian marks:" + Environment.NewLine
+                + string.Join(Environment.NewLine, offenders));
+
+            // CONTROL: and the rule is about English, not about the character.
+            Assert.That(russian.Values.Count(value => value.Contains(GUILLEMET_OPEN)),
+                Is.GreaterThan(0),
+                "CONTROL: Russian still quotes with guillemets");
+        });
+    }
+
     #endregion
 
     #region Tools
+
+    private const char GUILLEMET_OPEN = (char)0x00AB;
+
+    private const char GUILLEMET_CLOSE = (char)0x00BB;
 
     private readonly record struct Hit(string Attribute, string Value, int Index);
 

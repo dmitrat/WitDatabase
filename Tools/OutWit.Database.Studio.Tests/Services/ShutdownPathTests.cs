@@ -66,6 +66,10 @@ public class ShutdownPathTests
             connections,
             new SettingsService(NullLogger<SettingsService>.Instance, Path.Combine(Path.GetTempPath(), "WitStudioTests", Guid.NewGuid().ToString("N"), "settings.json")),
             new ExportService(),
+            // The saved connections, in this run's own folder. Without a store of its own the
+            // ViewModel used to fall back to the real one in %AppData% and leave a row there.
+            new ConnectionProfileStore(NullLogger<ConnectionProfileStore>.Instance,
+                Path.Combine(Path.GetTempPath(), "WitStudioTests", Guid.NewGuid().ToString("N"), "connections.json")),
             NullLogger<ApplicationViewModel>.Instance);
 
         return (app, connections);

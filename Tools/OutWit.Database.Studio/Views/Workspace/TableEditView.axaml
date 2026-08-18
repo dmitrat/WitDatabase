@@ -99,7 +99,7 @@
                                FontSize="{DynamicResource Wit.Font.Body}"
                                ToolTip.Tip="{Binding PagingNote}">
                         <Run Text="{DynamicResource S.Grid.PageLabel}"/>
-                        <Run Text="{Binding PageIndex}"/>
+                        <Run Text="{Binding PageNumber}"/>
                     </TextBlock>
 
                     <Button AutomationProperties.AutomationId="TableEditNextPage" AutomationProperties.Name="{DynamicResource S.Grid.NextPage}" Command="{Binding NextPageCommand}"
@@ -344,7 +344,7 @@
                         <TextBlock.Text>
                             <MultiBinding Converter="{x:Static conv:LocalizedText.Format}">
                                 <DynamicResource ResourceKey="S.Grid.Page"/>
-                                <Binding Path="PageIndex"/>
+                                <Binding Path="PageNumber"/>
                             </MultiBinding>
                         </TextBlock.Text>
                     </TextBlock>

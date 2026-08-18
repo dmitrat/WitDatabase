@@ -236,6 +236,11 @@ public partial class QueryTabViewModel : ISqlCompletionSource
     /// </summary>
     private async Task ShowPlanAsync()
     {
+        // Whatever comes of this - a plan, a refusal, or "there is nothing to explain" - the answer
+        // goes in the panel, so the panel is what a person is looking at. It used to be built behind
+        // the Result tab, which stayed in front.
+        IsPlanSelected = true;
+
         var session = Session;
 
         if (session is not { IsConnected: true })
@@ -266,6 +271,38 @@ public partial class QueryTabViewModel : ISqlCompletionSource
         Plan = QueryPlanReader.Read(result.Data);
         PlanMessage = Plan.IsEmpty ? Localization["Query.NoPlan"] : null;
         PlanStatement = statement;
+    }
+
+    /// <summary>
+    /// Takes the plan away when the text about to run no longer holds the statement it explains.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The comparison is against the STATEMENTS the script cuts into, not against its text. A plan is
+    /// built for the statement under the caret while a run is usually the whole script around it, so
+    /// the script has to keep the plan - but text containment is not the test for that: typing three
+    /// words onto the end of the explained statement leaves the old one inside the new one, and that
+    /// is exactly the edit the finding was reported for.
+    /// </para>
+    /// <para>
+    /// A script that does not parse cuts into no statements at all, so a refused run always takes the
+    /// plan away - which is the case where the panel was most obviously wrong.
+    /// </para>
+    /// </remarks>
+    private void DropAStalePlan(IReadOnlyList<SqlStatementSpan> statements)
+    {
+        var planned = PlanStatement?.Trim();
+
+        if (string.IsNullOrEmpty(planned))
+            return;
+
+        if (statements.Any(statement =>
+                string.Equals(statement.Text.Trim(), planned, StringComparison.Ordinal)))
+            return;
+
+        Plan = QueryPlan.Empty;
+        PlanMessage = null;
+        PlanStatement = null;
     }
 
     private string? StatementForPlan()
@@ -539,6 +576,17 @@ public partial class QueryTabViewModel : ISqlCompletionSource
     /// </summary>
     [Notify]
     public string? PlanStatement { get; private set; }
+
+    /// <summary>
+    /// Whether the Plan panel is the one in front.
+    /// </summary>
+    /// <remarks>
+    /// Two-way, like <see cref="IsHistorySelected"/>: the window sets it when a person picks the tab,
+    /// and <c>ShowPlanAsync</c> sets it when a plan has just been built. Producing an answer and
+    /// leaving it behind the panel that was already there is how this was reported.
+    /// </remarks>
+    [Notify]
+    public bool IsPlanSelected { get; set; }
 
     /// <summary>
     /// What the parser says about the text as it stands, without anything having been executed.

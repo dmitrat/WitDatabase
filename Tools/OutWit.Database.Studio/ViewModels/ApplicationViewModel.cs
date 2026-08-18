@@ -34,20 +34,30 @@ public sealed class ApplicationViewModel
 
     #region Constructors
 
+    /// <summary>
+    /// <paramref name="profiles"/> is REQUIRED, and it is the only service here that is.
+    /// </summary>
+    /// <remarks>
+    /// It used to be optional like the rest, and where the others fall back to a null object it fell
+    /// back to a real store over the user's own
+    /// <c>%AppData%\WitDatabase.Studio\connections.json</c>. Every test that built this ViewModel
+    /// without one wrote into the developer's saved connections - 2644 of them by the time anybody
+    /// looked. The container has the store registered, so nothing in the application is worse off for
+    /// having to say so.
+    /// </remarks>
     public ApplicationViewModel(
         IConnectionManager connections,
         ISettingsService settingsService,
         IExportService exportService,
+        IConnectionProfileStore profiles,
         ILogger<ApplicationViewModel> logger,
         IConfirmationService? confirmations = null,
         IDialogService? dialogs = null,
         INotificationService? notifications = null,
         IQueryHistoryService? history = null,
-        ILocalizationService? localization = null,
-        IConnectionProfileStore? profiles = null)
+        ILocalizationService? localization = null)
     {
-        Profiles = profiles ?? new ConnectionProfileStore(
-            Microsoft.Extensions.Logging.Abstractions.NullLogger<ConnectionProfileStore>.Instance);
+        Profiles = profiles;
 
         Connections = connections;
         Settings = settingsService;
