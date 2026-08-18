@@ -83,6 +83,8 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     private void InitCommands()
     {
         NewQueryTabCommand = new RelayCommand(AddNewQueryTab);
+        FindCommand = new RelayCommand(() => SelectedQueryTab?.OpenSearch(replace: false),
+            () => SelectedQueryTab != null);
         ReopenClosedTabCommand = new RelayCommand(ReopenClosedTab, () => m_closedTabs.Count > 0);
         ExecuteCurrentStatementCommand = new RelayCommandAsync(ExecuteCurrentStatementAsync);
         CloseTabCommand = new RelayCommandAsync<WorkspaceTabViewModel>(CloseTabAsync);
@@ -937,6 +939,18 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
     #region Commands
 
     public ICommand NewQueryTabCommand { get; private set; } = null!;
+
+    /// <summary>
+    /// Opens the find band of the query tab in front.
+    /// </summary>
+    /// <remarks>
+    /// <b>Ctrl+F was the only way to search</b>, which made the search the one frame of the
+    /// documentation set that could not be taken without a key being pressed by hand -
+    /// <c>Edit</c> offered Copy, Paste and Settings, and the palette could not reach it either.
+    /// The gesture still belongs to the window, which handles it where it can see which control
+    /// has focus; this is the same band, opened from the menu.
+    /// </remarks>
+    public ICommand FindCommand { get; private set; } = null!;
 
     /// <summary>
     /// Ctrl+Shift+T. Brings back the last closed query tab with its text.

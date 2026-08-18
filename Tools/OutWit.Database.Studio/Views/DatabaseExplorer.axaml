@@ -148,7 +148,8 @@
                         <ContextMenu>
                             <!-- The storage tab, on the connection's own node and nowhere else (WS-54) -->
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerOpenDatabaseTab"
-                                      Header="{DynamicResource S.Explorer.Menu.Storage}"
+                                      Header="{DynamicResource S.Explorer.Menu.Database}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsDatabaseActions}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanOpenDatabaseTab}"
                                       Command="{Binding DatabaseExplorerVm.OpenDatabaseTabCommand}">
                                 <MenuItem.Icon>
@@ -156,10 +157,23 @@
                                 </MenuItem.Icon>
                             </MenuItem>
 
+                            <!-- A database could be closed from File and from nowhere near the tree
+                                 it is drawn in. Selecting a node makes its connection the active
+                                 one, which is the connection this closes. -->
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCloseConnection"
+                                      Header="{DynamicResource S.Menu.CloseDatabase}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsDatabaseActions}"
+                                      Command="{Binding MainWindowVm.CloseDatabaseCommand}">
+                                <MenuItem.Icon>
+                                    <PathIcon Data="{x:Static ui:StudioIcons.MENU_CLOSE_DATABASE}"/>
+                                </MenuItem.Icon>
+                            </MenuItem>
+
                             <Separator/>
 
                             <!-- Create actions -->
-                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreate" Header="{DynamicResource S.Explorer.Menu.Create}">
+                            <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreate" Header="{DynamicResource S.Explorer.Menu.Create}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsCreate}">
                                 <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateTable" Header="{DynamicResource S.Explorer.Menu.CreateTable}"
                                           Command="{Binding DatabaseExplorerVm.CreateTableCommand}">
                                     <MenuItem.Icon>
@@ -180,12 +194,25 @@
                                         <PathIcon Data="{x:Static ui:StudioIcons.DB_INDEX}"/>
                                     </MenuItem.Icon>
                                 </MenuItem>
+
+                                <!-- The dialog has existed since stage 8 and was reachable from the
+                                     Structure tab alone, so the screenshot pass reported that Studio
+                                     creates no triggers. A trigger names its table, which is why this
+                                     one is greyed everywhere but on a table. -->
+                                <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreateTrigger" Header="{DynamicResource S.Explorer.Menu.CreateTrigger}"
+                                          IsEnabled="{Binding DatabaseExplorerVm.CanCreateTrigger}"
+                                          Command="{Binding DatabaseExplorerVm.CreateTriggerCommand}">
+                                    <MenuItem.Icon>
+                                        <PathIcon Data="{x:Static ui:StudioIcons.DB_TRIGGER}"/>
+                                    </MenuItem.Icon>
+                                </MenuItem>
                             </MenuItem>
                             
                             <Separator/>
                             
                             <!-- Select data submenu -->
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectData" Header="{DynamicResource S.Explorer.Menu.SelectData}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsBrowseData}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanBrowseData}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.DB_TABLE}"/>
@@ -198,6 +225,7 @@
                             
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerEditData" Header="{DynamicResource S.Explorer.Menu.EditData}"
                                       Command="{Binding DatabaseExplorerVm.EditDataCommand}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsEditData}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanEditData}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.TAB_TABLE_EDIT}"/>
@@ -206,6 +234,7 @@
                             
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerViewStructure" Header="{DynamicResource S.Explorer.Menu.ViewStructure}"
                                       Command="{Binding DatabaseExplorerVm.ViewStructureCommand}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsViewStructure}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanViewStructure}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.TAB_STRUCTURE}"/>
@@ -214,6 +243,7 @@
                             
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerViewDefinition" Header="{DynamicResource S.Explorer.Menu.ViewDefinition}"
                                       Command="{Binding DatabaseExplorerVm.ViewDefinitionCommand}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsViewDefinition}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanViewDefinition}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.DB_VIEW}"/>
@@ -235,6 +265,7 @@
                                  is no ALTER VIEW, ALTER INDEX or ALTER TRIGGER in this language. -->
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerRename" Header="{DynamicResource S.Explorer.Menu.Rename}"
                                       Command="{Binding DatabaseExplorerVm.BeginRenameCommand}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsRename}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanRename}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.TAB_STRUCTURE}"/>
@@ -243,6 +274,7 @@
 
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerTruncate" Header="{DynamicResource S.Explorer.Menu.Truncate}"
                                       Command="{Binding DatabaseExplorerVm.TruncateTableCommand}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsTruncate}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanTruncate}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.COMMON_DELETE}"/>
@@ -253,6 +285,7 @@
 
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerDrop" Header="{DynamicResource S.Explorer.Menu.Drop}"
                                       Command="{Binding DatabaseExplorerVm.DropObjectCommand}"
+                                      IsVisible="{Binding DatabaseExplorerVm.ShowsDrop}"
                                       IsEnabled="{Binding DatabaseExplorerVm.CanDropObject}">
                                 <MenuItem.Icon>
                                     <PathIcon Data="{x:Static ui:StudioIcons.COMMON_DELETE}" 

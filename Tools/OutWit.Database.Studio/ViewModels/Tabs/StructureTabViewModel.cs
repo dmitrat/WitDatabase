@@ -163,7 +163,6 @@ public class StructureTabViewModel : WorkspaceTabViewModel
         CreateTriggerCommand = new RelayCommandAsync(() => EditTriggerAsync(null));
 
         CopyDdlCommand = new RelayCommandAsync(CopyDdlAsync);
-        ShowSectionCommand = new RelayCommand<StructureSection>(section => SelectedSection = section);
     }
 
     #endregion
@@ -1168,8 +1167,6 @@ public class StructureTabViewModel : WorkspaceTabViewModel
     public ICommand CreateTriggerCommand { get; private set; } = null!;
 
     public ICommand CopyDdlCommand { get; private set; } = null!;
-
-    public ICommand ShowSectionCommand { get; private set; } = null!;
 
     #endregion
 

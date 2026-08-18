@@ -56,6 +56,7 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
         OpenDatabaseCommand = new RelayCommand(OpenDatabaseAsync);
         CloseDatabaseCommand = new RelayCommand(CloseDatabaseAsync, CanCloseDatabase);
         RefreshCommand = new RelayCommand(RefreshAsync, () => IsConnected);
+        DatabaseTabCommand = new RelayCommandAsync(ShowDatabaseTabAsync, () => IsConnected);
         ExportCommand = new RelayCommandAsync(ExportAsync, () => IsConnected);
         ImportCommand = new RelayCommandAsync(ImportAsync, () => IsConnected);
         OpenRecentCommand = new RelayCommandAsync<string>(OpenRecentAsync);
@@ -483,6 +484,25 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     #endregion
 
+    /// <summary>
+    /// Opens the Database tab of the connection in front.
+    /// </summary>
+    /// <remarks>
+    /// The tab answers what the screenshot pass asked for and could not find - the path, the
+    /// size, the page size and count, the format version, the encryption, the cache, the journal,
+    /// the store chain and the schema counts. It was reachable by right-clicking the connection
+    /// node in the tree, under a third name, and nowhere else.
+    /// </remarks>
+    private async Task ShowDatabaseTabAsync()
+    {
+        var session = Connections.Active;
+
+        if (session == null)
+            return;
+
+        await ApplicationVm.WorkspaceTabsVm.OpenDatabaseTabAsync(session);
+    }
+
     #region Connection Flow
 
     /// <summary>
@@ -670,6 +690,8 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand CloseDatabaseCommand { get; private set; } = null!;
 
     public ICommand RefreshCommand { get; private set; } = null!;
+
+    public ICommand DatabaseTabCommand { get; private set; } = null!;
 
     public ICommand ExportCommand { get; private set; } = null!;
 
