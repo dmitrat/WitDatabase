@@ -76,6 +76,10 @@ public class OpenDatabaseScenarioTests
             new SettingsService(NullLogger<SettingsService>.Instance,
                 Path.Combine(m_root, "settings", "settings.json")),
             new ExportService(),
+            // The saved connections, in this run's own folder. Without a store of its own the
+            // ViewModel used to fall back to the real one in %AppData% and leave a row there.
+            new ConnectionProfileStore(NullLogger<ConnectionProfileStore>.Instance,
+                Path.Combine(m_root, "settings", "connections.json")),
             NullLogger<ApplicationViewModel>.Instance);
 
         // The user picks this path in the Open dialog and presses Connect.
@@ -118,6 +122,10 @@ public class OpenDatabaseScenarioTests
             new SettingsService(NullLogger<SettingsService>.Instance,
                 Path.Combine(m_root, "settings", "settings.json")),
             new ExportService(),
+            // The saved connections, in this run's own folder. Without a store of its own the
+            // ViewModel used to fall back to the real one in %AppData% and leave a row there.
+            new ConnectionProfileStore(NullLogger<ConnectionProfileStore>.Instance,
+                Path.Combine(m_root, "settings", "connections.json")),
             NullLogger<ApplicationViewModel>.Instance);
 
         var dialogs = new ScriptedDialogService();

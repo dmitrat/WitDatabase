@@ -1323,10 +1323,20 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     public int PageSize { get; set; }
 
     /// <summary>
-    /// Which page is shown, zero-based.
+    /// Which page is shown, zero-based. An INDEX: it addresses the anchor list and the query.
     /// </summary>
     [Notify]
     public int PageIndex { get; private set; }
+
+    /// <summary>
+    /// The same page as a person counts it, from one. <b>Nothing but this is shown.</b>
+    /// </summary>
+    /// <remarks>
+    /// The footer and the toolbar bound the index while the status line added one to it, so on the
+    /// second page the same window said <i>page 1</i> above <i>(page 2)</i>. One property, and a rule
+    /// in <c>OnePageNumberTests</c> that no view binds the index for display.
+    /// </remarks>
+    public int PageNumber => PageIndex + 1;
 
     /// <summary>
     /// Whether there are rows after this page. Known because the page is fetched one row longer than

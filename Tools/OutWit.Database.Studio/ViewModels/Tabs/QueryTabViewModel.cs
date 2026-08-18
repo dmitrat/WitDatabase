@@ -244,6 +244,13 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel, ISearchTarget
 
         var split = SqlScript.Split(sql);
 
+        // The plan panel goes with them unless what is being run is still the statement it explains.
+        // A plan is the analysis of ONE statement; after an edit it describes text that is no longer
+        // there, and it used to stand beside the new text with nothing saying which it belonged to -
+        // most visibly after a run that failed to parse, where it read as an answer about the
+        // statement that had just been refused.
+        DropAStalePlan(split.Statements);
+
         // The offset of the fragment inside the tab's own text: executing a SELECTION means the
         // parser counts from the start of the selection, and an error found there still has to be
         // shown where the user is looking.

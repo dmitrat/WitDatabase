@@ -1,3 +1,4 @@
+using System.Text.Json;
 using OutWit.Database.Core.Builder;
 using OutWit.Database.Studio.Models;
 using OutWit.Database.Studio.Services;
@@ -229,6 +230,52 @@ public class PasswordRewrapInStudioTests
 
             Assert.That(markup, Does.Contain("Wit.Warn.Surface"),
                 "and drawn as a warning rather than as another grey line of prose");
+        });
+    }
+
+    /// <summary>
+    /// The button that OPENS the dialog does not promise what the dialog will decide.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Its accessible name said «Change the password by migrating into a new database», and had
+    /// said so since before the rewrap existed. Since 13.1.0 replacing a password rewrites 60
+    /// bytes and copies nothing; only adding encryption or taking it away builds a new database.
+    /// The dialog itself has been right about this since 2026-08-15 - it swaps its explanation on
+    /// <c>IsRewrap</c> - so the one wrong sentence was the one a person read BEFORE opening it.
+    /// </para>
+    /// <para>
+    /// Reported from outside on 2026-08-16: the button and the capability matrix of the same tab
+    /// disagreed, and «rewrites 60 bytes» against «copies the database» are different promises on
+    /// a 40 GB file.
+    /// </para>
+    /// <para>
+    /// The control is the other half - the migration explanation still has to say that a new
+    /// database is built, or the rule would pass over a catalogue that had simply lost the words.
+    /// </para>
+    /// </remarks>
+    [TestCase("en", "migrating", "new database")]
+    [TestCase("ru", "переносом", "новую базу")]
+    public void TheButtonThatOpensThePasswordDialogPromisesNoMigrationTest(
+        string language, string verb, string noun)
+    {
+        using var catalogue = JsonDocument.Parse(Markup($"Resources/Strings.{language}.json"));
+
+        var button = catalogue.RootElement.GetProperty("Password.Open.Name").GetString() ?? string.Empty;
+        var migration = catalogue.RootElement.GetProperty("Password.Explanation").GetString() ?? string.Empty;
+
+        Assert.Multiple(() =>
+        {
+            Assert.That(button, Does.Not.Contain(verb).IgnoreCase,
+                "the button opens a dialog that decides between a rewrap and a migration, so it "
+                + "cannot announce one of them");
+
+            Assert.That(button, Does.Not.Contain(noun).IgnoreCase,
+                "and a replacement builds no new database at all");
+
+            // CONTROL: the migration arm still describes a migration.
+            Assert.That(migration, Does.Contain(noun).IgnoreCase,
+                "CONTROL: the migration explanation must still say a new database is built");
         });
     }
 

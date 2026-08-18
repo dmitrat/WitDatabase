@@ -108,10 +108,10 @@ public sealed class StudioFixture : IAsyncDisposable
             Connections,
             Settings,
             new ExportService(),
+            Profiles,
             NullLogger<ApplicationViewModel>.Instance,
             Confirmations,
-            history: History,
-            profiles: Profiles);
+            history: History);
     }
 
     #endregion

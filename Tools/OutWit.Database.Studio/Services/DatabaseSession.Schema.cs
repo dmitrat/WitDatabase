@@ -41,11 +41,27 @@ public sealed partial class DatabaseSession
 
     #region Indexes, Triggers, Sequences
 
+    /// <summary>
+    /// The names of the indexes, one entry per INDEX.
+    /// </summary>
+    /// <remarks>
+    /// <b><c>INFORMATION_SCHEMA.INDEXES</c> publishes a row per indexed COLUMN</b> - the SQL Server
+    /// and MySQL convention, and the reason the other three readers here need no such note: TABLES,
+    /// TRIGGERS and SEQUENCES publish a row per object. This one used to return what the view gave
+    /// it, so an index over two columns was counted twice in the tree, listed twice in the filter and
+    /// in the palette, and written twice into a dump - which then would not replay, because the
+    /// second CREATE INDEX is refused with "already exists".
+    /// </remarks>
     public async Task<IReadOnlyList<string>> GetIndexesAsync(CancellationToken ct = default)
     {
         EnsureConnected();
-        return await ExecuteStringListQueryAsync(
+
+        var names = await ExecuteStringListQueryAsync(
             "SELECT INDEX_NAME FROM INFORMATION_SCHEMA.INDEXES", ct);
+
+        // Collapsed here rather than with DISTINCT, so the answer does not depend on what the SQL
+        // layer supports; the order the catalogue gave them is kept.
+        return names.Distinct(StringComparer.OrdinalIgnoreCase).ToList();
     }
 
     public async Task<IReadOnlyList<string>> GetTriggersAsync(CancellationToken ct = default)
