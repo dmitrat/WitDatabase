@@ -265,6 +265,20 @@
                                                 Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).DeleteColumnCommand}"
                                                 CommandParameter="{Binding}"
                                                 ToolTip.Tip="{DynamicResource S.Structure.DropColumn}"/>
+
+                                        <!-- The other half of the same cell. Marking a column for
+                                             deletion hid the button and put nothing in its place, so
+                                             the only way back was to discard the whole set of edits -
+                                             and RestoreColumnCommand had been written for this and
+                                             drawn nowhere. -->
+                                        <Button Grid.Column="6" Width="24" Height="{DynamicResource Wit.Height.ButtonCompact}" Padding="0"
+                                                AutomationProperties.AutomationId="StructureRestoreColumn"
+                                                AutomationProperties.Name="{DynamicResource S.Structure.RestoreColumn}"
+                                                Content="↺"
+                                                IsVisible="{Binding IsDeleted}"
+                                                Command="{Binding $parent[ItemsControl].((tabs:StructureTabViewModel)DataContext).RestoreColumnCommand}"
+                                                CommandParameter="{Binding}"
+                                                ToolTip.Tip="{DynamicResource S.Structure.RestoreColumn}"/>
                                     </Grid>
                                 </Border>
                             </DataTemplate>

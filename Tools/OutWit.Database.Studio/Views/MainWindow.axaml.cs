@@ -392,6 +392,18 @@ public partial class MainWindow : Window
     /// no generated field for it here. Posted to the dispatcher because the box does not exist yet on
     /// the frame that opens the band - the same reason the palette's own focus call is posted.
     /// </remarks>
+    /// <summary>
+    /// Edit > Find and replace. The Command on the item opens the band; this puts the caret in the
+    /// box, which is the half the ViewModel cannot do.
+    /// </summary>
+    /// <remarks>
+    /// The same pair as the Ctrl+F path above, and for the same reason: a band that opens without
+    /// focus means the next thing typed goes into the query rather than into the search.
+    /// </remarks>
+    private void OnFindClicked(object? sender, Avalonia.Interactivity.RoutedEventArgs e)
+    {
+        FocusSearchTerm();
+    }
     private void FocusSearchTerm()
     {
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>

@@ -126,15 +126,6 @@ public class TableEditTabViewModelTests
 
     #region Commands Tests
 
-    [Test]
-    public void LoadDataCommandIsNotNullTest()
-    {
-        // Arrange
-        var viewModel = new TableEditTabViewModel(m_applicationVm, m_studio.Database, "Users");
-
-        // Assert
-        Assert.That(viewModel.LoadDataCommand, Is.Not.Null);
-    }
 
     [Test]
     public void RefreshCommandIsNotNullTest()

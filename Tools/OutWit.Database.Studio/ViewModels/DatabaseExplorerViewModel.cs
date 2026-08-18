@@ -48,7 +48,6 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         ViewStructureCommand = new RelayCommandAsync(ViewStructureAsync);
         ViewDefinitionCommand = new RelayCommandAsync(ViewDefinitionAsync);
         DropObjectCommand = new RelayCommandAsync(DropObjectAsync);
-        RenameObjectCommand = new RelayCommandAsync<string>(RenameObjectAsync);
         BeginRenameCommand = new RelayCommand(BeginRename);
         CommitRenameCommand = new RelayCommandAsync(CommitRenameAsync);
         CancelRenameCommand = new RelayCommand(CancelRename);
@@ -56,6 +55,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         CreateTableCommand = new RelayCommandAsync(CreateTableAsync);
         CreateViewCommand = new RelayCommandAsync(CreateViewAsync);
         CreateIndexCommand = new RelayCommandAsync(CreateIndexAsync);
+        CreateTriggerCommand = new RelayCommandAsync(CreateTriggerAsync);
         ExpandNodeCommand = new RelayCommandAsync<DatabaseNode>(ExpandNodeAsync);
         ClearFilterCommand = new RelayCommand(() => Filter = string.Empty);
     }
@@ -630,6 +630,32 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             Logger.LogInformation("View created successfully");
     }
 
+    /// <summary>
+    /// Creates a trigger on the selected table, through the dialog the Structure tab already uses.
+    /// </summary>
+    /// <remarks>
+    /// Nothing here is new but the way in. <c>EditTriggerViewModel</c> knows what this language
+    /// allows in a body - DML only, WHEN with the brackets the grammar wants, and no
+    /// <c>SET NEW.column</c> - and it was reachable from one button in one tab.
+    /// </remarks>
+    private async Task CreateTriggerAsync()
+    {
+        var session = SelectedSession;
+        var table = SelectedNode?.Name;
+
+        if (session?.IsConnected != true || string.IsNullOrWhiteSpace(table))
+            return;
+
+        var vm = new EditTriggerViewModel(ApplicationVm, session, table, null);
+
+        if (!await ApplicationVm.Dialogs.ShowEditTriggerAsync(vm))
+            return;
+
+        await session.Catalog.RefreshAsync();
+        await RefreshAsync(session);
+
+        Logger.LogInformation("Trigger created on {Table}", table);
+    }
     private async Task CreateIndexAsync()
     {
         if (ApplicationVm.ActiveSession?.IsConnected != true)
@@ -1113,6 +1139,41 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     private void UpdateCommandStates()
     {
         var nodeType = SelectedNode?.NodeType;
+
+        // What this KIND of node has, which is not the same question as what can be done to it
+        // now. An item that does not apply is absent; an item that applies but has no connection
+        // to run through is greyed. The tree used to answer only the second question, so a folder
+        // offered «Empty the table…» and «Drop…» greyed - which reads as though a folder could be
+        // emptied or dropped.
+        ShowsDatabaseActions = nodeType == DatabaseNodeType.Database;
+
+        ShowsCreate = nodeType is DatabaseNodeType.Database
+                                or DatabaseNodeType.TablesFolder
+                                or DatabaseNodeType.ViewsFolder
+                                or DatabaseNodeType.IndexesFolder
+                                or DatabaseNodeType.TriggersFolder
+                                or DatabaseNodeType.SequencesFolder
+                                or DatabaseNodeType.RoutinesFolder;
+
+        ShowsBrowseData = nodeType is DatabaseNodeType.Table or DatabaseNodeType.View;
+        ShowsEditData = nodeType == DatabaseNodeType.Table;
+        ShowsRename = nodeType == DatabaseNodeType.Table;
+        ShowsTruncate = nodeType == DatabaseNodeType.Table;
+
+        ShowsViewStructure = nodeType is DatabaseNodeType.Table
+                                       or DatabaseNodeType.View
+                                       or DatabaseNodeType.Index;
+
+        ShowsViewDefinition = nodeType is DatabaseNodeType.Table
+                                        or DatabaseNodeType.View
+                                        or DatabaseNodeType.Trigger
+                                        or DatabaseNodeType.Index;
+
+        ShowsDrop = nodeType is DatabaseNodeType.Table
+                              or DatabaseNodeType.View
+                              or DatabaseNodeType.Index
+                              or DatabaseNodeType.Trigger
+                              or DatabaseNodeType.Sequence;
         var connected = SelectedSession?.IsConnected == true;
 
         // The «База» tab belongs to the CONNECTION, so it is offered on the connection's own node and
@@ -1136,6 +1197,12 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         // Only a table. ALTER VIEW, ALTER INDEX and ALTER TRIGGER do not exist in this language, so
         // F2 on any of those would be a button that cannot work.
+        // A trigger names the table it fires on, so it is offered on a TABLE and nowhere else -
+        // the Triggers folder is per connection here, not per table, so it has no table to name.
+        // The dialog has existed since stage 8 and was reachable from the Structure tab alone,
+        // which is why the screenshot pass reported that Studio cannot create a trigger at all.
+        CanCreateTrigger = connected && nodeType == DatabaseNodeType.Table;
+
         CanRename = connected && nodeType == DatabaseNodeType.Table;
         CanTruncate = connected && nodeType == DatabaseNodeType.Table;
     }
@@ -1237,6 +1304,48 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     [Notify]
     public bool CanEditData { get; private set; }
 
+    /// <summary>
+    /// Whether the selected node is a CONNECTION - the Database tab and closing it belong here.
+    /// </summary>
+    [Notify]
+    public bool ShowsDatabaseActions { get; private set; }
+
+    /// <summary>Whether objects can be created under the selected node.</summary>
+    [Notify]
+    public bool ShowsCreate { get; private set; }
+
+    /// <summary>Whether the selected node holds rows to look at.</summary>
+    [Notify]
+    public bool ShowsBrowseData { get; private set; }
+
+    /// <summary>Whether the selected node holds rows that can be edited.</summary>
+    [Notify]
+    public bool ShowsEditData { get; private set; }
+
+    /// <summary>Whether the selected node has a structure to open.</summary>
+    [Notify]
+    public bool ShowsViewStructure { get; private set; }
+
+    /// <summary>Whether the catalogue can render the selected node as SQL.</summary>
+    [Notify]
+    public bool ShowsViewDefinition { get; private set; }
+
+    /// <summary>Whether the selected node can be renamed at all - only a table can.</summary>
+    [Notify]
+    public bool ShowsRename { get; private set; }
+
+    /// <summary>Whether the selected node can be emptied at all.</summary>
+    [Notify]
+    public bool ShowsTruncate { get; private set; }
+
+    /// <summary>Whether the selected node is an object that can be dropped.</summary>
+    [Notify]
+    public bool ShowsDrop { get; private set; }
+
+    /// <summary>Whether the selected node has a table for a trigger to belong to.</summary>
+    [Notify]
+    public bool CanCreateTrigger { get; private set; }
+
     [Notify]
     public bool CanViewStructure { get; private set; }
 
@@ -1277,11 +1386,6 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand DropObjectCommand { get; private set; } = null!;
 
     /// <summary>
-    /// Renames straight away, taking the new name as its parameter.
-    /// </summary>
-    public ICommand RenameObjectCommand { get; private set; } = null!;
-
-    /// <summary>
     /// F2: opens the box on the selected row.
     /// </summary>
     public ICommand BeginRenameCommand { get; private set; } = null!;
@@ -1297,6 +1401,8 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand CreateViewCommand { get; private set; } = null!;
 
     public ICommand CreateIndexCommand { get; private set; } = null!;
+
+    public ICommand CreateTriggerCommand { get; private set; } = null!;
 
     /// <summary>
     /// Loads a node's children the first time it is opened.

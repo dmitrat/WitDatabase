@@ -161,6 +161,17 @@
 						</MenuItem.Icon>
 					</MenuItem>
 					<Separator/>
+					<!-- The find band had no way in but Ctrl+F. The gesture is still handled by the window,
+					     which can see which control has focus; this opens the same band from the menu. -->
+					<MenuItem AutomationProperties.AutomationId="MainWindowFind" Header="{DynamicResource S.Menu.Find}"
+					          InputGesture="Ctrl+F"
+					          Click="OnFindClicked"
+					          Command="{Binding WorkspaceTabsVm.FindCommand}">
+						<MenuItem.Icon>
+							<PathIcon Data="{x:Static ui:StudioIcons.COMMON_SEARCH}" />
+						</MenuItem.Icon>
+					</MenuItem>
+					<Separator/>
 					<MenuItem AutomationProperties.AutomationId="MainWindowSettings" Header="{DynamicResource S.Menu.Settings}"
 					          Command="{Binding MainWindowVm.SettingsCommand}">
 						<MenuItem.Icon>
@@ -170,7 +181,18 @@
 				</MenuItem>
 
 				<MenuItem AutomationProperties.AutomationId="MainWindowQuery" Header="{DynamicResource S.Menu.Query}">
+					<!-- Three ways of running, three items. Execute used to carry the SCRIPT's gesture,
+					     which left the menu and the toolbar disagreeing about the word: the toolbar has
+					     had Execute and Script as separate buttons since the redesign. -->
 					<MenuItem AutomationProperties.AutomationId="MainWindowExecute" Header="{DynamicResource S.Menu.Execute}"
+					          Command="{Binding WorkspaceTabsVm.ExecuteCurrentStatementCommand}"
+					          InputGesture="F5">
+						<MenuItem.Icon>
+							<PathIcon Data="{x:Static ui:StudioIcons.QUERY_EXECUTE}" />
+						</MenuItem.Icon>
+					</MenuItem>
+
+					<MenuItem AutomationProperties.AutomationId="MainWindowExecuteScript" Header="{DynamicResource S.Menu.ExecuteScript}"
 					          Command="{Binding WorkspaceTabsVm.ExecuteQueryCommand}"
 					          InputGesture="Ctrl+Shift+F5">
 						<MenuItem.Icon>
@@ -215,6 +237,18 @@
 				</MenuItem>
 
 				<MenuItem AutomationProperties.AutomationId="MainWindowView" Header="{DynamicResource S.Menu.View}">
+					<!-- What the database is made of: the path, the size, the page size and count, the
+					     format version, the encryption, the cache, the journal and the schema counts. It
+					     was reachable by right-clicking the connection in the tree and nowhere else, under
+					     a name that matched neither the tab nor the documentation. -->
+					<MenuItem AutomationProperties.AutomationId="MainWindowDatabaseTab" Header="{DynamicResource S.Explorer.Menu.Database}"
+					          Command="{Binding MainWindowVm.DatabaseTabCommand}"
+					          IsEnabled="{Binding MainWindowVm.IsConnected}">
+						<MenuItem.Icon>
+							<PathIcon Data="{x:Static ui:StudioIcons.DB_DATABASE}" />
+						</MenuItem.Icon>
+					</MenuItem>
+					<Separator/>
 					<MenuItem AutomationProperties.AutomationId="MainWindowRefresh" Header="{DynamicResource S.Menu.Refresh}"
 					          Command="{Binding MainWindowVm.RefreshCommand}"
 					          InputGesture="Ctrl+R">

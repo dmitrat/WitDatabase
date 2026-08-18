@@ -87,6 +87,16 @@
                 <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="4">
                     <!-- Pages (WS-31). The table used to be read with a bare LIMIT and no way to see
                          the second page at all; these are plain buttons until the grid is redesigned. -->
+                    <!-- Back to the first page in one press. It matters most where paging is by
+                         OFFSET - a table with no single-column key - because every step back is
+                         another scan. FirstPageCommand was written and never drawn. -->
+                    <Button AutomationProperties.AutomationId="TableEditFirstPage" AutomationProperties.Name="{DynamicResource S.Grid.FirstPage}" Command="{Binding FirstPageCommand}"
+                            IsEnabled="{Binding CanGoToFirstPage}"
+                            ToolTip.Tip="{DynamicResource S.Grid.FirstPage}"
+                            Height="{DynamicResource Wit.Height.Button}" MinWidth="32"
+                            Padding="8,0"
+                            Content="«"/>
+
                     <Button AutomationProperties.AutomationId="TableEditPreviousPage" AutomationProperties.Name="{DynamicResource S.Grid.PrevPage}" Command="{Binding PreviousPageCommand}"
                             IsEnabled="{Binding CanGoToPreviousPage}"
                             ToolTip.Tip="{DynamicResource S.Grid.PrevPage}"

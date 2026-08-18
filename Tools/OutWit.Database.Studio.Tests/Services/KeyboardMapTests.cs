@@ -88,7 +88,9 @@ public class KeyboardMapTests
         [("MainWindowPaste", "Ctrl+V")] =
             "the focused control pastes - the item carries no Command at all",
         [("QueryEditorCopy", "Ctrl+C")] =
-            "the result grid's own copy, scope Grid in KeyboardMap; a window binding would take Ctrl+C away from every text box"
+            "the result grid's own copy, scope Grid in KeyboardMap; a window binding would take Ctrl+C away from every text box",
+        [("MainWindowFind", "Ctrl+F")] =
+            "the window handles Ctrl+F in code-behind, where it can see which of the band, the editor and the grid has focus - a KeyBinding would answer for only one of them"
     };
 
     /// <summary>
@@ -97,7 +99,7 @@ public class KeyboardMapTests
     /// it is pointed at the wrong folder. If a menu item gained or lost one, change this number in the
     /// same commit - and check the new one prints the truth.
     /// </summary>
-    private const int PRINTED_GESTURES = 16;
+    private const int PRINTED_GESTURES = 18;
 
     #endregion
 

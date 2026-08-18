@@ -93,7 +93,6 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     private void InitCommands()
     {
-        LoadDataCommand = new RelayCommandAsync(LoadDataAsync);
         RefreshCommand = new RelayCommandAsync(RefreshDataAsync);
         AddRowCommand = new RelayCommand(AddRow);
         DeleteRowCommand = new RelayCommand(DeleteSelectedRow);
@@ -1203,6 +1202,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         CanRefresh = !string.IsNullOrWhiteSpace(TableName) && !IsLoading && Session?.IsConnected == true;
         CanGoToNextPage = HasNextPage && !IsLoading && !HasChanges;
         CanGoToPreviousPage = HasPreviousPage && !IsLoading && !HasChanges;
+        CanGoToFirstPage = CanGoToPreviousPage;
 
         // An empty table and a filter that matches nothing look identical and are not the same thing:
         // one has no rows, the other has rows you cannot see, and the way out of the second is the
@@ -1353,6 +1353,13 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
     [Notify]
     public bool CanGoToPreviousPage { get; private set; }
+
+    /// <summary>
+    /// The same condition as the previous page: there is a page to go back to, nothing is
+    /// loading, and no edit would be thrown away by moving.
+    /// </summary>
+    [Notify]
+    public bool CanGoToFirstPage { get; private set; }
 
     /// <summary>
     /// True when this page is being reached by counting rows from the beginning of the table rather
@@ -1527,8 +1534,6 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     #endregion
 
     #region Commands
-
-    public ICommand LoadDataCommand { get; private set; } = null!;
 
     public ICommand RefreshCommand { get; private set; } = null!;
 
