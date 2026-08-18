@@ -750,6 +750,7 @@
   "Tab.Query": "Запрос {0}",
   "Tab.StructureOf": "{0} — структура",
   "Tab.EditOf": "{0} — правка",
+  "Tab.ConnectionClosed": "· закрыто",
   "Query.Cancelled": "Запрос прерван",
   "Query.Running": "Запрос выполняется…",
   "Query.CancelledAt": "Прервано на операторе {0} из {1}",

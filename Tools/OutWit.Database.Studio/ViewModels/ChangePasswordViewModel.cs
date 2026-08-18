@@ -131,7 +131,7 @@ public sealed class ChangePasswordViewModel : ViewModelBase<ApplicationViewModel
             IsDone = result.Outcome != MigrationOutcome.Failed;
 
             if (IsDone && ConnectAfterwards)
-                await ApplicationVm.Connections.OpenAsync(target);
+                await ApplicationVm.OpenDatabaseAsync(target);
         }
         catch (Exception ex)
         {

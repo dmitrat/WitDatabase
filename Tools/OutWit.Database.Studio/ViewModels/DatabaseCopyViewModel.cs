@@ -99,7 +99,7 @@ public sealed class DatabaseCopyViewModel : ViewModelBase<ApplicationViewModel>
 
             var result = await DatabaseCopier.CopyAsync(m_session, Destination, Verify);
 
-            if (closed && await ApplicationVm.Connections.OpenAsync(connection) is { } reopened)
+            if (closed && await ApplicationVm.OpenDatabaseAsync(connection) is { } reopened)
                 m_session = reopened;
 
             Message = Describe(result);
@@ -140,15 +140,14 @@ public sealed class DatabaseCopyViewModel : ViewModelBase<ApplicationViewModel>
         // Unset, so the manager hands out the next colour rather than repeating the source's.
         connection.ColorIndex = ConnectionInfo.NO_COLOUR;
 
-        var opened = await ApplicationVm.Connections.OpenAsync(connection);
+        var opened = await ApplicationVm.OpenDatabaseAsync(connection);
 
         if (opened == null)
             return;
 
-        // The branch, for this connection only - the same call the Open dialog's path makes. Opening
-        // a connection does not build a tree by itself: the explorer subscribes to the CLOSING half
-        // and deliberately not to the opening one, so whoever opens is who builds.
-        await ApplicationVm.DatabaseExplorerVm.RefreshAsync(opened);
+        // The branch comes with the open now. It used to be built here, by name, because opening a
+        // connection did not build one - and that was true of every route until each was found the
+        // hard way. This one was found in the running application on 2026-08-11.
 
         ShouldCloseDialog?.Invoke(true);
     }
