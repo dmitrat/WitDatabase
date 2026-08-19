@@ -22,4 +22,11 @@ public static class NodeConverters
     /// </summary>
     public static readonly IValueConverter IsCounting =
         new FuncValueConverter<RowCountState, bool>(state => state == RowCountState.Counting);
+
+    /// <summary>
+    /// Whether the node has a connection colour to show - which is the root of a connection, and
+    /// nothing else in the tree.
+    /// </summary>
+    public static readonly IValueConverter HasColour =
+        new FuncValueConverter<int, bool>(index => index >= 0);
 }

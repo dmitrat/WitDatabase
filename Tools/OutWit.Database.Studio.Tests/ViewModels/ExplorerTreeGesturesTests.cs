@@ -245,12 +245,24 @@ public class ExplorerTreeGesturesTests
     /// failing a test that only asked "was something found".
     /// </remarks>
     [Test]
-    public void TheWalkIsInTheOrderTheTreeDrawsTest()
+    public async Task TheWalkIsInTheOrderTheTreeDrawsTest()
     {
         var explorer = m_fixture.Explorer;
 
         foreach (var node in Walk(explorer.Nodes))
             node.IsExpanded = true;
+
+        // Opening a table READS its columns since 2026-08-18, and the read is asynchronous. The
+        // two lists below straddled it and disagreed by four nodes, which is a race in the case
+        // rather than a defect in the walk - a tree half way through loading is a real state, and
+        // this case is about the ORDER of a settled one.
+        for (var attempt = 0; attempt < 100; attempt++)
+        {
+            if (Walk(explorer.Nodes).All(node => node.ChildrenLoaded || !node.IsExpanded))
+                break;
+
+            await Task.Delay(20);
+        }
 
         var visible = explorer.VisibleNodes().ToList();
         var root = explorer.Nodes[0];
@@ -286,6 +298,9 @@ public class ExplorerTreeGesturesTests
     {
         foreach (var node in nodes)
         {
+            if (node.IsPlaceholder)
+                continue;
+
             yield return node;
 
             foreach (var child in Walk(node.Children))

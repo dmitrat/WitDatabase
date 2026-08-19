@@ -40,7 +40,11 @@ public class ExplorerTests
 
         var orders = Folder(studio, "Tables").Children.First(node => node.Name == "Orders");
 
-        Assert.That(orders.Children, Is.Empty, "nothing is read until the node is opened");
+        // A placeholder, and only a placeholder: it is what makes the expander appear, and until
+        // 2026-08-18 there was none - so the node could not be opened and these columns could not
+        // be reached from the tree at all.
+        Assert.That(orders.Children.All(node => node.IsPlaceholder), Is.True,
+            "nothing is READ until the node is opened");
 
         await studio.Explorer.ExpandNodeAsync(orders);
 

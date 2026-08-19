@@ -44,9 +44,6 @@ public class EveryCommandIsReachableTests
     /// </summary>
     private static readonly Dictionary<string, string> INVOKED_ELSEWHERE = new()
     {
-        ["ExpandNodeCommand"] =
-            "the tree's lazy loader. Phase 5 of the fix plan wires it to the expander; until then the "
-            + "columns of a table cannot be reached from the tree at all (finding 15)",
 
     };
 

@@ -112,6 +112,14 @@
                     <TreeView.ItemTemplate>
                         <TreeDataTemplate ItemsSource="{Binding Children}" x:DataType="models:DatabaseNode">
                             <StackPanel Orientation="Horizontal" Spacing="6">
+                                <!-- The connection's colour, on its root and nowhere else. The Open
+                                     dialog says the colour marks this connection; the tabs and the
+                                     Connections window carried it and the tree did not, so two
+                                     databases open side by side had identical roots. -->
+                                <Border Width="3"
+                                        Margin="0,-2,0,-2"
+                                        IsVisible="{Binding ColorIndex, Converter={x:Static converters:NodeConverters.HasColour}}"
+                                        Background="{Binding ColorIndex, Converter={x:Static converters:ConnectionColors.Brush}}"/>
                                 <PathIcon Data="{Binding NodeType, Converter={StaticResource NodeTypeToIconConverter}}"
                                          Width="{DynamicResource Wit.Icon.Header}"
                                          Height="{DynamicResource Wit.Icon.Header}"/>
