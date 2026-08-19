@@ -1213,6 +1213,22 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                               or DatabaseNodeType.Index
                               or DatabaseNodeType.Trigger
                               or DatabaseNodeType.Sequence;
+
+        // A separator is a rule BETWEEN two groups, so it is drawn only when both sides of it have
+        // something. The items above each learned to hide themselves and the five separators did
+        // not, so a connection's menu drew two rules with nothing between them and two more below
+        // its last item, and a folder's menu began with one. Reported from a screenshot, 2026-08-19.
+        //
+        // Refresh applies to every node, so anything ABOVE it always has something below it - which
+        // is why the first three rules ask only about what precedes them.
+        var objectActions = ShowsBrowseData || ShowsEditData || ShowsViewStructure || ShowsViewDefinition;
+
+        ShowsRuleBeforeCreate = ShowsDatabaseActions;
+        ShowsRuleBeforeObjectActions = objectActions && (ShowsDatabaseActions || ShowsCreate);
+        ShowsRuleBeforeRefresh = ShowsDatabaseActions || ShowsCreate || objectActions;
+        ShowsRuleBeforeRename = ShowsRename || ShowsTruncate;
+        ShowsRuleBeforeDrop = ShowsDrop;
+
         var connected = SelectedSession?.IsConnected == true;
 
         // The «База» tab belongs to the CONNECTION, so it is offered on the connection's own node and
@@ -1380,6 +1396,26 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     /// <summary>Whether the selected node is an object that can be dropped.</summary>
     [Notify]
     public bool ShowsDrop { get; private set; }
+
+    /// <summary>The rule between the connection's own actions and everything below them.</summary>
+    [Notify]
+    public bool ShowsRuleBeforeCreate { get; private set; }
+
+    /// <summary>The rule between creating something and looking at what is already there.</summary>
+    [Notify]
+    public bool ShowsRuleBeforeObjectActions { get; private set; }
+
+    /// <summary>The rule above <c>Refresh</c>, which every node has and nothing else may follow.</summary>
+    [Notify]
+    public bool ShowsRuleBeforeRefresh { get; private set; }
+
+    /// <summary>The rule above renaming and emptying, which belong to a table alone.</summary>
+    [Notify]
+    public bool ShowsRuleBeforeRename { get; private set; }
+
+    /// <summary>The rule above dropping, which is kept apart from everything that is not destructive.</summary>
+    [Notify]
+    public bool ShowsRuleBeforeDrop { get; private set; }
 
     /// <summary>Whether the selected node has a table for a trigger to belong to.</summary>
     [Notify]
