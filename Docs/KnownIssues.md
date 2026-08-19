@@ -1620,6 +1620,12 @@ Studio’s Plan panel does - draws the wrong tree, faithfully. **The renderer is
 
 ## 27. Studio: a function or a procedure can only be refreshed
 
+> **FIXED in Studio 3.1.2.** A routine is offered *View definition* and *Drop*, the definition is
+> the whole `CREATE` assembled from `ROUTINES` and `PARAMETERS`, and - found beside it -
+> **`Dump Database…` had been writing no routines at all**, so a dumped database restored without
+> its functions and said nothing. `ARoutineIsAnObjectLikeAnyOtherTests` drops each routine and runs
+> the definition Studio wrote back into the database.
+>
 > Studio 3.1.1. A gap rather than a wrong answer.
 
 The tree’s context menu offers a routine exactly one item, `Refresh`. The engine has
@@ -1628,7 +1634,7 @@ inspector on the right shows it - so both *View definition* and *Drop* are possi
 offered. Every other kind of object in the tree was given its own menu in 3.1.0; routines were not
 included.
 
-Until they are: drop a routine by running the statement in a query tab.
+Until 3.1.2 the way to drop a routine was to run the statement in a query tab.
 
 ---
 ## Verifying a fix

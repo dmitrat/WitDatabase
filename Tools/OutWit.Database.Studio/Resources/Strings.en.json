@@ -784,7 +784,7 @@
   "Explorer.Folder.Triggers": "Triggers",
   "Explorer.Folder.Sequences": "Sequences",
   "Explorer.Folder.Routines": "Routines",
-  "Explorer.Summary": "{0}: {1}, {2}, {3}, {4}, {5}",
+  "Explorer.Summary": "{0}: {1}, {2}, {3}, {4}, {5}, {6}",
   "Query.Autocommit": "Autocommit",
   "Query.TransactionOpen": "Transaction open · {0}",
   "Settings.Theme.System": "System",
@@ -888,6 +888,10 @@
   "Count.Sequences": {
     "one": "{0} sequence",
     "other": "{0} sequences"
+  },
+  "Count.Routines": {
+    "one": "{0} routine",
+    "other": "{0} routines"
   },
   "Count.Tabs": {
     "one": "{0} tab",
@@ -1129,6 +1133,12 @@
   "Confirm.Drop.Headline.Sequence": "Delete sequence \"{0}\"? This cannot be undone.",
   "Explorer.Dropped.Sequence": "Sequence deleted: {0}",
   "Explorer.DropFailed.Sequence": "Could not delete the sequence: {0}",
+  "Confirm.Drop.Headline.Function": "Delete function \"{0}\"? This cannot be undone.",
+  "Explorer.Dropped.Function": "Function deleted: {0}",
+  "Explorer.DropFailed.Function": "Could not delete the function: {0}",
+  "Confirm.Drop.Headline.Procedure": "Delete procedure \"{0}\"? This cannot be undone.",
+  "Explorer.Dropped.Procedure": "Procedure deleted: {0}",
+  "Explorer.DropFailed.Procedure": "Could not delete the procedure: {0}",
   "Query.ReadOnly.Banner": "This connection is open read-only - a write will be refused by the engine.",
   "Query.ReadOnly.Short": "Read-only"
 }

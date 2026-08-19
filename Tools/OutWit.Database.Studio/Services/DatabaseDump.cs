@@ -215,6 +215,18 @@ public static class DatabaseDump
                 ? $"-- SKIPPED: the catalogue cannot render trigger {trigger}."
                 : definition.TrimEnd().TrimEnd(';') + ";");
         }
+
+        // Functions and procedures, since 3.1.2. They were absent, so a database with routines dumped
+        // to a script that restored WITHOUT THEM and said nothing - the exact failure the rule above
+        // exists to prevent, in the one object kind the rule had never been applied to.
+        foreach (var routine in await session.GetRoutinesAsync(ct))
+        {
+            var definition = await session.GetRoutineDefinitionAsync(routine.Name, ct);
+
+            script.AppendLine(string.IsNullOrEmpty(definition)
+                ? $"-- SKIPPED: the catalogue cannot render {(routine.IsFunction ? "function" : "procedure")} {routine.Name}."
+                : definition.TrimEnd().TrimEnd(';') + ";");
+        }
     }
 
     #endregion

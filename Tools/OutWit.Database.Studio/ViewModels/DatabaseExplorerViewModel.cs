@@ -344,6 +344,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                 DatabaseNodeType.Table => await session.GetTableDefinitionAsync(SelectedNode.Name),
                 DatabaseNodeType.View => await session.GetViewDefinitionAsync(SelectedNode.Name),
                 DatabaseNodeType.Trigger => await session.GetTriggerDefinitionAsync(SelectedNode.Name),
+                DatabaseNodeType.Routine => await session.GetRoutineDefinitionAsync(SelectedNode.Name),
                 DatabaseNodeType.Index => await session.GetIndexDefinitionAsync(SelectedNode.Name),
                 _ => null
             };
@@ -381,6 +382,11 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             DatabaseNodeType.Index => "INDEX",
             DatabaseNodeType.Trigger => "TRIGGER",
             DatabaseNodeType.Sequence => "SEQUENCE",
+
+            // Two keywords behind one node type: what the tree calls a routine is a FUNCTION or a
+            // PROCEDURE, and the node carries which.
+            DatabaseNodeType.Routine => SelectedNode.IsFunction == true ? "FUNCTION" : "PROCEDURE",
+
             _ => null
         };
 
@@ -398,6 +404,10 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         // time. Found by running the application, which is the only place it was ever visible.
         var nodeType = SelectedNode.NodeType;
 
+        // Captured with it, and for the same reason: a routine is a function or a procedure, and
+        // they are two nouns.
+        var isFunction = SelectedNode.IsFunction == true;
+
         // WS-20. Until 2026-08-10 this method went straight to ExecuteNonQueryAsync: one click in the
         // tree and the table was gone, while the settings page showed a ticked "ask before dropping an
         // object". The question is asked through the confirmation service so that the SETTING is
@@ -408,7 +418,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         var proceed = await ApplicationVm.Confirmations.AskAboutDestructiveActionAsync(
             new DestructiveAction(
                 ConfirmationKind.DroppingObject,
-                Localization.Format(SentenceKey("Confirm.Drop.Headline", nodeType), objectName),
+                Localization.Format(SentenceKey("Confirm.Drop.Headline", nodeType, isFunction), objectName),
                 sql,
                 consequences));
 
@@ -428,13 +438,13 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
             await RefreshAsync(session);
 
-            ApplicationVm.MainWindowVm.StatusText = Localization.Format(SentenceKey("Explorer.Dropped", nodeType), objectName);
+            ApplicationVm.MainWindowVm.StatusText = Localization.Format(SentenceKey("Explorer.Dropped", nodeType, isFunction), objectName);
             Logger.LogInformation("Dropped {ObjectType}: {ObjectName} in {Connection}",
                 objectType, objectName, session.DisplayName);
         }
         catch (Exception ex)
         {
-            ErrorMessage = Localization.Format(SentenceKey("Explorer.DropFailed", nodeType), ex.Message);
+            ErrorMessage = Localization.Format(SentenceKey("Explorer.DropFailed", nodeType, isFunction), ex.Message);
             Logger.LogError(ex, "Failed to drop {ObjectType}: {ObjectName}", objectType, objectName);
         }
     }
@@ -462,28 +472,49 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     /// gets one of them wrong.
     /// </para>
     /// </remarks>
-    private static string SentenceKey(string family, DatabaseNodeType nodeType) => (family, nodeType) switch
+    private static string SentenceKey(string family, DatabaseNodeType nodeType, bool isFunction = false)
     {
-        ("Confirm.Drop.Headline", DatabaseNodeType.Table) => "Confirm.Drop.Headline.Table",
-        ("Confirm.Drop.Headline", DatabaseNodeType.View) => "Confirm.Drop.Headline.View",
-        ("Confirm.Drop.Headline", DatabaseNodeType.Index) => "Confirm.Drop.Headline.Index",
-        ("Confirm.Drop.Headline", DatabaseNodeType.Trigger) => "Confirm.Drop.Headline.Trigger",
-        ("Confirm.Drop.Headline", DatabaseNodeType.Sequence) => "Confirm.Drop.Headline.Sequence",
+        // A ROUTINE is two nouns behind one node type, so the kind is resolved first and the
+        // keys stay whole below.
+        var kind = nodeType switch
+        {
+            DatabaseNodeType.View => "View",
+            DatabaseNodeType.Index => "Index",
+            DatabaseNodeType.Trigger => "Trigger",
+            DatabaseNodeType.Sequence => "Sequence",
+            DatabaseNodeType.Routine => isFunction ? "Function" : "Procedure",
+            _ => "Table"
+        };
 
-        ("Explorer.Dropped", DatabaseNodeType.Table) => "Explorer.Dropped.Table",
-        ("Explorer.Dropped", DatabaseNodeType.View) => "Explorer.Dropped.View",
-        ("Explorer.Dropped", DatabaseNodeType.Index) => "Explorer.Dropped.Index",
-        ("Explorer.Dropped", DatabaseNodeType.Trigger) => "Explorer.Dropped.Trigger",
-        ("Explorer.Dropped", DatabaseNodeType.Sequence) => "Explorer.Dropped.Sequence",
+        return (family, kind) switch
+        {
+            ("Confirm.Drop.Headline", "Table") => "Confirm.Drop.Headline.Table",
+            ("Confirm.Drop.Headline", "View") => "Confirm.Drop.Headline.View",
+            ("Confirm.Drop.Headline", "Index") => "Confirm.Drop.Headline.Index",
+            ("Confirm.Drop.Headline", "Trigger") => "Confirm.Drop.Headline.Trigger",
+            ("Confirm.Drop.Headline", "Sequence") => "Confirm.Drop.Headline.Sequence",
+            ("Confirm.Drop.Headline", "Function") => "Confirm.Drop.Headline.Function",
+            ("Confirm.Drop.Headline", "Procedure") => "Confirm.Drop.Headline.Procedure",
 
-        ("Explorer.DropFailed", DatabaseNodeType.Table) => "Explorer.DropFailed.Table",
-        ("Explorer.DropFailed", DatabaseNodeType.View) => "Explorer.DropFailed.View",
-        ("Explorer.DropFailed", DatabaseNodeType.Index) => "Explorer.DropFailed.Index",
-        ("Explorer.DropFailed", DatabaseNodeType.Trigger) => "Explorer.DropFailed.Trigger",
-        ("Explorer.DropFailed", DatabaseNodeType.Sequence) => "Explorer.DropFailed.Sequence",
+            ("Explorer.Dropped", "Table") => "Explorer.Dropped.Table",
+            ("Explorer.Dropped", "View") => "Explorer.Dropped.View",
+            ("Explorer.Dropped", "Index") => "Explorer.Dropped.Index",
+            ("Explorer.Dropped", "Trigger") => "Explorer.Dropped.Trigger",
+            ("Explorer.Dropped", "Sequence") => "Explorer.Dropped.Sequence",
+            ("Explorer.Dropped", "Function") => "Explorer.Dropped.Function",
+            ("Explorer.Dropped", "Procedure") => "Explorer.Dropped.Procedure",
 
-        _ => family + ".Table"
-    };
+            ("Explorer.DropFailed", "Table") => "Explorer.DropFailed.Table",
+            ("Explorer.DropFailed", "View") => "Explorer.DropFailed.View",
+            ("Explorer.DropFailed", "Index") => "Explorer.DropFailed.Index",
+            ("Explorer.DropFailed", "Trigger") => "Explorer.DropFailed.Trigger",
+            ("Explorer.DropFailed", "Sequence") => "Explorer.DropFailed.Sequence",
+            ("Explorer.DropFailed", "Function") => "Explorer.DropFailed.Function",
+            ("Explorer.DropFailed", "Procedure") => "Explorer.DropFailed.Procedure",
+
+            _ => family + ".Table"
+        };
+    }
 
     /// <summary>
     /// What breaks if this object goes, in the user's language (WS-20).
@@ -819,6 +850,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                 node.Detail = routine.IsFunction
                     ? $"function -> {routine.DataType}"
                     : "procedure";
+
+                // Which of the two it is, kept as a fact rather than read back out of the label.
+                node.IsFunction = routine.IsFunction;
                 node.ChildrenLoaded = true;
             }
 
@@ -854,11 +888,17 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                 Localization.Plural("Count.Views", views.Count),
                 Localization.Plural("Count.Indexes", indexes.Count),
                 Localization.Plural("Count.Triggers", triggers.Count),
-                Localization.Plural("Count.Sequences", sequences.Count));
+                Localization.Plural("Count.Sequences", sequences.Count),
+
+                // The sixth folder counts here too. It did not until 3.1.2: the tree drew six
+                // folders and this line named five, so a database whose only objects were
+                // routines was summarised as having nothing in it.
+                Localization.Plural("Count.Routines", routines.Count));
 
             Logger.LogInformation(
-                "Explorer refreshed {Connection}: {Tables} tables, {Views} views, {Indexes} indexes, {Triggers} triggers, {Sequences} sequences",
-                session.DisplayName, tables.Count, views.Count, indexes.Count, triggers.Count, sequences.Count);
+                "Explorer refreshed {Connection}: {Tables} tables, {Views} views, {Indexes} indexes, {Triggers} triggers, {Sequences} sequences, {Routines} routines",
+                session.DisplayName, tables.Count, views.Count, indexes.Count, triggers.Count, sequences.Count,
+                routines.Count);
         }
         catch (Exception ex)
         {
@@ -1249,16 +1289,22 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                                        or DatabaseNodeType.View
                                        or DatabaseNodeType.Index;
 
+        // A ROUTINE is here since 3.1.2, and so is it in ShowsDrop below. The tree gained the
+        // sixth folder in WS-21 and nothing else did: a function offered one item, Refresh,
+        // while the engine has DROP FUNCTION and the catalogue already holds the body the
+        // inspector shows (KnownIssues 27).
         ShowsViewDefinition = nodeType is DatabaseNodeType.Table
                                         or DatabaseNodeType.View
                                         or DatabaseNodeType.Trigger
-                                        or DatabaseNodeType.Index;
+                                        or DatabaseNodeType.Index
+                                        or DatabaseNodeType.Routine;
 
         ShowsDrop = nodeType is DatabaseNodeType.Table
                               or DatabaseNodeType.View
                               or DatabaseNodeType.Index
                               or DatabaseNodeType.Trigger
-                              or DatabaseNodeType.Sequence;
+                              or DatabaseNodeType.Sequence
+                              or DatabaseNodeType.Routine;
 
         // A separator is a rule BETWEEN two groups, so it is drawn only when both sides of it have
         // something. The items above each learned to hide themselves and the five separators did
@@ -1289,12 +1335,14 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         CanViewDefinition = connected && nodeType is DatabaseNodeType.Table
                                                or DatabaseNodeType.View
                                                or DatabaseNodeType.Trigger
-                                               or DatabaseNodeType.Index;
+                                               or DatabaseNodeType.Index
+                                               or DatabaseNodeType.Routine;
         CanDropObject = connected && nodeType is DatabaseNodeType.Table
                                            or DatabaseNodeType.View
                                            or DatabaseNodeType.Index
                                            or DatabaseNodeType.Trigger
-                                           or DatabaseNodeType.Sequence;
+                                           or DatabaseNodeType.Sequence
+                                           or DatabaseNodeType.Routine;
 
         // Only a table. ALTER VIEW, ALTER INDEX and ALTER TRIGGER do not exist in this language, so
         // F2 on any of those would be a button that cannot work.

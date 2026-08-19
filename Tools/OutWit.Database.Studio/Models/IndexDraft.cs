@@ -106,3 +106,39 @@ public sealed class TriggerDraft
     /// </summary>
     public string Body { get; set; } = string.Empty;
 }
+
+/// <summary>
+/// A function or a procedure, as much of one as the catalogue can answer for.
+/// </summary>
+/// <remarks>
+/// The two kinds are one draft because they differ in three places - the keyword, the RETURNS clause
+/// and what stands between BEGIN and END - and are otherwise the same object. The engine has had both
+/// since phase 9d; nothing outside the tree has ever written one.
+/// </remarks>
+public sealed class RoutineDraft
+{
+    public string Name { get; set; } = string.Empty;
+
+    /// <summary>A function returns a value and a procedure does not, which is the whole difference.</summary>
+    public bool IsFunction { get; set; }
+
+    /// <summary>What a function returns. Null for a procedure.</summary>
+    public string? ReturnType { get; set; }
+
+    /// <summary>The parameters in ordinal order, as name and type.</summary>
+    public IReadOnlyList<RoutineParameterDraft> Parameters { get; set; } = [];
+
+    /// <summary>
+    /// The expression a function returns, or the statements a procedure runs - as the catalogue
+    /// renders them, without BEGIN and END.
+    /// </summary>
+    public string Body { get; set; } = string.Empty;
+}
+
+/// <summary>One parameter of a routine.</summary>
+public sealed class RoutineParameterDraft
+{
+    public string Name { get; set; } = string.Empty;
+
+    public string Type { get; set; } = string.Empty;
+}

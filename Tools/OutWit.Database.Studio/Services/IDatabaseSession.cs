@@ -183,6 +183,17 @@ public interface IDatabaseSession
     Task<string?> GetIndexDefinitionAsync(string indexName, CancellationToken ct = default);
 
     /// <summary>
+    /// Gets the definition (DDL) for a function or a procedure - the whole <c>CREATE</c>, assembled
+    /// from <c>INFORMATION_SCHEMA.ROUTINES</c> and <c>INFORMATION_SCHEMA.PARAMETERS</c>.
+    /// </summary>
+    /// <remarks>
+    /// The catalogue’s <c>ROUTINE_DEFINITION</c> is the body alone, and a body without its
+    /// parameters and return type is not something that can be run back into a database - the same
+    /// reason a trigger is assembled here rather than reported as its <c>ACTION_STATEMENT</c>.
+    /// </remarks>
+    Task<string?> GetRoutineDefinitionAsync(string routineName, CancellationToken ct = default);
+
+    /// <summary>
     /// Gets the definition (DDL) for a table (CREATE TABLE statement).
     /// </summary>
     Task<string?> GetTableDefinitionAsync(string tableName, CancellationToken ct = default);
