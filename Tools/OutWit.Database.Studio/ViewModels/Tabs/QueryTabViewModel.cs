@@ -379,6 +379,35 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel, ISearchTarget
         return (line, index - (lastBreak + 1));
     }
 
+    /// <summary>
+    /// How many characters the parser's message says the error is about.
+    /// </summary>
+    /// <remarks>
+    /// Every shape this parser produces names the offending text in single quotes -
+    /// <i>mismatched input 'Country'</i>, <i>extraneous input 'x'</i>,
+    /// <i>no viable alternative at input 'xy'</i>, <i>missing ';' at 'SELECT'</i>. Reading it from
+    /// there keeps an engine package out of a question about drawing: the alternative was to add a
+    /// field to the parser's own error type. A message with no quoted token keeps the single character
+    /// the mark has always had.
+    /// </remarks>
+    public static int LengthOfTheOffendingToken(string? message)
+    {
+        if (string.IsNullOrEmpty(message))
+            return 1;
+
+        var opening = message.IndexOf('\'');
+
+        if (opening < 0)
+            return 1;
+
+        var closing = message.IndexOf('\'', opening + 1);
+
+        if (closing <= opening + 1)
+            return 1;
+
+        return closing - opening - 1;
+    }
+
     private void ReportError(SqlError error, (int Line, int Column) fragment, int number = 0, int total = 0)
     {
         // The fragment's own offset is added last, so a selection three screens down underlines the
@@ -392,7 +421,11 @@ public partial class QueryTabViewModel : WorkspaceTabViewModel, ISearchTarget
 
         ErrorMessage = where + error.Message;
         ErrorDetail = error.Detail;
-        ErrorLength = 1;
+
+        // The WORD, not its first letter. Measured by driving Studio on 2026-08-19: a parse error was
+        // marked with a squiggle one character wide, beside a missing table underlined across its
+        // whole name - which is why the report said a parse error is not marked at all.
+        ErrorLength = LengthOfTheOffendingToken(error.Detail ?? error.Message);
 
         UpdateUnderline();
 
