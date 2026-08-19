@@ -18,7 +18,7 @@ public class DatabaseNodeTests
             Name = "TestTable",
             NodeType = DatabaseNodeType.Table,
             IsExpanded = true,
-            Children = new List<DatabaseNode>
+            Children = new System.Collections.ObjectModel.ObservableCollection<DatabaseNode>
             {
                 new DatabaseNode { Name = "Column1", NodeType = DatabaseNodeType.Table },
                 new DatabaseNode { Name = "Column2", NodeType = DatabaseNodeType.Table }

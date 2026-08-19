@@ -118,8 +118,13 @@ public class ChangedAndDeletedRowsAreVisibleTests
             Assert.That(markup, Does.Contain("row-changed"),
                 "and so is a row that was changed");
 
-            Assert.That(markup, Does.Contain("Strikethrough"),
-                "struck through, which is the decision taken");
+            // NOT a strikethrough, and the reason is a measurement: driving Studio on 2026-08-19
+            // showed that a decoration set from a row style never reaches the cell text, because
+            // the TextBlocks live inside the cell templates. What a deleted row actually gets is
+            // what was seen on screen - dimmed, with the warning colour down its left edge - and
+            // the style that claimed the rest is gone rather than left saying something untrue.
+            Assert.That(markup, Does.Contain("Opacity"),
+                "dimmed, which is what the row is drawn as");
         });
     }
 

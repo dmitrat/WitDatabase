@@ -27,6 +27,35 @@ public partial class DatabaseExplorer : UserControl
 
     #endregion
 
+    #region Static
+
+    /// <summary>
+    /// Tells the node that its row has been opened.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// <b>Measured in the running application, 2026-08-19.</b> The tree binds a row's
+    /// <c>IsExpanded</c> to the node's in a STYLE setter, and a binding in a style setter does not
+    /// push back: the row opened, the model never heard, and the columns of a table were never
+    /// read. Nothing had noticed because until the placeholder child arrived there was no expander
+    /// to press, and the tests set <c>IsExpanded</c> on the node themselves - which is the
+    /// ViewModel's side of a binding that only ever worked one way.
+    /// </para>
+    /// <para>
+    /// A class handler rather than a per-item subscription: the containers are recycled as the
+    /// tree scrolls, so subscribing when one is prepared means unsubscribing when it is not.
+    /// </para>
+    /// </remarks>
+    static DatabaseExplorer()
+    {
+        TreeViewItem.IsExpandedProperty.Changed.AddClassHandler<TreeViewItem>((item, e) =>
+        {
+            if (item.DataContext is DatabaseNode node && e.GetNewValue<bool>())
+                node.IsExpanded = true;
+        });
+    }
+
+    #endregion
     #region Constructors
 
     public DatabaseExplorer()
@@ -34,7 +63,11 @@ public partial class DatabaseExplorer : UserControl
         InitializeComponent();
         DataContext = ApplicationViewModel.Instance;
 
-        DoubleTapped += OnDoubleTapped;
+        // TUNNELLING since 2026-08-19. A TreeViewItem toggles its own expansion on a double
+        // click, and a table has had a child to expand since the placeholder arrived - so the
+        // bubbling handler ran after the row had opened, and opening the DATA (WS-19) stopped
+        // happening. Measured in the running application.
+        AddHandler(DoubleTappedEvent, OnDoubleTapped, RoutingStrategies.Tunnel);
         KeyDown += OnKeyDown;
 
         // Tunnelling, because a TreeViewItem handles the pointer for its own selection and a
@@ -78,10 +111,12 @@ public partial class DatabaseExplorer : UserControl
         {
             case Models.DatabaseNodeType.Table when explorer.CanEditData:
                 explorer.EditDataCommand.Execute(null);
+                e.Handled = true;
                 break;
 
             case Models.DatabaseNodeType.View when explorer.CanBrowseData:
                 explorer.SelectTop1000Command.Execute(null);
+                e.Handled = true;
                 break;
         }
     }

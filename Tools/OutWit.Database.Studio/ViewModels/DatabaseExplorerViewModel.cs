@@ -1182,7 +1182,11 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         // emptied or dropped.
         ShowsDatabaseActions = nodeType == DatabaseNodeType.Database;
 
+        // A TABLE is here because a trigger is created on one: without it the Create submenu was
+        // hidden exactly where the only item it could offer applies. Measured in the running
+        // application on 2026-08-19 - the two halves of phase 3 contradicted each other.
         ShowsCreate = nodeType is DatabaseNodeType.Database
+                                or DatabaseNodeType.Table
                                 or DatabaseNodeType.TablesFolder
                                 or DatabaseNodeType.ViewsFolder
                                 or DatabaseNodeType.IndexesFolder

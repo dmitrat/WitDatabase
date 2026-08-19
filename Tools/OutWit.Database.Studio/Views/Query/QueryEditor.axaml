@@ -34,16 +34,17 @@
                         CornerRadius="3"
                         Padding="8,5"
                         Margin="0,0,0,6">
-                    <StackPanel Orientation="Horizontal" Spacing="8">
-                        <PathIcon Data="{x:Static ui:StudioIcons.COMMON_LOCK}"
+                    <!-- A Grid: a horizontal StackPanel measures with infinite width, so the Wrap below could never happen and a long message drew over what was beside it. -->
+                    <Grid ColumnDefinitions="Auto,*">
+                        <PathIcon Grid.Column="0" Data="{x:Static ui:StudioIcons.COMMON_LOCK}"
                                   Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"
                                   Foreground="{DynamicResource Wit.Ink.Secondary}"
                                   VerticalAlignment="Center"/>
-                        <TextBlock Text="{DynamicResource S.Query.ReadOnly.Banner}"
+                        <TextBlock Grid.Column="1" Margin="8,0,0,0" Text="{DynamicResource S.Query.ReadOnly.Banner}"
                                    Foreground="{DynamicResource Wit.Ink.Secondary}"
                                    TextWrapping="Wrap"
                                    VerticalAlignment="Center"/>
-                    </StackPanel>
+                    </Grid>
                 </Border>
 
                 <!-- ============================ FIND AND REPLACE (9.7) ============================
@@ -402,14 +403,15 @@
                                 Padding="12"
                                 IsVisible="{Binding ErrorMessage, Converter={x:Static ObjectConverters.IsNotNull}}">
                             <StackPanel Spacing="6">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
+                                <!-- A Grid: a horizontal StackPanel measures with infinite width, so the Wrap below could never happen and a long message drew over what was beside it. -->
+                                <Grid ColumnDefinitions="Auto,*">
+                                    <PathIcon Grid.Column="0" Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
                                               Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}" Foreground="{DynamicResource Wit.Error.Text}"/>
-                                    <TextBlock Text="{Binding ErrorMessage}"
+                                    <TextBlock Grid.Column="1" Margin="8,0,0,0" Text="{Binding ErrorMessage}"
                                                TextWrapping="Wrap"
                                                FontWeight="SemiBold"
                                                Foreground="{DynamicResource Wit.Error.Text}"/>
-                                </StackPanel>
+                                </Grid>
 
                                 <!-- "Did you mean Orders?" - from the schema already loaded (3.6) -->
                                 <StackPanel Orientation="Horizontal" Spacing="8"

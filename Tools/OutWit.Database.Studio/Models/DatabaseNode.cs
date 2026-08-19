@@ -1,3 +1,4 @@
+using System.Collections.ObjectModel;
 using OutWit.Common.Abstract;
 using OutWit.Common.Aspects;
 using OutWit.Common.Values;
@@ -32,7 +33,7 @@ public sealed partial class DatabaseNode : ModelBase
             NodeType = NodeType,
             ConnectionId = ConnectionId,
             IsExpanded = IsExpanded,
-            Children = Children.Select(node => node.Clone()).ToList()
+            Children = new ObservableCollection<DatabaseNode>(Children.Select(node => node.Clone()))
         };
     }
 
@@ -91,7 +92,16 @@ public sealed partial class DatabaseNode : ModelBase
     /// <summary>
     /// Gets or sets the child nodes.
     /// </summary>
-    public List<DatabaseNode> Children { get; set; } = [];
+    /// <summary>
+    /// What the node opens into.
+    /// </summary>
+    /// <remarks>
+    /// <b>Observable, and measured to need to be.</b> It was a <c>List</c>, so the tree bound to
+    /// it once and never heard again: the columns of a table were read, the placeholder was
+    /// replaced - and the row on screen went on showing the placeholder. Every test read
+    /// <c>Children</c> directly and saw the columns; the window is the only thing that could not.
+    /// </remarks>
+    public ObservableCollection<DatabaseNode> Children { get; set; } = [];
 
     /// <summary>
     /// True while F2 is open on this row: the name is replaced by a box holding
