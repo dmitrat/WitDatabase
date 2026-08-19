@@ -3,6 +3,90 @@
 Studio is versioned separately from the WitDatabase engine and released under its own `studio-v*` tag.
 The engine's changelog is `/CHANGELOG.md`.
 
+## 3.1.0
+
+**Forty-six findings, and what looking for them turned up.** Taking the screenshots for the
+documentation site produced a list of forty-one things that were wrong, and five more came in a
+conversation. All of them are answered here - most fixed, a few measured and found to be right
+already, two found to be the opposite of what they said.
+
+Engine: 14.0.0, unchanged.
+
+### The tree opens into a table
+
+A table has a chevron. Opening one shows its columns, with the key marked, what points elsewhere
+marked, and the type beside each name. **The code that reads them had been there since the redesign**
+and could not run: a node with no children draws no expander, so the node could never be opened, so
+the columns were never asked for. Two more links were missing behind that one, and both were found by
+driving the application rather than by a test.
+
+Each connection's root now carries its colour, the same colour its tabs wear.
+
+### Wrong answers
+
+- **An index over two columns is one index.** The catalogue publishes a row per indexed column, and
+  one of the four readers took them at face value - so the tree counted eight where *Verify by
+  reading* counted seven, the filter and the palette listed the same index twice, and **a dumped
+  script created it twice and would not replay.**
+- **A folder database reaches Recent Databases.** An LSM database is a directory; the recent list
+  asked whether a *file* existed, so it was written to the list, never shown, and taken out of it as
+  gone.
+- **The password button no longer promises to copy your database.** Replacing a password rewrites 60
+  bytes; only adding or removing encryption builds a new database. The button had said otherwise
+  since before the rewrap existed.
+- **The table editor counts its pages once** - the footer and the status line had been counting from
+  zero and from one, in the same window.
+- **A parse error is underlined across its word**, not under its first letter.
+- The English drop confirmations no longer quote with the Russian marks.
+
+### The editor says what it has actually changed
+
+- **Looking at a cell no longer marks it as changed.** Double-clicking a cell and leaving it gave the
+  tab its dot, raised the badge and lit Commit over a buffer holding nothing. A row edited back to
+  what it was stops being a change, too.
+- **A deleted row stays where it is**, dimmed and marked down its left edge, until the set is applied
+  - it used to vanish, so discarding was the only way to find out what you had done. A changed row
+  carries a mark of its own.
+- A message about something the buffer has left does not stay on screen, and a language change no
+  longer leaves the status bar in the language you have just left.
+- A `BOOLEAN` that cannot be NULL is a checkbox; a nullable one keeps its text, because a checkbox
+  has two states and that column has three.
+
+### Things that were built and could not be found
+
+- ***Edit ▸ Find and replace…*** - the find band answered `Ctrl+F` and nothing else.
+- ***Create ▸ Create Trigger…*** in the tree. The dialog has existed since the schema designer landed,
+  reachable from one button in one tab.
+- ***View ▸ Database…***, and one name for that tab everywhere. It answers where the database is, how
+  big it is, its page size and count, its format version, its encryption, its cache, its journal and
+  what it holds - and it was called three different things.
+- **Close the connection from the tree** it is drawn in.
+- **Back to the first page in one press**, and **a column marked for deletion in the designer can be
+  kept after all** - that one had no way back short of discarding every edit in the set.
+- **The command palette answers the mouse**: a click outside closes it, a click on an entry runs it.
+
+### Menus, dialogs and the import
+
+- **A folder is offered what a folder has.** Right-clicking *Tables* used to produce the table menu
+  with *Empty the table…* and *Drop…* greyed rather than absent.
+- ***Execute*** runs the statement under the cursor, `F5`, and ***Execute Script*** is its own item.
+- **The export dialog fits what it holds** - it opened 500 by 480 for content needing about 900, and
+  the buttons were painted over. **Two windows called *Export Data* are now *Export table* and
+  *Export query results*** - only one of them has the three scopes.
+- **The import wizard says what it read**: the columns it found and the first rows themselves, which
+  is how a wrong delimiter is caught. Its result no longer lands on top of the line it replaces, and
+  every refused row is kept for the report rather than the first ten.
+- **A type typed into *Create table* reaches the statement**, and one this engine would refuse is
+  refused in the dialog, where it can still be corrected.
+- Nine labels that could be cut off in one language or the other now wrap.
+
+### Two findings were wrong, and that is the answer
+
+**`Esc` does not discard the table editor's buffer** - it closes the find band, the palette and the
+notification list, stops a running query and cancels a cell edit. The hint bar was right to be silent.
+And **the report of refused rows was already there** for a CSV import; only the JSON path was throwing
+them away.
+
 ## 3.0.0
 
 **The release, and the same build as `3.0.0-rc.2`.** Nothing in the application changed between the
