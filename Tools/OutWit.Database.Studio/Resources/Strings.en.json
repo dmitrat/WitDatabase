@@ -326,6 +326,7 @@
   "Dialog.CreateTable.Columns": "Columns:",
   "Dialog.CreateTable.AddColumn": "+ Add Column",
   "Dialog.CreateTable.Ddl": "Generated DDL:",
+  "Dialog.CreateTable.UnknownType": "This engine does not know the type {1}, so column {0} cannot be created with it.",
   "Dialog.CreateTable.GenerateDdl": "Generate DDL",
   "Dialog.CreateTable.Create": "Create Table",
   "Dialog.CreateTable.Creating": "Creating table...",

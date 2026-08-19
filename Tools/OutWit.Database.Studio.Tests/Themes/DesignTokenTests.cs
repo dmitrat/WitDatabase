@@ -509,12 +509,16 @@ public class DesignTokenTests
             // measures ROWS and CONTROLS - a titlebar, a tab, a tree row, a field - and every one
             // of those is on a token. Asserting zero here would mean inventing metrics the canon
             // does not have, which is the failure mode a lint invites.
-            Assert.That(height, Is.EqualTo(67), "heights written by hand");
+            // 68 since 2026-08-18, and the new one is a MinHeight on the export dialog: it used
+            // to open at a fixed 480 for content needing about 900 and could not be resized, so
+            // the footer was painted over. A window's minimum size is a window size, which is
+            // the remainder this ledger exists to allow.
+            Assert.That(height, Is.EqualTo(68), "heights written by hand");
             Assert.That(HeightSiteKinds(), Is.EqualTo(new[]
             {
                 "Border:23", "Button:1", "DataGrid:2", "Ellipse:1", "Grid:1", "GridSplitter:1",
                 "ListBox:1", "PathIcon:2", "ProgressBar:4", "ScrollViewer:3", "TextBox:1",
-                "Window:27",
+                "Window:28",
             }));
         });
     }

@@ -79,8 +79,14 @@
                                 <DataGridTemplateColumn Header="{DynamicResource S.Column.DataType}" Width="150">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
+                                            <!-- The TEXT is bound as well as the selection: the box
+                                                 takes free text on purpose - the list itself offers
+                                                 VARCHAR(255) and CHAR(50), so a length is meant to be
+                                                 typed - and binding only the selection threw away
+                                                 everything that matched no item. -->
                                             <ComboBox ItemsSource="{Binding $parent[Window].((vm:CreateTableViewModel)DataContext).AvailableDataTypes}"
                                                       SelectedItem="{Binding DataType}"
+                                                      Text="{Binding DataType, Mode=TwoWay}"
                                                       HorizontalAlignment="Stretch"
                                                       IsEditable="True"/>
                                         </DataTemplate>
@@ -90,22 +96,22 @@
                                 <!-- Nullable -->
                                 <DataGridCheckBoxColumn Header="{DynamicResource S.Column.Nullable}"
                                                         Binding="{Binding IsNullable}"
-                                                        Width="80"/>
+                                                        Width="SizeToHeader"/>
 
                                 <!-- Primary Key -->
                                 <DataGridCheckBoxColumn Header="{DynamicResource S.Column.PrimaryKey}"
                                                         Binding="{Binding IsPrimaryKey}"
-                                                        Width="60"/>
+                                                        Width="SizeToHeader"/>
 
                                 <!-- Auto Increment -->
                                 <DataGridCheckBoxColumn Header="{DynamicResource S.Column.AutoIncrement}"
                                                         Binding="{Binding IsAutoIncrement}"
-                                                        Width="80"/>
+                                                        Width="SizeToHeader"/>
 
                                 <!-- Unique -->
                                 <DataGridCheckBoxColumn Header="{DynamicResource S.Column.Unique}"
                                                         Binding="{Binding IsUnique}"
-                                                        Width="70"/>
+                                                        Width="SizeToHeader"/>
 
                                 <!-- Default Value -->
                                 <DataGridTextColumn Header="{DynamicResource S.Column.Default}"
@@ -114,7 +120,7 @@
                                                     IsReadOnly="False"/>
 
                                 <!-- Actions -->
-                                <DataGridTemplateColumn Header="{DynamicResource S.Common.Actions}" Width="80">
+                                <DataGridTemplateColumn Header="{DynamicResource S.Common.Actions}" Width="Auto">
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
                                             <Button AutomationProperties.AutomationId="CreateTableRemove" Content="{DynamicResource S.Common.Remove}"
@@ -147,6 +153,22 @@
                                 HorizontalAlignment="Right"
                                 Margin="8,0,0,0"/>
                     </DockPanel>
+
+                    <!-- A type this engine does not know is refused HERE, where it can still be
+                         corrected: the engine refuses an unknown type name rather than mapping it
+                         to TEXT, so the statement would fail on Create with the dialog already
+                         closed. -->
+                    <Border AutomationProperties.AutomationId="CreateTableTypeProblem"
+                            Background="{DynamicResource Wit.Warn.Surface}"
+                            BorderBrush="{DynamicResource Wit.Warn.Border}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="8"
+                            IsVisible="{Binding TypeProblem, Converter={x:Static ObjectConverters.IsNotNull}}">
+                        <TextBlock Text="{Binding TypeProblem}"
+                                   Foreground="{DynamicResource Wit.Warn.Text}"
+                                   TextWrapping="Wrap"/>
+                    </Border>
 
                     <Border BorderBrush="{DynamicResource Wit.Line}"
                             BorderThickness="1"

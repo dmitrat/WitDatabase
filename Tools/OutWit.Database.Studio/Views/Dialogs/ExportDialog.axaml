@@ -10,15 +10,20 @@
         x:Class="OutWit.Database.Studio.Views.Dialogs.ExportDialog"
         x:DataType="vm:ExportViewModel"
         Title="{DynamicResource S.Dialog.Export.Title}"
-        Width="500"
-        Height="480"
+        Width="560"
+        Height="620"
+        MinWidth="480"
+        MinHeight="360"
         WindowStartupLocation="CenterOwner"
-        CanResize="False">
+        CanResize="True">
 
     <Grid RowDefinitions="*,Auto" Margin="20">
         
-        <!-- Main Content -->
-        <StackPanel Grid.Row="0" Spacing="16">
+        <!-- Main Content. It SCROLLS: the window used to open 500x480 for content that needs
+             about 900, and a StackPanel that does not fit its row does not clip - it draws
+             over whatever is beneath, which here is the row of buttons. -->
+        <ScrollViewer Grid.Row="0" VerticalScrollBarVisibility="Auto">
+        <StackPanel Spacing="16">
 
             <!-- WS-51: the SCOPE comes first, because it is the only thing that distinguishes twelve
                  selected rows from a whole table, and asking for it last is what makes someone export
@@ -163,6 +168,8 @@
             </Border>
             
         </StackPanel>
+        </ScrollViewer>
+
 
         <!-- Buttons -->
         <Grid Grid.Row="1" ColumnDefinitions="*,Auto,Auto" Margin="0,20,0,0">
