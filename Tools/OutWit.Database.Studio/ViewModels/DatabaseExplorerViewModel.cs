@@ -249,8 +249,10 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         // The flag is the tab's own IsReadOnly, which is what CanAddRow, CanDeleteRow and CanCommit
         // are computed from; the connection's read-only mode is a DIFFERENT thing that WorkspaceTab
         // holds under the same name.
-        ApplicationVm.MainWindowVm.StatusText = Localization.Format(
-            tab.IsReadOnly ? "Explorer.Viewing" : "Explorer.Editing", tableName);
+        // The TAB owns this line: «editing Products» is true while the editor is open and false the
+        // moment it is closed, which is not something an event-shaped message has to think about.
+        ApplicationVm.MainWindowVm.SayThisWhile(tab, Localization.Format(
+            tab.IsReadOnly ? "Explorer.Viewing" : "Explorer.Editing", tableName));
 
         Logger.LogInformation("Edit data for table {TableName} in {Connection}", tableName, session.DisplayName);
     }
