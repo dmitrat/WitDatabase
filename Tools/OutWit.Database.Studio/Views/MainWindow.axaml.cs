@@ -404,6 +404,42 @@ public partial class MainWindow : Window
     {
         FocusSearchTerm();
     }
+    /// <summary>
+    /// A press on the scrim behind the palette closes it - unless it landed on the palette.
+    /// </summary>
+    /// <remarks>
+    /// <b>The palette took the keyboard and nothing else.</b> Clicking outside did not close it,
+    /// clicking the header button that opened it did not close it, and a click on an entry moved
+    /// the highlight and stopped there. Esc and Enter were the only ways in and out, which is fine
+    /// for a keyboard tool and not fine for a window that has trapped the pointer.
+    /// </remarks>
+    private void OnPaletteScrimPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (DataContext is not ApplicationViewModel app)
+            return;
+
+        // Only a press on the scrim ITSELF: one that landed inside the panel is a press on a box,
+        // a list or an entry, and closing on those would take the window away mid-use.
+        if (!ReferenceEquals(e.Source, sender))
+            return;
+
+        app.PaletteVm.CloseCommand.Execute(null);
+
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// A click on an entry runs it, the way Enter does.
+    /// </summary>
+    private void OnPaletteItemTapped(object? sender, Avalonia.Input.TappedEventArgs e)
+    {
+        if (DataContext is not ApplicationViewModel app || app.PaletteVm.SelectedItem == null)
+            return;
+
+        app.PaletteVm.AcceptCommand.Execute(null);
+
+        e.Handled = true;
+    }
     private void FocusSearchTerm()
     {
         Avalonia.Threading.Dispatcher.UIThread.Post(() =>
