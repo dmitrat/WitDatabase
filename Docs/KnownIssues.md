@@ -1530,7 +1530,19 @@ because a person meeting it will look for it here.
 
 ## 25. A join condition written the other way round is refused
 
-> Measured 2026-08-19 on engine 14.0.0. **Root cause identified**, fix not written.
+> **FIXED in 14.0.1.** The key pair is now oriented by the left input’s schema, which is a
+> required parameter of `OptimizerJoinCondition.Analyze` so that the question is asked at every
+> call site. `JoinKeysBelongToTheirOwnSideTests` asserts the two orders agree ROW FOR ROW over
+> inner, left, chained, aliased, unaliased, composite-key and residual-beside-key shapes, and
+> carries a control that the hash join is the path being taken. Seven of its ten cases fail if the
+> orientation is removed.
+>
+> **One limit, deliberate:** where a source reports no table name - `INFORMATION_SCHEMA` does -
+> neither column can be attributed and the written order still decides. Such a join resolves a
+> qualified name by column name anyway, so nothing is gained by refusing it, and treating it as
+> «neither from the left» turned Studio's primary-key query into a cross product.
+>
+> Measured 2026-08-19 on engine 14.0.0. The account below is what was found.
 
 In `A JOIN B ON x = y`, the column of the LEFT input has to be written FIRST. Written the other
 way, the query fails at execution with a `KeyNotFoundException`:
@@ -1580,7 +1592,12 @@ order.
 
 ## 26. `EXPLAIN` gives the right input’s child the wrong parent
 
-> Measured 2026-08-19 on engine 14.0.0.
+> **FIXED in 14.0.1.** Each child’s subtree is re-based by where it actually starts rather than
+> by a constant. `APlanNodeNamesItsRealParentTests` asserts that each `ALIAS` stands over the scan
+> of the table it aliases and that the two arms of a `UNION` keep their own children - a purely
+> structural check passes on both versions, which is why that is not the assertion.
+>
+> Measured 2026-08-19 on engine 14.0.0. The account below is what was found.
 
 For `SELECT c.Country, o.Total FROM Customers c JOIN Orders o ON c.Id = o.CustomerId LIMIT 3`,
 `EXPLAIN` answers:

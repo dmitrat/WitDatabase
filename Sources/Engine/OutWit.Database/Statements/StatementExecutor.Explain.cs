@@ -59,28 +59,31 @@ public sealed partial class StatementExecutor
             ? GetQueryPlanDescription(iterator)
             : GetDetailedDescription(iterator);
         
-        var currentId = lines.Count;
-        lines.Add(new PlanLine(depth > 0 ? currentId - 1 : -1, $"{indent}{detail}"));
-        
+        // This node is line 0 of its own subtree, and its parent is filled in by whoever appends
+        // that subtree - the top-level call is the one that keeps -1.
+        lines.Add(new PlanLine(-1, $"{indent}{detail}"));
+
         // Add child iterators if they exist
         var children = GetChildIterators(iterator);
         foreach (var child in children)
         {
-            var childLines = BuildPlanDescription(child, depth + 1, queryPlan);
-            // Update parent references for child lines
-            foreach (var line in childLines)
+            // WHERE THIS CHILD'S SUBTREE STARTS, which is the whole of a defect shipped in 14.0.0:
+            // the lines used to be re-based by a constant (`currentId + 1`), which is right for the
+            // FIRST child and wrong for every one after it by the size of everything already
+            // appended. A join has two children, and so does every set operation - so EXPLAIN put
+            // the right input's scan under the LEFT input's alias, and anything drawing the plan as
+            // a tree drew the wrong tree faithfully (KnownIssues 26).
+            var offset = lines.Count;
+
+            foreach (var line in BuildPlanDescription(child, depth + 1, queryPlan))
             {
-                if (line.Parent == -1 && depth >= 0)
-                {
-                    lines.Add(new PlanLine(currentId, line.Detail));
-                }
-                else
-                {
-                    lines.Add(new PlanLine(line.Parent + currentId + 1, line.Detail));
-                }
+                // A subtree's own root is the child itself: it goes under THIS node, which is line
+                // 0 of this list. Everything else keeps the parent it had, moved to where the
+                // subtree has landed.
+                lines.Add(new PlanLine(line.Parent == -1 ? 0 : line.Parent + offset, line.Detail));
             }
         }
-        
+
         return lines;
     }
 

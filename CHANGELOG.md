@@ -1,5 +1,70 @@
 ﻿# Changelog
 
+## 14.0.1
+
+**Two defects a client found by being used, both in the planner, neither reachable from the SQL
+the suite happens to write.** No file format change; no API change beyond one internal signature.
+
+### A join condition means the same thing whichever way round it is written
+
+`ON c.Id = o.CustomerId` returned rows. `ON o.CustomerId = c.Id` - the same condition, the same
+two tables - failed at execution with `Column 'CustomerId' not found`. It affected qualified
+names with or without aliases, and the shape most likely to be met by accident is a chain, where
+"the left input" is everything joined so far:
+
+```sql
+SELECT c.Country FROM Customers c JOIN Orders o ON c.Id = o.CustomerId
+                                  JOIN Items i ON i.OrderId = o.Id     -- refused before 14.0.1
+```
+
+**The cause was that the equi-join key pair was built from the order the condition was WRITTEN
+in**, and never from where the columns come from: `LeftKey = binary.Left, RightKey = binary.Right`.
+The extractor checked that the two column references named different tables and stopped there, so
+the hash join looked for the right table’s column in rows of the left one. It now reads the
+left input’s schema - which is a required parameter of `OptimizerJoinCondition.Analyze`, so the
+question is asked at every call site - and orients each pair by which side its columns are on.
+
+Two conditions that used to become hash keys no longer do, and both are corrections: a pair whose
+columns are BOTH from the left input is a filter on that input rather than a join key, and a pair
+with an unqualified column cannot be attributed at all. Both now go to the residual condition,
+which is evaluated over the joined row and cannot be wrong.
+
+**Where the engine does not know which side a column is on, the written order still decides.**
+An `INFORMATION_SCHEMA` source reports no table name, so `tc.X = kcu.X` over two of them cannot be
+attributed to either input; those keep the old behaviour deliberately. Reading it as «neither is
+from the left» and sending it to the residual turned Studio's primary-key query into a cross
+product - measured, five of its cases went red - because a qualified name over such a join
+resolves by column name, and the same name appears once per side.
+
+**Why the suite said nothing:** every join case in it writes the equality left-hand-side first.
+The new fixture asserts the two orders agree ROW FOR ROW across inner, left, chained, aliased,
+unaliased, composite-key and residual-beside-key shapes - and carries a control that the hash join
+is the path being taken, because a nested loop has never cared.
+
+### `EXPLAIN` names the line each line is really under
+
+The lines of each child’s subtree were re-based by a constant rather than by where that subtree
+starts, so everything below the SECOND child of any node was attributed into the first child’s
+subtree. A join has two children, and so does every set operation:
+
+```
+id parent detail
+2  1      HASH INNER JOIN
+3  2      ALIAS c
+4  3      SCAN TABLE Customers
+5  2      ALIAS o
+6  3      SCAN TABLE Orders     <- said 3, which is ALIAS c
+```
+
+Anything that draws the plan as a tree drew the wrong tree faithfully. The rows themselves were
+all present and every parent was a real earlier line, which is why a structural check passes on
+both versions; the new fixture asserts instead that each `ALIAS` stands over the scan of the table
+it aliases, and that the two arms of a `UNION` keep their own children.
+
+### Known issues
+
+Issues 25 and 26 of [Docs/KnownIssues.md](Docs/KnownIssues.md) are these two, and are now marked
+fixed there.
 ## 14.0.0
 
 **An encrypted database written before 13.1.0 is no longer opened without being asked.** That is the

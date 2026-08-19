@@ -247,7 +247,9 @@ public sealed partial class QueryPlanner
         var right = CreateTableSourceIterator(join.Right);
 
         // Analyze join condition for hash join eligibility
-        var analysis = OptimizerJoinCondition.Analyze(join.OnCondition);
+        // The left input's schema, because it is what says which side of the join a column of the
+        // ON condition belongs to - see OptimizerJoinCondition.Analyze.
+        var analysis = OptimizerJoinCondition.Analyze(join.OnCondition, left.Schema);
 
         // Try hash join for INNER and LEFT joins with equi-join conditions
         if (analysis.HasEquiJoinKeys && 
