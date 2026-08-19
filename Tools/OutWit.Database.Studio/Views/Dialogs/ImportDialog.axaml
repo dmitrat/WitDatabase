@@ -90,9 +90,12 @@
             </CheckBox>
         </StackPanel>
 
-        <!-- STEP 3: what to do when an imported row collides with one that is already there. -->
+        <!-- What to do when an imported row collides with one that is already there. It is a
+             decision about the TARGET, so it is on the step named after the target: it used to sit
+             on «Columns» beside the mapping, which gave that step two unrelated decisions while
+             «Destination» held one control. -->
         <StackPanel Grid.Row="3" Spacing="8" Margin="0,16,0,0"
-                    IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsColumns}}">
+                    IsVisible="{Binding Step, Converter={x:Static vm:ImportSteps.IsDestination}}">
             <TextBlock Text="{DynamicResource S.Dialog.Import.OnConflict}" FontWeight="SemiBold"/>
             <StackPanel Orientation="Horizontal" Spacing="10">
                 <RadioButton AutomationProperties.AutomationId="ImportConflictSkip"
@@ -203,8 +206,12 @@
             
         </Grid>
 
+        <!-- One cell, one child. The preview banner and the error banner were both Grid.Row="5"
+             and were drawn over each other - the result of an import landed across the line
+             saying what the file held, both at full opacity, in every state. -->
+        <StackPanel Grid.Row="5" Spacing="8">
         <!-- Preview Info -->
-        <Border Grid.Row="5"
+        <Border
                 Background="{DynamicResource Wit.Ok.Surface}"
                 BorderBrush="{DynamicResource Wit.Ok.Border}"
                 BorderThickness="1"
@@ -222,8 +229,25 @@
             </StackPanel>
         </Border>
 
+        <!-- The rows themselves, which is what a preview is: the summary above says how many
+             columns were read, and these say what they were read AS. A wrong delimiter is
+             obvious here and invisible in a count. -->
+        <Border BorderBrush="{DynamicResource Wit.Line}"
+                BorderThickness="1"
+                CornerRadius="4"
+                MaxHeight="160"
+                IsVisible="{Binding PreviewData, Converter={x:Static ObjectConverters.IsNotNull}}">
+            <DataGrid AutomationProperties.AutomationId="ImportPreviewRowsGrid"
+                      ItemsSource="{Binding PreviewData}"
+                      IsReadOnly="True"
+                      GridLinesVisibility="Horizontal"
+                      HeadersVisibility="Column"
+                      CanUserSortColumns="False"
+                      BorderThickness="0"/>
+        </Border>
+
         <!-- Error Message -->
-        <Border Grid.Row="5"
+        <Border
                 Background="{DynamicResource Wit.Error.Surface}"
                 BorderBrush="{DynamicResource Wit.Error.Border}"
                 BorderThickness="1"
@@ -255,6 +279,7 @@
                 </ItemsControl>
             </StackPanel>
         </Border>
+        </StackPanel>
 
         <!-- Buttons -->
         <Grid Grid.Row="6" ColumnDefinitions="Auto,Auto,*,Auto,Auto,Auto" Margin="0,20,0,0">

@@ -9,7 +9,7 @@
         d:DesignHeight="480"
         x:Class="OutWit.Database.Studio.Views.Dialogs.ExportDialog"
         x:DataType="vm:ExportViewModel"
-        Title="{DynamicResource S.Dialog.Export.Title}"
+        Title="{Binding WindowTitle}"
         Width="560"
         Height="620"
         MinWidth="480"
@@ -141,7 +141,7 @@
                     <TextBox Grid.Column="0"
                              Text="{Binding OutputPath}"
                              Watermark="{DynamicResource S.Dialog.Export.SelectOutput}"
-                             IsReadOnly="True"/>
+                             ToolTip.Tip="{DynamicResource S.Dialog.Export.Output}"/>
                     <Button AutomationProperties.AutomationId="ExportBrowse" Grid.Column="1"
                             Content="{DynamicResource S.Common.Browse}"
                             Command="{Binding BrowseCommand}"
@@ -204,14 +204,18 @@
                              Height="8"/>
                 
                 <!-- Progress Text -->
+                <!-- The numbers wait for the total: the panel opens before the rows are fetched,
+                     so its first frame said "0 / 0 rows" at "0.0 %". -->
                 <TextBlock AutomationProperties.AutomationId="ExportProgressText"
                            Text="{Binding ProgressText}"
+                           IsVisible="{Binding KnowsHowManyRows}"
                            Foreground="White"
                            HorizontalAlignment="Center"
                            FontSize="{DynamicResource Wit.Font.SectionTitle}"/>
 
                 <!-- Percentage -->
-                <TextBlock Text="{Binding ExportProgress, StringFormat='{}{0:F1} %'}"
+                <TextBlock IsVisible="{Binding KnowsHowManyRows}"
+                           Text="{Binding ExportProgress, StringFormat='{}{0:F1} %'}"
                            Foreground="White"
                            HorizontalAlignment="Center"
                            FontSize="{DynamicResource Wit.Font.SectionTitle}"

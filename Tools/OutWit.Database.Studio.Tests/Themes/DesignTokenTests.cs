@@ -513,10 +513,13 @@ public class DesignTokenTests
             // to open at a fixed 480 for content needing about 900 and could not be resized, so
             // the footer was painted over. A window's minimum size is a window size, which is
             // the remainder this ledger exists to allow.
-            Assert.That(height, Is.EqualTo(68), "heights written by hand");
+            // 69, and the newest is the import preview's MaxHeight: the wizard shows the rows it
+            // parsed, and without a bound it would grow with the file. A box round a block of
+            // content is the other thing this ledger allows, beside window sizes.
+            Assert.That(height, Is.EqualTo(69), "heights written by hand");
             Assert.That(HeightSiteKinds(), Is.EqualTo(new[]
             {
-                "Border:23", "Button:1", "DataGrid:2", "Ellipse:1", "Grid:1", "GridSplitter:1",
+                "Border:24", "Button:1", "DataGrid:2", "Ellipse:1", "Grid:1", "GridSplitter:1",
                 "ListBox:1", "PathIcon:2", "ProgressBar:4", "ScrollViewer:3", "TextBox:1",
                 "Window:28",
             }));
