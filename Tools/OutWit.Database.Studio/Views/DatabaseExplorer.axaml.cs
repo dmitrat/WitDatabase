@@ -25,6 +25,10 @@ public partial class DatabaseExplorer : UserControl
     private string m_typed = string.Empty;
     private DateTime m_typedAt = DateTime.MinValue;
 
+    /// <summary>The row a double click has just opened the data of, and the state it was in.</summary>
+    private TreeViewItem? m_rowToLeaveAsItWas;
+    private bool m_asItWas;
+
     #endregion
 
     #region Static
@@ -63,16 +67,29 @@ public partial class DatabaseExplorer : UserControl
         InitializeComponent();
         DataContext = ApplicationViewModel.Instance;
 
-        // TUNNELLING since 2026-08-19. A TreeViewItem toggles its own expansion on a double
-        // click, and a table has had a child to expand since the placeholder arrived - so the
-        // bubbling handler ran after the row had opened, and opening the DATA (WS-19) stopped
-        // happening. Measured in the running application.
-        AddHandler(DoubleTappedEvent, OnDoubleTapped, RoutingStrategies.Tunnel);
         KeyDown += OnKeyDown;
 
-        // Tunnelling, because a TreeViewItem handles the pointer for its own selection and a
-        // bubbling handler would never see the middle button.
+        // Tunnelling, and it carries BOTH the middle click and the double click: a TreeViewItem
+        // handles the pointer for its own selection and for its own expansion, and a bubbling
+        // handler sees neither.
+        //
+        // The double click USED to be read from DoubleTapped, which is where it belongs - until a
+        // table gained a placeholder child, the row began toggling on a double tap, and the tree
+        // marked the event handled before this control saw it. That was repaired by asking for the
+        // TUNNELLING route of DoubleTapped, and there is no such route: the event is registered
+        // Bubble alone, so the handler was never called again and opening a table's data did
+        // nothing at all - through a green suite, a green CI and a signed release. The pointer is
+        // the event that tunnels, so the double click is read from it. See
+        // AHandlerRunsOnlyOnARouteItsEventTravelsTests.
         AddHandler(PointerPressedEvent, OnPointerPressed, RoutingStrategies.Tunnel);
+
+        // And the second half of the same click. Handling the pointer press does NOT stop the
+        // double tap: the gesture is recognised from the finished route, so the row still toggled
+        // itself and a table both opened its data and opened its row. Measured on 2026-08-19. This
+        // runs after the row has done that - bubbling, and handledEventsToo because the row marks
+        // the tap handled - and puts the row back the way it was.
+        AddHandler(DoubleTappedEvent, OnDoubleTappedAfterTheRow, RoutingStrategies.Bubble,
+            handledEventsToo: true);
 
         // BUBBLING, and deliberately not tunnelling: the filter box and the rename box are text
         // boxes, and a tunnelling handler would eat every letter typed into them and jump the tree
@@ -99,26 +116,60 @@ public partial class DatabaseExplorer : UserControl
     /// application's behaviour.
     /// </para>
     /// </summary>
-    private void OnDoubleTapped(object? sender, Avalonia.Input.TappedEventArgs e)
+    private void OpenTheDataUnderThePointer(PointerPressedEventArgs e)
     {
-        var explorer = ApplicationViewModel.Instance.DatabaseExplorerVm;
-        var node = explorer.SelectedNode;
-
-        if (node == null)
+        // The chevron is a control of its own, and two clicks on it are two toggles rather than a
+        // request for the data.
+        if (PressedOnTheChevron(e))
             return;
+
+        if (ItemUnder(e) is not { } item || item.DataContext is not DatabaseNode node)
+            return;
+
+        var explorer = ApplicationViewModel.Instance.DatabaseExplorerVm;
+
+        // The row under the pointer, not the row that happens to be selected. The first click of
+        // the pair selects it anyway; saying so here is what makes the handler independent of the
+        // order the tree does its own work in.
+        explorer.SelectedNode = node;
 
         switch (node.NodeType)
         {
-            case Models.DatabaseNodeType.Table when explorer.CanEditData:
+            case DatabaseNodeType.Table when explorer.CanEditData:
                 explorer.EditDataCommand.Execute(null);
-                e.Handled = true;
                 break;
 
-            case Models.DatabaseNodeType.View when explorer.CanBrowseData:
+            case DatabaseNodeType.View when explorer.CanBrowseData:
                 explorer.SelectTop1000Command.Execute(null);
-                e.Handled = true;
                 break;
+
+            default:
+                return;
         }
+
+        // The tap that follows this press will toggle the row. Remember what to put back.
+        m_rowToLeaveAsItWas = item;
+        m_asItWas = item.IsExpanded;
+
+        e.Handled = true;
+    }
+
+    /// <summary>
+    /// A double click on a table opens its data and does nothing else - in particular it does not
+    /// open the row, which the tree does on its own and which nothing here can prevent.
+    /// </summary>
+    /// <remarks>
+    /// The chevron and the arrow keys are how a row is opened, and they are unaffected: this puts
+    /// back only the row a double click has just opened the data of.
+    /// </remarks>
+    private void OnDoubleTappedAfterTheRow(object? sender, TappedEventArgs e)
+    {
+        if (m_rowToLeaveAsItWas is not { } row)
+            return;
+
+        m_rowToLeaveAsItWas = null;
+
+        row.IsExpanded = m_asItWas;
     }
 
     /// <summary>
@@ -132,17 +183,9 @@ public partial class DatabaseExplorer : UserControl
     /// just opened.
     /// </para>
     /// </summary>
-    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    private void OpenInTheBackground(PointerPressedEventArgs e)
     {
-        if (!e.GetCurrentPoint(this).Properties.IsMiddleButtonPressed)
-            return;
-
-        var item = (e.Source as Visual)?
-            .GetSelfAndVisualAncestors()
-            .OfType<TreeViewItem>()
-            .FirstOrDefault();
-
-        if (item?.DataContext is not DatabaseNode node)
+        if (NodeUnder(e) is not { } node)
             return;
 
         var explorer = ApplicationViewModel.Instance.DatabaseExplorerVm;
@@ -154,6 +197,48 @@ public partial class DatabaseExplorer : UserControl
 
         explorer.BrowseDataInBackground();
         e.Handled = true;
+    }
+
+    /// <summary>
+    /// The two clicks the TREE owns, both read from the pointer and both before the row sees them.
+    /// </summary>
+    private void OnPointerPressed(object? sender, PointerPressedEventArgs e)
+    {
+        var properties = e.GetCurrentPoint(this).Properties;
+
+        if (properties.IsMiddleButtonPressed)
+        {
+            OpenInTheBackground(e);
+            return;
+        }
+
+        if (properties.IsLeftButtonPressed && e.ClickCount == 2)
+            OpenTheDataUnderThePointer(e);
+    }
+
+    /// <summary>The row the pointer is over, if it is over one.</summary>
+    private static TreeViewItem? ItemUnder(PointerPressedEventArgs e)
+    {
+        return (e.Source as Visual)?
+            .GetSelfAndVisualAncestors()
+            .OfType<TreeViewItem>()
+            .FirstOrDefault();
+    }
+
+    /// <summary>The node whose row the pointer is over, if it is over one.</summary>
+    private static DatabaseNode? NodeUnder(PointerPressedEventArgs e)
+    {
+        return ItemUnder(e)?.DataContext as DatabaseNode;
+    }
+
+    /// <summary>Whether the press landed on the row's expander rather than on the row.</summary>
+    private static bool PressedOnTheChevron(PointerPressedEventArgs e)
+    {
+        return (e.Source as Visual)?
+            .GetSelfAndVisualAncestors()
+            .TakeWhile(visual => visual is not TreeViewItem)
+            .OfType<Button>()
+            .Any() == true;
     }
 
     /// <summary>
