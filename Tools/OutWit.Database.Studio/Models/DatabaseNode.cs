@@ -67,6 +67,28 @@ public sealed partial class DatabaseNode : ModelBase
     public bool IsExpanded { get; set; }
 
     /// <summary>
+    /// A stand-in child, there so that the node draws an expander.
+    /// </summary>
+    /// <remarks>
+    /// <b>A node with no children draws no expander</b>, and a node that cannot be expanded never
+    /// asks for its children - which is why a table in the tree had no columns although the code
+    /// that reads them and the subscription that calls it were both there. The placeholder is
+    /// replaced by the real columns the first time the node is opened, and nothing else may ever
+    /// see it: not the filter, not the palette, not a count.
+    /// </remarks>
+    public bool IsPlaceholder { get; set; }
+
+    /// <summary>
+    /// The connection colour, on the root of a connection and nowhere else (-1 elsewhere).
+    /// </summary>
+    /// <remarks>
+    /// The Open dialog says the colour marks this connection, and the tabs and the Connections
+    /// window both carried it while the two roots in the tree looked identical - which is the one
+    /// place a person is looking when they ask which database they are in.
+    /// </remarks>
+    public int ColorIndex { get; set; } = -1;
+
+    /// <summary>
     /// Gets or sets the child nodes.
     /// </summary>
     public List<DatabaseNode> Children { get; set; } = [];

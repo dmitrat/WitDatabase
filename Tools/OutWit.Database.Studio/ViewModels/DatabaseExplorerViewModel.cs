@@ -56,7 +56,6 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         CreateViewCommand = new RelayCommandAsync(CreateViewAsync);
         CreateIndexCommand = new RelayCommandAsync(CreateIndexAsync);
         CreateTriggerCommand = new RelayCommandAsync(CreateTriggerAsync);
-        ExpandNodeCommand = new RelayCommandAsync<DatabaseNode>(ExpandNodeAsync);
         ClearFilterCommand = new RelayCommand(() => Filter = string.Empty);
     }
 
@@ -190,6 +189,12 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         {
             foreach (var node in nodes)
             {
+                // The stand-in that makes a table draw an expander is not a row anybody arrows
+                // onto: it exists for the moment between opening the node and its columns
+                // arriving. Keyboard navigation would otherwise stop on an empty line.
+                if (node.IsPlaceholder)
+                    continue;
+
                 yield return node;
 
                 if (!node.IsExpanded)
@@ -718,6 +723,10 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                 Name = session.DisplayName,
                 NodeType = DatabaseNodeType.Database,
                 ConnectionId = session.Id,
+
+                // The colour the Open dialog promised. The tabs and the Connections window both
+                // carried it while the roots in the tree looked identical to each other.
+                ColorIndex = session.ColorIndex,
                 IsExpanded = firstLoad || IsExpanded(expandedNodes, session, DatabaseNodeType.Database, session.DisplayName)
             };
 
@@ -949,6 +958,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         try
         {
             var columns = await session.GetColumnsAsync(node.Name);
+
+            // The stand-in goes as the real thing arrives.
+            node.Children.Clear();
             var keys = await session.GetForeignKeysAsync(node.Name);
             var foreign = keys.Select(key => key.FromColumn).ToHashSet(StringComparer.OrdinalIgnoreCase);
 
@@ -1010,9 +1022,13 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
                     }
 
                     // Columns count too, and they are what the filter is most often used for: the
-                    // name of a column is often all anyone remembers of a schema.
+                    // name of a column is often all anyone remembers of a schema. The stand-in
+                    // child that makes the expander appear is not one of them.
                     foreach (var child in node.Children)
                     {
+                        if (child.IsPlaceholder)
+                            continue;
+
                         if (child.Name.Contains(text, StringComparison.OrdinalIgnoreCase))
                             FilterMatches.Add(new FilterMatch(child, $"{root.Name} / {folder.Name} / {node.Name}"));
                     }
@@ -1080,15 +1096,34 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
 
         foreach (var child in children)
         {
-            folder.Children.Add(new DatabaseNode
+            // A table's columns are read when it is first expanded; everything else has none.
+            var opensIntoColumns = childType is DatabaseNodeType.Table or DatabaseNodeType.View;
+
+            var node = new DatabaseNode
             {
                 Name = child,
                 NodeType = childType,
                 ConnectionId = session.Id,
+                ChildrenLoaded = !opensIntoColumns
+            };
 
-                // A table's columns are read when it is first expanded; everything else has none.
-                ChildrenLoaded = childType != DatabaseNodeType.Table && childType != DatabaseNodeType.View
-            });
+            // The expander is drawn from the children, and the children are read when the
+            // expander is used. One stand-in child breaks that circle; it is replaced by the
+            // real columns the first time the node is opened.
+            if (opensIntoColumns)
+            {
+                node.Children.Add(new DatabaseNode
+                {
+                    Name = string.Empty,
+                    NodeType = DatabaseNodeType.Column,
+                    ConnectionId = session.Id,
+                    ParentName = child,
+                    ChildrenLoaded = true,
+                    IsPlaceholder = true
+                });
+            }
+
+            folder.Children.Add(node);
         }
 
         // The number of objects, which INFORMATION_SCHEMA answers for nothing. An empty folder keeps
@@ -1403,11 +1438,6 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand CreateIndexCommand { get; private set; } = null!;
 
     public ICommand CreateTriggerCommand { get; private set; } = null!;
-
-    /// <summary>
-    /// Loads a node's children the first time it is opened.
-    /// </summary>
-    public ICommand ExpandNodeCommand { get; private set; } = null!;
 
     public ICommand ClearFilterCommand { get; private set; } = null!;
 
