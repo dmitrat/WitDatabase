@@ -21,17 +21,22 @@
                 Padding="10,6"
                 IsVisible="{Binding IsReadOnly}"
                 AutomationProperties.AutomationId="TableEditReadOnlyBanner">
-            <StackPanel Orientation="Horizontal" Spacing="8">
-                <PathIcon Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
+            <!-- A Grid, not a horizontal StackPanel: a StackPanel measures its children with
+                 INFINITE width, so the Wrap below could never happen and the sentence was cut off
+                 by the window edge - measured in the running application, 2026-08-19. The same
+                 shape as findings 26 and 31. -->
+            <Grid ColumnDefinitions="Auto,*">
+                <PathIcon Grid.Column="0" Data="{x:Static ui:StudioIcons.COMMON_WARNING}"
                           Width="{DynamicResource Wit.Icon.Normal}" Height="{DynamicResource Wit.Icon.Normal}"
                           Foreground="{DynamicResource Wit.Warn.Text}"
                           VerticalAlignment="Center"/>
-                <TextBlock Text="{Binding ReadOnlyReason}"
+                <TextBlock Grid.Column="1" Text="{Binding ReadOnlyReason}"
                            FontSize="{DynamicResource Wit.Font.Body}"
                            TextWrapping="Wrap"
+                           Margin="8,0,0,0"
                            Foreground="{DynamicResource Wit.Warn.Text}"
                            VerticalAlignment="Center"/>
-            </StackPanel>
+            </Grid>
         </Border>
 
         <!-- Toolbar -->
@@ -321,9 +326,6 @@
                         <Setter Property="BorderThickness" Value="3,0,0,0"/>
                     </Style>
 
-                    <Style Selector="DataGridRow.row-deleted TextBlock">
-                        <Setter Property="TextDecorations" Value="Strikethrough"/>
-                    </Style>
                 </c:EditableDataGrid.Styles>
             </c:EditableDataGrid>
 
