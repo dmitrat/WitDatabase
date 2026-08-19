@@ -16,6 +16,14 @@ namespace OutWit.Database.Studio.ViewModels;
 /// </summary>
 public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 {
+    #region Fields
+
+    /// <summary>Who said what is on the status line, when what it says is a state rather than an event.</summary>
+    private object? m_statusOwner;
+    private string? m_statusSaid;
+
+    #endregion
+
     #region Constructors
 
     public MainWindowViewModel(ApplicationViewModel applicationVm)
@@ -623,6 +631,43 @@ public sealed class MainWindowViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public string StatusText { get; set; } = null!;
+
+    /// <summary>
+    /// Says something that is true only WHILE <paramref name="owner"/> is there.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// Most of what this line carries is an EVENT - «executed in 9 ms», «loaded 28 rows» - and an
+    /// event stays true after it happens. «Editing table Products» is not an event, it is a state,
+    /// and it was still on the line after the tab it described had been closed: measured on
+    /// 2026-08-19 with no editor open at all.
+    /// </para>
+    /// <para>
+    /// The owner is compared by reference AND the text is compared to what was set, so a later
+    /// message from anywhere else is never taken away by the owner closing afterwards.
+    /// </para>
+    /// </remarks>
+    public void SayThisWhile(object owner, string text)
+    {
+        StatusText = text;
+
+        m_statusOwner = owner;
+        m_statusSaid = text;
+    }
+
+    /// <summary>
+    /// Takes back what <paramref name="owner"/> said, if it is still on the line.
+    /// </summary>
+    public void ForgetWhatWasSaidBy(object owner)
+    {
+        if (!ReferenceEquals(m_statusOwner, owner) || StatusText != m_statusSaid)
+            return;
+
+        m_statusOwner = null;
+        m_statusSaid = null;
+
+        StatusText = Localization["Status.Ready"];
+    }
 
     [Notify]
     public bool IsLoading { get; set; }

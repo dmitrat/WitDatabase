@@ -339,6 +339,9 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             SelectedTab = Tabs[index];
         }
 
+        // A tab that said something about itself on the status line takes it back with it.
+        ApplicationVm.MainWindowVm.ForgetWhatWasSaidBy(tab);
+
         Logger.LogInformation("Closed tab: {Title}", tab.Title);
     }
 
@@ -363,6 +366,8 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             tab.PropertyChanged -= OnTabPropertyChanged;
             tab.OnClosed();
             Tabs.Remove(tab);
+
+            ApplicationVm.MainWindowVm.ForgetWhatWasSaidBy(tab);
         }
 
         SelectedTab ??= Tabs.LastOrDefault();
@@ -385,6 +390,8 @@ public class WorkspaceTabsViewModel : ViewModelBase<ApplicationViewModel>
             tab.PropertyChanged -= OnTabPropertyChanged;
             tab.OnClosed();
             Tabs.Remove(tab);
+
+            ApplicationVm.MainWindowVm.ForgetWhatWasSaidBy(tab);
         }
 
         SelectedTab = keepTab;
