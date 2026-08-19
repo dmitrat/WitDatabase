@@ -141,6 +141,8 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
         OnPropertyChanged(nameof(EverythingLabel));
         OnPropertyChanged(nameof(QuerySourceSummary));
         OnPropertyChanged(nameof(ProgressText));
+        OnPropertyChanged(nameof(KnowsHowManyRows));
+        OnPropertyChanged(nameof(WindowTitle));
     }
 
     #endregion
@@ -716,6 +718,28 @@ public class ExportViewModel : ViewModelBase<ApplicationViewModel>
 
     /// <summary>How far the export has got. Shown over the window while it runs.</summary>
     public string ProgressText => Localization.Format("Dialog.Export.Progress", RowsExported, TotalRows);
+
+    /// <summary>
+    /// Whether the number of rows is known yet.
+    /// </summary>
+    /// <remarks>
+    /// The panel opens the moment the export starts, which is BEFORE the rows have been
+    /// fetched - so its first frame read "Exporting... 0 / 0 rows" at "0.0 %", and that is the
+    /// frame anybody photographing an export in progress is most likely to catch. Zero out of
+    /// zero is not a small number; it is no number at all, and the numbers wait for it.
+    /// </remarks>
+    public bool KnowsHowManyRows => TotalRows > 0;
+
+    /// <summary>
+    /// Which of the two exports this window is: a TABLE, chosen from the list, or the RESULT of
+    /// a query, with its three scopes and their counts.
+    /// </summary>
+    /// <remarks>
+    /// Both were called <i>Export Data</i>, in the menu and in the title bar, and they are not
+    /// the same window: somebody looking in Tools for the scopes will not find them there.
+    /// </remarks>
+    public string WindowTitle =>
+        Localization[IsQueryResult ? "Dialog.Export.Title.Results" : "Dialog.Export.Title.Table"];
 
     /// <summary>
     /// Whether "Selection" can be chosen at all. An empty selection offered as a scope is a button

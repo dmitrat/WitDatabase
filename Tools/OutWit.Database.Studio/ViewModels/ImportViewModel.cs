@@ -718,7 +718,12 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
                 catch (Exception ex)
                 {
                     RowsFailed++;
-                    
+
+                    // Every rejected row, not only the ten the window shows - the same as the CSV
+                    // path beside it, which has done this since WS-36. Without it an import that
+                    // reports "15 failed" can name ten of them and has thrown the rest away.
+                    Rejected.Add(new ImportRejection(rowNumber, ex.Message, string.Empty));
+
                     if (ImportErrors.Count < MAX_ERRORS_TO_SHOW)
                     {
                         ImportErrors.Add($"Row {rowNumber}: {ex.Message}");
@@ -1041,7 +1046,17 @@ public class ImportViewModel : ViewModelBase<ApplicationViewModel>
     public string PreviewRowsSummary =>
         Localization.Format("Dialog.Import.Preview.Approx", Localization.Plural("Count.Rows", TotalRows));
 
-    public string PreviewColumnsSummary => Localization.Plural("Count.Columns", ColumnMappings?.Count ?? 0);
+    /// <summary>
+    /// How many columns the file was read as having.
+    /// </summary>
+    /// <remarks>
+    /// <b>From the parse, not from the mapping.</b> This asked <c>ColumnMappings</c>, which is
+    /// built on step 3 - so on step 1 it answered "0 columns" for every file, which is exactly
+    /// what a wrong delimiter would look like if the number meant anything. Catching a wrong
+    /// delimiter before anything is written is what the preview is for.
+    /// </remarks>
+    public string PreviewColumnsSummary => Localization.Plural("Count.Columns",
+        PreviewData?.Columns.Count ?? ColumnMappings?.Count ?? 0);
 
     /// <summary>How far the import has got, over the window while it runs.</summary>
     public string ProgressText => Localization.Format("Dialog.Import.Progress", RowsImported, TotalRows);
