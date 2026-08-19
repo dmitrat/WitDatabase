@@ -177,7 +177,13 @@
                                 </MenuItem.Icon>
                             </MenuItem>
 
-                            <Separator/>
+                            <!-- The five rules of this menu are drawn only where they divide two
+                                 groups that are both there. Every ITEM above and below learned to
+                                 hide itself where it does not apply and the separators did not, so
+                                 a connection's menu drew two rules with nothing between them and
+                                 two more below its last item, and a folder's menu began with one.
+                                 Reported from a screenshot, 2026-08-19. -->
+                            <Separator IsVisible="{Binding DatabaseExplorerVm.ShowsRuleBeforeCreate}"/>
 
                             <!-- Create actions -->
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerCreate" Header="{DynamicResource S.Explorer.Menu.Create}"
@@ -216,8 +222,8 @@
                                 </MenuItem>
                             </MenuItem>
                             
-                            <Separator/>
-                            
+                            <Separator IsVisible="{Binding DatabaseExplorerVm.ShowsRuleBeforeObjectActions}"/>
+
                             <!-- Select data submenu -->
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerSelectData" Header="{DynamicResource S.Explorer.Menu.SelectData}"
                                       IsVisible="{Binding DatabaseExplorerVm.ShowsBrowseData}"
@@ -258,8 +264,8 @@
                                 </MenuItem.Icon>
                             </MenuItem>
                             
-                            <Separator/>
-                            
+                            <Separator IsVisible="{Binding DatabaseExplorerVm.ShowsRuleBeforeRefresh}"/>
+
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerRefresh2" Header="{DynamicResource S.Common.Refresh}"
                                       Command="{Binding DatabaseExplorerVm.RefreshCommand}">
                                 <MenuItem.Icon>
@@ -267,7 +273,7 @@
                                 </MenuItem.Icon>
                             </MenuItem>
                             
-                            <Separator/>
+                            <Separator IsVisible="{Binding DatabaseExplorerVm.ShowsRuleBeforeRename}"/>
 
                             <!-- Deferred here from stage 5. Rename is offered for a table only: there
                                  is no ALTER VIEW, ALTER INDEX or ALTER TRIGGER in this language. -->
@@ -289,7 +295,7 @@
                                 </MenuItem.Icon>
                             </MenuItem>
 
-                            <Separator/>
+                            <Separator IsVisible="{Binding DatabaseExplorerVm.ShowsRuleBeforeDrop}"/>
 
                             <MenuItem AutomationProperties.AutomationId="DatabaseExplorerDrop" Header="{DynamicResource S.Explorer.Menu.Drop}"
                                       Command="{Binding DatabaseExplorerVm.DropObjectCommand}"
