@@ -82,7 +82,16 @@ public sealed class ApplicationViewModel
         Settings.Changed += (_, e) =>
         {
             if (e.PropertyName == nameof(Models.Settings.Language))
+            {
                 Localization.SetLanguage(Settings.Current.Language);
+
+                // The status bar is written into from 57 places, each of them formatting a
+                // sentence at the moment of its event, and nothing re-reads them - so a message
+                // stayed in the language it was written in. Rather than teach every call site to
+                // keep its key and its arguments, the bar returns to its idle sentence: a stale
+                // message in the language somebody has just left is worse than none.
+                MainWindowVm.StatusText = Localization["Status.Ready"];
+            }
 
             if (e.PropertyName is nameof(Models.Settings.DateTimeFormat)
                 or nameof(Models.Settings.NumberFormat)

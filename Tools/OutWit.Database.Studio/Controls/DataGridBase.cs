@@ -117,7 +117,7 @@ public abstract partial class DataGridBase : DataGrid
     /// <summary>
     /// Creates a column for the specified DataColumn.
     /// </summary>
-    protected virtual DataGridTextColumn CreateColumn(DataColumn dataColumn, int ordinal, string className)
+    protected virtual DataGridColumn CreateColumn(DataColumn dataColumn, int ordinal, string className)
     {
         var column = new DataGridTextColumn
         {

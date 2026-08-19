@@ -276,7 +276,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
             if (EditableData != null)
             {
-                CurrentView = new DataView(EditableData);
+                CurrentView = ViewOver(EditableData);
                 TotalRowCount = EditableData.Rows.Count;
             }
 
@@ -568,7 +568,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         m_newRows.Add(newRow);
         TotalRowCount = EditableData.Rows.Count;
 
-        CurrentView = new DataView(EditableData);
+        CurrentView = ViewOver(EditableData);
 
         UpdateStatus();
 
@@ -596,6 +596,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         TotalRowCount = EditableData.Rows.Count - m_deletedRows.Count;
         SelectedRowView = null;
 
+        ForgetTheLastMessage();
         UpdateStatus();
     }
 
@@ -832,7 +833,7 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
             EditableData.ImportRow(row);
         }
 
-        CurrentView = new DataView(EditableData);
+        CurrentView = ViewOver(EditableData);
         TotalRowCount = EditableData.Rows.Count;
 
         SetSuccessStatus(Localization["Grid.Discarded"]);
@@ -849,6 +850,23 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         m_newRows.Clear();
     }
 
+    /// <summary>
+    /// The view the grid draws, including the rows that are going to be deleted.
+    /// </summary>
+    /// <remarks>
+    /// <b>A deleted row used to vanish.</b> Deleting has always been <c>DataRow.Delete</c>, which
+    /// MARKS the row rather than removing it - what hid it was the default <c>RowStateFilter</c>,
+    /// which shows current rows only. So the count dropped by one and nothing said which row had
+    /// gone, and discarding the whole buffer was the only way to find out. It stays in place now,
+    /// struck through, until the set is applied.
+    /// </remarks>
+    private static DataView ViewOver(DataTable table)
+    {
+        return new DataView(table)
+        {
+            RowStateFilter = DataViewRowState.CurrentRows | DataViewRowState.Deleted
+        };
+    }
     private void OnCellEdited(DataRowView? rowView)
     {
         if (EditableData == null || rowView == null)
@@ -858,12 +876,43 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
 
         if (!m_newRows.Contains(row))
         {
-            m_modifiedRows.Add(row);
-            Logger.LogDebug("Row marked as modified. Total modified: {Count}", m_modifiedRows.Count);
+            // The grid raises this whenever an edit ENDS, which includes ending it without typing:
+            // double-clicking a cell and leaving used to give the tab its dot, raise the Unsaved
+            // changes badge and light Commit, with nothing differing from what was read. And the
+            // other direction is the same question: a row edited back to its own values is not a
+            // change either, and used to stay marked until the whole buffer was discarded.
+            if (DiffersFromWhatWasRead(row))
+                m_modifiedRows.Add(row);
+            else
+                m_modifiedRows.Remove(row);
+
+            Logger.LogDebug("Rows modified: {Count}", m_modifiedRows.Count);
         }
 
-        IsModified = true;
+        ForgetTheLastMessage();
         UpdateStatus();
+    }
+
+    /// <summary>
+    /// Whether any column of <paramref name="row"/> differs from the value it was read with.
+    /// </summary>
+    /// <remarks>
+    /// The comparison is against the row's ORIGINAL version rather than against a snapshot of our
+    /// own: the table is given <c>AcceptChanges</c> the moment it is loaded, so every row starts
+    /// unchanged and keeps what it was read with for as long as it lives.
+    /// </remarks>
+    private static bool DiffersFromWhatWasRead(DataRow row)
+    {
+        if (row.RowState == DataRowState.Added || !row.HasVersion(DataRowVersion.Original))
+            return true;
+
+        for (var index = 0; index < row.Table.Columns.Count; index++)
+        {
+            if (!Equals(row[index, DataRowVersion.Original], row[index, DataRowVersion.Current]))
+                return true;
+        }
+
+        return false;
     }
 
     #endregion
@@ -1194,6 +1243,10 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     private void UpdateStatus()
     {
         HasChanges = m_deletedRows.Count > 0 || m_modifiedRows.Count > 0 || m_newRows.Count > 0;
+
+        // The grid re-marks the rows it already has on screen when this moves. Without it the
+        // row somebody has just deleted keeps looking untouched until it scrolls past.
+        RowMarks++;
         IsModified = HasChanges;
         CanCommit = HasChanges && !IsLoading && !IsReadOnly;
         CanRollback = HasChanges && !IsLoading;
@@ -1223,6 +1276,21 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
         IsDefaultState = !HasError && !LastOperationSuccess;
     }
 
+    /// <summary>
+    /// Takes away a message that describes the state the buffer has just left.
+    /// </summary>
+    /// <remarks>
+    /// <b>«Changes discarded» used to stay</b> until some later event replaced it, so editing a
+    /// cell straight after discarding left the bar saying the changes were discarded while the
+    /// toolbar above it said there were unsaved changes. The two contradicted each other in the
+    /// same frame. This is deliberately narrow: a message is taken away by a CHANGE to the buffer,
+    /// not by a timer and not by every event - a message nothing has contradicted stays.
+    /// </remarks>
+    private void ForgetTheLastMessage()
+    {
+        StatusMessage = null;
+        ErrorMessage = null;
+    }
     private void SetSuccessStatus(string message)
     {
         ErrorMessage = null;
@@ -1360,6 +1428,13 @@ public class TableEditTabViewModel : WorkspaceTabViewModel
     /// </summary>
     [Notify]
     public bool CanGoToFirstPage { get; private set; }
+
+    /// <summary>
+    /// Moves whenever a row is changed, deleted or added. The grid watches it and re-draws its
+    /// marks; it carries no meaning of its own.
+    /// </summary>
+    [Notify]
+    public int RowMarks { get; private set; }
 
     /// <summary>
     /// True when this page is being reached by counting rows from the beginning of the table rather
