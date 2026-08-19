@@ -3,6 +3,48 @@
 Studio is versioned separately from the WitDatabase engine and released under its own `studio-v*` tag.
 The engine's changelog is `/CHANGELOG.md`.
 
+## 3.1.1
+
+**Four corrections, three of them to things 3.1.0 itself broke.** They were found the day 3.1.0
+shipped, by using it.
+
+Engine: 14.0.0, unchanged.
+
+### The double click works again
+
+A double click on a table opens its data. It had done nothing at all since the repair that was
+meant to fix it: `DoubleTapped` travels `Bubble` alone, `AddHandler` takes the route as a plain
+argument and cannot refuse an impossible one, so the handler was registered on a route the event
+does not travel and was never called - through a green suite, a green CI and a signed release. The
+double click is now read from the pointer, which does tunnel.
+
+The row no longer opens as well: handling the press does not stop the tap, so the tree still
+toggled itself, and a table both opened its data and opened its row.
+
+**And a double click on the connection now opens the tab that describes the database** - the same
+one *Database…* opens in the menu. One rule rather than three exceptions: a double click opens the
+thing the node IS. Which node opens what moved out of the code-behind, where no test could read
+it.
+
+### The menu draws no rule with nothing beside it
+
+Giving each node its own menu taught every ITEM to hide itself where it does not apply, and left
+the five separators drawing the shape of a menu that is no longer there: a connection got two
+rules with nothing between them and two more below its last item, a folder began with a rule, a
+column was one command wrapped in five. All fourteen kinds of node were wrong, the table included.
+
+### The status line takes back what is no longer true
+
+With no editor open anywhere the line still read *Editing table: Products*. What HAPPENED stays -
+«executed in 9 ms» is true afterwards - but what IS ends with the tab it belongs to.
+
+### Known issues
+
+Two engine defects were found in the same pass and are **not** fixed here, because the engine did
+not move: a join condition written `ON right.x = left.y` is refused, and `EXPLAIN` gives the right
+input’s child the wrong parent. Both are written up with their root cause in
+[Docs/KnownIssues.md](../../Docs/KnownIssues.md) as issues 25 and 26; issue 27 is a gap in Studio
+itself - a routine in the tree can only be refreshed.
 ## 3.1.0
 
 **Forty-six findings, and what looking for them turned up.** Taking the screenshots for the

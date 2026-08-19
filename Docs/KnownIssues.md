@@ -1520,6 +1520,100 @@ that does not exist.
 
 ---
 
+## Found by clicking through Studio before 3.1.1, 2026-08-19
+
+Both of the engine entries below were reproduced against a bare `WitSqlEngine` over an in-memory
+database, with no Studio in the picture. The third is a gap in Studio itself, recorded here
+because a person meeting it will look for it here.
+
+---
+
+## 25. A join condition written the other way round is refused
+
+> Measured 2026-08-19 on engine 14.0.0. **Root cause identified**, fix not written.
+
+In `A JOIN B ON x = y`, the column of the LEFT input has to be written FIRST. Written the other
+way, the query fails at execution with a `KeyNotFoundException`:
+
+```sql
+SELECT c.Country, o.Total FROM Customers c JOIN Orders o ON c.Id = o.CustomerId   -- 3 rows
+SELECT c.Country, o.Total FROM Customers c JOIN Orders o ON o.CustomerId = c.Id   -- Column 'CustomerId' not found
+SELECT Customers.Country FROM Customers JOIN Orders
+     ON Orders.CustomerId = Customers.Id                                          -- the same, without aliases
+```
+
+**In a chain of joins, "the left input" is everything joined so far**, which is the shape most
+likely to be met by accident:
+
+```sql
+SELECT c.Country FROM Customers c JOIN Orders o ON c.Id = o.CustomerId
+                                  JOIN Items i ON i.OrderId = o.Id                -- Column 'OrderId' not found
+```
+
+**Root cause.** `Optimizers/OptimizerJoinCondition.TryExtractEquiJoinKey` builds the key pair as
+`LeftKey = binary.Left, RightKey = binary.Right` - it takes **the written order of the equality**
+for the order of the join inputs. It checks that the two column references carry different table
+qualifiers and never checks WHICH input each belongs to, so `IteratorHashJoin.ComputeHashKey`
+evaluates the right table’s column against rows of the left one and the evaluator throws.
+
+**Where a fix belongs:** `Query/QueryPlanner.Sources.cs`, `CreateJoinIterator` - it already holds
+both input iterators and therefore both schemas, so each pair can be oriented before the iterator
+is built. Unqualified columns are already sent to the residual condition, so only the qualified
+case needs it.
+
+**What was measured, and what it means for a workaround:**
+
+| written as | result |
+|---|---|
+| `INNER JOIN ... ON left.x = right.y` | works |
+| `INNER JOIN ... ON right.y = left.x` | **fails** |
+| `LEFT JOIN ... ON right.y = left.x` | works |
+| `FROM a, b WHERE right.y = left.x` | works |
+
+So: **write the left side’s column first**, or put the condition in `WHERE` with a comma join.
+The failure is in the hash-join path, and the planner chose a hash join even for two-row tables.
+
+**Why the suite never saw it:** every JOIN case in the engine writes the equality in the same
+order.
+
+---
+
+## 26. `EXPLAIN` gives the right input’s child the wrong parent
+
+> Measured 2026-08-19 on engine 14.0.0.
+
+For `SELECT c.Country, o.Total FROM Customers c JOIN Orders o ON c.Id = o.CustomerId LIMIT 3`,
+`EXPLAIN` answers:
+
+```
+id parent detail
+0  -1     LIMIT
+1   0     PROJECT
+2   1     HASH INNER JOIN
+3   2     ALIAS c
+4   3     SCAN TABLE Customers
+5   2     ALIAS o
+6   3     SCAN TABLE Orders     <- parent should be 5
+```
+
+`SCAN TABLE Orders` is reported as a child of `ALIAS c`. Anything that draws the plan as a tree -
+Studio’s Plan panel does - draws the wrong tree, faithfully. **The renderer is not the defect.**
+
+---
+
+## 27. Studio: a function or a procedure can only be refreshed
+
+> Studio 3.1.1. A gap rather than a wrong answer.
+
+The tree’s context menu offers a routine exactly one item, `Refresh`. The engine has
+`DROP FUNCTION` and `DROP PROCEDURE`, and the catalogue already carries the routine’s body - the
+inspector on the right shows it - so both *View definition* and *Drop* are possible and neither is
+offered. Every other kind of object in the tree was given its own menu in 3.1.0; routines were not
+included.
+
+Until they are: drop a routine by running the statement in a query tab.
+
+---
 ## Verifying a fix
 
 WitAnalytics is a ready-made regression harness: its stats test fixture runs the
