@@ -169,7 +169,12 @@ public partial class QueryTabViewModel : ISqlCompletionSource
         {
             UnderlineLine = SyntaxErrorLine;
             UnderlineColumn = SyntaxErrorColumn;
-            UnderlineLength = 1;
+
+            // The word, like the executed path beside it. This branch WINS whenever the text does not
+            // parse, so it is the one a person sees for a syntax error - and it hard-coded a single
+            // character. Driving Studio on 2026-08-19 showed the mark still one letter wide after the
+            // other branch had been fixed: the ViewModel said seven and the window drew one.
+            UnderlineLength = LengthOfTheOffendingToken(SyntaxError?.Detail ?? SyntaxError?.Message);
             return;
         }
 
