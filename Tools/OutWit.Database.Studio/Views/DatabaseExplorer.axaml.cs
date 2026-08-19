@@ -103,7 +103,8 @@ public partial class DatabaseExplorer : UserControl
     #region Event Handlers
 
     /// <summary>
-    /// A double click opens the DATA of a table, not its structure (WS-19).
+    /// A double click opens the thing the node IS - a table's data rather than its structure
+    /// (WS-19), a view's rows, and a connection's own tab.
     ///
     /// It used to open the structure, with the data hidden in the context menu - while looking at the
     /// data is what people come to a database tool to do, by an order of magnitude. The structure is
@@ -116,10 +117,10 @@ public partial class DatabaseExplorer : UserControl
     /// application's behaviour.
     /// </para>
     /// </summary>
-    private void OpenTheDataUnderThePointer(PointerPressedEventArgs e)
+    private void OpenWhatIsUnderThePointer(PointerPressedEventArgs e)
     {
         // The chevron is a control of its own, and two clicks on it are two toggles rather than a
-        // request for the data.
+        // request for what is in the row.
         if (PressedOnTheChevron(e))
             return;
 
@@ -133,19 +134,12 @@ public partial class DatabaseExplorer : UserControl
         // order the tree does its own work in.
         explorer.SelectedNode = node;
 
-        switch (node.NodeType)
-        {
-            case DatabaseNodeType.Table when explorer.CanEditData:
-                explorer.EditDataCommand.Execute(null);
-                break;
+        // WHAT is opened is the ViewModel's decision, not this handler's: a gesture belongs here, a
+        // rule does not, and a rule written here is a rule no test can read.
+        if (!explorer.CanOpenWhatItIs)
+            return;
 
-            case DatabaseNodeType.View when explorer.CanBrowseData:
-                explorer.SelectTop1000Command.Execute(null);
-                break;
-
-            default:
-                return;
-        }
+        explorer.OpenWhatItIsCommand.Execute(null);
 
         // The tap that follows this press will toggle the row. Remember what to put back.
         m_rowToLeaveAsItWas = item;
@@ -213,7 +207,7 @@ public partial class DatabaseExplorer : UserControl
         }
 
         if (properties.IsLeftButtonPressed && e.ClickCount == 2)
-            OpenTheDataUnderThePointer(e);
+            OpenWhatIsUnderThePointer(e);
     }
 
     /// <summary>The row the pointer is over, if it is over one.</summary>

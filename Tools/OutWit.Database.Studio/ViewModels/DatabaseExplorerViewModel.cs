@@ -44,6 +44,7 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
         SelectTop100Command = new RelayCommand(SelectTop100);
         SelectTop1000Command = new RelayCommand(SelectTop1000);
         OpenDatabaseTabCommand = new RelayCommandAsync(OpenDatabaseTabAsync);
+        OpenWhatItIsCommand = new RelayCommandAsync(OpenWhatItIsAsync);
         EditDataCommand = new RelayCommandAsync(EditDataAsync);
         ViewStructureCommand = new RelayCommandAsync(ViewStructureAsync);
         ViewDefinitionCommand = new RelayCommandAsync(ViewDefinitionAsync);
@@ -252,6 +253,49 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
             tab.IsReadOnly ? "Explorer.Viewing" : "Explorer.Editing", tableName);
 
         Logger.LogInformation("Edit data for table {TableName} in {Connection}", tableName, session.DisplayName);
+    }
+
+    /// <summary>
+    /// What a double click opens: the thing the node IS.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// One rule rather than three exceptions. A table IS its rows, so it opens the editor (WS-19); a
+    /// view IS the rows it selects, so it opens them; and the connection IS the database, so it opens
+    /// the tab that describes it - the same one <i>Database…</i> opens in the menu. Everything else
+    /// answers <see cref="CanOpenWhatItIs"/> with false and keeps the tree's own behaviour, which for
+    /// a folder is to open and close.
+    /// </para>
+    /// <para>
+    /// It lives here rather than in the code-behind because the code-behind is the half no test can
+    /// reach, and this is a decision - which node opens what - rather than a gesture.
+    /// </para>
+    /// </remarks>
+    public bool CanOpenWhatItIs => SelectedNode?.NodeType switch
+    {
+        DatabaseNodeType.Table => CanEditData,
+        DatabaseNodeType.View => CanBrowseData,
+        DatabaseNodeType.Database => CanOpenDatabaseTab,
+        _ => false
+    };
+
+    /// <inheritdoc cref="CanOpenWhatItIs"/>
+    public async Task OpenWhatItIsAsync()
+    {
+        switch (SelectedNode?.NodeType)
+        {
+            case DatabaseNodeType.Table when CanEditData:
+                await EditDataAsync();
+                break;
+
+            case DatabaseNodeType.View when CanBrowseData:
+                SelectTopRows(1000);
+                break;
+
+            case DatabaseNodeType.Database when CanOpenDatabaseTab:
+                await OpenDatabaseTabAsync();
+                break;
+        }
     }
 
     /// <summary>
@@ -1450,6 +1494,9 @@ public class DatabaseExplorerViewModel : ViewModelBase<ApplicationViewModel>
     public ICommand SelectTop1000Command { get; private set; } = null!;
 
     public ICommand OpenDatabaseTabCommand { get; private set; } = null!;
+
+    /// <summary>The double click, which opens the thing the node is.</summary>
+    public ICommand OpenWhatItIsCommand { get; private set; } = null!;
 
     [Notify]
     public ICommand EditDataCommand { get; private set; } = null!;
