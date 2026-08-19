@@ -117,7 +117,7 @@
 
                     <TextBlock Text="{DynamicResource S.Settings.Group.Recent}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{DynamicResource S.Settings.RememberHowMany}" VerticalAlignment="Center" Width="140"/>
+                        <TextBlock Text="{DynamicResource S.Settings.RememberHowMany}" VerticalAlignment="Center" Width="140" TextWrapping="Wrap"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsRecentCount"
                                   ItemsSource="{Binding RecentCounts}"
                                   SelectedItem="{Binding Values.MaxRecentFiles}" Width="90"/>
@@ -134,7 +134,7 @@
 
                     <TextBlock Text="{DynamicResource S.Settings.Group.Look}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,8,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{DynamicResource S.Settings.Font}" VerticalAlignment="Center" Width="140"/>
+                        <TextBlock Text="{DynamicResource S.Settings.Font}" VerticalAlignment="Center" Width="140" TextWrapping="Wrap"/>
                         <TextBox AutomationProperties.AutomationId="SettingsFontFamily"
                                  Text="{Binding Values.EditorFontFamily}" Width="180"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsFontSize"
@@ -148,7 +148,7 @@
                     <CheckBox Content="{DynamicResource S.Settings.CompleteAsYouType}" IsChecked="{Binding Values.CompleteAsYouType}"/>
                     <CheckBox Content="{DynamicResource S.Settings.CheckSyntax}" IsChecked="{Binding Values.CheckSyntaxAsYouType}"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{DynamicResource S.Settings.KeywordCase}" VerticalAlignment="Center" Width="140"/>
+                        <TextBlock Text="{DynamicResource S.Settings.KeywordCase}" VerticalAlignment="Center" Width="140" TextWrapping="Wrap"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsKeywordCase"
                                   ItemsSource="{Binding KeywordCases}"
                                   SelectedItem="{Binding Values.KeywordCase}" Width="140"/>
@@ -156,7 +156,7 @@
 
                     <TextBlock Text="{DynamicResource S.Settings.Group.Execution}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{DynamicResource S.Settings.RowLimit}" VerticalAlignment="Center" Width="140"/>
+                        <TextBlock Text="{DynamicResource S.Settings.RowLimit}" VerticalAlignment="Center" Width="140" TextWrapping="Wrap"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsRowLimit"
                                   ItemsSource="{Binding RowLimits}"
                                   SelectedItem="{Binding Values.DefaultRowLimit}" Width="140"/>
@@ -170,20 +170,20 @@
 
                     <TextBlock Text="{DynamicResource S.Settings.Group.Formats}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,8,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{DynamicResource S.Settings.DateTime}" VerticalAlignment="Center" Width="140"/>
+                        <TextBlock Text="{DynamicResource S.Settings.DateTime}" VerticalAlignment="Center" Width="140" TextWrapping="Wrap"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsDateFormat"
                                   ItemsSource="{Binding DateTimeFormats}"
                                   SelectedItem="{Binding Values.DateTimeFormat}" Width="140"/>
                     </StackPanel>
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{DynamicResource S.Settings.Numbers}" VerticalAlignment="Center" Width="140"/>
+                        <TextBlock Text="{DynamicResource S.Settings.Numbers}" VerticalAlignment="Center" Width="140" TextWrapping="Wrap"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsNumberFormat"
                                   ItemsSource="{Binding NumberFormats}"
                                   SelectedItem="{Binding Values.NumberFormat}" Width="140"/>
                     </StackPanel>
                     <TextBlock Text="{DynamicResource S.Settings.Formats.Hint}" Opacity="0.55" FontSize="{DynamicResource Wit.Font.Control}" TextWrapping="Wrap"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{DynamicResource S.Settings.Binary}" VerticalAlignment="Center" Width="140"/>
+                        <TextBlock Text="{DynamicResource S.Settings.Binary}" VerticalAlignment="Center" Width="140" TextWrapping="Wrap"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsBinaryDisplay"
                                   ItemsSource="{Binding BinaryDisplays}"
                                   SelectedItem="{Binding Values.BinaryDisplay}" Width="140"/>
@@ -191,7 +191,7 @@
 
                     <TextBlock Text="{DynamicResource S.Settings.Group.Grid}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,10,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{DynamicResource S.Settings.PageSize}" VerticalAlignment="Center" Width="140"/>
+                        <TextBlock Text="{DynamicResource S.Settings.PageSize}" VerticalAlignment="Center" Width="140" TextWrapping="Wrap"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsPageSize"
                                   ItemsSource="{Binding PageSizes}"
                                   SelectedItem="{Binding Values.GridPageSize}" Width="140"/>
@@ -213,7 +213,7 @@
 
                     <TextBlock Text="{DynamicResource S.Settings.Group.Log}" FontSize="{DynamicResource Wit.Font.Caption}" Opacity="0.55" Margin="0,8,0,0"/>
                     <StackPanel Orientation="Horizontal" Spacing="10">
-                        <TextBlock Text="{DynamicResource S.Settings.LogLevel}" VerticalAlignment="Center" Width="140"/>
+                        <TextBlock Text="{DynamicResource S.Settings.LogLevel}" VerticalAlignment="Center" Width="140" TextWrapping="Wrap"/>
                         <ComboBox AutomationProperties.AutomationId="SettingsLogLevel"
                                   ItemsSource="{Binding LogLevels}"
                                   SelectedItem="{Binding Values.LogLevel}" Width="140"/>

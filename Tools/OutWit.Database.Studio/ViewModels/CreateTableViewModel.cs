@@ -120,6 +120,9 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
             return;
 
         GeneratedDdl = BuildCreateTableSql();
+        TypeProblem = FirstTypeTheEngineWouldRefuse();
+        UpdateStatus();
+
         Logger.LogInformation("Generated DDL for table {TableName}", TableName);
     }
 
@@ -221,12 +224,40 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
 
     #region Tools
 
+    /// <summary>
+    /// The first column whose type this engine would refuse, as a sentence, or null.
+    /// </summary>
+    /// <remarks>
+    /// <b>Checked by parsing, not against a list.</b> This engine refuses an unknown type name
+    /// rather than mapping it to TEXT - <c>INTEGERR</c>, <c>VARCHAR2</c> and <c>MEDIUMINT</c> are
+    /// parse errors - so the question "will this be accepted" already has an authority, and a
+    /// second list of type names kept beside it would go out of date in silence.
+    /// </remarks>
+    private string? FirstTypeTheEngineWouldRefuse()
+    {
+        foreach (var column in Columns)
+        {
+            if (string.IsNullOrWhiteSpace(column.Name) || string.IsNullOrWhiteSpace(column.DataType))
+                continue;
+
+            // One column at a time, so the message can name the one that is wrong.
+            var probe = $"CREATE TABLE WitTypeProbe (WitTypeProbeColumn {column.DataType});";
+
+            if (SqlScript.Split(probe).IsSuccess)
+                continue;
+
+            return Localization.Format("Dialog.CreateTable.UnknownType", column.Name, column.DataType);
+        }
+
+        return null;
+    }
     private void UpdateStatus()
     {
         var hasTableName = !string.IsNullOrWhiteSpace(TableName);
         var hasColumns = Columns.Count > 0;
 
-        CanCreateTable = hasTableName && hasColumns && !IsCreating && Database?.IsConnected == true;
+        CanCreateTable = hasTableName && hasColumns && !IsCreating && Database?.IsConnected == true
+                         && string.IsNullOrEmpty(TypeProblem);
         CanGenerateDdl = hasTableName && hasColumns;
         CanRemoveColumn = SelectedColumn != null && Columns.Count > 1;
     }
@@ -279,6 +310,12 @@ public class CreateTableViewModel : ViewModelBase<ApplicationViewModel>
 
     [Notify]
     public bool CanGenerateDdl { get; private set; }
+
+    /// <summary>
+    /// Which column carries a type the engine would refuse, in a sentence, or null when none does.
+    /// </summary>
+    [Notify]
+    public string? TypeProblem { get; private set; }
 
     [Notify]
     public bool CanCreateTable { get; private set; }

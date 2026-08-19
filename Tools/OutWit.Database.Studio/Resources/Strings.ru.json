@@ -332,6 +332,7 @@
   "Dialog.CreateTable.Columns": "Столбцы:",
   "Dialog.CreateTable.AddColumn": "+ Добавить столбец",
   "Dialog.CreateTable.Ddl": "Сгенерированный DDL:",
+  "Dialog.CreateTable.UnknownType": "Этот движок не знает тип {1}, поэтому столбец {0} с ним создать нельзя.",
   "Dialog.CreateTable.GenerateDdl": "Сгенерировать DDL",
   "Dialog.CreateTable.Create": "Создать таблицу",
   "Dialog.CreateTable.Creating": "Создание таблицы…",
