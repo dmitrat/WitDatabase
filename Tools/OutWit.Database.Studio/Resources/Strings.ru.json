@@ -797,7 +797,7 @@
   "Explorer.Folder.Triggers": "Триггеры",
   "Explorer.Folder.Sequences": "Последовательности",
   "Explorer.Folder.Routines": "Процедуры и функции",
-  "Explorer.Summary": "{0}: {1}, {2}, {3}, {4}, {5}",
+  "Explorer.Summary": "{0}: {1}, {2}, {3}, {4}, {5}, {6}",
   "Query.Autocommit": "Автофиксация",
   "Query.TransactionOpen": "Транзакция открыта · {0}",
   "Settings.Theme.System": "Как в системе",
@@ -908,6 +908,11 @@
     "one": "{0} последовательность",
     "few": "{0} последовательности",
     "many": "{0} последовательностей"
+  },
+  "Count.Routines": {
+    "one": "{0} подпрограмма",
+    "few": "{0} подпрограммы",
+    "many": "{0} подпрограмм"
   },
   "Count.Tabs": {
     "one": "{0} вкладка",
@@ -1153,6 +1158,12 @@
   "Confirm.Drop.Headline.Sequence": "Удалить последовательность «{0}»? Отменить будет нельзя.",
   "Explorer.Dropped.Sequence": "Последовательность удалена: {0}",
   "Explorer.DropFailed.Sequence": "Не удалось удалить последовательность: {0}",
+  "Confirm.Drop.Headline.Function": "Удалить функцию «{0}»? Отменить это будет нельзя.",
+  "Explorer.Dropped.Function": "Функция удалена: {0}",
+  "Explorer.DropFailed.Function": "Не удалось удалить функцию: {0}",
+  "Confirm.Drop.Headline.Procedure": "Удалить процедуру «{0}»? Отменить это будет нельзя.",
+  "Explorer.Dropped.Procedure": "Процедура удалена: {0}",
+  "Explorer.DropFailed.Procedure": "Не удалось удалить процедуру: {0}",
   "Query.ReadOnly.Banner": "Подключение открыто только для чтения — запись будет отклонена движком.",
   "Query.ReadOnly.Short": "Только чтение"
 }

@@ -68,6 +68,19 @@ public sealed partial class DatabaseNode : ModelBase
     public bool IsExpanded { get; set; }
 
     /// <summary>
+    /// For a <see cref="DatabaseNodeType.Routine"/>: whether it is a function rather than a
+    /// procedure. Null for every other kind of node.
+    /// </summary>
+    /// <remarks>
+    /// One node type covers both because the tree draws them in one folder, and two DDL keywords sit
+    /// behind it - <c>DROP FUNCTION</c> and <c>DROP PROCEDURE</c> are different statements, and
+    /// "function deleted" and "procedure deleted" are different sentences in a language with cases.
+    /// The alternative, reading it back out of the label, is a rendering answering a question about
+    /// the schema.
+    /// </remarks>
+    public bool? IsFunction { get; set; }
+
+    /// <summary>
     /// A stand-in child, there so that the node draws an expander.
     /// </summary>
     /// <remarks>

@@ -272,6 +272,50 @@ public static partial class DdlWriter
 
     #endregion
 
+    #region Routines
+
+    /// <summary>
+    /// A whole <c>CREATE FUNCTION</c> or <c>CREATE PROCEDURE</c>, from what the catalogue answers.
+    /// </summary>
+    /// <remarks>
+    /// <para>
+    /// The brackets after the name are written even when there are no parameters: this grammar has
+    /// <c>LPAREN routineParameters? RPAREN</c>, so they are not optional and a function written
+    /// without them does not parse.
+    /// </para>
+    /// <para>
+    /// A function’s body is one expression and is written after <c>RETURN</c>; a procedure’s is a
+    /// statement list and stands on its own, exactly as a trigger’s does.
+    /// </para>
+    /// </remarks>
+    public static string CreateRoutine(RoutineDraft routine)
+    {
+        var keyword = routine.IsFunction ? "FUNCTION" : "PROCEDURE";
+
+        var parameters = string.Join(", ", routine.Parameters
+            .Select(parameter => $"{Identifier(parameter.Name)} {parameter.Type}"));
+
+        var sb = new StringBuilder($"CREATE {keyword} {Identifier(routine.Name)}({parameters})");
+
+        if (routine.IsFunction)
+            sb.Append($" RETURNS {routine.ReturnType}");
+
+        sb.Append("\nAS BEGIN\n");
+
+        var body = routine.Body.Trim().TrimEnd(';');
+
+        sb.Append(Indent(routine.IsFunction ? $"RETURN {body};" : body + ";"));
+
+        sb.Append("\nEND;");
+
+        return sb.ToString();
+    }
+
+    public static string DropRoutine(string name, bool isFunction) =>
+        $"DROP {(isFunction ? "FUNCTION" : "PROCEDURE")} {Identifier(name)};";
+
+    #endregion
+
     #region Tools
 
     private static string Columns(IEnumerable<string> columns) =>

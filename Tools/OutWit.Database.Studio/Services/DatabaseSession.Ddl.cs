@@ -146,6 +146,121 @@ public sealed partial class DatabaseSession
         }
     }
 
+    /// <inheritdoc/>
+    /// <remarks>
+    /// <para>
+    /// <b>A routine whose body the catalogue cannot render is NAMED by the caller, not written half
+    /// way</b> - the phase-8 rule, the same one a view and a trigger already follow here.
+    /// </para>
+    /// <para>
+    /// The parameters come from <c>INFORMATION_SCHEMA.PARAMETERS</c> in ordinal order, and the row
+    /// that describes what a function RETURNS is excluded by <c>IS_RESULT</c>: it is a parameter in
+    /// the standard’s model and not one in this grammar, where the return type is written after
+    /// <c>RETURNS</c>.
+    /// </para>
+    /// </remarks>
+    public async Task<string?> GetRoutineDefinitionAsync(string routineName, CancellationToken ct = default)
+    {
+        EnsureConnected();
+
+        try
+        {
+            const string sql = @"
+                SELECT ROUTINE_TYPE, DATA_TYPE, ROUTINE_DEFINITION
+                FROM INFORMATION_SCHEMA.ROUTINES
+                WHERE ROUTINE_NAME = @routineName";
+
+            using var command = m_connection!.CreateCommand();
+            command.CommandText = sql;
+            command.Parameters.AddWithValue("@routineName", routineName);
+
+            string type, body;
+            string? dataType;
+
+            using (var reader = await command.ExecuteReaderAsync(ct))
+            {
+                if (!await reader.ReadAsync(ct))
+                    return null;
+
+                type = reader.IsDBNull(0) ? "FUNCTION" : reader.GetString(0);
+                dataType = reader.IsDBNull(1) ? null : reader.GetString(1);
+
+                if (reader.IsDBNull(2) || string.IsNullOrWhiteSpace(reader.GetString(2)))
+                    return null;
+
+                body = reader.GetString(2);
+            }
+
+            var isFunction = type.Equals("FUNCTION", StringComparison.OrdinalIgnoreCase);
+
+            // A function with no return type cannot be written: RETURNS is not optional in this
+            // grammar, and guessing one would produce a routine that is not the one in the database.
+            if (isFunction && string.IsNullOrWhiteSpace(dataType))
+                return null;
+
+            return DdlWriter.CreateRoutine(new RoutineDraft
+            {
+                Name = routineName,
+                IsFunction = isFunction,
+                ReturnType = dataType,
+                Parameters = await ReadRoutineParametersAsync(routineName, ct),
+                Body = body
+            });
+        }
+        catch (Exception ex)
+        {
+            m_logger.LogDebug(ex, "Failed to get routine definition for {RoutineName}", routineName);
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// One routine's parameters, in the order they are declared.
+    /// </summary>
+    /// <remarks>
+    /// Deliberately NOT wrapped in a catch of its own, for the reason
+    /// <see cref="ReadUpdateColumnsAsync"/> gives: a routine written without the parameters it has is
+    /// a different routine, and the caller's catch reports it as one that cannot be written - which
+    /// is the honest answer.
+    /// </remarks>
+    internal async Task<IReadOnlyList<RoutineParameterDraft>> ReadRoutineParametersAsync(
+        string routineName, CancellationToken ct = default)
+    {
+        // The length and the precision are read with the type, and composed with it. Without them a
+        // DECIMAL(18,2) parameter comes back as DECIMAL and a VARCHAR(60) as VARCHAR - a definition
+        // that parses, restores, and is not the routine that was there.
+        const string sql = @"
+            SELECT PARAMETER_NAME, DATA_TYPE,
+                   CHARACTER_MAXIMUM_LENGTH, NUMERIC_PRECISION, NUMERIC_SCALE
+            FROM INFORMATION_SCHEMA.PARAMETERS
+            WHERE SPECIFIC_NAME = @routineName
+              AND IS_RESULT = 'NO'
+            ORDER BY ORDINAL_POSITION";
+
+        using var command = m_connection!.CreateCommand();
+        command.CommandText = sql;
+        command.Parameters.AddWithValue("@routineName", routineName);
+
+        using var reader = await command.ExecuteReaderAsync(ct);
+
+        var parameters = new List<RoutineParameterDraft>();
+
+        while (await reader.ReadAsync(ct))
+        {
+            parameters.Add(new RoutineParameterDraft
+            {
+                Name = reader.GetString(0),
+                Type = ColumnDraft.FormatType(
+                    reader.IsDBNull(1) ? "TEXT" : reader.GetString(1),
+                    reader.IsDBNull(2) ? null : reader.GetInt32(2),
+                    reader.IsDBNull(3) ? null : reader.GetInt32(3),
+                    reader.IsDBNull(4) ? null : reader.GetInt32(4))
+            });
+        }
+
+        return parameters;
+    }
+
     /// <summary>
     /// The columns one trigger's <c>UPDATE OF</c> names, as the standard publishes them: one row per
     /// column, and none at all when the trigger watches every column.

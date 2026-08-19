@@ -3,6 +3,44 @@
 Studio is versioned separately from the WitDatabase engine and released under its own `studio-v*` tag.
 The engine's changelog is `/CHANGELOG.md`.
 
+## 3.1.2
+
+**Engine: 14.0.1**, and that is the first reason for this release. Two planner defects were found
+by using Studio and fixed in the engine the same day: a join condition written `ON right.x =
+left.y` was refused outright, and `EXPLAIN` gave the right input’s child the wrong parent - so the
+Plan panel drew the wrong tree faithfully. Studio needed no change for either; it needed the
+engine.
+
+### A function and a procedure are objects, not labels
+
+The sixth folder arrived with WS-21 and nothing else did: a routine’s context menu offered one
+item, *Refresh*. It now offers **View definition** and **Drop**, like every other kind of object
+in the tree - the engine has had `DROP FUNCTION` and `DROP PROCEDURE` since phase 9d, and the
+catalogue already carried the body the inspector was showing.
+
+The definition is the whole `CREATE`, assembled from `INFORMATION_SCHEMA.ROUTINES` and
+`PARAMETERS`: a body without its parameters and return type parses and creates a DIFFERENT
+routine. A routine the catalogue cannot render is NAMED rather than half-written, which is the
+rule a view and a trigger already followed.
+
+### And the dump was losing them
+
+Worse than the missing menu item, and found beside it: **`Dump Database…` wrote views, indexes and
+triggers, and no routines at all.** A database with functions dumped to a script that restored
+without them and said nothing. The dump now carries them, and names one it cannot render.
+
+The test that matters is not that a definition appears but that it **runs back**: each routine is
+dropped and the text Studio wrote is executed, and the routine is there again.
+
+### And the line under the tree counts six folders
+
+It named five - tables, views, indexes, triggers, sequences - while the tree has drawn six since
+WS-21, so a database whose only objects are routines was summarised as having nothing in it.
+
+### Known issues
+
+Issue 27 of [Docs/KnownIssues.md](../../Docs/KnownIssues.md) is this, and is marked fixed. Issues
+25 and 26 went with engine 14.0.1.
 ## 3.1.1
 
 **Four corrections, three of them to things 3.1.0 itself broke.** They were found the day 3.1.0
