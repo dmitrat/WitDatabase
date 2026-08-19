@@ -837,9 +837,14 @@
 			</Grid>
 		</Border>
 
-		<!-- The command palette (WS-9), over everything. -->
+		<!-- The command palette (WS-9), over everything.
+
+		     The scrim answers the pointer: a window that traps it with no visible way out is a
+		     corner somebody can get stuck in, and this one stopped the screenshot automation
+		     until a key could be pressed by hand. Esc keeps working; it is not the only way. -->
 		<Border Grid.Row="0" Grid.RowSpan="4"
 		        IsVisible="{Binding PaletteVm.IsOpen}"
+		        PointerPressed="OnPaletteScrimPressed"
 		        Background="{DynamicResource Wit.Scrim}">
 			<Border Width="560"
 			        VerticalAlignment="Top"
@@ -857,7 +862,10 @@
 					         Watermark="{DynamicResource S.Shell.Palette}"
 					         BorderThickness="0"/>
 
+					<!-- A click on an entry RUNS it. It used to move the highlight and stop there, so the
+					     only way to open anything was Enter. -->
 					<ListBox AutomationProperties.AutomationId="PaletteItems"
+					         Tapped="OnPaletteItemTapped"
 					         ItemsSource="{Binding PaletteVm.Items}"
 					         SelectedItem="{Binding PaletteVm.SelectedItem, Mode=TwoWay}"
 					         MaxHeight="320"
