@@ -31,7 +31,7 @@
         clean too and the warning does not train everyone to ignore NU1903. Private, because nothing
         here uses XML signing. Remove once Design stops depending on a vulnerable MSBuild.
     -->
-    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.10"
+    <PackageReference Include="System.Security.Cryptography.Xml" Version="10.0.14"
                       PrivateAssets="all" />
   </ItemGroup>
 
