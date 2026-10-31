@@ -12,7 +12,7 @@ name: studio-release
 # `v1.0.1`, sitting in the same list as the engine's `v12.2.0`. They are different
 # products on different version lines and they now have different namespaces.
 #
-# Native runner per OS (windows-latest / ubuntu-latest / macos-14 arm64) so each RID
+# Native runner per OS (windows-latest / ubuntu-latest / macos-15 arm64) so each RID
 # builds natively — required for the macOS bundle and for per-OS code-signing.
 #
 # NOT BUILT, stated rather than left to be discovered: osx-x64. The workflow this
@@ -75,7 +75,7 @@ jobs:
     timeout-minutes: 60
     # macOS has never been built for this application, so it must not be able to block a
     # release that the two proven platforms produce. Tighten to false once it is green.
-    continue-on-error: ${{ matrix.os == 'macos-14' }}
+    continue-on-error: ${{ matrix.os == 'macos-15' }}
     strategy:
       fail-fast: false
       matrix:
@@ -104,13 +104,13 @@ jobs:
             track: framework
             suffix: "-no-dotnet"
             oslabel: linux-x64
-          - os: macos-14
+          - os: macos-15
             rid: osx-arm64
             packages: zip
             track: selfcontained
             suffix: ""
             oslabel: macos-arm64
-          - os: macos-14
+          - os: macos-15
             rid: osx-arm64
             packages: zip
             track: framework
@@ -184,7 +184,7 @@ jobs:
 
           # Two substitutions with a | delimiter and NO capture group, which is deliberate on
           # both counts. `grep -oP` is out because -P is a GNU extension and this job also runs
-          # on macos-14, whose BSD grep refuses it - a guard that fails on a third of the
+          # on macOS, whose BSD grep refuses it - a guard that fails on a third of the
           # platforms it guards is worse than none. And a backreference is out because writing
           # one through a scripted edit is how a raw 0x01 byte got into this file and made
           # GitHub reject the whole workflow before a single job started.
