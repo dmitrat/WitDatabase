@@ -1,4 +1,4 @@
-using System.Data;
+﻿using System.Data;
 using System.Globalization;
 using Microsoft.EntityFrameworkCore.Storage;
 
@@ -287,11 +287,17 @@ public sealed class WitTypeMappingSource : RelationalTypeMappingSource
                 return clrMapping;
             }
 
-            // Handle enums as integers
-            if (underlyingType.IsEnum)
-            {
-                return m_intMapping;
-            }
+            // An enum is NOT answered here, on purpose. This used to return the plain INT mapping for
+            // any enum - a mapping whose CLR type is int and which carries no converter. The model said
+            // INT and GetColumnType() agreed, so the model-level tests passed; but the accessors EF
+            // compiles for the property were built for an int and were handed the enum, and the first
+            // Add threw "Argument types do not match". An application had to declare
+            // HasConversion<int>() on every enum to get past it (WitLab's job store did).
+            //
+            // Returning null hands the enum to the base, which asks the ValueConverterSelector: that
+            // yields EnumToNumberConverter over the enum's own underlying type first, the base finds the
+            // numeric mapping for it through this same method, and composes the two - INT for an int
+            // enum, BIGINT for a long one, the converter in place. Every other provider does it this way.
         }
 
         // Fall back to base implementation

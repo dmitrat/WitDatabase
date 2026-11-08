@@ -2,9 +2,28 @@
 
 ## 14.0.2
 
-**One defect a client application found by running for days without ever closing its database:
-the entries of a secondary index were written to the index file only on dispose.** No file format
-change; one method added to the Core API (`WitDatabase.FlushIndexes`).
+**Two defects one client application found, a desktop tool that keeps a database open for its
+whole life and models its rows with Entity Framework: the entries of a secondary index were
+written to the index file only on dispose, and an enum property could not be saved through the EF
+provider.** No file format change; one method added to the Core API (`WitDatabase.FlushIndexes`).
+
+### An enum property is saved through the EF provider without a declared conversion
+
+`context.Add(entity)` threw `ArgumentException: Argument types do not match` for any entity with
+an enum property, from inside the accessors EF compiles for the property. The type mapping source
+answered an enum with the plain `INT` mapping - a mapping whose CLR type is `int` and which carries
+no converter - so the model said `INT`, `GetColumnType()` agreed and the model-level test passed,
+while the compiled setter was built for an `int` and was handed the enum. The application had to
+declare `HasConversion<int>()` on every enum to get past it.
+
+The source no longer answers enums itself. It returns nothing and lets EF's own conversion step
+run, as every other provider does: the value converter selector offers `EnumToNumberConverter`
+over the enum's underlying type first, the source finds the numeric mapping for it, and the two
+are composed - `INT` for an int-backed enum, `BIGINT` for a long-backed one, the converter in
+place. Nullable enums follow. Column types in existing models and migrations do not change for
+int-backed enums; a long-backed enum that was `INT` before is now `BIGINT`, which is the width it
+needed. The new round-trip tests add, save, find, copy with `SetValues`, filter and order by enum
+properties through a file; the unit tests pin the composed mapping.
 
 ### A committed row is found through its index after the process dies
 

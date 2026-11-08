@@ -1,4 +1,4 @@
-using Microsoft.EntityFrameworkCore.Storage;
+﻿using Microsoft.EntityFrameworkCore.Storage;
 using Microsoft.EntityFrameworkCore.Storage.Json;
 using Microsoft.EntityFrameworkCore.Storage.ValueConversion;
 using OutWit.Database.EntityFramework.Storage;
@@ -366,6 +366,54 @@ public class WitTypeMappingSourceTests
         Assert.That(mapping1!.ClrType, Is.EqualTo(mapping2!.ClrType));
         Assert.That(mapping2.ClrType, Is.EqualTo(mapping3!.ClrType));
     }
+
+    #endregion
+
+    #region Enum Type Mapping Tests
+
+    // Before 14.0.2 an enum got the plain INT mapping - CLR type int, no converter - and every
+    // accessor EF compiled for the property threw "Argument types do not match" on the first Add.
+
+    [Test]
+    public void FindMappingEnumReturnsIntWithAConverterTest()
+    {
+        var mapping = m_typeMappingSource.FindMapping(typeof(Colour));
+
+        Assert.That(mapping, Is.Not.Null);
+        Assert.That(mapping!.StoreType, Is.EqualTo("INT"));
+        Assert.That(mapping.ClrType, Is.EqualTo(typeof(Colour)));
+        Assert.That(mapping.Converter, Is.Not.Null);
+        Assert.That(mapping.Converter!.ProviderClrType, Is.EqualTo(typeof(int)));
+        Assert.That(mapping.Converter.ConvertToProvider(Colour.Green), Is.EqualTo(1));
+        Assert.That(mapping.Converter.ConvertFromProvider(2), Is.EqualTo(Colour.Blue));
+    }
+
+    [Test]
+    public void FindMappingLongEnumReturnsBigIntWithAConverterTest()
+    {
+        var mapping = m_typeMappingSource.FindMapping(typeof(Wide));
+
+        Assert.That(mapping, Is.Not.Null);
+        Assert.That(mapping!.StoreType, Is.EqualTo("BIGINT"));
+        Assert.That(mapping.ClrType, Is.EqualTo(typeof(Wide)));
+        Assert.That(mapping.Converter!.ProviderClrType, Is.EqualTo(typeof(long)));
+        Assert.That(mapping.Converter.ConvertToProvider(Wide.Far), Is.EqualTo(5_000_000_000L));
+    }
+
+    [Test]
+    public void FindMappingNullableEnumReturnsTheEnumMappingTest()
+    {
+        var mapping = m_typeMappingSource.FindMapping(typeof(Colour?));
+
+        Assert.That(mapping, Is.Not.Null);
+        Assert.That(mapping!.StoreType, Is.EqualTo("INT"));
+        Assert.That(mapping.ClrType, Is.EqualTo(typeof(Colour)));
+        Assert.That(mapping.Converter, Is.Not.Null);
+    }
+
+    private enum Colour { Red, Green, Blue }
+
+    private enum Wide : long { Near = 1, Far = 5_000_000_000L }
 
     #endregion
 }
