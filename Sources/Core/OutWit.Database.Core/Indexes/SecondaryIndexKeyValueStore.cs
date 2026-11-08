@@ -28,6 +28,11 @@ namespace OutWit.Database.Core.Indexes
 
         private readonly IKeyValueStore m_store;
         private readonly bool m_ownsStore;
+
+        // Set by every write, cleared by a flush. A commit flushes the indexes that changed and
+        // leaves the others alone, so a transaction that touched one table does not pay for the
+        // fsync of every index in the database.
+        private volatile bool m_hasPendingWrites;
         private readonly ByteArrayComparer m_comparer;
         private long m_count;
         private bool m_disposed;
@@ -266,6 +271,7 @@ namespace OutWit.Database.Core.Indexes
                 m_store.Put(compositeKey, ReadOnlySpan<byte>.Empty);
             }
             
+            m_hasPendingWrites = true;
             Interlocked.Increment(ref m_count);
         }
 
@@ -293,7 +299,10 @@ namespace OutWit.Database.Core.Indexes
             }
 
             if (removed)
+            {
+                m_hasPendingWrites = true;
                 Interlocked.Decrement(ref m_count);
+            }
 
             return removed;
         }
@@ -309,6 +318,7 @@ namespace OutWit.Database.Core.Indexes
             {
                 if (m_store.Delete(indexKeyArray))
                 {
+                    m_hasPendingWrites = true;
                     Interlocked.Decrement(ref m_count);
                     return 1;
                 }
@@ -326,6 +336,7 @@ namespace OutWit.Database.Core.Indexes
                 foreach (var key in keysToDelete)
                 {
                     m_store.Delete(key);
+                    m_hasPendingWrites = true;
                     Interlocked.Decrement(ref m_count);
                 }
 
@@ -347,6 +358,9 @@ namespace OutWit.Database.Core.Indexes
                 m_store.Delete(key);
             }
             
+            if (allKeys.Count > 0)
+                m_hasPendingWrites = true;
+
             Interlocked.Exchange(ref m_count, 0);
         }
 
@@ -355,18 +369,32 @@ namespace OutWit.Database.Core.Indexes
         #region Flush
 
         /// <inheritdoc/>
+        /// <remarks>
+        /// Nothing happens when no write is pending: a commit flushes every index of the database,
+        /// and the ones a transaction never touched must not cost it a sync of their file.
+        /// </remarks>
         public void Flush()
         {
             ThrowIfDisposed();
+
+            if (!m_hasPendingWrites)
+                return;
+
             m_store.Flush();
+            m_hasPendingWrites = false;
         }
 
         /// <inheritdoc/>
-        public ValueTask FlushAsync(CancellationToken cancellationToken = default)
+        public async ValueTask FlushAsync(CancellationToken cancellationToken = default)
         {
             ThrowIfDisposed();
             cancellationToken.ThrowIfCancellationRequested();
-            return m_store.FlushAsync(cancellationToken);
+
+            if (!m_hasPendingWrites)
+                return;
+
+            await m_store.FlushAsync(cancellationToken).ConfigureAwait(false);
+            m_hasPendingWrites = false;
         }
 
         #endregion
@@ -468,6 +496,12 @@ namespace OutWit.Database.Core.Indexes
 
         /// <inheritdoc/>
         public long Count => Interlocked.Read(ref m_count);
+
+        /// <summary>
+        /// Whether a write since the last flush is in memory and not yet in the index file - what
+        /// a commit flushes, and what makes an untouched index free to skip.
+        /// </summary>
+        public bool HasPendingWrites => m_hasPendingWrites;
 
         /// <inheritdoc/>
         /// <remarks>

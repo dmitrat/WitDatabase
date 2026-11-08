@@ -58,6 +58,20 @@ public static class Scenarios
     public const string ADONET_COMMIT_KILL = "adonet-commit-kill";
 
     /// <summary>
+    /// The ADO.NET provider, a table with a secondary index, rows committed under it, closed
+    /// cleanly. The control for the scenario below: the index answers after a clean close.
+    /// </summary>
+    public const string INDEX_CONTROL_CLEAN = "index-control-clean";
+
+    /// <summary>
+    /// The same rows committed under a secondary index, then die without closing. The subject: a
+    /// transaction's commit flushes the main store, and the index is a separate store that nothing
+    /// flushed before Dispose - so the rows survived and their index entries did not, and a lookup
+    /// through the index after a restart found nothing of the last session.
+    /// </summary>
+    public const string INDEX_COMMIT_KILL = "index-commit-kill";
+
+    /// <summary>
     /// The same commit, at the engine level, over a database built with MVCC and synchronous commit
     /// explicitly - the configuration the provider is supposed to be producing. It exists to bisect:
     /// if this survives a kill and <see cref="ADONET_COMMIT_KILL"/> does not, the break is in the
@@ -156,6 +170,8 @@ public static class Scenarios
         ROWID_COMMIT_KILL => RowIdCommitKill(context),
         ADONET_CONTROL_CLEAN => AdoNetControlClean(context),
         ADONET_COMMIT_KILL => AdoNetCommitKill(context),
+        INDEX_CONTROL_CLEAN => IndexControlClean(context),
+        INDEX_COMMIT_KILL => IndexCommitKill(context),
         MVCC_ENGINE_COMMIT_KILL => MvccEngineCommitKill(context),
         LOCK_HELD_KILL => LockHeldKill(context),
         CONFIGURED_CONTROL_CLEAN => ConfiguredControlClean(context),
@@ -175,6 +191,8 @@ public static class Scenarios
         ROWID_COMMIT_KILL,
         ADONET_CONTROL_CLEAN,
         ADONET_COMMIT_KILL,
+        INDEX_CONTROL_CLEAN,
+        INDEX_COMMIT_KILL,
         MVCC_ENGINE_COMMIT_KILL,
         LOCK_HELD_KILL,
         CONFIGURED_CONTROL_CLEAN,
@@ -325,6 +343,79 @@ public static class Scenarios
         // connection string says nothing beyond Data Source, so this is the configuration the
         // documentation calls durable.
         return context.Park(("rows", context.Rows));
+    }
+
+    // Two sessions, as the client application that found the defect ran: the first creates the
+    // table and the index, commits half the rows and closes cleanly, so the index file exists with
+    // content and is believed on the next open; the second commits the other half. Without the
+    // first session a kill leaves an EMPTY index file, which the engine rebuilds rather than
+    // believes - and a scenario that only did that would pass with the defect in place.
+    private static int IndexControlClean(ScenarioContext context)
+    {
+        using (var first = new WitDbConnection(ConnectionString(context)))
+        {
+            first.Open();
+            context.Ready();
+
+            Command(first, $"CREATE TABLE {context.Table} (Id BIGINT PRIMARY KEY AUTOINCREMENT, V INT)");
+            Command(first, $"CREATE INDEX IX_{context.Table}_V ON {context.Table} (V)");
+
+            using (var transaction = first.BeginTransaction())
+            {
+                InsertRows(first, context, transaction, 0, context.Rows / 2);
+                transaction.Commit();
+            }
+
+            first.Close();
+        }
+
+        using var second = new WitDbConnection(ConnectionString(context));
+        second.Open();
+
+        using (var transaction = second.BeginTransaction())
+        {
+            InsertRows(second, context, transaction, context.Rows / 2, context.Rows);
+            transaction.Commit();
+        }
+
+        second.Close();
+
+        context.Done(("rows", context.Rows), ("firstSession", context.Rows / 2));
+        return CrashProtocol.EXIT_OK;
+    }
+
+    private static int IndexCommitKill(ScenarioContext context)
+    {
+        using (var first = new WitDbConnection(ConnectionString(context)))
+        {
+            first.Open();
+            context.Ready();
+
+            Command(first, $"CREATE TABLE {context.Table} (Id BIGINT PRIMARY KEY AUTOINCREMENT, V INT)");
+            Command(first, $"CREATE INDEX IX_{context.Table}_V ON {context.Table} (V)");
+
+            using (var transaction = first.BeginTransaction())
+            {
+                InsertRows(first, context, transaction, 0, context.Rows / 2);
+                transaction.Commit();
+            }
+
+            first.Close();
+        }
+
+        var second = new WitDbConnection(ConnectionString(context));
+        second.Open();
+
+        using (var transaction = second.BeginTransaction())
+        {
+            InsertRows(second, context, transaction, context.Rows / 2, context.Rows);
+            transaction.Commit();
+        }
+
+        // Killed here, like adonet-commit-kill: the commit has returned and nothing is closed. The
+        // rows are the control (that scenario proves them); the second session's index entries are
+        // the subject.
+        return context.Park(("rows", context.Rows), ("firstSession", context.Rows / 2));
     }
 
     private static int UncommittedKill(ScenarioContext context)
@@ -521,7 +612,17 @@ public static class Scenarios
         ScenarioContext context,
         DbTransaction? transaction)
     {
-        for (int i = 0; i < context.Rows; i++)
+        InsertRows(connection, context, transaction, 0, context.Rows);
+    }
+
+    private static void InsertRows(
+        DbConnection connection,
+        ScenarioContext context,
+        DbTransaction? transaction,
+        int from,
+        int to)
+    {
+        for (int i = from; i < to; i++)
             Command(connection, $"INSERT INTO {context.Table} (V) VALUES ({i})", transaction);
     }
 

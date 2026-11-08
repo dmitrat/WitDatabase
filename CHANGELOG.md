@@ -1,5 +1,38 @@
 ﻿# Changelog
 
+## 14.0.2
+
+**One defect a client application found by running for days without ever closing its database:
+the entries of a secondary index were written to the index file only on dispose.** No file format
+change; one method added to the Core API (`WitDatabase.FlushIndexes`).
+
+### A committed row is found through its index after the process dies
+
+A transaction's commit flushes the main store, so the rows survive a process that is killed - or
+one that simply never disposes the database, which a desktop application that keeps one
+connection for its whole life does by construction. The secondary indexes are separate B+Tree
+files, and nothing flushed them before `Dispose`. After a restart, `SELECT ... WHERE JobId = @id`
+was answered through the index and found none of the last session's rows, while `SELECT Id FROM
+Jobs` found every one of them. The application worked around it by reading every row's key once
+at start and never asking an index again.
+
+**The cause was that index maintenance is outside the transaction.** The engine updates the index
+stores as rows change, synchronously, and the commit that followed flushed only the store the
+transaction belongs to. The index pages stayed dirty in their own cache until the index store was
+disposed - which a kill never does and a long-running application does once, at the end.
+
+The engine now flushes the indexes when a transaction commits, in the same step that makes the
+rows durable. Only an index with pending writes is flushed, so a transaction that touched one
+table does not pay for a sync of every index file in the database; a store that commits
+asynchronously by configuration (`SynchronousCommit=false`) keeps its indexes under the same rule
+and leaves them to the next explicit `Flush`.
+
+**Why the suite said nothing:** every index test either disposed the database before reopening it
+or read the index in the same session, and the crash runner's scenarios had no index. The new
+`index-commit-kill` scenario commits rows under an index and is killed without closing; the
+reopened database must answer the indexed query through the index - checked against the plan, so
+a scan cannot pass it - and its control, `index-control-clean`, establishes that the same rows
+are answered after a clean close.
 ## 14.0.1
 
 **Two defects a client found by being used, both in the planner, neither reachable from the SQL

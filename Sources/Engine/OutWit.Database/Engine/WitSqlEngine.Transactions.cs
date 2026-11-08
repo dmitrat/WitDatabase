@@ -72,6 +72,15 @@ public sealed partial class WitSqlEngine
         // Removing it also stops every commit rewriting every table's counters, touched or not.
         m_currentTransaction.Commit();
 
+        // The index entries this transaction added are not inside it: the secondary indexes are
+        // separate stores the engine writes as rows change, and the commit above flushed only the
+        // main store. Until 14.0.2 nothing flushed them before Dispose, so a process that was
+        // killed - or, as a client application found, one that never disposed its connection -
+        // kept every row and lost every index entry of the session: a lookup through the index
+        // found nothing, a scan found everything. Proven by the out-of-process crash runner
+        // (index-commit-kill) and closed here, in the same step that made the rows durable.
+        m_database.FlushIndexes();
+
         m_currentTransaction.Dispose();
         m_currentTransaction = null;
         m_rowCountDeltaSinceSavepoint = null;

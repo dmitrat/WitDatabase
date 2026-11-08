@@ -827,6 +827,48 @@ public sealed class WitDatabase : IDisposable, IAsyncDisposable
             await m_indexManager.FlushAsync(cancellationToken).ConfigureAwait(false);
     }
 
+    /// <summary>
+    /// Writes the index entries a committed transaction left in memory to their files - the half
+    /// of a commit the store's own flush does not cover.
+    /// </summary>
+    /// <remarks>
+    /// A transaction's commit flushes the main store, and the rows survive a process that dies or
+    /// never disposes the database. The secondary indexes are separate stores, and until 14.0.2
+    /// nothing wrote them before <see cref="Dispose"/>: after a restart, a lookup through an index
+    /// missed every row of the last session while a scan found them all. The engine calls this
+    /// after every commit. Only the indexes with pending writes are touched, and when the store
+    /// commits asynchronously by configuration (<c>SynchronousCommit=false</c>) the indexes follow
+    /// the same choice and are left to the next explicit <see cref="Flush"/>.
+    /// </remarks>
+    public void FlushIndexes()
+    {
+        ThrowIfDisposed();
+
+        if (m_indexManager == null || !FlushesIndexesOnCommit)
+            return;
+
+        m_indexManager.Flush();
+    }
+
+    /// <summary>
+    /// Writes the index entries a committed transaction left in memory, asynchronously. See
+    /// <see cref="FlushIndexes"/>.
+    /// </summary>
+    public async ValueTask FlushIndexesAsync(CancellationToken cancellationToken = default)
+    {
+        ThrowIfDisposed();
+
+        if (m_indexManager == null || !FlushesIndexesOnCommit)
+            return;
+
+        await m_indexManager.FlushAsync(cancellationToken).ConfigureAwait(false);
+    }
+
+    // The indexes follow the durability the store was configured with: a store that does not
+    // flush its own commit does not get its indexes flushed on its behalf.
+    private bool FlushesIndexesOnCommit =>
+        m_transactionalStore is not Transactions.MvccTransactionalStore { SynchronousCommit: false };
+
     #endregion
 
     #region Tools
